@@ -354,9 +354,18 @@ npm start
 - Be patient - subsequent requests are fast
 - Cache is stored in `backend/cache/`
 
+## Credits & Attributions
+
+### 3D Model
+"F1 2026 Release Car" (https://skfb.ly/oWL8J) by Nimaxo is licensed under Creative Commons Attribution (http://creativecommons.org/licenses/by/4.0/).
+
+See [CREDITS.md](CREDITS.md) for full attributions.
+
 ## License
 
-MIT
+MIT License - See LICENSE file for details.
+
+**Note:** The 3D model is separately licensed under CC BY 4.0.
 
 ## Credits
 

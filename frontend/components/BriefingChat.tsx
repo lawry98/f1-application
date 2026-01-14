@@ -1,10 +1,15 @@
 'use client';
 
 import { useState } from 'react';
+import dynamic from 'next/dynamic';
 import { generateBriefing, streamBriefing } from '@/lib/api';
 import BriefingCard from './BriefingCard';
 import ToolTrace from './ToolTrace';
 import RaceSelector from './RaceSelector';
+
+const F1LoadingAnimation = dynamic(() => import('@/components/3d/F1LoadingCar').then(mod => ({ default: mod.F1LoadingAnimation })), {
+  ssr: false,
+});
 
 interface ToolResult {
   tool: string;
@@ -100,16 +105,11 @@ export default function BriefingChat() {
             {loading ? 'Generating...' : 'Generate'}
           </button>
         </div>
-
-        {statusMessage && (
-          <div className="mt-4 text-center">
-            <div className="inline-flex items-center gap-2 text-zinc-400">
-              <div className="w-4 h-4 border-2 border-f1-red border-t-transparent rounded-full animate-spin" />
-              <span>{statusMessage}</span>
-            </div>
-          </div>
-        )}
       </div>
+
+      {loading && !briefing && (
+        <F1LoadingAnimation message={statusMessage || "Agent is analyzing race data..."} />
+      )}
 
       {error && (
         <div className="mb-8 bg-red-900/20 border border-red-800 rounded-lg p-4">
