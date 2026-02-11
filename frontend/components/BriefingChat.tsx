@@ -93,7 +93,7 @@ export default function BriefingChat() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && handleSubmit()}
-            placeholder="Enter race name (e.g., 'Monaco GP 2025', 'Silverstone')"
+            placeholder="Enter a circuit name (e.g., 'Monaco', 'Silverstone', 'Spa')"
             className="flex-1 px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-f1-red transition-colors"
             disabled={loading}
           />
@@ -133,5 +133,6 @@ export default function BriefingChat() {
         </div>
       )}
     </div>
-  );
+  ); 
 }
+  

@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from agent.graph import agent
 from agent.state import AgentState
+from tools.schedule_cache import clear as clear_schedule_cache
 
 executor = ThreadPoolExecutor(max_workers=4)
 
@@ -32,16 +33,17 @@ async def generate_briefing(request: BriefingRequest):
             "tasks": [],
             "tool_results": [],
             "briefing": None,
-            "current_step": "planning"
+            "current_step": "resolving"
         }
-        
+
         result = agent.invoke(initial_state)
-        
+
         if result.get("current_step") == "error" or not result.get("briefing"):
-            raise HTTPException(status_code=500, detail="Failed to generate briefing")
-        
+            error_msg = result.get("briefing", "Failed to generate briefing")
+            raise HTTPException(status_code=500, detail=error_msg)
+
         race_name = result.get("race_info", {}).get("name", "Unknown Race")
-        
+
         tool_trace = [
             {
                 "tool": tr["tool_name"],
@@ -50,14 +52,18 @@ async def generate_briefing(request: BriefingRequest):
             }
             for tr in result.get("tool_results", [])
         ]
-        
+
         return BriefingResponse(
             race=race_name,
             briefing=result["briefing"],
             tool_trace=tool_trace
         )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        clear_schedule_cache()
 
 @router.post("/briefing/stream")
 async def generate_briefing_stream(request: BriefingRequest):
@@ -65,7 +71,7 @@ async def generate_briefing_stream(request: BriefingRequest):
     async def event_generator():
         try:
             print(f"Starting briefing generation for: {request.query}")
-            
+
             initial_state: AgentState = {
                 "messages": [],
                 "race_query": request.query,
@@ -73,50 +79,65 @@ async def generate_briefing_stream(request: BriefingRequest):
                 "tasks": [],
                 "tool_results": [],
                 "briefing": None,
-                "current_step": "planning"
+                "current_step": "resolving"
             }
-            
+
             yield {
                 "event": "status",
-                "data": json.dumps({"step": "planning", "message": "Planning data gathering..."})
+                "data": json.dumps({"step": "resolving", "message": "Resolving race..."})
             }
-            
+
             await asyncio.sleep(0.1)
-            
+
             print("Invoking agent...")
-            
+
             # Run the agent in a thread pool since it's synchronous
             loop = asyncio.get_event_loop()
-            
+
             def run_agent():
                 results = []
                 for step_result in agent.stream(initial_state):
                     results.append(step_result)
                 return results
-            
+
             step_results = await loop.run_in_executor(executor, run_agent)
-            
+
             result = {}
             for step_result in step_results:
                 print(f"Step result: {list(step_result.keys())}")
                 result.update(step_result)
-                
+
                 current_step = list(step_result.keys())[0] if step_result else "unknown"
                 step_data = step_result.get(current_step, {})
-                
-                if current_step == "planner":
-                    print("Planner completed")
+
+                if current_step == "resolver":
+                    print("Resolver completed")
                     race_info = step_data.get("race_info")
                     if race_info:
                         yield {
                             "event": "race_info",
                             "data": json.dumps(race_info)
                         }
+                        yield {
+                            "event": "status",
+                            "data": json.dumps({"step": "planning", "message": "Planning data gathering..."})
+                        }
+                    else:
+                        # Resolution failed
+                        error_msg = step_data.get("briefing", "Failed to resolve race")
+                        yield {
+                            "event": "error",
+                            "data": json.dumps({"message": error_msg})
+                        }
+                        return
+
+                elif current_step == "planner":
+                    print("Planner completed")
                     yield {
                         "event": "status",
                         "data": json.dumps({"step": "gathering", "message": "Gathering race data..."})
                     }
-                
+
                 elif current_step == "tool_executor":
                     print("Tool executor completed")
                     tool_results = step_data.get("tool_results", [])
@@ -132,7 +153,7 @@ async def generate_briefing_stream(request: BriefingRequest):
                         "event": "status",
                         "data": json.dumps({"step": "synthesizing", "message": "Generating briefing..."})
                     }
-                
+
                 elif current_step == "synthesizer":
                     print("Synthesizer completed")
                     briefing = step_data.get("briefing")
@@ -145,9 +166,9 @@ async def generate_briefing_stream(request: BriefingRequest):
                             "event": "complete",
                             "data": json.dumps({"message": "Briefing complete"})
                         }
-            
+
             print("Agent execution completed")
-            
+
         except Exception as e:
             print(f"ERROR in briefing generation: {str(e)}")
             import traceback
@@ -156,7 +177,9 @@ async def generate_briefing_stream(request: BriefingRequest):
                 "event": "error",
                 "data": json.dumps({"message": str(e)})
             }
-    
+        finally:
+            clear_schedule_cache()
+
     return EventSourceResponse(event_generator())
 
 @router.get("/races/{year}")
@@ -165,7 +188,7 @@ async def get_races(year: int):
     try:
         import fastf1
         schedule = fastf1.get_event_schedule(year)
-        
+
         races = []
         for _, event in schedule.iterrows():
             races.append({
@@ -175,7 +198,7 @@ async def get_races(year: int):
                 "date": str(event['EventDate']),
                 "round": int(event['RoundNumber']) if 'RoundNumber' in event else None
             })
-        
+
         return {"year": year, "races": races}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -18,7 +18,7 @@ interface RaceSelectorProps {
 export default function RaceSelector({ onSelectRace }: RaceSelectorProps) {
   const [races, setRaces] = useState<Race[]>([]);
   const [loading, setLoading] = useState(true);
-  const currentYear = 2025;
+  const currentYear = new Date().getFullYear();
 
   useEffect(() => {
     async function fetchRaces() {

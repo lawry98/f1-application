@@ -1,4 +1,4 @@
-from typing import TypedDict, Annotated, List, Optional
+from typing import TypedDict, Annotated, List, Optional, Dict
 from langgraph.graph.message import add_messages
 
 class RaceInfo(TypedDict):
@@ -7,6 +7,9 @@ class RaceInfo(TypedDict):
     circuit_id: str
     location: str
     country: str
+    date: str
+    is_upcoming: bool
+    historical_year: int
 
 class ToolResult(TypedDict):
     tool_name: str

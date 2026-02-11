@@ -1,46 +1,25 @@
-PLANNER_PROMPT = """You are an F1 race weekend briefing planner. Given a user query, identify the race and plan data gathering.
+PLANNER_PROMPT = """You are an F1 race weekend briefing planner. The race has already been identified:
 
-Extract from the query:
-- Race/Grand Prix name
-- Year (default: current season 2025)
-- Any specific focus areas mentioned
+Race: {race_name}
+Year: {race_year}
+Location: {race_location}, {race_country}
+Date: {race_date}
+Upcoming: {is_upcoming}
+Historical data year: {historical_year}
 
-Map common names to official names:
-- "Monaco" → "Monaco Grand Prix"
-- "Silverstone" / "British GP" → "British Grand Prix"
-- "Monza" / "Italian GP" → "Italian Grand Prix"
-- "Spa" / "Belgian GP" → "Belgian Grand Prix"
-- "Suzuka" / "Japanese GP" → "Japanese Grand Prix"
-- "Singapore" → "Singapore Grand Prix"
-- "Austin" / "COTA" / "US GP" → "United States Grand Prix"
-- "Las Vegas" → "Las Vegas Grand Prix"
-- "Bahrain" → "Bahrain Grand Prix"
-- "Jeddah" / "Saudi Arabia" → "Saudi Arabian Grand Prix"
-- "Melbourne" / "Australia" → "Australian Grand Prix"
-- "Imola" / "Emilia Romagna" → "Emilia Romagna Grand Prix"
-- "Miami" → "Miami Grand Prix"
-- "Spain" / "Barcelona" / "Catalunya" → "Spanish Grand Prix"
-- "Canada" / "Montreal" → "Canadian Grand Prix"
-- "Austria" → "Austrian Grand Prix"
-- "Hungary" / "Budapest" → "Hungarian Grand Prix"
-- "Netherlands" / "Zandvoort" → "Dutch Grand Prix"
-- "Mexico" → "Mexico City Grand Prix"
-- "Brazil" / "Sao Paulo" / "Interlagos" → "São Paulo Grand Prix"
-- "Abu Dhabi" → "Abu Dhabi Grand Prix"
+Select which tools to run to gather data for the briefing. Available tools:
+- get_track_info: Track characteristics and circuit details
+- get_season_standings: Current championship standings
+- get_circuit_winners: Recent winners at this circuit
+- search_f1_news: Latest news about this race
+- get_race_weather: Weather forecast for race location
+- get_driver_form: Recent form for top drivers
+- get_recent_race_results: Results from the most recent race at this circuit
 
-Return JSON with this exact structure:
-{{
-  "race_info": {{
-    "name": "Monaco Grand Prix",
-    "year": 2025,
-    "circuit_id": "monaco",
-    "location": "Monte Carlo",
-    "country": "Monaco"
-  }},
-  "tasks": ["get_track_info", "get_season_standings", "get_circuit_winners", "search_f1_news", "get_race_weather"]
-}}
+Return ONLY a JSON array of tool names to run. Example:
+["get_track_info", "get_season_standings", "get_circuit_winners", "search_f1_news", "get_race_weather"]
 
-User query: {query}"""
+Do not include any other text, just the JSON array."""
 
 SYNTHESIZER_PROMPT = """You are an expert F1 analyst and journalist creating a race weekend briefing.
 
@@ -73,3 +52,11 @@ Tool Results:
 {tool_results}
 
 Generate the complete briefing now:"""
+
+DEFAULT_TOOLS = [
+    "get_track_info",
+    "get_season_standings",
+    "get_circuit_winners",
+    "search_f1_news",
+    "get_race_weather",
+]
