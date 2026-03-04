@@ -14,38 +14,57 @@ AI-powered application that generates comprehensive F1 race weekend briefings. U
 **Frontend** (TypeScript):
 - Next.js 14 (App Router) + React 18
 - Three.js / @react-three/fiber / @react-three/drei for 3D F1 car visuals
-- Tailwind CSS for styling
+- Tailwind CSS + shadcn/ui + Magic UI for styling
 - react-markdown for briefing display
+- pnpm as package manager
 
 ## Project Structure
 
 ```
 backend/
   main.py              # FastAPI app init, CORS, env validation
-  api/routes.py        # API endpoints (REST + SSE streaming)
+  config.py            # Centralised env vars (ANTHROPIC_API_KEY, LLM_MODEL, etc.)
+  api/
+    routes.py          # API endpoints (REST + SSE streaming)
+    models.py          # Pydantic request/response models (BriefingRequest, etc.)
   agent/
-    graph.py           # LangGraph workflow: planner -> tool_executor -> synthesizer
+    graph.py           # LangGraph workflow: resolver -> planner -> tool_executor -> synthesizer
     state.py           # TypedDict state definitions (AgentState, RaceInfo, ToolResult)
     prompts.py         # System prompts for planner and synthesizer LLM calls
   tools/
     fastf1_tools.py    # Track info, race results, driver form (FastF1 library)
-    f1_data_tools.py   # Season standings, circuit winners, circuit info (FastF1)
+    f1_data_tools.py   # Season standings, circuit winners (FastF1)
     search_tools.py    # F1 news search (Tavily API)
     weather_tools.py   # Race location weather (OpenWeather API)
-  requirements.txt     # Python deps
+    schedule_cache.py  # FastF1 schedule caching layer
+  requirements.txt     # Pinned Python deps
+  pyproject.toml       # Ruff linter config
   env.example          # Required env vars template
 
 frontend/
   app/
-    page.tsx           # Home page with 3D hero + BriefingChat
-    layout.tsx         # Root layout
+    page.tsx           # Home page with 3D hero + BriefingChat + DotPattern
+    layout.tsx         # Root layout with full metadata/OG tags
+    loading.tsx        # Route-level loading skeleton
+    error.tsx          # Route-level error boundary
+    not-found.tsx      # 404 page
   components/
-    BriefingChat.tsx   # Main chat UI, handles streaming events
-    BriefingCard.tsx   # Rendered markdown briefing display
-    RaceSelector.tsx   # Quick-select buttons for upcoming races
-    ToolTrace.tsx      # Shows which tools ran and their success/failure
-    3d/                # Three.js 3D car components (dynamically imported)
-  lib/api.ts           # API client: REST calls + SSE async generator
+    briefing/
+      briefing-chat.tsx    # Main chat UI (uses useBriefing hook)
+      briefing-card.tsx    # Rendered markdown briefing (shadcn Card + BlurFade)
+      race-selector.tsx    # Quick-select race buttons (shadcn Button + Skeleton)
+      tool-trace.tsx       # Tool execution trace (shadcn Badge)
+    ui/                    # shadcn/ui + Magic UI components (Button, Card, Badge, etc.)
+    3d/                    # Three.js 3D car components (dynamically imported, ssr: false)
+  hooks/
+    use-briefing.ts    # useBriefing hook: streaming state, submit handler
+  lib/
+    api.ts             # Typed API client: REST calls + SSE AsyncGenerator<StreamEvent>
+    constants.ts       # F1_RED, F1_DARK_BG, STEP_LABELS
+    utils.ts           # cn() tailwind utility
+  types/
+    f1.ts              # RaceInfo, Race, ToolResult interfaces
+    api.ts             # StreamEvent discriminated union, BriefingResponse
   package.json
 ```
 
@@ -57,16 +76,19 @@ cd backend
 python -m venv venv && venv\Scripts\activate  # Windows
 pip install -r requirements.txt
 uvicorn main:app --reload --port 8000         # Dev server
-python main.py                                 # Production (port 8000)
+ruff check .                                   # Lint
+ruff format .                                  # Format
 ```
 
 ### Frontend
 ```bash
 cd frontend
-npm install
-npm run dev    # Dev server on port 3000
-npm run build  # Production build
-npm run lint   # ESLint
+pnpm install
+pnpm dev          # Dev server on port 3000
+pnpm build        # Production build
+pnpm typecheck    # TypeScript check (tsc --noEmit)
+pnpm lint         # ESLint
+pnpm format       # Prettier
 ```
 
 ### API Endpoints
@@ -78,21 +100,40 @@ npm run lint   # ESLint
 ## Environment Variables
 
 **Backend** (`backend/.env`, copy from `env.example`):
-- `ANTHROPIC_API_KEY` - **Required**, fatal on missing (`backend/main.py:11`)
+- `ANTHROPIC_API_KEY` - **Required**, fatal on missing
 - `TAVILY_API_KEY` - Warning on missing, disables news search
 - `OPENWEATHER_API_KEY` - Warning on missing, disables weather
 
 **Frontend** (`frontend/.env.local`):
-- `NEXT_PUBLIC_API_URL` - Backend URL, defaults to `http://localhost:8000` (`frontend/lib/api.ts:1`)
+- `NEXT_PUBLIC_API_URL` - Backend URL, defaults to `http://localhost:8000`
 
 ## Key Technical Details
 
-- LLM model is `claude-sonnet-4-20250514` at temperature 0.7 (`backend/agent/graph.py:31`)
-- Agent graph is a linear 3-node pipeline: planner -> tool_executor -> synthesizer (`backend/agent/graph.py:169-178`)
-- Streaming runs the synchronous LangGraph agent in a ThreadPoolExecutor (max 4 workers) (`backend/api/routes.py:12,97`)
-- 3D components use `next/dynamic` with `ssr: false` to avoid server-side Three.js errors (`frontend/app/page.tsx:4`)
-- FastF1 caches data to `backend/cache/` directory; first requests are slow (`backend/main.py:29-32`)
-- All tools return `{"error": "..."}` on failure instead of raising exceptions
+- LLM model is `claude-sonnet-4-20250514` at temperature 0.7 (`backend/config.py`)
+- Agent graph is a **4-node pipeline**: resolver → planner → tool_executor → synthesizer (`backend/agent/graph.py`)
+- Streaming runs the synchronous LangGraph agent in a ThreadPoolExecutor (`backend/api/routes.py`)
+- 3D components use `next/dynamic` with `ssr: false` to avoid server-side Three.js errors
+- FastF1 caches data to `backend/cache/` directory; first requests are slow
+- All tools return `{"error": "..."}` on failure — never raise exceptions
+- SSE event type discrimination uses the `event:` line from the SSE protocol (not field-presence heuristics)
+- `gltf.scene.clone()` is wrapped in `useMemo` to prevent Three.js scene cloning on every render
+
+## Code Conventions
+
+### Frontend
+- **File naming**: kebab-case (`briefing-card.tsx`, `use-briefing.ts`)
+- **Exports**: Named exports everywhere; `default export` only for Next.js page/layout files
+- **Imports**: All shared types from `@/types`; all components from `@/components/...`
+- **React hooks**: Custom hooks in `hooks/` directory, prefixed with `use-`
+- **shadcn/ui components**: In `components/ui/` — do not manually edit, re-add via CLI if needed
+- **No `data: any`**: All SSE events typed via `StreamEvent` discriminated union
+
+### Backend
+- **snake_case** for all Python identifiers
+- **All tools** use `@tool` decorator and return `{"error": "..."}` on failure (never raise)
+- **Logging**: Use `logger = logging.getLogger(__name__)` — no `print()` statements
+- **Config**: All env vars read from `config.py` — never use `os.getenv()` directly in other files
+- **Async**: Use `asyncio.get_running_loop()` inside async functions (not `get_event_loop()`)
 
 ## Additional Documentation
 
