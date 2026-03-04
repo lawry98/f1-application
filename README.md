@@ -10,6 +10,7 @@ An AI-powered F1 race weekend briefing generator that provides comprehensive pre
 - **Agent Transparency**: View the tool execution trace for each briefing
 - **Real-time Streaming**: Server-Sent Events for live updates as the agent works
 - **Modern 3D UI**: Three.js F1 car visualization with team liveries
+- **F1 Car Teardown**: Scroll-driven anatomy page — 192 frames reveal the car's internals as you scroll
 
 ## Tech Stack
 
@@ -56,9 +57,13 @@ f1-application/
 │   │   ├── layout.tsx        # Root layout + metadata
 │   │   ├── loading.tsx       # Route loading skeleton
 │   │   ├── error.tsx         # Route error boundary
-│   │   └── not-found.tsx     # 404 page
+│   │   ├── not-found.tsx     # 404 page
+│   │   ├── credits/          # Credits & attributions
+│   │   ├── showcase/         # Interactive 3D team livery showcase
+│   │   └── teardown/         # Scroll-driven F1 car anatomy teardown
 │   ├── components/
 │   │   ├── briefing/         # BriefingChat, BriefingCard, ToolTrace, RaceSelector
+│   │   ├── teardown/         # TeardownScene (canvas scroll animation)
 │   │   ├── ui/               # shadcn/ui + Magic UI components
 │   │   └── 3d/               # Three.js car components (F1HeroScene, F1CarShowcase)
 │   ├── hooks/
@@ -179,6 +184,15 @@ OUTPUT (Race Briefing)
 | `/api/briefing/stream` | POST | SSE streaming briefing (used by frontend) |
 | `/api/races/{year}` | GET | F1 calendar from FastF1 |
 | `/api/health` | GET | Health check |
+
+### Frontend Routes
+
+| Route | Description |
+|-------|-------------|
+| `/` | Home — 3D hero + AI briefing chat |
+| `/teardown` | Scroll-driven F1 car anatomy (192-frame canvas animation) |
+| `/showcase` | Interactive 3D car with all 10 team liveries |
+| `/credits` | Credits & attributions |
 
 ### Example: Generate Briefing
 

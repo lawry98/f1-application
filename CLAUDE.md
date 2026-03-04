@@ -48,12 +48,17 @@ frontend/
     loading.tsx        # Route-level loading skeleton
     error.tsx          # Route-level error boundary
     not-found.tsx      # 404 page
+    credits/page.tsx   # Credits & attributions
+    showcase/page.tsx  # Interactive 3D team livery showcase
+    teardown/page.tsx  # Scroll-driven F1 car anatomy teardown (/teardown)
   components/
     briefing/
       briefing-chat.tsx    # Main chat UI (uses useBriefing hook)
       briefing-card.tsx    # Rendered markdown briefing (shadcn Card + BlurFade)
       race-selector.tsx    # Quick-select race buttons (shadcn Button + Skeleton)
       tool-trace.tsx       # Tool execution trace (shadcn Badge)
+    teardown/
+      teardown-scene.tsx   # Scroll-driven frame animation (canvas + rAF, ssr: false)
     ui/                    # shadcn/ui + Magic UI components (Button, Card, Badge, etc.)
     3d/                    # Three.js 3D car components (dynamically imported, ssr: false)
   hooks/
@@ -117,6 +122,7 @@ pnpm format       # Prettier
 - All tools return `{"error": "..."}` on failure — never raise exceptions
 - SSE event type discrimination uses the `event:` line from the SSE protocol (not field-presence heuristics)
 - `gltf.scene.clone()` is wrapped in `useMemo` to prevent Three.js scene cloning on every render
+- Teardown page (`/teardown`) preloads 192 PNG frames (`public/frames/frame_0000.png` … `frame_0191.png`) then maps scroll position to frame index via `requestAnimationFrame`; canvas is sized with `min(92vw, calc(82vh * 800 / 420))` to respect both viewport constraints simultaneously
 
 ## Code Conventions
 
