@@ -1,42 +1,35 @@
+"""FastAPI application entry point."""
+
+import logging
 import os
+
+import fastf1
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from dotenv import load_dotenv
-import fastf1
 
 load_dotenv()
 
-# Verify environment variables are loaded
-anthropic_key = os.getenv("ANTHROPIC_API_KEY")
-if not anthropic_key or anthropic_key.startswith("sk-ant-your"):
-    print("ERROR: ANTHROPIC_API_KEY not configured properly!")
-    print("Please edit backend/.env and add your actual Anthropic API key")
-    print("Get your key from: https://console.anthropic.com")
-    exit(1)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger(__name__)
 
-tavily_key = os.getenv("TAVILY_API_KEY")
-if not tavily_key or tavily_key.startswith("tvly-your"):
-    print("WARNING: TAVILY_API_KEY not configured properly!")
-    print("Some features may not work. Get your key from: https://tavily.com")
+from config import FASTF1_CACHE_DIR, validate_config
 
-openweather_key = os.getenv("OPENWEATHER_API_KEY")
-if not openweather_key or openweather_key == "your-openweather-api-key-here":
-    print("WARNING: OPENWEATHER_API_KEY not configured properly!")
-    print("Weather features may not work. Get your key from: https://openweathermap.org/api")
+validate_config()
 
-print("Environment variables loaded successfully")
-
-cache_dir = 'cache/'
-if not os.path.exists(cache_dir):
-    os.makedirs(cache_dir)
-fastf1.Cache.enable_cache(cache_dir)
+os.makedirs(FASTF1_CACHE_DIR, exist_ok=True)
+fastf1.Cache.enable_cache(FASTF1_CACHE_DIR)
+logger.info("FastF1 cache enabled at '%s'", FASTF1_CACHE_DIR)
 
 from api.routes import router
 
 app = FastAPI(
     title="F1 Briefing Agent API",
     description="AI-powered F1 race weekend briefing generator",
-    version="1.0.0"
+    version="1.0.0",
 )
 
 app.add_middleware(
@@ -49,14 +42,18 @@ app.add_middleware(
 
 app.include_router(router)
 
+
 @app.get("/")
-async def root():
+async def root() -> dict:
+    """API root — links to docs and health check."""
     return {
         "message": "F1 Briefing Agent API",
         "docs": "/docs",
-        "health": "/api/health"
+        "health": "/api/health",
     }
+
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)

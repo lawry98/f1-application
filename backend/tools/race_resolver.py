@@ -1,13 +1,12 @@
 """Deterministic resolver that maps a user query to the next upcoming race at a circuit."""
 
 from datetime import date
-from typing import Optional, Dict, Any
-import fastf1
+from typing import Any
 
 from tools.schedule_cache import get_schedule, prefill
 
 # Common aliases → FastF1 EventName substrings
-ALIASES: Dict[str, str] = {
+ALIASES: dict[str, str] = {
     "monaco": "Monaco",
     "silverstone": "British",
     "british gp": "British",
@@ -53,7 +52,7 @@ ALIASES: Dict[str, str] = {
 }
 
 
-def _parse_query(query: str) -> tuple[str, Optional[int]]:
+def _parse_query(query: str) -> tuple[str, int | None]:
     """Strip an optional year suffix and return (circuit_query, year_or_none)."""
     parts = query.strip().rsplit(maxsplit=1)
     if len(parts) == 2 and parts[1].isdigit() and len(parts[1]) == 4:
@@ -63,23 +62,19 @@ def _parse_query(query: str) -> tuple[str, Optional[int]]:
 
 def _find_event(schedule, search_term: str):
     """Search schedule for an event matching search_term."""
-    matches = schedule[
-        schedule["EventName"].str.contains(search_term, case=False, na=False)
-    ]
+    matches = schedule[schedule["EventName"].str.contains(search_term, case=False, na=False)]
     if not matches.empty:
         return matches.iloc[0]
 
     # Also try Location and Country columns
     for col in ("Location", "Country"):
-        matches = schedule[
-            schedule[col].str.contains(search_term, case=False, na=False)
-        ]
+        matches = schedule[schedule[col].str.contains(search_term, case=False, na=False)]
         if not matches.empty:
             return matches.iloc[0]
     return None
 
 
-def resolve_next_race(query: str) -> Dict[str, Any]:
+def resolve_next_race(query: str) -> dict[str, Any]:
     """Resolve a user query to the next upcoming race at that circuit.
 
     Returns dict with keys:
