@@ -43,11 +43,12 @@ backend/
 
 frontend/
   app/
-    page.tsx           # Home page with 3D hero + BriefingChat + DotPattern
+    page.tsx           # Landing page (CSS hero + features + how-it-works + CTA + footer)
     layout.tsx         # Root layout with full metadata/OG tags
     loading.tsx        # Route-level loading skeleton
     error.tsx          # Route-level error boundary
     not-found.tsx      # 404 page
+    briefing/page.tsx  # AI race weekend briefing chat
     credits/page.tsx   # Credits & attributions
     showcase/page.tsx  # Interactive 3D team livery showcase
     teardown/page.tsx  # Scroll-driven F1 car anatomy teardown (/teardown)

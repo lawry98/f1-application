@@ -53,11 +53,12 @@ f1-application/
 │   └── env.example
 ├── frontend/
 │   ├── app/
-│   │   ├── page.tsx          # Home page
+│   │   ├── page.tsx          # Landing page (CSS hero + features + CTA)
 │   │   ├── layout.tsx        # Root layout + metadata
 │   │   ├── loading.tsx       # Route loading skeleton
 │   │   ├── error.tsx         # Route error boundary
 │   │   ├── not-found.tsx     # 404 page
+│   │   ├── briefing/         # AI race weekend briefing chat
 │   │   ├── credits/          # Credits & attributions
 │   │   ├── showcase/         # Interactive 3D team livery showcase
 │   │   └── teardown/         # Scroll-driven F1 car anatomy teardown
@@ -189,7 +190,8 @@ OUTPUT (Race Briefing)
 
 | Route | Description |
 |-------|-------------|
-| `/` | Home — 3D hero + AI briefing chat |
+| `/` | Landing page — features overview and entry point |
+| `/briefing` | AI race weekend briefing chat |
 | `/teardown` | Scroll-driven F1 car anatomy (192-frame canvas animation) |
 | `/showcase` | Interactive 3D car with all 10 team liveries |
 | `/credits` | Credits & attributions |

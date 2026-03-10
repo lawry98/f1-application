@@ -3,13 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-
-const NAV_LINKS = [
-  { href: '/briefing', label: 'Briefing' },
-  { href: '/teardown', label: 'Car Anatomy' },
-  { href: '/showcase', label: 'Showcase' },
-  { href: '/credits', label: 'Credits' },
-] as const;
+import { NAV_LINKS } from './links';
 
 export function LandingNav() {
   const pathname = usePathname();

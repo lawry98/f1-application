@@ -1,11 +1,5 @@
 import Link from 'next/link';
-
-const FOOTER_LINKS = [
-  { href: '/briefing', label: 'Briefing' },
-  { href: '/teardown', label: 'Car Anatomy' },
-  { href: '/showcase', label: 'Showcase' },
-  { href: '/credits', label: 'Credits' },
-] as const;
+import { NAV_LINKS } from './links';
 
 export function LandingFooter() {
   return (
@@ -24,7 +18,7 @@ export function LandingFooter() {
           {/* Nav links */}
           <nav aria-label="Footer navigation">
             <ul className="flex flex-wrap gap-6" role="list">
-              {FOOTER_LINKS.map(({ href, label }) => (
+              {NAV_LINKS.map(({ href, label }) => (
                 <li key={href}>
                   <Link
                     href={href}
