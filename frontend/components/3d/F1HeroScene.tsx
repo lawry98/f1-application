@@ -4,6 +4,7 @@ import { Suspense, useRef, useState, useEffect, useMemo } from 'react';
 import { Canvas, useFrame, useLoader } from '@react-three/fiber';
 import { GLTFLoader } from 'three-stdlib';
 import * as THREE from 'three';
+import { cn } from '@/lib/utils';
 
 function RealF1Car({ teamColor = '#dc2626' }: { teamColor?: string }) {
   const groupRef = useRef<THREE.Group>(null);
@@ -234,11 +235,22 @@ function F1CarModel({ teamColor = '#dc2626' }: { teamColor?: string }) {
 
 interface F1HeroSceneProps {
   teamColor?: string;
+  hideOverlay?: boolean;
+  className?: string;
 }
 
-export default function F1HeroScene({ teamColor = '#dc2626' }: F1HeroSceneProps) {
+export default function F1HeroScene({
+  teamColor = '#dc2626',
+  hideOverlay = false,
+  className,
+}: F1HeroSceneProps) {
   return (
-    <div className="relative h-[600px] w-full overflow-hidden bg-gradient-to-b from-zinc-900 via-zinc-950 to-zinc-950">
+    <div
+      className={cn(
+        'relative w-full overflow-hidden bg-gradient-to-b from-zinc-900 via-zinc-950 to-zinc-950',
+        className ?? 'h-[600px]',
+      )}
+    >
       <Canvas camera={{ position: [5, 2.5, 5], fov: 45 }} dpr={[1, 2]} shadows>
         <color attach="background" args={['#09090b']} />
         <fog attach="fog" args={['#09090b', 5, 15]} />
@@ -298,16 +310,18 @@ export default function F1HeroScene({ teamColor = '#dc2626' }: F1HeroSceneProps)
       <div className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-zinc-900/50 to-transparent" />
 
       {/* Text overlay */}
-      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-        <div className="px-4 text-center">
-          <h2 className="mb-3 text-6xl font-bold text-white drop-shadow-2xl md:text-7xl">
-            <span className="text-f1-red">F1</span> Briefing Agent
-          </h2>
-          <p className="text-xl text-zinc-300 drop-shadow-lg md:text-2xl">
-            AI-Powered Race Weekend Analysis
-          </p>
+      {!hideOverlay && (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <div className="px-4 text-center">
+            <h2 className="mb-3 text-6xl font-bold text-white drop-shadow-2xl md:text-7xl">
+              <span className="text-f1-red">F1</span> Briefing Agent
+            </h2>
+            <p className="text-xl text-zinc-300 drop-shadow-lg md:text-2xl">
+              AI-Powered Race Weekend Analysis
+            </p>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Subtle vignette */}
       <div
