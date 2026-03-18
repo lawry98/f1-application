@@ -1,12 +1,14 @@
 'use client';
 
 import { useReducedMotion, motion } from 'motion/react';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 
 import { BlurFade } from '@/components/ui/blur-fade';
 import { TextAnimate } from '@/components/ui/text-animate';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { DotPattern } from '@/components/ui/dot-pattern';
+import { TEAMS } from '@/data/teams-data';
 
 export function TeamsHero() {
   const reducedMotion = useReducedMotion();
@@ -32,7 +34,7 @@ export function TeamsHero() {
       {/* Content */}
       <div className="relative z-10 flex flex-col items-center gap-6 px-6 text-center">
         <BlurFade delay={0.1} inView>
-          <Badge variant="outline" className="border-zinc-700 text-zinc-400">
+          <Badge variant="outline" className="border-zinc-600 text-zinc-400">
             2026 Season · 11 Constructors
           </Badge>
         </BlurFade>
@@ -61,12 +63,28 @@ export function TeamsHero() {
         >
           2026 F1 Constructor Profiles
         </TextAnimate>
+
+        <BlurFade delay={reducedMotion ? 0 : 0.8} inView>
+          <Button
+            size="lg"
+            className="mt-4 gap-2 bg-f1-red text-white hover:bg-f1-red/90"
+            onClick={() =>
+              document.getElementById(`team-${TEAMS[0]!.id}`)?.scrollIntoView({
+                behavior: reducedMotion ? 'auto' : 'smooth',
+                block: 'start',
+              })
+            }
+          >
+            Explore Constructors
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </BlurFade>
       </div>
 
       {/* Scroll cue */}
       {!reducedMotion && (
         <motion.div
-          className="absolute bottom-10 left-1/2 -translate-x-1/2 text-zinc-600"
+          className="absolute bottom-10 left-1/2 -translate-x-1/2 text-zinc-500"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 1.4, duration: 0.6 }}
@@ -75,10 +93,16 @@ export function TeamsHero() {
             animate={{ y: [0, 8, 0] }}
             transition={{ repeat: Infinity, duration: 1.6, ease: 'easeInOut' }}
           >
-            <ChevronDown size={24} />
+            <ChevronDown size={28} />
           </motion.div>
         </motion.div>
       )}
+
+      {/* Bottom gradient fade — hints at content below */}
+      <div
+        className="pointer-events-none absolute bottom-0 left-0 right-0 h-28 bg-gradient-to-t from-zinc-950 to-transparent"
+        aria-hidden="true"
+      />
     </section>
   );
 }

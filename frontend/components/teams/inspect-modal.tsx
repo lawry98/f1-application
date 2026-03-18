@@ -83,7 +83,7 @@ export function InspectModal({ team, onClose }: InspectModalProps) {
               style={{ backgroundColor: team.color }}
             />
             <div>
-              <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-600">Inspecting</p>
+              <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">Inspecting</p>
               <p className="text-sm font-bold uppercase tracking-wider text-white">
                 {team.name}
               </p>
@@ -118,10 +118,10 @@ export function InspectModal({ team, onClose }: InspectModalProps) {
           <div className="flex gap-4">
             {team.drivers.map((driver) => (
               <div key={driver.id}>
-                <p className="text-[10px] uppercase tracking-[0.15em] text-zinc-600">
+                <p className="text-[10px] uppercase tracking-[0.15em] text-zinc-500">
                   {driver.shortCode}
                 </p>
-                <p className="text-sm font-medium text-zinc-300">{driver.name}</p>
+                <p className="text-sm font-medium text-zinc-200">{driver.name}</p>
               </div>
             ))}
           </div>

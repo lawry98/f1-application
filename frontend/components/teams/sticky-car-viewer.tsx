@@ -2,8 +2,11 @@
 
 import dynamic from 'next/dynamic';
 import { AnimatePresence, motion } from 'motion/react';
+import { Expand } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+import { teamColorButtonStyle } from '@/lib/team-utils';
 import { type Team } from '@/data/teams-data';
 
 const F1HeroScene = dynamic(() => import('@/components/3d/F1HeroScene'), {
@@ -21,10 +24,22 @@ interface StickyCarViewerProps {
 }
 
 export function StickyCarViewer({ activeTeam, onInspect }: StickyCarViewerProps) {
+  const ctaStyle = teamColorButtonStyle(activeTeam);
+
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden">
+    <div className="relative flex h-full w-full flex-col overflow-hidden">
+      {/* Team-color left-edge accent */}
+      <div
+        className="pointer-events-none absolute bottom-0 left-0 top-0 w-px opacity-40 transition-colors duration-500"
+        style={{ backgroundColor: activeTeam.color }}
+      />
+
       {/* 3D car — keep ONE canvas mounted, update teamColor only */}
       <div className="relative min-h-0 flex-1">
+        <span className="absolute left-3 top-3 z-10 text-[11px] uppercase tracking-[0.2em] text-zinc-500">
+          3D Preview
+        </span>
+
         <F1HeroScene
           teamColor={activeTeam.color}
           hideOverlay
@@ -49,7 +64,7 @@ export function StickyCarViewer({ activeTeam, onInspect }: StickyCarViewerProps)
           className="flex items-center justify-between border-t border-zinc-800/60 bg-zinc-950 px-4 py-4"
         >
           <div className="min-w-0">
-            <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-600">Active</p>
+            <p className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">Active</p>
             <div className="flex items-center gap-2 mt-1">
               <span
                 className="h-2 w-2 flex-shrink-0 rounded-full"
@@ -63,13 +78,15 @@ export function StickyCarViewer({ activeTeam, onInspect }: StickyCarViewerProps)
           </div>
 
           <Button
-            variant="outline"
-            size="sm"
             onClick={onInspect}
-            className="flex-shrink-0 border-zinc-700 bg-transparent text-xs text-zinc-300 hover:text-white"
-            style={{ borderColor: `${activeTeam.color}80` }}
+            className={cn(
+              'flex-shrink-0 gap-2 text-xs font-medium transition-opacity hover:opacity-90',
+              ctaStyle.className,
+            )}
+            style={ctaStyle.style}
           >
-            Inspect ↗
+            <Expand className="h-3.5 w-3.5" />
+            Inspect
           </Button>
         </motion.div>
       </AnimatePresence>

@@ -88,6 +88,7 @@ export function TeamsPageClient() {
             teams={TEAMS}
             activeTeamId={activeTeamId}
             reducedMotion={reducedMotion}
+            onScrollToTeam={scrollToTeam}
           />
         </div>
 
