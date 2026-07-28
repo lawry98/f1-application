@@ -79,14 +79,12 @@ export function InspectModal({ team, onClose }: InspectModalProps) {
         <div className="flex flex-shrink-0 items-center justify-between px-5 py-4">
           <div className="flex items-center gap-3">
             <span
-              className="h-3 w-3 rounded-full flex-shrink-0"
+              className="h-3 w-3 flex-shrink-0 rounded-full"
               style={{ backgroundColor: team.color }}
             />
             <div>
               <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">Inspecting</p>
-              <p className="text-sm font-bold uppercase tracking-wider text-white">
-                {team.name}
-              </p>
+              <p className="text-sm font-bold uppercase tracking-wider text-white">{team.name}</p>
             </div>
           </div>
           <Button
@@ -106,11 +104,7 @@ export function InspectModal({ team, onClose }: InspectModalProps) {
 
         {/* 3D car */}
         <div className="relative min-h-0 flex-1">
-          <F1HeroScene
-            teamColor={team.color}
-            hideOverlay
-            className="h-full w-full"
-          />
+          <F1HeroScene teamColor={team.color} hideOverlay className="h-full w-full" />
         </div>
 
         {/* Bottom info strip */}

@@ -59,7 +59,7 @@ export function TeamsHero() {
           duration={0.6}
           startOnView
           once
-          className="max-w-md text-lg font-light tracking-widest text-zinc-400 uppercase"
+          className="max-w-md text-lg font-light uppercase tracking-widest text-zinc-400"
         >
           2026 F1 Constructor Profiles
         </TextAnimate>

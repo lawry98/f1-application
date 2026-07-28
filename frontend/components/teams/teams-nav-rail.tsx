@@ -76,7 +76,7 @@ function NavButton({
       />
 
       {/* Index number */}
-      <span className="relative z-10 w-5 text-[10px] font-mono text-zinc-600">
+      <span className="relative z-10 w-5 font-mono text-[10px] text-zinc-600">
         {String(index + 1).padStart(2, '0')}
       </span>
 
@@ -112,9 +112,7 @@ export function TeamsNavRail({ activeTeamId, onSelectTeam, mobile = false }: Tea
 
   return (
     <nav className="flex h-full flex-col justify-start overflow-y-auto py-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-      <p className="mb-4 px-4 text-[11px] uppercase tracking-[0.2em] text-zinc-500">
-        Constructors
-      </p>
+      <p className="mb-4 px-4 text-[11px] uppercase tracking-[0.2em] text-zinc-500">Constructors</p>
       {TEAMS.map((team, i) => (
         <NavButton
           key={team.id}

@@ -66,7 +66,7 @@ export function TeamsComparisonGrid({
         </TextAnimate>
       </div>
 
-      <div className="h-px w-full bg-zinc-800 mb-10" />
+      <div className="mb-10 h-px w-full bg-zinc-800" />
 
       {/* Grid */}
       <motion.div
@@ -110,19 +110,16 @@ export function TeamsComparisonGrid({
                 }
               >
                 {/* Top color bar */}
-                <div
-                  className="h-[3px] w-full"
-                  style={{ backgroundColor: team.color }}
-                />
+                <div className="h-[3px] w-full" style={{ backgroundColor: team.color }} />
 
-                <div className="p-4 space-y-4">
+                <div className="space-y-4 p-4">
                   {/* Team name row */}
                   <div className="flex items-center gap-3">
                     <span
                       className="h-3 w-3 flex-shrink-0 rounded-full"
                       style={{ backgroundColor: team.color }}
                     />
-                    <p className="text-sm font-bold uppercase tracking-wide text-white truncate">
+                    <p className="truncate text-sm font-bold uppercase tracking-wide text-white">
                       {team.shortName}
                     </p>
                   </div>
@@ -131,10 +128,10 @@ export function TeamsComparisonGrid({
                   <div className="space-y-1">
                     {team.drivers.map((driver) => (
                       <div key={driver.id} className="flex items-center gap-2">
-                        <span className="text-[10px] font-mono text-zinc-500 w-8">
+                        <span className="w-8 font-mono text-[10px] text-zinc-500">
                           #{driver.number}
                         </span>
-                        <span className="text-xs text-zinc-400 truncate">{driver.name}</span>
+                        <span className="truncate text-xs text-zinc-400">{driver.name}</span>
                       </div>
                     ))}
                   </div>
@@ -144,9 +141,7 @@ export function TeamsComparisonGrid({
                   {/* Stats */}
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <p className="text-[10px] uppercase tracking-[0.15em] text-zinc-500">
-                        WCC
-                      </p>
+                      <p className="text-[10px] uppercase tracking-[0.15em] text-zinc-500">WCC</p>
                       <p className="mt-0.5 text-lg font-black text-white">
                         {team.championships > 0 ? (
                           <NumberTicker
@@ -159,15 +154,13 @@ export function TeamsComparisonGrid({
                       </p>
                     </div>
                     <div>
-                      <p className="text-[10px] uppercase tracking-[0.15em] text-zinc-500">
-                        Est.
-                      </p>
+                      <p className="text-[10px] uppercase tracking-[0.15em] text-zinc-500">Est.</p>
                       <p className="mt-0.5 text-lg font-black text-white">{team.firstEntry}</p>
                     </div>
                   </div>
 
                   {/* Base */}
-                  <p className="text-[10px] text-zinc-500 truncate">{team.base}</p>
+                  <p className="truncate text-[10px] text-zinc-500">{team.base}</p>
                 </div>
               </Card>
             </motion.div>
@@ -176,7 +169,7 @@ export function TeamsComparisonGrid({
       </motion.div>
 
       {/* Footer note */}
-      <p className="mt-10 text-center text-xs text-zinc-600 uppercase tracking-widest">
+      <p className="mt-10 text-center text-xs uppercase tracking-widest text-zinc-600">
         2026 Formula 1 World Championship
       </p>
     </section>
