@@ -42,7 +42,9 @@ f1-application/
 │   ├── api/          FastAPI routes (REST + SSE) and Pydantic models
 │   ├── config.py     Centralised env var config
 │   ├── main.py       FastAPI app entry + startup
+│   ├── tests/        pytest suite — no network, frozen clock
 │   ├── requirements.txt
+│   ├── requirements-dev.txt
 │   └── env.example
 ├── frontend/
 │   ├── app/          Next.js App Router — one directory per route
@@ -92,8 +94,8 @@ python -m venv venv
 venv\Scripts\activate          # Windows
 source venv/bin/activate       # Mac/Linux
 
-# Install dependencies
-pip install -r requirements.txt
+# Install dependencies (add requirements-dev.txt for linting and tests)
+pip install -r requirements.txt -r requirements-dev.txt
 
 # Configure environment
 cp env.example .env            # Mac/Linux
@@ -205,7 +207,11 @@ cd backend
 uvicorn main:app --reload --port 8000   # Dev server
 ruff check .                             # Lint
 ruff format .                            # Format
+pytest                                   # Tests (no network; ~7s)
 ```
+
+Tests live in `backend/tests/` and never touch the network — every external boundary is
+faked and the clock is frozen. Run them from `backend/`.
 
 ### Frontend
 

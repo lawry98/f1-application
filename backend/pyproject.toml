@@ -11,3 +11,18 @@ ignore = [
 
 [tool.ruff.format]
 quote-style = "double"
+
+[tool.pytest.ini_options]
+# The backend is not an installable package — modules import as `from config import ...`
+# and `from tools.x import ...`. This puts backend/ on sys.path so tests resolve the
+# same way the app does. Run pytest from backend/, matching `cd backend && ruff check .`.
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = [
+    "-q",
+    "--cov=agent",
+    "--cov=api",
+    "--cov=tools",
+    "--cov=config",
+    "--cov-report=term-missing",
+]

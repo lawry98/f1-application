@@ -10,6 +10,9 @@ venv/
 env/
 *.egg-info/
 .pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
 
 # FastF1 cache
 backend/cache/
