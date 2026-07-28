@@ -5,7 +5,7 @@ An AI-powered F1 race weekend briefing generator that provides comprehensive pre
 ## Features
 
 - **Comprehensive Race Analysis**: Track profiles, championship standings, circuit history
-- **AI-Powered Insights**: Claude Sonnet 4 synthesizes data into expert-level briefings
+- **AI-Powered Insights**: Gemini 3.6 Flash synthesizes data into expert-level briefings
 - **Multi-Source Data**: FastF1 telemetry, web search (Tavily), weather forecasts (OpenWeather)
 - **Agent Transparency**: View the tool execution trace for each briefing
 - **Real-time Streaming**: Server-Sent Events for live updates as the agent works
@@ -18,7 +18,7 @@ An AI-powered F1 race weekend briefing generator that provides comprehensive pre
 ### Backend
 - **Python 3.11+** with FastAPI + Uvicorn
 - **LangGraph** for agent orchestration (4-node pipeline)
-- **LangChain + Anthropic Claude** (`claude-sonnet-4-20250514`)
+- **LangChain + Google Gemini** (`gemini-3.6-flash`)
 - **FastF1** for F1 telemetry and session data
 - **Tavily API** for news search
 - **OpenWeather API** for race location forecasts
@@ -80,7 +80,7 @@ f1-application/
 
 ### API Keys Required
 
-1. **Anthropic API Key** (required): [console.anthropic.com](https://console.anthropic.com)
+1. **Google AI Studio API Key** (required, free tier): [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
 2. **Tavily API Key** (optional, enables news): [tavily.com](https://tavily.com)
 3. **OpenWeather API Key** (optional, enables weather): [openweathermap.org](https://openweathermap.org/api)
 
@@ -247,8 +247,9 @@ reading the code. Setup and orientation stay here; agent-facing rules live there
 
 ## Troubleshooting
 
-**`"ANTHROPIC_API_KEY not configured"`**
-- Ensure `backend/.env` exists and contains a valid key starting with `sk-ant-`
+**`"GOOGLE_API_KEY not configured"`**
+- Ensure `backend/.env` exists and contains a valid Google AI Studio key
+- Get one free at [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
 
 **`"Failed to fetch races"`**
 - Ensure the backend is running on port 8000
@@ -263,7 +264,7 @@ reading the code. Setup and orientation stay here; agent-facing rules live there
 
 ## Credits
 
-- **Claude Sonnet 4** by Anthropic — AI reasoning and synthesis
+- **Gemini 3.6 Flash** by Google — AI reasoning and synthesis
 - **FastF1** — Python library for F1 telemetry data
 - **Tavily** — Web search API
 - **OpenWeather** — Weather forecast API

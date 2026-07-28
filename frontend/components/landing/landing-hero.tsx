@@ -27,7 +27,7 @@ export function LandingHero() {
           <div className="space-y-8">
             <Badge variant="outline" className="border-zinc-700 bg-zinc-900/80 text-zinc-300">
               <Zap className="mr-1.5 h-3 w-3 text-f1-red" aria-hidden="true" />
-              Claude Sonnet 4 &middot; LangGraph &middot; FastF1
+              Gemini 3.6 Flash &middot; LangGraph &middot; FastF1
             </Badge>
 
             <div className="space-y-5">
