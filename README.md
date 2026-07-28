@@ -30,7 +30,7 @@ An AI-powered F1 race weekend briefing generator that provides comprehensive pre
 - **Three.js / @react-three/fiber / @react-three/drei** for 3D car visuals
 - **Tailwind CSS** + **shadcn/ui** + **Magic UI** (vendored into `components/ui/`)
 - **Motion** for animation
-- **npm** package manager
+- **pnpm** package manager (versions pinned in `mise.toml`)
 
 ## Project Structure
 
@@ -59,6 +59,7 @@ f1-application/
 │   ├── types/        Shared TypeScript types
 │   └── package.json
 ├── docs/agents/      Issue tracker, triage, and domain-doc conventions
+├── mise.toml         Pinned Node and pnpm versions
 ├── CLAUDE.md         Conventions and gotchas for AI coding agents
 └── README.md
 ```
@@ -71,7 +72,9 @@ f1-application/
 ### Prerequisites
 
 - Python 3.11+
-- Node.js 18+ with npm
+- Node.js and pnpm — versions are pinned in `mise.toml`, so with
+  [mise](https://mise.jdx.dev) installed, `mise install` gets you the right ones.
+  Without mise: Node.js 18+ and pnpm 11.
 
 ### API Keys Required
 
@@ -109,10 +112,10 @@ Backend runs on `http://localhost:8000`.
 cd frontend
 
 # Install dependencies
-npm install
+pnpm install
 
 # Start development server
-npm run dev
+pnpm dev
 ```
 
 Frontend runs on `http://localhost:3000`.
@@ -208,11 +211,11 @@ ruff format .                            # Format
 
 ```bash
 cd frontend
-npm run dev        # Dev server
-npm run build      # Production build
-npm run typecheck  # TypeScript check
-npm run lint       # ESLint
-npm run format     # Prettier
+pnpm dev        # Dev server
+pnpm build      # Production build
+pnpm typecheck  # TypeScript check
+pnpm lint       # ESLint
+pnpm format     # Prettier
 ```
 
 ## Important Notes

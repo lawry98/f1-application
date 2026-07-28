@@ -27,12 +27,13 @@ frontend/
 
 ## Commands
 
-The frontend is **npm**, not pnpm. `pnpm-lock.yaml` is gitignored, so running pnpm creates a
-rogue lockfile that is invisible to git and diverges from `package-lock.json`.
+The frontend is **pnpm**. `frontend/pnpm-lock.yaml` is committed; a `package-lock.json`
+appearing anywhere means someone ran npm by mistake — delete it. Node and pnpm versions are
+pinned in `mise.toml`, so `mise exec -- pnpm …` always uses the right ones.
 
 ```bash
-cd frontend && npm run typecheck   # tsc --noEmit
-cd frontend && npm run lint        # ESLint
+cd frontend && pnpm typecheck   # tsc --noEmit
+cd frontend && pnpm lint        # ESLint
 cd backend  && ruff check .
 cd backend  && ruff format .
 ```
@@ -58,6 +59,19 @@ changing the model means editing code.
 Frontend: `NEXT_PUBLIC_API_URL` in `frontend/.env.local`, defaults to `http://localhost:8000`.
 
 ## Key technical details
+
+**pnpm's `node_modules` is strict — no phantom imports.** Anything you import must be declared in
+`package.json`. npm's flat tree used to resolve undeclared transitive deps by accident;
+`three-stdlib` was exactly that case (imported by the 3D components, but only present as a dep of
+`@react-three/drei`) and is now an explicit dependency. A `TS2307: Cannot find module` on a
+package that clearly exists in the tree means it is undeclared, not missing.
+
+**Build scripts need explicit approval, and one unapproved script breaks everything.** pnpm 11
+blocks postinstall scripts by default *and* re-runs its dependency check before every script — so
+a single unapproved build makes `pnpm typecheck`, `pnpm lint`, and `pnpm build` all fail with
+`ERR_PNPM_IGNORED_BUILDS`, which looks nothing like the real cause. Approvals live in
+`frontend/pnpm-workspace.yaml` under `allowBuilds`; the `pnpm` field in `package.json` is
+**ignored** by pnpm 11.
 
 **The graph is not a flat pipeline.** It has four nodes, but `resolver` sits behind a
 conditional edge: when `state["current_step"] == "error"` it routes straight to `END`, skipping
@@ -107,7 +121,8 @@ is sized `min(92vw, calc(82vh * 800 / 420))` to respect both viewport constraint
   `@/data/teams-data` alongside the `TEAMS` data they describe.
 - **3D components**: always `next/dynamic` with `ssr: false`; server-rendering Three.js throws.
 - **No `any` on SSE events** — everything flows through the `StreamEvent` discriminated union.
-- **shadcn/ui** components in `components/ui/` are generated; re-add via CLI rather than editing.
+- **shadcn/ui** components in `components/ui/` are generated; re-add with `pnpm dlx shadcn add
+  <name>` from `frontend/` (where `components.json` lives) rather than editing them by hand.
 
 ### Backend
 

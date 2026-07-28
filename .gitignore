@@ -20,7 +20,8 @@ node_modules/
 .next/
 out/
 dist/
-pnpm-lock.yaml
+# Lockfiles are NOT ignored. pnpm-lock.yaml is committed, and a stray
+# package-lock.json should stay visible so a rogue `npm install` is obvious.
 
 # Environment variables
 .env
