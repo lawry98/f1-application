@@ -1,151 +1,154 @@
 # F1 Race Weekend Briefing Agent
 
-AI-powered application that generates comprehensive F1 race weekend briefings. Users enter a Grand Prix name; a LangGraph agent gathers data from multiple sources (FastF1 telemetry, web news, weather) and synthesizes a structured briefing using Claude Sonnet 4.
+A LangGraph agent that turns a Grand Prix name into a synthesised race weekend briefing, served by FastAPI over SSE and rendered by a Next.js frontend.
 
-## Tech Stack
+This file carries what you **cannot derive by reading the repo** — conventions, traps, and invariants. For setup, the tech stack, the endpoint list, and a feature tour, see [README.md](README.md).
 
-**Backend** (Python 3.11+):
-- FastAPI + Uvicorn (ASGI server)
-- LangGraph for agent orchestration, LangChain + LangChain-Anthropic for LLM
-- FastF1 for F1 telemetry/historical data (no API key needed)
-- Tavily for web search, OpenWeather for forecasts
-- SSE-Starlette for server-sent events streaming
-
-**Frontend** (TypeScript):
-- Next.js 14 (App Router) + React 18
-- Three.js / @react-three/fiber / @react-three/drei for 3D F1 car visuals
-- Tailwind CSS + shadcn/ui + Magic UI for styling
-- react-markdown for briefing display
-- pnpm as package manager
-
-## Project Structure
+## Where things live
 
 ```
 backend/
-  main.py              # FastAPI app init, CORS, env validation
-  config.py            # Centralised env vars (ANTHROPIC_API_KEY, LLM_MODEL, etc.)
-  api/
-    routes.py          # API endpoints (REST + SSE streaming)
-    models.py          # Pydantic request/response models (BriefingRequest, etc.)
-  agent/
-    graph.py           # LangGraph workflow: resolver -> planner -> tool_executor -> synthesizer
-    state.py           # TypedDict state definitions (AgentState, RaceInfo, ToolResult)
-    prompts.py         # System prompts for planner and synthesizer LLM calls
-  tools/
-    fastf1_tools.py    # Track info, race results, driver form (FastF1 library)
-    f1_data_tools.py   # Season standings, circuit winners (FastF1)
-    search_tools.py    # F1 news search (Tavily API)
-    weather_tools.py   # Race location weather (OpenWeather API)
-    schedule_cache.py  # FastF1 schedule caching layer
-  requirements.txt     # Pinned Python deps
-  pyproject.toml       # Ruff linter config
-  env.example          # Required env vars template
+  agent/       graph.py (pipeline), state.py (TypedDicts), prompts.py (LLM prompts)
+  api/         routes.py (REST + SSE endpoints), models.py (Pydantic contracts)
+  tools/       Mixed — see "tools/ is not uniform" below
+  config.py    Every env var read in the app happens here
 
 frontend/
-  app/
-    page.tsx           # Landing page (CSS hero + features + how-it-works + CTA + footer)
-    layout.tsx         # Root layout with full metadata/OG tags
-    loading.tsx        # Route-level loading skeleton
-    error.tsx          # Route-level error boundary
-    not-found.tsx      # 404 page
-    briefing/page.tsx  # AI race weekend briefing chat
-    credits/page.tsx   # Credits & attributions
-    showcase/page.tsx  # Interactive 3D team livery showcase
-    teardown/page.tsx  # Scroll-driven F1 car anatomy teardown (/teardown)
+  app/           App Router, one directory per route
   components/
-    briefing/
-      briefing-chat.tsx    # Main chat UI (uses useBriefing hook)
-      briefing-card.tsx    # Rendered markdown briefing (shadcn Card + BlurFade)
-      race-selector.tsx    # Quick-select race buttons (shadcn Button + Skeleton)
-      tool-trace.tsx       # Tool execution trace (shadcn Badge)
-    teardown/
-      teardown-scene.tsx   # Scroll-driven frame animation (canvas + rAF, ssr: false)
-    ui/                    # shadcn/ui + Magic UI components (Button, Card, Badge, etc.)
-    3d/                    # Three.js 3D car components (dynamically imported, ssr: false)
-  hooks/
-    use-briefing.ts    # useBriefing hook: streaming state, submit handler
-  lib/
-    api.ts             # Typed API client: REST calls + SSE AsyncGenerator<StreamEvent>
-    constants.ts       # F1_RED, F1_DARK_BG, STEP_LABELS
-    utils.ts           # cn() tailwind utility
-  types/
-    f1.ts              # RaceInfo, Race, ToolResult interfaces
-    api.ts             # StreamEvent discriminated union, BriefingResponse
-  package.json
+    <feature>/   Page sections: landing/, briefing/, teams/, teardown/
+    3d/          Three.js — only ever loaded via dynamic import, ssr: false
+    ui/          shadcn/ui + vendored Magic UI — do not hand-edit
+  data/          Static domain data (TEAMS) and the Team/Driver types
+  hooks/         Custom hooks, use- prefix
+  lib/           api.ts (typed client), constants.ts, utils.ts, team-utils.ts
+  types/         Shared types, re-exported through types/index.ts
 ```
 
 ## Commands
 
-### Backend
+The frontend is **pnpm**. `frontend/pnpm-lock.yaml` is committed; a `package-lock.json`
+appearing anywhere means someone ran npm by mistake — delete it. Node and pnpm versions are
+pinned in `mise.toml`, so `mise exec -- pnpm …` always uses the right ones.
+
 ```bash
-cd backend
-python -m venv venv && venv\Scripts\activate  # Windows
-pip install -r requirements.txt
-uvicorn main:app --reload --port 8000         # Dev server
-ruff check .                                   # Lint
-ruff format .                                  # Format
+cd frontend && pnpm typecheck   # tsc --noEmit
+cd frontend && pnpm lint        # ESLint
+cd backend  && ruff check .
+cd backend  && ruff format .
 ```
 
+Full setup (venv, API keys, both platforms) → [README.md](README.md).
+
+## Environment variables
+
+Backend reads `backend/.env` (copy from `env.example`). Behaviour on missing values is the
+part worth knowing:
+
+| Variable | Missing behaviour |
+|---|---|
+| `ANTHROPIC_API_KEY` | **Fatal** — `validate_config()` raises `SystemExit(1)` |
+| `TAVILY_API_KEY` | Warning; news search silently disabled |
+| `OPENWEATHER_API_KEY` | Warning; weather silently disabled |
+| `FASTF1_CACHE_DIR` | Defaults to `cache/` |
+| `EXECUTOR_MAX_WORKERS` | Defaults to `4` |
+
+`LLM_MODEL` and `LLM_TEMPERATURE` are **hardcoded constants** in `config.py`, not env vars —
+changing the model means editing code.
+
+Frontend: `NEXT_PUBLIC_API_URL` in `frontend/.env.local`, defaults to `http://localhost:8000`.
+
+## Key technical details
+
+**pnpm's `node_modules` is strict — no phantom imports.** Anything you import must be declared in
+`package.json`. npm's flat tree used to resolve undeclared transitive deps by accident;
+`three-stdlib` was exactly that case (imported by the 3D components, but only present as a dep of
+`@react-three/drei`) and is now an explicit dependency. A `TS2307: Cannot find module` on a
+package that clearly exists in the tree means it is undeclared, not missing.
+
+**Build scripts need explicit approval, and one unapproved script breaks everything.** pnpm 11
+blocks postinstall scripts by default *and* re-runs its dependency check before every script — so
+a single unapproved build makes `pnpm typecheck`, `pnpm lint`, and `pnpm build` all fail with
+`ERR_PNPM_IGNORED_BUILDS`, which looks nothing like the real cause. Approvals live in
+`frontend/pnpm-workspace.yaml` under `allowBuilds`; the `pnpm` field in `package.json` is
+**ignored** by pnpm 11.
+
+**The graph is not a flat pipeline.** It has four nodes, but `resolver` sits behind a
+conditional edge: when `state["current_step"] == "error"` it routes straight to `END`, skipping
+planner, tools, and synthesizer. Anything assuming the synthesizer always runs is wrong.
+
+**`tools/` is not uniform.** Seven `@tool` functions live across four modules
+(`fastf1_tools`, `f1_data_tools`, `search_tools`, `weather_tools`). The other two files are
+plain helpers, **not** LLM-callable: `race_resolver.py` (used by the resolver node) and
+`schedule_cache.py` (a FastF1 schedule cache). Adding a file here does not make it a tool.
+
+**Tools never raise.** Every `@tool` returns `{"error": "..."}` on failure. The agent is built to
+continue on partial data — preserve this or the pipeline loses its degradation behaviour.
+
+**Streaming bridges sync to async.** The LangGraph agent is synchronous and runs in a
+`ThreadPoolExecutor`; SSE events are emitted per completed node.
+
+**SSE discrimination uses the `event:` line** from the SSE protocol, not field-presence
+heuristics on the payload.
+
+**FastF1's first requests are slow** — telemetry downloads into `backend/cache/`, which is
+gitignored. Cold requests taking 30–60s is expected, not a bug.
+
+**`gltf.scene.clone()` must stay inside `useMemo`** — without it Three.js re-clones the scene on
+every render.
+
+**The landing page composes, it doesn't contain.** `app/page.tsx` is seven imports from
+`components/landing/`; the hero, features, and footer markup are not inline.
+
+**`components/3d/index.ts` is dead.** Every consumer uses a direct-path dynamic import
+(`import('@/components/3d/f1-hero-scene')`) to get `ssr: false`. The barrel re-exports the same
+components but nothing imports from it.
+
+**The teardown page** (`/teardown`) preloads 192 PNG frames (`public/frames/frame_0000.png` …
+`frame_0191.png`) and maps scroll position to frame index via `requestAnimationFrame`. Its canvas
+is sized `min(92vw, calc(82vh * 800 / 420))` to respect both viewport constraints at once.
+
+## Code conventions
+
 ### Frontend
-```bash
-cd frontend
-pnpm install
-pnpm dev          # Dev server on port 3000
-pnpm build        # Production build
-pnpm typecheck    # TypeScript check (tsc --noEmit)
-pnpm lint         # ESLint
-pnpm format       # Prettier
-```
 
-### API Endpoints
-- `POST /api/briefing` - Synchronous briefing generation
-- `POST /api/briefing/stream` - SSE streaming briefing (used by frontend)
-- `GET /api/races/{year}` - F1 calendar from FastF1
-- `GET /api/health` - Health check
-
-## Environment Variables
-
-**Backend** (`backend/.env`, copy from `env.example`):
-- `ANTHROPIC_API_KEY` - **Required**, fatal on missing
-- `TAVILY_API_KEY` - Warning on missing, disables news search
-- `OPENWEATHER_API_KEY` - Warning on missing, disables weather
-
-**Frontend** (`frontend/.env.local`):
-- `NEXT_PUBLIC_API_URL` - Backend URL, defaults to `http://localhost:8000`
-
-## Key Technical Details
-
-- LLM model is `claude-sonnet-4-20250514` at temperature 0.7 (`backend/config.py`)
-- Agent graph is a **4-node pipeline**: resolver → planner → tool_executor → synthesizer (`backend/agent/graph.py`)
-- Streaming runs the synchronous LangGraph agent in a ThreadPoolExecutor (`backend/api/routes.py`)
-- 3D components use `next/dynamic` with `ssr: false` to avoid server-side Three.js errors
-- FastF1 caches data to `backend/cache/` directory; first requests are slow
-- All tools return `{"error": "..."}` on failure — never raise exceptions
-- SSE event type discrimination uses the `event:` line from the SSE protocol (not field-presence heuristics)
-- `gltf.scene.clone()` is wrapped in `useMemo` to prevent Three.js scene cloning on every render
-- Teardown page (`/teardown`) preloads 192 PNG frames (`public/frames/frame_0000.png` … `frame_0191.png`) then maps scroll position to frame index via `requestAnimationFrame`; canvas is sized with `min(92vw, calc(82vh * 800 / 420))` to respect both viewport constraints simultaneously
-
-## Code Conventions
-
-### Frontend
-- **File naming**: kebab-case (`briefing-card.tsx`, `use-briefing.ts`)
-- **Exports**: Named exports everywhere; `default export` only for Next.js page/layout files
-- **Imports**: All shared types from `@/types`; all components from `@/components/...`
-- **React hooks**: Custom hooks in `hooks/` directory, prefixed with `use-`
-- **shadcn/ui components**: In `components/ui/` — do not manually edit, re-add via CLI if needed
-- **No `data: any`**: All SSE events typed via `StreamEvent` discriminated union
+- **File naming**: kebab-case, no exceptions — including `components/3d/`. Component *names*
+  stay PascalCase (`f1-hero-scene.tsx` exports `F1HeroScene`).
+- **Exports**: named exports. The only `default export`s outside `app/` are
+  `3d/f1-car-showcase.tsx` and `3d/f1-hero-scene.tsx`. `3d/f1-loading-car.tsx` is named-only, so
+  its consumer maps it: `.then((mod) => ({ default: mod.F1LoadingAnimation }))`.
+- **Shared types** come from `@/types` — *except* `Team` and `Driver`, which live in
+  `@/data/teams-data` alongside the `TEAMS` data they describe.
+- **3D components**: always `next/dynamic` with `ssr: false`; server-rendering Three.js throws.
+- **No `any` on SSE events** — everything flows through the `StreamEvent` discriminated union.
+- **shadcn/ui** components in `components/ui/` are generated; re-add with `pnpm dlx shadcn add
+  <name>` from `frontend/` (where `components.json` lives) rather than editing them by hand.
 
 ### Backend
-- **snake_case** for all Python identifiers
-- **All tools** use `@tool` decorator and return `{"error": "..."}` on failure (never raise)
-- **Logging**: Use `logger = logging.getLogger(__name__)` — no `print()` statements
-- **Config**: All env vars read from `config.py` — never use `os.getenv()` directly in other files
-- **Async**: Use `asyncio.get_running_loop()` inside async functions (not `get_event_loop()`)
 
-## Additional Documentation
+- **snake_case** for all Python identifiers.
+- **All tools** use the `@tool` decorator and return `{"error": "..."}` — never raise.
+- **Logging** via `logger = logging.getLogger(__name__)` — no `print()`.
+- **Config**: read env vars in `config.py` only; never `os.getenv()` elsewhere.
+- **Async**: `asyncio.get_running_loop()` inside async functions, not `get_event_loop()`.
 
-Check these files for deeper context on specific topics:
+## Additional documentation
 
 | File | When to consult |
 |------|-----------------|
 | `.claude/docs/architectural_patterns.md` | Modifying agent workflow, adding tools, changing API design, or frontend state |
+| `frontend/components/3d/README.md` | Working on the Three.js scenes — props, usage, and model details |
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs live as markdown files under `.scratch/<feature-slug>/` in this repo. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical triage roles, used verbatim. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context — one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.

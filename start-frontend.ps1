@@ -9,7 +9,7 @@ Set-Location -Path "frontend"
 # Check if node_modules exists
 if (-Not (Test-Path "node_modules")) {
     Write-Host "Node modules not found. Installing..." -ForegroundColor Yellow
-    npm install
+    pnpm install
 }
 
 # Start the frontend
@@ -18,4 +18,4 @@ Write-Host "Starting Next.js development server on http://localhost:3000" -Foreg
 Write-Host "Press Ctrl+C to stop" -ForegroundColor Yellow
 Write-Host ""
 
-npm run dev
+pnpm dev

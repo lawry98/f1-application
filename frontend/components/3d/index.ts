@@ -1,3 +1,3 @@
-export { default as F1HeroScene } from './F1HeroScene';
-export { default as F1CarShowcase } from './F1CarShowcase';
-export { F1LoadingAnimation } from './F1LoadingCar';
+export { default as F1HeroScene } from './f1-hero-scene';
+export { default as F1CarShowcase } from './f1-car-showcase';
+export { F1LoadingAnimation } from './f1-loading-car';

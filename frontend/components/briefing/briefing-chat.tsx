@@ -9,7 +9,8 @@ import { ToolTrace } from './tool-trace';
 import { RaceSelector } from './race-selector';
 
 const F1LoadingAnimation = dynamic(
-  () => import('@/components/3d/F1LoadingCar').then((mod) => ({ default: mod.F1LoadingAnimation })),
+  () =>
+    import('@/components/3d/f1-loading-car').then((mod) => ({ default: mod.F1LoadingAnimation })),
   { ssr: false },
 );
 

@@ -47,10 +47,10 @@ function DriverCard({ driver, teamColor, index, reducedMotion }: DriverCardProps
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <Badge variant="outline" className="border-zinc-600 text-zinc-400 text-xs">
+              <Badge variant="outline" className="border-zinc-600 text-xs text-zinc-400">
                 #{driver.number}
               </Badge>
-              <Badge variant="outline" className="border-zinc-600 text-zinc-400 text-xs">
+              <Badge variant="outline" className="border-zinc-600 text-xs text-zinc-400">
                 {driver.nationality}
               </Badge>
             </div>
@@ -107,10 +107,7 @@ export function TeamSection({
       className="relative overflow-hidden bg-zinc-950"
     >
       {/* Top separator */}
-      <div
-        className="h-px w-full"
-        style={{ backgroundColor: team.color, opacity: 0.4 }}
-      />
+      <div className="h-px w-full" style={{ backgroundColor: team.color, opacity: 0.4 }} />
 
       {/* Ambient glow blob — alternates position for visual variety */}
       <motion.div
@@ -186,16 +183,11 @@ export function TeamSection({
                 <p className="mt-1 text-sm text-zinc-200">{team.firstEntry}</p>
               </div>
               <div>
-                <p className="text-xs uppercase tracking-[0.15em] text-zinc-500">
-                  Championships
-                </p>
+                <p className="text-xs uppercase tracking-[0.15em] text-zinc-500">Championships</p>
                 <p className="mt-1 text-sm text-zinc-200">
                   {team.championships > 0 ? (
                     <>
-                      <NumberTicker
-                        value={team.championships}
-                        className="text-sm text-zinc-200"
-                      />
+                      <NumberTicker value={team.championships} className="text-sm text-zinc-200" />
                       {' WCC'}
                     </>
                   ) : (
@@ -235,12 +227,10 @@ export function TeamSection({
           <BlurFade delay={reducedMotion ? 0 : 0.3} inView>
             <div className="flex items-center gap-3 pt-2">
               <div
-                className="h-3 w-3 rounded-full flex-shrink-0"
+                className="h-3 w-3 flex-shrink-0 rounded-full"
                 style={{ backgroundColor: team.color }}
               />
-              <span className="text-xs uppercase tracking-[0.15em] text-zinc-500">
-                {team.name}
-              </span>
+              <span className="text-xs uppercase tracking-[0.15em] text-zinc-500">{team.name}</span>
             </div>
           </BlurFade>
         </div>

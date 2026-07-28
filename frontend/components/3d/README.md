@@ -69,8 +69,8 @@ export default function ShowcasePage() {
 ### 1. Install Dependencies
 
 ```bash
-npm install three @react-three/fiber @react-three/drei
-npm install -D @types/three
+pnpm add three three-stdlib @react-three/fiber @react-three/drei
+pnpm add -D @types/three
 ```
 
 ### 2. Download 3D Model

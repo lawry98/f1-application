@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   description: 'Explore all 10 F1 team liveries in interactive 3D.',
 };
 
-const F1CarShowcase = dynamic(() => import('@/components/3d/F1CarShowcase'), {
+const F1CarShowcase = dynamic(() => import('@/components/3d/f1-car-showcase'), {
   ssr: false,
   loading: () => (
     <div className="flex min-h-screen items-center justify-center bg-zinc-950">

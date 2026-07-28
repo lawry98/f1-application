@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils';
 import { teamColorButtonStyle } from '@/lib/team-utils';
 import { type Team } from '@/data/teams-data';
 
-const F1HeroScene = dynamic(() => import('@/components/3d/F1HeroScene'), {
+const F1HeroScene = dynamic(() => import('@/components/3d/f1-hero-scene'), {
   ssr: false,
   loading: () => (
     <div className="flex h-full w-full items-center justify-center bg-zinc-900">
@@ -40,11 +40,7 @@ export function StickyCarViewer({ activeTeam, onInspect }: StickyCarViewerProps)
           3D Preview
         </span>
 
-        <F1HeroScene
-          teamColor={activeTeam.color}
-          hideOverlay
-          className="h-full w-full"
-        />
+        <F1HeroScene teamColor={activeTeam.color} hideOverlay className="h-full w-full" />
 
         {/* Color accent line at top */}
         <div
@@ -65,7 +61,7 @@ export function StickyCarViewer({ activeTeam, onInspect }: StickyCarViewerProps)
         >
           <div className="min-w-0">
             <p className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">Active</p>
-            <div className="flex items-center gap-2 mt-1">
+            <div className="mt-1 flex items-center gap-2">
               <span
                 className="h-2 w-2 flex-shrink-0 rounded-full"
                 style={{ backgroundColor: activeTeam.color }}

@@ -1,0 +1,6 @@
+# pnpm 11 reads settings from here, not from a "pnpm" field in package.json.
+# unrs-resolver ships a native binary that eslint-config-next's import
+# resolution depends on, so its build script must be allowed to run.
+# Without this, pnpm's pre-script deps check fails and EVERY script errors.
+allowBuilds:
+  unrs-resolver: true
