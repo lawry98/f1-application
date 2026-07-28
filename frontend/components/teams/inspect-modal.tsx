@@ -8,7 +8,7 @@ import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { type Team } from '@/data/teams-data';
 
-const F1HeroScene = dynamic(() => import('@/components/3d/F1HeroScene'), {
+const F1HeroScene = dynamic(() => import('@/components/3d/f1-hero-scene'), {
   ssr: false,
   loading: () => (
     <div className="flex flex-1 items-center justify-center bg-zinc-900">

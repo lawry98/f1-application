@@ -48,3 +48,6 @@ pnpm-debug.log*
 # Claude code mcp servers
 .mcp.json
 .claude/
+
+# Local markdown issue tracker (see docs/agents/issue-tracker.md)
+.scratch/
