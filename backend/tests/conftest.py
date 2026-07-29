@@ -2,9 +2,9 @@
 
 The environment mutation below runs at collection time, before any test module —
 and therefore before any application module — is imported. That ordering is load
-bearing: ``agent/graph.py`` builds a live ``ChatAnthropic`` client at module scope,
-so importing it (or anything reaching it, which is almost everything) without a key
-present fails at import rather than at call time.
+bearing: ``agent/graph.py`` builds a live ``ChatGoogleGenerativeAI`` client at module
+scope, so importing it (or anything reaching it, which is almost everything) without a
+key present fails at import rather than at call time.
 
 Nothing here changes production code. Making the graph importable without a key is
 a refactor this suite exists to protect, not a prerequisite for it.
@@ -14,7 +14,11 @@ import os
 
 # Force rather than default: a real key in the developer's shell must not leak into
 # the suite. Tests should behave identically on a laptop and in CI.
-os.environ["ANTHROPIC_API_KEY"] = "sk-ant-api-test-key-not-real"
+os.environ["GOOGLE_API_KEY"] = "AIza-test-key-not-real"
+
+# langchain-google-genai also falls back to GEMINI_API_KEY. Clear it so a developer's real
+# key can never satisfy the client when GOOGLE_API_KEY above is the one under test.
+os.environ.pop("GEMINI_API_KEY", None)
 
 # The optional-integration tools branch on the *absence* of these. If a developer has
 # real keys exported, the "not configured" paths would silently stop being tested.

@@ -47,14 +47,22 @@ part worth knowing:
 
 | Variable | Missing behaviour |
 |---|---|
-| `ANTHROPIC_API_KEY` | **Fatal** — `validate_config()` raises `SystemExit(1)` |
+| `GOOGLE_API_KEY` | **Fatal** — `validate_config()` raises `SystemExit(1)` |
 | `TAVILY_API_KEY` | Warning; news search silently disabled |
 | `OPENWEATHER_API_KEY` | Warning; weather silently disabled |
 | `FASTF1_CACHE_DIR` | Defaults to `cache/` |
 | `EXECUTOR_MAX_WORKERS` | Defaults to `4` |
 
-`LLM_MODEL` and `LLM_TEMPERATURE` are **hardcoded constants** in `config.py`, not env vars —
-changing the model means editing code.
+`LLM_MODEL` is a **hardcoded constant** in `config.py`, not an env var — changing the model
+means editing code. That is deliberate: the prompts are written against a specific model
+(`PLANNER_PROMPT` demands a bare JSON array, `SYNTHESIZER_PROMPT` a six-section structure), so
+a model change should go through a diff, not an env var.
+
+**There is no temperature setting, and that is not an oversight.** `gemini-3.6-flash` uses
+fixed sampling defaults and *ignores* a `temperature` argument — passing one changes nothing
+and makes the client emit a `UserWarning` on every construction. Gemini 3 is optimised for its
+default sampling regardless, and Google warns that lowering temperature risks looping or
+degraded reasoning. Do not add one back because the synthesizer writes prose.
 
 Frontend: `NEXT_PUBLIC_API_URL` in `frontend/.env.local`, defaults to `http://localhost:8000`.
 
@@ -84,6 +92,24 @@ plain helpers, **not** LLM-callable: `race_resolver.py` (used by the resolver no
 
 **Tools never raise.** Every `@tool` returns `{"error": "..."}` on failure. The agent is built to
 continue on partial data — preserve this or the pipeline loses its degradation behaviour.
+
+**The planner degrades, the synthesizer does not.** `planner_node` catches *any* LLM failure —
+a free-tier 429 above all — and falls back to `DEFAULT_TOOLS`, because the planner only chooses
+which tools to run and the pipeline works without it. `synthesizer_node` deliberately still
+raises: without it there is no Briefing, so there is nothing to degrade to. The planner's two
+failure paths log differently on purpose ("LLM call failed" vs "failed to parse response") —
+one means the model was never reached, the other that it returned something unusable.
+
+**Read `response.text`, never `response.content`.** Gemini 3 returns `.content` as a *list of
+content blocks*, not a string. Using `.content` fails in two ways that both look like something
+else: the planner's parse raises inside its `try` and silently degrades to `DEFAULT_TOOLS`
+forever (a planner that appears to work and never runs), and the synthesizer hands the API a
+list where a Briefing string is expected. `make_llm()` in `tests/factories.py` deliberately
+models this — its fake `.content` is a block list — so the tests fail if anyone reverts to it.
+
+**The LLM client is built at module scope** in `agent/graph.py`, so importing the graph without
+`GOOGLE_API_KEY` set fails at *import* time, not call time. `tests/conftest.py` seeds the key
+before any app module loads; that ordering is load-bearing.
 
 **Streaming bridges sync to async.** The LangGraph agent is synchronous and runs in a
 `ThreadPoolExecutor`; SSE events are emitted per completed node.
