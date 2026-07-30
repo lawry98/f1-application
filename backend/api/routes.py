@@ -12,6 +12,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from agent.graph import agent
 from agent.state import AgentState
+from api.errors import GENERIC_BRIEFING_ERROR
 from api.models import BriefingRequest, BriefingResponse, ToolTraceSummary
 from config import EXECUTOR_MAX_WORKERS
 from tools.schedule_cache import clear as clear_schedule_cache
@@ -172,7 +173,7 @@ async def generate_briefing_stream(request: BriefingRequest) -> EventSourceRespo
 
         except Exception as exc:
             logger.exception("Error during briefing stream generation: %s", exc)
-            yield {"event": "error", "data": json.dumps({"message": str(exc)})}
+            yield {"event": "error", "data": json.dumps({"message": GENERIC_BRIEFING_ERROR})}
         finally:
             clear_schedule_cache()
 

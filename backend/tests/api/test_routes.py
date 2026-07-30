@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 
 from api import routes as routes_module
+from api.errors import GENERIC_BRIEFING_ERROR
 from tests.factories import make_race_info, make_schedule
 
 
@@ -336,14 +337,44 @@ def test_stream_stops_at_the_resolver_when_resolution_fails(client, install_agen
     assert events[1][1] == {"message": "Could not resolve race: no such race"}
 
 
-def test_stream_reports_an_agent_crash_as_an_error_event(client, install_agent):
-    """A stream cannot change its status code once open, so failures arrive as events."""
+def test_stream_reports_an_agent_crash_with_the_generic_message(client, install_agent):
+    """A stream cannot change its status code once open, so failures arrive as events.
+
+    The message is fixed, not the exception's: an exception that reached the boundary is
+    internal by definition. The detail is in the server log.
+    """
     install_agent(raises=RuntimeError("graph exploded"))
 
     events = parse_sse(client.post("/api/briefing/stream", json={"query": "monaco"}).text)
 
     assert events[-1][0] == "error"
-    assert "graph exploded" in events[-1][1]["message"]
+    assert events[-1][1] == {"message": GENERIC_BRIEFING_ERROR}
+    assert "graph exploded" not in events[-1][1]["message"]
+
+
+def test_stream_does_not_leak_a_provider_error_payload(client, install_agent):
+    """The regression that motivated this work.
+
+    A misconfigured API key made the provider client raise with its full error body,
+    and the whole thing rendered in the briefing UI — including the request_id. The
+    synthetic payload below is the historical Anthropic 401. Asserted against the raw
+    SSE body rather than the parsed event, so a leak into any field of any event fails
+    this test.
+    """
+    install_agent(
+        raises=RuntimeError(
+            "Error code: 401 - {'type': 'error', 'error': "
+            "{'type': 'authentication_error', 'message': 'invalid x-api-key'}, "
+            "'request_id': 'req_011CdXDnNNKs443fdUR7WoSp'}"
+        )
+    )
+
+    body = client.post("/api/briefing/stream", json={"query": "monaco"}).text
+
+    assert "401" not in body
+    assert "x-api-key" not in body
+    assert "req_011CdXDnNNKs443fdUR7WoSp" not in body
+    assert GENERIC_BRIEFING_ERROR in body
 
 
 def test_stream_omits_the_briefing_event_when_the_synthesizer_produces_nothing(
