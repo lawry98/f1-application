@@ -13,7 +13,7 @@ from typing import Any
 import pytest
 
 from api import routes as routes_module
-from api.errors import GENERIC_BRIEFING_ERROR, GENERIC_SCHEDULE_ERROR
+from api.errors import FAILED_TOOL_SUMMARY, GENERIC_BRIEFING_ERROR, GENERIC_SCHEDULE_ERROR
 from tests.factories import make_race_info, make_schedule
 
 
@@ -176,6 +176,39 @@ def test_briefing_leaves_short_tool_payloads_intact(client, install_agent):
         "summary"
     ]
     assert summary == "{'a': 1}"
+
+
+def test_briefing_replaces_a_failed_tools_payload_in_the_trace(client, install_agent):
+    """A failed tool's payload is ``{"error": ...}`` and can carry upstream detail.
+
+    The trace is rendered verbatim by components/briefing/tool-trace.tsx, so the payload
+    is dropped wholesale rather than truncated — truncation would still leak the first
+    200 characters, which is exactly where a connection string or host lives.
+    """
+    install_agent(
+        result={
+            "race_info": make_race_info(),
+            "briefing": "x",
+            "current_step": "complete",
+            "tool_results": [
+                {
+                    "tool_name": "get_race_weather",
+                    "success": False,
+                    "data": {
+                        "error": "HTTPSConnectionPool(host='api.openweathermap.org', "
+                        "port=443): Read timed out"
+                    },
+                }
+            ],
+        }
+    )
+
+    trace = client.post("/api/briefing", json={"query": "monaco"}).json()["tool_trace"][0]
+
+    assert trace["tool"] == "get_race_weather"
+    assert trace["success"] is False
+    assert trace["summary"] == FAILED_TOOL_SUMMARY
+    assert "openweathermap" not in trace["summary"]
 
 
 def test_briefing_falls_back_to_unknown_race_without_race_info(client, install_agent):
