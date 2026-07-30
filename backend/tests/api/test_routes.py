@@ -7,6 +7,7 @@ events, which the frontend's discriminated union depends on.
 """
 
 import json
+import logging
 from typing import Any
 
 import pytest
@@ -236,11 +237,23 @@ def test_the_fallback_message_only_appears_when_the_key_is_absent(client, instal
     assert response.json()["detail"] == "Failed to generate briefing"
 
 
-def test_an_agent_crash_returns_500(client, install_agent):
+def test_an_agent_crash_returns_500_without_the_exception_text(client, install_agent, caplog):
+    """The sync twin of the stream's catch-all: generic detail, real reason in the log.
+
+    This handler used to put ``str(exc)`` in the detail and log nothing — the leak
+    was the only place the exception was visible at all. Now the detail is the
+    generic constant and the log carries the exception plus the query that hit it.
+    """
     install_agent(raises=RuntimeError("graph exploded"))
-    response = client.post("/api/briefing", json={"query": "monaco"})
+
+    with caplog.at_level(logging.ERROR, logger="api.routes"):
+        response = client.post("/api/briefing", json={"query": "monaco"})
+
     assert response.status_code == 500
-    assert "graph exploded" in response.json()["detail"]
+    assert response.json()["detail"] == GENERIC_BRIEFING_ERROR
+    assert "graph exploded" not in response.json()["detail"]
+    assert "graph exploded" in caplog.text
+    assert "monaco" in caplog.text
 
 
 def test_a_missing_query_field_is_rejected_before_the_agent_runs(client, install_agent):

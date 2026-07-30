@@ -72,7 +72,8 @@ async def generate_briefing(request: BriefingRequest) -> BriefingResponse:
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logger.exception("Error generating briefing for '%s': %s", request.query, exc)
+        raise HTTPException(status_code=500, detail=GENERIC_BRIEFING_ERROR) from exc
     finally:
         clear_schedule_cache()
 
