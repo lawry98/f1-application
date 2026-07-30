@@ -132,10 +132,16 @@ def test_explicit_year_in_the_future_is_upcoming_and_looks_back_one_year():
 
 
 @freeze_time(FROZEN_NOW)
-def test_explicit_year_with_unloadable_schedule_returns_error():
+def test_explicit_year_with_unloadable_schedule_keeps_the_reason_out_of_error():
+    """``error`` is the display channel; the upstream exception goes in ``detail``.
+
+    The year stays in ``error`` because it is the user's own input and tells them which
+    request failed. What is removed is the FastF1 exception wrapped around it.
+    """
     result = resolve_next_race("monaco 1998")
-    assert "error" in result
-    assert "1998" in result["error"]
+
+    assert result["error"] == "Could not load the 1998 season schedule."
+    assert result["detail"] == "No schedule available for 1998"
 
 
 @freeze_time(FROZEN_NOW)
