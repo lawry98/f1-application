@@ -56,11 +56,22 @@ def resolver_node(state: AgentState) -> dict[str, Any]:
     result = resolve_next_race(query)
 
     if "error" in result:
-        logger.warning("Race resolution failed for '%s': %s", query, result["error"])
+        # `error` is contractually safe to display; `detail` is log-only and must
+        # never reach the user-facing briefing field.
+        detail = result.get("detail")
+        if detail:
+            logger.warning(
+                "Race resolution failed for '%s': %s (detail: %s)",
+                query,
+                result["error"],
+                detail,
+            )
+        else:
+            logger.warning("Race resolution failed for '%s': %s", query, result["error"])
         return {
             "race_info": None,
             "current_step": "error",
-            "briefing": f"Could not resolve race: {result['error']}",
+            "briefing": result["error"],
         }
 
     race_info = RaceInfo(

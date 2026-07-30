@@ -7,11 +7,13 @@ events, which the frontend's discriminated union depends on.
 """
 
 import json
+import logging
 from typing import Any
 
 import pytest
 
 from api import routes as routes_module
+from api.errors import FAILED_TOOL_SUMMARY, GENERIC_BRIEFING_ERROR, GENERIC_SCHEDULE_ERROR
 from tests.factories import make_race_info, make_schedule
 
 
@@ -176,6 +178,39 @@ def test_briefing_leaves_short_tool_payloads_intact(client, install_agent):
     assert summary == "{'a': 1}"
 
 
+def test_briefing_replaces_a_failed_tools_payload_in_the_trace(client, install_agent):
+    """A failed tool's payload is ``{"error": ...}`` and can carry upstream detail.
+
+    The trace is rendered verbatim by components/briefing/tool-trace.tsx, so the payload
+    is dropped wholesale rather than truncated — truncation would still leak the first
+    200 characters, which is exactly where a connection string or host lives.
+    """
+    install_agent(
+        result={
+            "race_info": make_race_info(),
+            "briefing": "x",
+            "current_step": "complete",
+            "tool_results": [
+                {
+                    "tool_name": "get_race_weather",
+                    "success": False,
+                    "data": {
+                        "error": "HTTPSConnectionPool(host='api.openweathermap.org', "
+                        "port=443): Read timed out"
+                    },
+                }
+            ],
+        }
+    )
+
+    trace = client.post("/api/briefing", json={"query": "monaco"}).json()["tool_trace"][0]
+
+    assert trace["tool"] == "get_race_weather"
+    assert trace["success"] is False
+    assert trace["summary"] == FAILED_TOOL_SUMMARY
+    assert "openweathermap" not in trace["summary"]
+
+
 def test_briefing_falls_back_to_unknown_race_without_race_info(client, install_agent):
     install_agent(result={"briefing": "x", "current_step": "complete"})
     assert client.post("/api/briefing", json={"query": "monaco"}).json()["race"] == "Unknown Race"
@@ -193,14 +228,12 @@ def test_an_unresolvable_query_returns_500(client, install_agent):
     would also need frontend work: lib/api.ts throws the same generic message for every
     non-ok status, so the improvement would not reach the UI on its own.
     """
-    install_agent(
-        result={"current_step": "error", "briefing": "Could not resolve race: no such race"}
-    )
+    install_agent(result={"current_step": "error", "briefing": "No race found matching 'monakko'"})
 
     response = client.post("/api/briefing", json={"query": "monakko"})
 
     assert response.status_code == 500
-    assert response.json()["detail"] == "Could not resolve race: no such race"
+    assert response.json()["detail"] == "No race found matching 'monakko'"
 
 
 def test_a_none_briefing_loses_the_fallback_message(client, install_agent):
@@ -235,11 +268,23 @@ def test_the_fallback_message_only_appears_when_the_key_is_absent(client, instal
     assert response.json()["detail"] == "Failed to generate briefing"
 
 
-def test_an_agent_crash_returns_500(client, install_agent):
+def test_an_agent_crash_returns_500_without_the_exception_text(client, install_agent, caplog):
+    """The sync twin of the stream's catch-all: generic detail, real reason in the log.
+
+    This handler used to put ``str(exc)`` in the detail and log nothing — the leak
+    was the only place the exception was visible at all. Now the detail is the
+    generic constant and the log carries the exception plus the query that hit it.
+    """
     install_agent(raises=RuntimeError("graph exploded"))
-    response = client.post("/api/briefing", json={"query": "monaco"})
+
+    with caplog.at_level(logging.ERROR, logger="api.routes"):
+        response = client.post("/api/briefing", json={"query": "monaco"})
+
     assert response.status_code == 500
-    assert "graph exploded" in response.json()["detail"]
+    assert response.json()["detail"] == GENERIC_BRIEFING_ERROR
+    assert "graph exploded" not in response.json()["detail"]
+    assert "graph exploded" in caplog.text
+    assert "monaco" in caplog.text
 
 
 def test_a_missing_query_field_is_rejected_before_the_agent_runs(client, install_agent):
@@ -323,7 +368,7 @@ def test_stream_stops_at_the_resolver_when_resolution_fails(client, install_agen
                 "resolver": {
                     "race_info": None,
                     "current_step": "error",
-                    "briefing": "Could not resolve race: no such race",
+                    "briefing": "No race found matching 'monakko'",
                 }
             },
             {"planner": {"tasks": [], "current_step": "gathering"}},
@@ -333,17 +378,47 @@ def test_stream_stops_at_the_resolver_when_resolution_fails(client, install_agen
     events = parse_sse(client.post("/api/briefing/stream", json={"query": "monakko"}).text)
 
     assert [event_type for event_type, _ in events] == ["status", "error"]
-    assert events[1][1] == {"message": "Could not resolve race: no such race"}
+    assert events[1][1] == {"message": "No race found matching 'monakko'"}
 
 
-def test_stream_reports_an_agent_crash_as_an_error_event(client, install_agent):
-    """A stream cannot change its status code once open, so failures arrive as events."""
+def test_stream_reports_an_agent_crash_with_the_generic_message(client, install_agent):
+    """A stream cannot change its status code once open, so failures arrive as events.
+
+    The message is fixed, not the exception's: an exception that reached the boundary is
+    internal by definition. The detail is in the server log.
+    """
     install_agent(raises=RuntimeError("graph exploded"))
 
     events = parse_sse(client.post("/api/briefing/stream", json={"query": "monaco"}).text)
 
     assert events[-1][0] == "error"
-    assert "graph exploded" in events[-1][1]["message"]
+    assert events[-1][1] == {"message": GENERIC_BRIEFING_ERROR}
+    assert "graph exploded" not in events[-1][1]["message"]
+
+
+def test_stream_does_not_leak_a_provider_error_payload(client, install_agent):
+    """The regression that motivated this work.
+
+    A misconfigured API key made the provider client raise with its full error body,
+    and the whole thing rendered in the briefing UI — including the request_id. The
+    synthetic payload below is the historical Anthropic 401. Asserted against the raw
+    SSE body rather than the parsed event, so a leak into any field of any event fails
+    this test.
+    """
+    install_agent(
+        raises=RuntimeError(
+            "Error code: 401 - {'type': 'error', 'error': "
+            "{'type': 'authentication_error', 'message': 'invalid x-api-key'}, "
+            "'request_id': 'req_011CdXDnNNKs443fdUR7WoSp'}"
+        )
+    )
+
+    body = client.post("/api/briefing/stream", json={"query": "monaco"}).text
+
+    assert "401" not in body
+    assert "x-api-key" not in body
+    assert "req_011CdXDnNNKs443fdUR7WoSp" not in body
+    assert GENERIC_BRIEFING_ERROR in body
 
 
 def test_stream_omits_the_briefing_event_when_the_synthesizer_produces_nothing(
@@ -404,6 +479,12 @@ def test_races_returns_an_empty_list_for_an_empty_schedule(client, monkeypatch):
 
 
 def test_races_returns_500_when_the_schedule_cannot_be_loaded(client, monkeypatch):
+    """FastF1's exception text is internal; the calendar gets its own generic message.
+
+    Not GENERIC_BRIEFING_ERROR — no briefing is being generated here, and telling the
+    user otherwise would be misleading.
+    """
+
     def boom(year):
         raise ValueError(f"No data for {year}")
 
@@ -412,7 +493,8 @@ def test_races_returns_500_when_the_schedule_cannot_be_loaded(client, monkeypatc
     response = client.get("/api/races/1066")
 
     assert response.status_code == 500
-    assert "No data for 1066" in response.json()["detail"]
+    assert response.json()["detail"] == GENERIC_SCHEDULE_ERROR
+    assert "No data for" not in response.json()["detail"]
 
 
 def test_races_rejects_a_non_numeric_year(client):

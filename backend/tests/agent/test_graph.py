@@ -104,6 +104,10 @@ def test_resolver_smuggles_its_error_message_through_the_briefing_field(monkeypa
     the resolver reuses it as an error channel, and api/routes.py reads it back out as
     an HTTP 500 detail. One field, two meanings.
 
+    The message is now passed through verbatim rather than prefixed with "Could not
+    resolve race: ", which read redundantly against messages that already say what
+    failed.
+
     Splitting them (an ``error`` field on AgentState) should flip this test and the
     matching one in tests/api/test_routes.py together, deliberately.
     """
@@ -113,7 +117,26 @@ def test_resolver_smuggles_its_error_message_through_the_briefing_field(monkeypa
 
     assert result["current_step"] == "error"
     assert result["race_info"] is None
-    assert result["briefing"] == "Could not resolve race: no such race"
+    assert result["briefing"] == "no such race"
+
+
+def test_resolver_keeps_the_detail_field_out_of_the_briefing(monkeypatch):
+    """``detail`` is log-only. Only ``error`` is safe to put in front of a user."""
+    monkeypatch.setattr(
+        graph_module,
+        "resolve_next_race",
+        lambda query: {
+            "error": "Could not load the 1998 season schedule.",
+            "detail": "ConnectionError: fastf1 backend unreachable",
+        },
+    )
+
+    result = resolver_node(make_state(race_query="monaco 1998"))
+
+    assert result["current_step"] == "error"
+    assert result["race_info"] is None
+    assert result["briefing"] == "Could not load the 1998 season schedule."
+    assert "ConnectionError" not in result["briefing"]
 
 
 def test_resolver_handles_a_missing_query(monkeypatch):
