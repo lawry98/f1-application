@@ -12,7 +12,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from agent.graph import agent
 from agent.state import AgentState
-from api.errors import GENERIC_BRIEFING_ERROR
+from api.errors import GENERIC_BRIEFING_ERROR, GENERIC_SCHEDULE_ERROR
 from api.models import BriefingRequest, BriefingResponse, ToolTraceSummary
 from config import EXECUTOR_MAX_WORKERS
 from tools.schedule_cache import clear as clear_schedule_cache
@@ -207,7 +207,8 @@ async def get_races(year: int) -> dict[str, Any]:
 
         return {"year": year, "races": races}
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logger.exception("Error loading the %d season schedule: %s", year, exc)
+        raise HTTPException(status_code=500, detail=GENERIC_SCHEDULE_ERROR) from exc
 
 
 @router.get("/health")

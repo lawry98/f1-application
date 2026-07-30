@@ -13,7 +13,7 @@ from typing import Any
 import pytest
 
 from api import routes as routes_module
-from api.errors import GENERIC_BRIEFING_ERROR
+from api.errors import GENERIC_BRIEFING_ERROR, GENERIC_SCHEDULE_ERROR
 from tests.factories import make_race_info, make_schedule
 
 
@@ -448,6 +448,12 @@ def test_races_returns_an_empty_list_for_an_empty_schedule(client, monkeypatch):
 
 
 def test_races_returns_500_when_the_schedule_cannot_be_loaded(client, monkeypatch):
+    """FastF1's exception text is internal; the calendar gets its own generic message.
+
+    Not GENERIC_BRIEFING_ERROR — no briefing is being generated here, and telling the
+    user otherwise would be misleading.
+    """
+
     def boom(year):
         raise ValueError(f"No data for {year}")
 
@@ -456,7 +462,8 @@ def test_races_returns_500_when_the_schedule_cannot_be_loaded(client, monkeypatc
     response = client.get("/api/races/1066")
 
     assert response.status_code == 500
-    assert "No data for 1066" in response.json()["detail"]
+    assert response.json()["detail"] == GENERIC_SCHEDULE_ERROR
+    assert "No data for" not in response.json()["detail"]
 
 
 def test_races_rejects_a_non_numeric_year(client):
