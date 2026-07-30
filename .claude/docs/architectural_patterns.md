@@ -2,10 +2,11 @@
 
 ## 1. LangGraph Linear Pipeline (Agent Orchestration)
 
-The agent uses a fixed 3-node LangGraph `StateGraph` with no conditional routing:
+The agent uses a 4-node LangGraph `StateGraph` with one conditional edge:
 
 ```
-planner -> tool_executor -> synthesizer -> END
+resolver -> planner -> tool_executor -> synthesizer -> END
+    └── current_step == "error" ──────────────────────> END
 ```
 
 Defined in `backend/agent/graph.py:169-180`. Each node is a plain function that receives the full `AgentState` TypedDict and returns a partial dict of updated fields. LangGraph merges the returned fields into state automatically.
@@ -21,7 +22,7 @@ All agent state flows through a single `AgentState` TypedDict (`backend/agent/st
 - `race_info` - Parsed `RaceInfo` TypedDict (name, year, circuit_id, location, country)
 - `tasks` - List of tool names to execute (strings matching tool function names)
 - `tool_results` - List of `ToolResult` TypedDicts tracking each tool's outcome
-- `current_step` - Progress marker: "planning" | "gathering" | "synthesizing" | "complete" | "error"
+- `current_step` - Progress marker: "resolving" | "planning" | "gathering" | "synthesizing" | "complete" | "error"
 
 Supporting TypedDicts (`RaceInfo` at line 4, `ToolResult` at line 11) are flat structures with no nesting beyond `data: dict` on ToolResult.
 
@@ -55,14 +56,24 @@ success="error" not in result
 
 This pattern appears uniformly across all 8 tools. The synthesizer receives failed tool results alongside successful ones and generates briefings with whatever data is available.
 
-## 5. SSE Streaming with Sync-to-Async Bridge (API Layer)
+## 5. SSE Streaming over Native `astream` (API Layer)
 
-The streaming endpoint (`backend/api/routes.py:62-160`) uses a two-layer pattern:
+The streaming endpoint's `event_generator` is a single-layer async generator: it iterates
+`agent.astream(initial_state)` with `async for` and translates each `{node_name: partial_state}`
+chunk into one or more SSE events with typed event names (`status`, `race_info`, `tool_result`,
+`briefing`, `complete`, `error`).
 
-1. **Outer**: Async generator yielding SSE events with typed event names (`status`, `race_info`, `tool_result`, `briefing`, `complete`, `error`)
-2. **Inner**: Synchronous `agent.stream()` run inside `ThreadPoolExecutor` via `loop.run_in_executor()` (`routes.py:91-97`)
+There is **no thread bridge**. LangGraph's `astream()` runs the graph's synchronous node functions
+on anyio worker threads itself, so the event loop is not blocked and node signatures stay
+`(AgentState) -> Dict[str, Any]` with no `async`. The API layer holds no executor; the only
+`ThreadPoolExecutor` in the backend is the tool fan-out inside `tool_executor_node`, which is what
+`EXECUTOR_MAX_WORKERS` sizes.
 
-The executor is module-level with `max_workers=4` (`routes.py:12`). This is necessary because LangGraph's `.stream()` is synchronous while FastAPI handlers are async.
+**Timing is the point.** Each event is emitted the instant its node returns, while later nodes are
+still running. An earlier version drained the whole stream into a list before emitting anything,
+which produced the same events in the same order — but only after the run had finished, making the
+progress UI decorative. A change here that reintroduces buffering will pass every ordering test;
+`test_stream_delivers_events_while_the_agent_is_still_running` is the one that catches it.
 
 **SSE event schema**:
 - `status` -> `{step: string, message: string}`

@@ -85,8 +85,12 @@ plain helpers, **not** LLM-callable: `race_resolver.py` (used by the resolver no
 **Tools never raise.** Every `@tool` returns `{"error": "..."}` on failure. The agent is built to
 continue on partial data — preserve this or the pipeline loses its degradation behaviour.
 
-**Streaming bridges sync to async.** The LangGraph agent is synchronous and runs in a
-`ThreadPoolExecutor`; SSE events are emitted per completed node.
+**Streaming is native `astream`, not a thread bridge.** `routes.py` iterates
+`agent.astream(...)` directly and emits an SSE event the moment each node returns, while the rest
+of the run is still going. The graph's nodes stay *synchronous* — LangGraph offloads them to anyio
+worker threads itself, so the event loop is never blocked and node signatures need no `async`.
+There is no executor in the API layer; `EXECUTOR_MAX_WORKERS` governs only the tool fan-out inside
+`tool_executor_node`.
 
 **SSE discrimination uses the `event:` line** from the SSE protocol, not field-presence
 heuristics on the payload.

@@ -3,7 +3,6 @@
 import asyncio
 import json
 import logging
-from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import fastf1
@@ -13,12 +12,9 @@ from sse_starlette.sse import EventSourceResponse
 from agent.graph import agent
 from agent.state import AgentState
 from api.models import BriefingRequest, BriefingResponse, ToolTraceSummary
-from config import EXECUTOR_MAX_WORKERS
 from tools.schedule_cache import clear as clear_schedule_cache
 
 logger = logging.getLogger(__name__)
-
-executor = ThreadPoolExecutor(max_workers=EXECUTOR_MAX_WORKERS)
 
 router = APIRouter(prefix="/api")
 
@@ -108,22 +104,11 @@ async def generate_briefing_stream(request: BriefingRequest) -> EventSourceRespo
 
             await asyncio.sleep(0.1)
 
-            loop = asyncio.get_running_loop()
-
-            def run_agent():
-                results = []
-                for step_result in agent.stream(initial_state):
-                    results.append(step_result)
-                return results
-
-            step_results = await loop.run_in_executor(executor, run_agent)
-            logger.info("Agent execution completed — %d steps", len(step_results))
-
-            for step_result in step_results:
-                logger.debug("Step result keys: %s", list(step_result.keys()))
-
+            async for step_result in agent.astream(initial_state):
                 current_step = next(iter(step_result), "unknown")
                 step_data = step_result.get(current_step, {})
+
+                logger.debug("Node completed: %s", current_step)
 
                 if current_step == "resolver":
                     race_info = step_data.get("race_info")

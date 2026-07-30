@@ -236,8 +236,9 @@ pnpm format     # Prettier
 - The agent gracefully handles missing data and continues with available info
 
 ### Streaming Architecture
-- The backend runs the synchronous LangGraph agent in a `ThreadPoolExecutor`
-- Events are emitted over SSE as each node completes
+- The backend iterates the LangGraph agent's `astream()` directly — no thread bridge. LangGraph
+  runs the synchronous nodes on worker threads itself, so the event loop stays free
+- Each SSE event is emitted the moment its node returns, while the rest of the run is still going
 - Frontend consumes the typed `AsyncGenerator<StreamEvent>` from `lib/api.ts`
 
 ### Working on this with an AI agent

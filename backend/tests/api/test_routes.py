@@ -6,21 +6,24 @@ pinned here is the HTTP contract and — for the stream — the *order and type*
 events, which the frontend's discriminated union depends on.
 """
 
+import asyncio
 import json
 from typing import Any
 
 import pytest
 
 from api import routes as routes_module
+from api.models import BriefingRequest
 from tests.factories import make_race_info, make_schedule
 
 
 class FakeAgent:
     """Stand-in for the compiled LangGraph agent.
 
-    ``.stream()`` yields one ``{node_name: partial_state}`` dict per completed node,
+    ``.astream()`` yields one ``{node_name: partial_state}`` dict per completed node,
     matching LangGraph's default stream mode — which is what routes.py translates into
-    SSE events.
+    SSE events. It yields them all without suspending, so it says nothing about *when*
+    events reach the client; ``GatedAgent`` below is what pins that.
     """
 
     def __init__(
@@ -40,11 +43,31 @@ class FakeAgent:
             raise self.raises
         return self.result
 
-    def stream(self, state: dict[str, Any]):
+    async def astream(self, state: dict[str, Any]):
         self.states.append(state)
         if self.raises is not None:
             raise self.raises
-        yield from self.steps
+        for step in self.steps:
+            yield step
+
+
+class GatedAgent:
+    """A fake agent that yields its first step and then parks, mid-run, indefinitely.
+
+    Whatever the transport has emitted by then, it emitted while the agent was still
+    working — which is the property ``FakeAgent`` cannot express, because it runs to
+    completion without ever suspending.
+    """
+
+    def __init__(self, steps: list[dict[str, Any]], gate: asyncio.Event) -> None:
+        self.steps = steps
+        self.gate = gate
+
+    async def astream(self, state: dict[str, Any]):
+        yield self.steps[0]
+        await self.gate.wait()
+        for step in self.steps[1:]:
+            yield step
 
 
 def parse_sse(body: str) -> list[tuple[str, Any]]:
@@ -357,6 +380,35 @@ def test_stream_omits_the_briefing_event_when_the_synthesizer_produces_nothing(
     )
     events = parse_sse(client.post("/api/briefing/stream", json={"query": "monaco"}).text)
     assert [event_type for event_type, _ in events] == ["status", "race_info", "status"]
+
+
+def test_stream_delivers_events_while_the_agent_is_still_running(monkeypatch):
+    """The point of the whole endpoint: events describe work that has not finished yet.
+
+    Every other test in this file asserts *order*, which the old drain-the-agent-into-a-
+    list-then-replay-it implementation satisfied perfectly — it just did all of it after
+    the run had already finished. This one asserts *timing*, and is the only test that
+    fails if buffering is reintroduced.
+
+    It reads the SSE generator directly rather than going through ``client``: Starlette's
+    TestClient runs the ASGI app to completion and hands back an already-buffered body,
+    so over HTTP a lazy generator and an eager one are indistinguishable here.
+
+    ``GatedAgent`` yields the resolver step and then parks on a gate nothing ever opens,
+    so the agent cannot finish. Three events must come out anyway. ``wait_for`` turns a
+    regression into a bounded failure rather than a hung suite.
+    """
+    monkeypatch.setattr(routes_module, "agent", GatedAgent(successful_steps(), asyncio.Event()))
+
+    async def drive() -> list[str]:
+        response = await routes_module.generate_briefing_stream(BriefingRequest(query="monaco"))
+        events = response.body_iterator
+        try:
+            return [(await asyncio.wait_for(anext(events), timeout=5))["event"] for _ in range(3)]
+        finally:
+            await events.aclose()
+
+    assert asyncio.run(drive()) == ["status", "race_info", "status"]
 
 
 def test_stream_clears_the_schedule_cache(client, install_agent):
