@@ -228,14 +228,12 @@ def test_an_unresolvable_query_returns_500(client, install_agent):
     would also need frontend work: lib/api.ts throws the same generic message for every
     non-ok status, so the improvement would not reach the UI on its own.
     """
-    install_agent(
-        result={"current_step": "error", "briefing": "Could not resolve race: no such race"}
-    )
+    install_agent(result={"current_step": "error", "briefing": "No race found matching 'monakko'"})
 
     response = client.post("/api/briefing", json={"query": "monakko"})
 
     assert response.status_code == 500
-    assert response.json()["detail"] == "Could not resolve race: no such race"
+    assert response.json()["detail"] == "No race found matching 'monakko'"
 
 
 def test_a_none_briefing_loses_the_fallback_message(client, install_agent):
@@ -370,7 +368,7 @@ def test_stream_stops_at_the_resolver_when_resolution_fails(client, install_agen
                 "resolver": {
                     "race_info": None,
                     "current_step": "error",
-                    "briefing": "Could not resolve race: no such race",
+                    "briefing": "No race found matching 'monakko'",
                 }
             },
             {"planner": {"tasks": [], "current_step": "gathering"}},
@@ -380,7 +378,7 @@ def test_stream_stops_at_the_resolver_when_resolution_fails(client, install_agen
     events = parse_sse(client.post("/api/briefing/stream", json={"query": "monakko"}).text)
 
     assert [event_type for event_type, _ in events] == ["status", "error"]
-    assert events[1][1] == {"message": "Could not resolve race: no such race"}
+    assert events[1][1] == {"message": "No race found matching 'monakko'"}
 
 
 def test_stream_reports_an_agent_crash_with_the_generic_message(client, install_agent):
