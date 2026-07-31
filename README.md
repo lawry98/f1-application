@@ -8,7 +8,7 @@ An AI-powered F1 race weekend briefing generator that provides comprehensive pre
 - **AI-Powered Insights**: Gemini 3.6 Flash synthesizes data into expert-level briefings
 - **Multi-Source Data**: FastF1 telemetry, web search (Tavily), weather forecasts (OpenWeather)
 - **Agent Transparency**: View the tool execution trace for each briefing
-- **Real-time Streaming**: Server-Sent Events for live updates as the agent works
+- **Real-time Streaming**: Server-Sent Events for live updates as the agent works, with the briefing prose filling in as the model writes it
 - **Modern 3D UI**: Three.js F1 car visualization with team liveries
 - **F1 Car Teardown**: Scroll-driven anatomy page — 192 frames reveal the car's internals as you scroll
 - **Team Explorer**: All 11 teams for 2026 with liveries, driver line-ups, and a side-by-side comparison grid
@@ -244,7 +244,10 @@ pnpm format     # Prettier
 - Each SSE event is emitted the moment its node returns, while the rest of the run is still
   going — except `briefing_delta`, which the synthesizer emits *during* its own run, one per
   chunk of prose the model produces
-- Frontend consumes the typed `AsyncGenerator<StreamEvent>` from `lib/api.ts`
+- Frontend consumes the typed `AsyncGenerator<StreamEvent>` from `lib/api.ts`, buffering deltas
+  and repainting on an 80ms timer rather than once per delta
+- A synthesis that dies partway still delivers the prose it wrote, marked as unfinished — see
+  [ADR-0002](docs/adr/0002-serve-truncated-briefings.md)
 
 ### Working on this with an AI agent
 

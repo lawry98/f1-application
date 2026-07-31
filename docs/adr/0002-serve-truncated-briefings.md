@@ -30,8 +30,7 @@ way. Keeping the Step set closed also keeps `error` meaning exactly "Resolution 
 contradict `current_step: "complete"`, and `use-briefing.ts` pipes error text into a red ❌ banner
 — a provider exception in alarm styling directly above perfectly readable prose reads as
 "everything broke". The marker belongs *after* the prose, calm, and it is the `truncated` field's
-job. The backend emits the field; rendering the marker is ticket 03 of the same design, so until
-that lands a truncated briefing arrives complete-looking rather than alarming.
+job. `BriefingCard` renders it as a quiet line beneath the briefing, separated by a rule.
 
 **Letting the sync `/api/briefing` endpoint keep propagating.** Rejected. The node owns
 truncation, so the transport stays a dumb translator and *both* endpoints get the behaviour for

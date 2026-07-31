@@ -105,7 +105,7 @@ progress UI decorative. A change here that reintroduces buffering will pass ever
 - `complete` -> `{message: "Briefing complete"}` (fires on a truncated run too; `error` does not)
 - `error` -> `{message: string}` (generic text — internal exception details are logged, never sent to the client)
 
-**The frontend does not consume `briefing_delta` yet.** `lib/api.ts`'s `switch (eventType)` ends in `default: break`, so deltas are silently dropped and the `truncated` field is discarded by the cast — the briefing still appears in one go. Wiring it up (and rendering the truncation marker) is `.scratch/live-briefing-stream/issues/03-frontend-delta-consumption.md`.
+**The frontend coalesces deltas rather than rendering each one.** See §8 — the wire deliberately carries every delta, and batching is a rendering decision made in `use-briefing.ts`.
 
 ## 6. Dynamic Import with SSR Bypass (Frontend 3D)
 
@@ -130,15 +130,22 @@ The frontend consumes SSE streams via an `async function*` generator (`streamBri
 
 Event type discrimination uses the **SSE `event:` line**: the generator captures it into `eventType` and a `switch (eventType)` casts each JSON-parsed `data:` payload to the matching `StreamEvent` arm. It never inspects payload field presence — that heuristic was deliberately removed; do not reintroduce it.
 
-The consumer is `frontend/hooks/use-briefing.ts`, which drives the generator with `for await...of`.
+The generator is a **pure translator** — it yields every `briefing_delta` the backend sends and does no accumulation. Deciding what to do with them belongs to the consumer, `frontend/hooks/use-briefing.ts`, which drives the generator with `for await...of`.
 
 ## 8. React Hooks Local State (Frontend State Management)
 
 No global state store. Briefing state lives in the `useBriefing` custom hook (`frontend/hooks/use-briefing.ts`), which owns:
 
-- `query`, `loading`, `race`, `briefing`, `toolTrace`, `error`, `statusMessage`
+- `query`, `loading`, `race`, `briefing`, `truncated`, `toolTrace`, `error`, `statusMessage`
 
 plus an `AbortController` ref: each `submit()` aborts any in-flight stream, resets state, and consumes `streamBriefing`; unmount aborts via a `useEffect` cleanup. `BriefingChat` (`frontend/components/briefing/briefing-chat.tsx`) is a slim orchestrator over the hook; child components (`BriefingCard`, `ToolTrace`, `RaceSelector`) receive data via props only.
+
+**Deltas are buffered in a ref, not in state.** `briefing_delta` events append to a `bufferRef` and a `setTimeout` paints the accumulation every `FLUSH_INTERVAL_MS` (80ms). Setting state per delta would re-parse the whole accumulated markdown string on every one of an estimated 500–1500 deltas — quadratic in the length of the briefing. Ten flushes a second is perceptually continuous.
+
+Two consequences worth keeping:
+
+- **The terminal `briefing` event replaces the buffer, it does not append to it.** That is what makes it a reconciliation anchor, and it doubles as the final flush — so there is no stranded-deltas case to handle separately. Changing it to append would both double the prose and silently drop the anchor's error-correcting job.
+- **The flush timer is cleared on unmount and at the start of every `submit()`**, and the event loop `break`s if `abortRef.current` is no longer this request's controller. `bufferRef` is shared across requests, so a stale delta from a superseded stream would not merely paint late — it would prepend itself to the next briefing.
 
 ## 9. Pydantic Request/Response Models (API Contracts)
 

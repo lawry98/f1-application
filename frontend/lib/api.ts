@@ -75,8 +75,14 @@ export async function* streamBriefing(
               case 'tool_result':
                 yield { type: 'tool_result', data: parsed as { tool: string; success: boolean } };
                 break;
+              case 'briefing_delta':
+                yield { type: 'briefing_delta', data: parsed as { content: string } };
+                break;
               case 'briefing':
-                yield { type: 'briefing', data: parsed as { content: string } };
+                yield {
+                  type: 'briefing',
+                  data: parsed as { content: string; truncated: boolean },
+                };
                 break;
               case 'complete':
                 yield { type: 'complete', data: parsed as { message: string } };
