@@ -45,7 +45,6 @@ export function ToolTrace({ tools }: ToolTraceProps) {
               </Badge>
               <div className="flex-1">
                 <h4 className="mb-1 font-mono text-sm text-zinc-300">{tool.tool}</h4>
-                {tool.summary && <p className="font-mono text-xs text-zinc-500">{tool.summary}</p>}
               </div>
             </div>
           ))}

@@ -11,18 +11,14 @@ function SpinningF1Car() {
   useFrame((state, delta) => {
     if (carRef.current) {
       carRef.current.rotation.y += delta * 2;
-      if (state?.clock?.elapsedTime !== undefined) {
-        carRef.current.position.y = Math.sin(state.clock.elapsedTime * 2) * 0.1;
-      }
+      carRef.current.position.y = Math.sin(state.clock.elapsedTime * 2) * 0.1;
     }
 
-    if (wheelsRef.current) {
-      wheelsRef.current.forEach((wheel) => {
-        if (wheel) {
-          wheel.rotation.x += delta * 10;
-        }
-      });
-    }
+    wheelsRef.current.forEach((wheel) => {
+      if (wheel) {
+        wheel.rotation.x += delta * 10;
+      }
+    });
   });
 
   return (

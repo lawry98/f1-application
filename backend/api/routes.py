@@ -3,25 +3,33 @@
 import asyncio
 import json
 import logging
-from concurrent.futures import ThreadPoolExecutor
+from datetime import date
 from typing import Any
 
 import fastf1
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Path
 from sse_starlette.sse import EventSourceResponse
 
 from agent.graph import agent
 from agent.state import AgentState
 from api.errors import FAILED_TOOL_SUMMARY, GENERIC_BRIEFING_ERROR, GENERIC_SCHEDULE_ERROR
 from api.models import BriefingRequest, BriefingResponse, ToolTraceSummary
-from config import EXECUTOR_MAX_WORKERS
 from tools.schedule_cache import clear as clear_schedule_cache
 
 logger = logging.getLogger(__name__)
 
-executor = ThreadPoolExecutor(max_workers=EXECUTOR_MAX_WORKERS)
-
 router = APIRouter(prefix="/api")
+
+
+def initial_state(query: str) -> AgentState:
+    return {
+        "race_query": query,
+        "race_info": None,
+        "tasks": [],
+        "tool_results": [],
+        "briefing": None,
+        "current_step": "resolving",
+    }
 
 
 def _tool_trace_summary(tool_result: dict[str, Any]) -> str:
@@ -40,30 +48,17 @@ def _tool_trace_summary(tool_result: dict[str, Any]) -> str:
 
 @router.post("/briefing", response_model=BriefingResponse)
 async def generate_briefing(request: BriefingRequest) -> BriefingResponse:
-    """Generate a complete race briefing synchronously.
-
-    Args:
-        request: BriefingRequest with the user's race query.
-
-    Returns:
-        BriefingResponse containing the briefing text and tool trace.
-    """
+    """Generate a complete race briefing in a single response."""
     try:
-        initial_state: AgentState = {
-            "messages": [],
-            "race_query": request.query,
-            "race_info": None,
-            "tasks": [],
-            "tool_results": [],
-            "briefing": None,
-            "current_step": "resolving",
-        }
+        result: dict[str, Any] = await agent.ainvoke(initial_state(request.query))
 
-        result: dict[str, Any] = agent.invoke(initial_state)
-
-        if result.get("current_step") == "error" or not result.get("briefing"):
-            error_msg = result.get("briefing", "Failed to generate briefing")
-            raise HTTPException(status_code=500, detail=error_msg)
+        if result.get("current_step") == "error":
+            raise HTTPException(
+                status_code=404,
+                detail=result.get("briefing") or "Could not resolve race",
+            )
+        if not result.get("briefing"):
+            raise HTTPException(status_code=500, detail=GENERIC_BRIEFING_ERROR)
 
         race_name: str = result.get("race_info", {}).get("name", "Unknown Race")
 
@@ -92,52 +87,22 @@ async def generate_briefing(request: BriefingRequest) -> BriefingResponse:
 
 @router.post("/briefing/stream")
 async def generate_briefing_stream(request: BriefingRequest) -> EventSourceResponse:
-    """Stream briefing generation via Server-Sent Events.
-
-    Args:
-        request: BriefingRequest with the user's race query.
-
-    Returns:
-        EventSourceResponse that yields typed SSE events as the agent executes.
-    """
+    """Stream briefing generation via Server-Sent Events, one event per completed node."""
 
     async def event_generator():
         try:
             logger.info("Starting briefing generation for: %s", request.query)
-
-            initial_state: AgentState = {
-                "messages": [],
-                "race_query": request.query,
-                "race_info": None,
-                "tasks": [],
-                "tool_results": [],
-                "briefing": None,
-                "current_step": "resolving",
-            }
 
             yield {
                 "event": "status",
                 "data": json.dumps({"step": "resolving", "message": "Resolving race..."}),
             }
 
-            await asyncio.sleep(0.1)
-
-            loop = asyncio.get_running_loop()
-
-            def run_agent():
-                results = []
-                for step_result in agent.stream(initial_state):
-                    results.append(step_result)
-                return results
-
-            step_results = await loop.run_in_executor(executor, run_agent)
-            logger.info("Agent execution completed — %d steps", len(step_results))
-
-            for step_result in step_results:
-                logger.debug("Step result keys: %s", list(step_result.keys()))
-
+            async for step_result in agent.astream(initial_state(request.query)):
                 current_step = next(iter(step_result), "unknown")
                 step_data = step_result.get(current_step, {})
+
+                logger.debug("Node completed: %s", current_step)
 
                 if current_step == "resolver":
                     race_info = step_data.get("race_info")
@@ -194,17 +159,10 @@ async def generate_briefing_stream(request: BriefingRequest) -> EventSourceRespo
 
 
 @router.get("/races/{year}")
-async def get_races(year: int) -> dict[str, Any]:
-    """Get the F1 calendar for a specific year.
-
-    Args:
-        year: Championship year (e.g., 2025).
-
-    Returns:
-        Dict with 'year' and 'races' list.
-    """
+async def get_races(year: int = Path(ge=1950, le=date.today().year + 1)) -> dict[str, Any]:
+    """Get the F1 calendar for a specific year."""
     try:
-        schedule = fastf1.get_event_schedule(year)
+        schedule = await asyncio.to_thread(fastf1.get_event_schedule, year)
 
         races = [
             {

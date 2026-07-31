@@ -3,7 +3,7 @@
 from datetime import date
 from typing import Any
 
-from tools.schedule_cache import get_schedule, prefill
+from tools.schedule_cache import get_schedule
 
 # Common aliases → FastF1 EventName substrings
 ALIASES: dict[str, str] = {
@@ -62,13 +62,10 @@ def _parse_query(query: str) -> tuple[str, int | None]:
 
 def _find_event(schedule, search_term: str):
     """Search schedule for an event matching search_term."""
-    matches = schedule[schedule["EventName"].str.contains(search_term, case=False, na=False)]
-    if not matches.empty:
-        return matches.iloc[0]
-
-    # Also try Location and Country columns
-    for col in ("Location", "Country"):
-        matches = schedule[schedule[col].str.contains(search_term, case=False, na=False)]
+    for col in ("EventName", "Location", "Country"):
+        matches = schedule[
+            schedule[col].str.contains(search_term, case=False, na=False, regex=False)
+        ]
         if not matches.empty:
             return matches.iloc[0]
     return None
@@ -113,16 +110,12 @@ def resolve_next_race(query: str) -> dict[str, Any]:
         is_upcoming = event_date_d >= today
         historical_year = explicit_year - 1 if is_upcoming else explicit_year
 
-        prefill({explicit_year: schedule})
         return _build_result(event, explicit_year, is_upcoming, historical_year)
 
     # No explicit year — search current year then next year for upcoming race
-    schedules_fetched: dict = {}
-
     for year in (current_year, next_year):
         try:
             schedule = get_schedule(year)
-            schedules_fetched[year] = schedule
         except Exception:
             continue
 
@@ -134,20 +127,17 @@ def resolve_next_race(query: str) -> dict[str, Any]:
         event_date_d = event_date.date() if hasattr(event_date, "date") else event_date
         if event_date_d >= today:
             historical_year = year - 1 if year == current_year else current_year
-            prefill(schedules_fetched)
             return _build_result(event, year, True, historical_year)
 
     # No upcoming race found — fall back to most recent completed race at this circuit
     for year in (current_year, current_year - 1):
         try:
             schedule = get_schedule(year)
-            schedules_fetched[year] = schedule
         except Exception:
             continue
 
         event = _find_event(schedule, search_term)
         if event is not None:
-            prefill(schedules_fetched)
             return _build_result(event, year, False, year)
 
     return {"error": f"No race found matching '{circuit_query}'"}

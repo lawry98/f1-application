@@ -25,6 +25,9 @@ def get_schedule(year: int) -> pd.DataFrame:
     with _lock:
         if year in _cache:
             return _cache[year]
+    # Lock is deliberately released during the fetch so concurrent misses don't
+    # serialise network I/O; a duplicate fetch of the same year is possible and
+    # acceptable (last write wins).
     schedule = fastf1.get_event_schedule(year)
     with _lock:
         _cache[year] = schedule

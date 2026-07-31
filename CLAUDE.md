@@ -21,7 +21,7 @@ frontend/
     ui/          shadcn/ui + vendored Magic UI — do not hand-edit
   data/          Static domain data (TEAMS) and the Team/Driver types
   hooks/         Custom hooks, use- prefix
-  lib/           api.ts (typed client), constants.ts, utils.ts, team-utils.ts
+  lib/           api.ts (typed client), utils.ts, team-utils.ts
   types/         Shared types, re-exported through types/index.ts
 ```
 
@@ -52,6 +52,7 @@ part worth knowing:
 | `OPENWEATHER_API_KEY` | Warning; weather silently disabled |
 | `FASTF1_CACHE_DIR` | Defaults to `cache/` |
 | `EXECUTOR_MAX_WORKERS` | Defaults to `4` |
+| `CORS_ORIGINS` | Comma-separated; defaults to `http://localhost:3000,http://localhost:3001` |
 
 `LLM_MODEL` is a **hardcoded constant** in `config.py`, not an env var — changing the model
 means editing code. That is deliberate: the prompts are written against a specific model
@@ -71,7 +72,7 @@ Frontend: `NEXT_PUBLIC_API_URL` in `frontend/.env.local`, defaults to `http://lo
 **pnpm's `node_modules` is strict — no phantom imports.** Anything you import must be declared in
 `package.json`. npm's flat tree used to resolve undeclared transitive deps by accident;
 `three-stdlib` was exactly that case (imported by the 3D components, but only present as a dep of
-`@react-three/drei`) and is now an explicit dependency. A `TS2307: Cannot find module` on a
+the since-removed `@react-three/drei`) and is now an explicit dependency. A `TS2307: Cannot find module` on a
 package that clearly exists in the tree means it is undeclared, not missing.
 
 **Build scripts need explicit approval, and one unapproved script breaks everything.** pnpm 11
@@ -86,9 +87,10 @@ conditional edge: when `state["current_step"] == "error"` it routes straight to 
 planner, tools, and synthesizer. Anything assuming the synthesizer always runs is wrong.
 
 **`tools/` is not uniform.** Seven `@tool` functions live across four modules
-(`fastf1_tools`, `f1_data_tools`, `search_tools`, `weather_tools`). The other two files are
-plain helpers, **not** LLM-callable: `race_resolver.py` (used by the resolver node) and
-`schedule_cache.py` (a FastF1 schedule cache). Adding a file here does not make it a tool.
+(`fastf1_tools`, `f1_data_tools`, `search_tools`, `weather_tools`). The other three files are
+plain helpers, **not** LLM-callable: `race_resolver.py` (used by the resolver node),
+`schedule_cache.py` (a FastF1 schedule cache), and `fastf1_helpers.py` (shared FastF1
+lookup/session helpers). Adding a file here does not make it a tool.
 
 **Tools never raise.** Every `@tool` returns `{"error": "..."}` on failure. The agent is built to
 continue on partial data — preserve this or the pipeline loses its degradation behaviour.
@@ -111,8 +113,12 @@ models this — its fake `.content` is a block list — so the tests fail if any
 `GOOGLE_API_KEY` set fails at *import* time, not call time. `tests/conftest.py` seeds the key
 before any app module loads; that ordering is load-bearing.
 
-**Streaming bridges sync to async.** The LangGraph agent is synchronous and runs in a
-`ThreadPoolExecutor`; SSE events are emitted per completed node.
+**Streaming is native `astream`, not a thread bridge.** `routes.py` iterates
+`agent.astream(...)` directly and emits an SSE event the moment each node returns, while the rest
+of the run is still going. The graph's nodes stay *synchronous* — LangGraph offloads them to anyio
+worker threads itself, so the event loop is never blocked and node signatures need no `async`.
+There is no executor in the API layer; `EXECUTOR_MAX_WORKERS` governs only the tool fan-out inside
+`tool_executor_node`.
 
 **SSE discrimination uses the `event:` line** from the SSE protocol, not field-presence
 heuristics on the payload.
@@ -125,10 +131,6 @@ every render.
 
 **The landing page composes, it doesn't contain.** `app/page.tsx` is seven imports from
 `components/landing/`; the hero, features, and footer markup are not inline.
-
-**`components/3d/index.ts` is dead.** Every consumer uses a direct-path dynamic import
-(`import('@/components/3d/f1-hero-scene')`) to get `ssr: false`. The barrel re-exports the same
-components but nothing imports from it.
 
 **The teardown page** (`/teardown`) preloads 192 PNG frames (`public/frames/frame_0000.png` …
 `frame_0191.png`) and maps scroll position to frame index via `requestAnimationFrame`. Its canvas
@@ -178,3 +180,7 @@ The five canonical triage roles, used verbatim. See `docs/agents/triage-labels.m
 ### Domain docs
 
 Single-context — one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+All Claude Responses:
+When reporting to me, be extremely concise, load-bearing words only. Priorities: user understanding > concision > grammar. Directive not recap → never padding. Split-second read. Do not compromise on meaning.  Presenting data: use tables.
+End with: *DO THIS* block → concrete next actions for user, numbered, priority-first. Spell out reply options on decisions. Omit only when no user action.

@@ -14,10 +14,7 @@ export function TeamsHero() {
   const reducedMotion = useReducedMotion();
 
   return (
-    <section
-      id="teams-hero"
-      className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-zinc-950"
-    >
+    <section className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-zinc-950">
       {/* Dot pattern background */}
       <DotPattern className="absolute inset-0 opacity-30 [mask-image:radial-gradient(ellipse_at_center,white_20%,transparent_75%)]" />
 

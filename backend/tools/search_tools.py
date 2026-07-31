@@ -1,10 +1,11 @@
 """Tavily web search tool for F1 news and race coverage."""
 
-import os
 from typing import Any
 
 from langchain_core.tools import tool
 from tavily import TavilyClient
+
+from config import TAVILY_API_KEY
 
 
 @tool
@@ -19,11 +20,10 @@ def search_f1_news(query: str, max_results: int = 5) -> dict[str, Any]:
         Dictionary with 'articles' list and 'count', or an 'error' key on failure.
     """
     try:
-        api_key = os.getenv("TAVILY_API_KEY")
-        if not api_key:
+        if not TAVILY_API_KEY:
             return {"error": "TAVILY_API_KEY not configured"}
 
-        client = TavilyClient(api_key=api_key)
+        client = TavilyClient(api_key=TAVILY_API_KEY)
 
         response = client.search(
             query=f"F1 Formula 1 {query} latest news",

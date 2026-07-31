@@ -14,7 +14,6 @@ export interface RaceInfo {
 export interface ToolResult {
   tool: string;
   success: boolean;
-  summary?: string;
 }
 
 export interface Race {

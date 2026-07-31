@@ -13,7 +13,7 @@ export function LandingHero() {
 
       {/* Ambient glows */}
       <div
-        className="bg-red-600/8 pointer-events-none absolute -left-32 top-1/3 h-[700px] w-[700px] -translate-y-1/2 rounded-full blur-3xl"
+        className="pointer-events-none absolute -left-32 top-1/3 h-[700px] w-[700px] -translate-y-1/2 rounded-full bg-red-600/[0.08] blur-3xl"
         aria-hidden="true"
       />
       <div

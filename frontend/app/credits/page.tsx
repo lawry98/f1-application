@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 export const metadata: Metadata = {
-  title: 'Credits & Attributions | F1 Briefing Agent',
+  title: 'Credits & Attributions',
   description: 'Acknowledgments for the technologies and assets used in the F1 Briefing Agent.',
 };
 
@@ -17,7 +17,6 @@ export default function CreditsPage() {
           Acknowledgments for the technologies and assets used in this project
         </p>
 
-        {/* 3D Model Credits */}
         <section className="mb-12 rounded-lg border border-zinc-800 bg-zinc-900 p-6">
           <h2 className="mb-4 text-2xl font-bold text-f1-red">3D Model</h2>
           <div className="space-y-4">
@@ -59,7 +58,6 @@ export default function CreditsPage() {
           </div>
         </section>
 
-        {/* Technologies */}
         <section className="mb-12">
           <h2 className="mb-4 text-2xl font-bold text-f1-red">Technologies</h2>
 
@@ -88,7 +86,6 @@ export default function CreditsPage() {
           </div>
         </section>
 
-        {/* Data Sources */}
         <section className="mb-12 rounded-lg border border-zinc-800 bg-zinc-900 p-6">
           <h2 className="mb-4 text-2xl font-bold text-f1-red">Data Sources</h2>
           <ul className="space-y-3 text-zinc-300">
@@ -105,7 +102,6 @@ export default function CreditsPage() {
           </ul>
         </section>
 
-        {/* License */}
         <section className="rounded-lg border border-zinc-800 bg-zinc-900 p-6">
           <h2 className="mb-4 text-2xl font-bold text-f1-red">License</h2>
           <p className="mb-4 text-zinc-300">This project is licensed under the MIT License.</p>
@@ -115,7 +111,6 @@ export default function CreditsPage() {
           </p>
         </section>
 
-        {/* Back Link */}
         <div className="mt-12 text-center">
           <Link
             href="/"

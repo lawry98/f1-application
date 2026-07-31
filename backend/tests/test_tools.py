@@ -5,10 +5,7 @@ partial data, so every failure mode here must produce ``{"error": ...}`` and nev
 raise. That invariant is the thing worth protecting — the response-shaping is
 secondary but cheap to pin alongside it.
 
-Not covered: the five FastF1 session-backed tools (``get_track_info``,
-``get_recent_race_results``, ``get_driver_form``, ``get_season_standings``,
-``get_circuit_winners``). They need a Session double with a results frame; a
-deliberate, documented gap.
+The five FastF1-backed tools live in ``test_fastf1_tools.py``.
 """
 
 from typing import Any
@@ -54,18 +51,16 @@ def forecast_payload(count: int = 3) -> dict[str, Any]:
 def openweather_key(monkeypatch):
     """Provide an OpenWeather key for the tests that need past the guard clause.
 
-    Note this sets an *environment variable* rather than patching config. weather_tools
-    reads ``os.getenv`` directly, which contradicts CLAUDE.md's stated rule that env
-    vars are read in config.py only. These tests pin the code as it actually behaves;
-    if the read moves into config.py, this fixture is what needs to change.
+    The tool binds the constant at import (``from config import OPENWEATHER_API_KEY``),
+    so the patch goes on the tool module's copy — env vars are read once, in config.py.
     """
-    monkeypatch.setenv("OPENWEATHER_API_KEY", "test-openweather-key")
+    monkeypatch.setattr(weather_tools, "OPENWEATHER_API_KEY", "test-openweather-key")
 
 
 @pytest.fixture
 def tavily_key(monkeypatch):
-    """Provide a Tavily key. Same os.getenv caveat as ``openweather_key``."""
-    monkeypatch.setenv("TAVILY_API_KEY", "test-tavily-key")
+    """Provide a Tavily key. Same import-time binding caveat as ``openweather_key``."""
+    monkeypatch.setattr(search_tools, "TAVILY_API_KEY", "test-tavily-key")
 
 
 # ── Weather ──────────────────────────────────────────────────────────────────
@@ -82,13 +77,14 @@ def test_weather_without_a_key_reports_it_and_does_not_call_out():
 
 
 def test_weather_reports_a_failed_geocode_status(monkeypatch, openweather_key):
+    """A non-200 geocode response is an HTTP failure, distinct from city-not-found."""
     monkeypatch.setattr(weather_tools.requests, "get", lambda *a, **kw: FakeResponse([], 401))
     result = get_race_weather.invoke({"city": "Monaco", "country_code": "MC"})
-    assert result == {"error": "Could not find location for Monaco, MC"}
+    assert result == {"error": "Geocoding request failed with status 401"}
 
 
 def test_weather_reports_an_empty_geocode_result(monkeypatch, openweather_key):
-    """A 200 with an empty list means the city was not found — same user-facing outcome."""
+    """A 200 with an empty list means the city was not found."""
     monkeypatch.setattr(weather_tools.requests, "get", lambda *a, **kw: FakeResponse([], 200))
     result = get_race_weather.invoke({"city": "Nowhere", "country_code": "ZZ"})
     assert result == {"error": "Could not find location for Nowhere, ZZ"}

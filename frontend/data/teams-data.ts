@@ -178,7 +178,7 @@ export const TEAMS: Team[] = [
       {
         id: 'arvid-lindblad',
         name: 'Arvid Lindblad',
-        number: 5,
+        number: 41,
         nationality: 'British-Swedish',
         shortCode: 'LIN',
       },

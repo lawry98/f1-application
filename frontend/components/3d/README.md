@@ -2,122 +2,91 @@
 
 Interactive 3D F1 car visualizations using React Three Fiber (R3F) and Three.js.
 
+Three.js cannot be server-rendered, so every consumer loads these components via a
+**direct-path dynamic import with `ssr: false`** — never through a barrel:
+
+```tsx
+import dynamic from 'next/dynamic';
+
+const F1HeroScene = dynamic(() => import('@/components/3d/f1-hero-scene'), {
+  ssr: false,
+});
+```
+
 ## Components
 
-### 1. F1HeroScene
+### F1HeroScene (`f1-hero-scene.tsx`, default export)
 
-**Hero section with rotating 3D F1 car**
+Auto-rotating, floating 3D F1 car with dramatic lighting, reflective ground plane, and
+optional text overlay.
 
-- Auto-rotating car with floating animation
-- Environment lighting for realistic reflections
-- Gradient overlay blending into page
-- Falls back to wireframe if model not found
+**Props:**
 
-**Usage:**
+- `teamColor?: string` — body/livery color (default `#dc2626`)
+- `hideOverlay?: boolean` — hide the "F1 Briefing Agent" text overlay
+- `className?: string` — container sizing (defaults to `h-[600px]`)
 
-```tsx
-import { F1HeroScene } from '@/components/3d';
+**Consumers:** `components/teams/sticky-car-viewer.tsx` and
+`components/teams/inspect-modal.tsx` (both pass `hideOverlay` and a live `teamColor`).
 
-<F1HeroScene teamColor="#dc2626" />;
-```
+### F1CarShowcase (`f1-car-showcase.tsx`, default export)
 
-### 2. F1LoadingAnimation
+Full-page livery showcase: one auto-rotating car plus a picker for every team on the
+grid. Teams, names, and colors are derived from `data/teams-data.ts` (`TEAMS`) — there
+is no local color map to keep in sync.
 
-**Loading state with animated 3D car built from primitives**
+**Consumer:** `app/showcase/page.tsx`.
 
-- No external model required
-- Spinning wheels and hover effect
-- Customizable message
+### F1LoadingAnimation (`f1-loading-car.tsx`, **named** export)
 
-**Usage:**
-
-```tsx
-import { F1LoadingAnimation } from '@/components/3d';
-
-<F1LoadingAnimation message="Loading race data..." />;
-```
-
-### 3. F1CarShowcase
-
-**Interactive team livery showcase**
-
-- Drag to rotate car
-- 10 F1 team color options
-- Reflective ground plane
-- Dramatic warehouse lighting
-
-**Usage:**
+Loading state with a spinning primitive-mesh car — no GLB required. Because it is a
+named export, its dynamic import maps the module:
 
 ```tsx
-// Create a showcase page
-import { F1CarShowcase } from '@/components/3d';
-
-export default function ShowcasePage() {
-  return <F1CarShowcase />;
-}
+const F1LoadingAnimation = dynamic(
+  () =>
+    import('@/components/3d/f1-loading-car').then((mod) => ({ default: mod.F1LoadingAnimation })),
+  { ssr: false },
+);
 ```
 
-## 3D Model Credits
+**Props:** `message?: string`
 
-**F1 2026 Release Car**  
-"F1 2026 Release Car" (https://skfb.ly/oWL8J) by Nimaxo is licensed under Creative Commons Attribution (http://creativecommons.org/licenses/by/4.0/).
+**Consumer:** `components/briefing/briefing-chat.tsx`.
 
----
+### Shared internals (`f1-car-model.tsx`, named exports)
 
-## Setup
+Not a page-level scene — the building blocks both scenes compose:
 
-### 1. Install Dependencies
+- `RealCar` — loads `/models/f1-car.glb` via `useLoader(GLTFLoader)`, clones the scene
+  **once per mount** (the clone stays inside `useMemo`; the GLTF is cached by
+  `useLoader`, so body materials are cloned before recoloring and disposed on unmount).
+  Team color changes update the cloned materials in place — no re-clone per color.
+  Props: `teamColor`, `scale`, `position`, `rotationSpeed`, `float?`.
+- `PrimitiveCar` — the primitive-mesh fallback car, parameterized by `bodyColor`,
+  `sidepodColor`, `scale?`, `rotationSpeed`, `float?`, `bodyEnvMapIntensity?`,
+  `exhaustEmissiveIntensity`.
 
-```bash
-pnpm add three three-stdlib @react-three/fiber @react-three/drei
-pnpm add -D @types/three
-```
+Each scene renders `<Suspense fallback={<PrimitiveCar …/>}><RealCar …/></Suspense>`, so
+the primitive car shows while the GLB loads.
 
-### 2. Download 3D Model
+## 3D Model
 
-1. Go to https://sketchfab.com/3d-models/f1-2026-release-car-b5c4f3ef041345c68b8e918190d32a9c
-2. Download as glTF (.glb format)
-3. Place in `public/models/f1-car.glb`
+The model is **committed** at `public/models/f1-car.glb` — no download step.
 
-**Alternative models:**
+**Credits:** "F1 2026 Release Car" (https://skfb.ly/oWL8J) by Nimaxo is licensed under
+Creative Commons Attribution (http://creativecommons.org/licenses/by/4.0/).
 
-- Search "F1 car low poly" on Sketchfab for faster loading
-- Red Bull RB19 for higher detail
+## Dependencies
 
-### 3. Optional: Compress Model
-
-Use https://gltf.report/ to reduce file size by 50-70%
-
-## Features
-
-- ✅ Server-side rendering disabled with `dynamic` import
-- ✅ Graceful fallback if model missing
-- ✅ Loading states and suspense boundaries
-- ✅ Optimized for performance
-- ✅ TypeScript support
-- ✅ Mobile responsive
-
-## Performance Tips
-
-- Model is preloaded using `useGLTF.preload()`
-- Use compressed GLB files (< 5MB recommended)
-- Shadows disabled on mobile for better performance
-- Lower polygon count for faster loading
+Everything needed is already declared in `package.json`: `three`, `three-stdlib`
+(GLTFLoader), `@react-three/fiber`, and `@types/three`.
 
 ## Team Colors
 
-All 10 F1 teams supported:
-
-- Red Bull: `#1e41ff`
-- Ferrari: `#dc0000`
-- Mercedes: `#00d2be`
-- McLaren: `#ff8700`
-- Aston Martin: `#006f62`
-- Alpine: `#0090ff`
-- Williams: `#005aff`
-- Haas: `#ffffff`
-- Sauber: `#52e252`
-- RB: `#2b4562`
+Team colors come from `data/teams-data.ts` (`TEAMS`, 11 constructors for 2026).
+`F1CarShowcase` maps over `TEAMS` directly; the teams pages pass `team.color` into
+`F1HeroScene`. Update `teams-data.ts` — never a local copy — when the grid changes.
 
 ## Troubleshooting
 
@@ -130,10 +99,8 @@ All 10 F1 teams supported:
 
 - Ensure file at `public/models/f1-car.glb`
 - Check browser console for errors
-- Verify file isn't corrupted
 
 **Performance issues:**
 
 - Use lower poly model
-- Disable shadows
 - Reduce canvas size on mobile

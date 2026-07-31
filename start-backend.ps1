@@ -28,10 +28,10 @@ if (-Not (Test-Path ".env")) {
     Write-Host ""
     Write-Host "WARNING: .env file not found!" -ForegroundColor Red
     Write-Host "Please create .env file with your API keys:" -ForegroundColor Yellow
-    Write-Host "  1. Copy .env.example to .env" -ForegroundColor White
-    Write-Host "  2. Add your GOOGLE_API_KEY" -ForegroundColor White
-    Write-Host "  3. Add your TAVILY_API_KEY" -ForegroundColor White
-    Write-Host "  4. Add your OPENWEATHER_API_KEY" -ForegroundColor White
+    Write-Host "  1. Copy env.example to .env" -ForegroundColor White
+    Write-Host "  2. Add your GOOGLE_API_KEY (required)" -ForegroundColor White
+    Write-Host "  3. Optionally add TAVILY_API_KEY (news search)" -ForegroundColor White
+    Write-Host "  4. Optionally add OPENWEATHER_API_KEY (weather)" -ForegroundColor White
     Write-Host ""
     Read-Host "Press Enter after creating .env file"
 }
@@ -42,4 +42,4 @@ Write-Host "Starting FastAPI server on http://localhost:8000" -ForegroundColor G
 Write-Host "Press Ctrl+C to stop" -ForegroundColor Yellow
 Write-Host ""
 
-python main.py
+uvicorn main:app --reload --port 8000

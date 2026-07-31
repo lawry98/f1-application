@@ -3,8 +3,8 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 
 export const metadata: Metadata = {
-  title: 'F1 Car Showcase | F1 Briefing Agent',
-  description: 'Explore all 10 F1 team liveries in interactive 3D.',
+  title: 'F1 Car Showcase',
+  description: 'Explore all 11 F1 team liveries in interactive 3D.',
 };
 
 const F1CarShowcase = dynamic(() => import('@/components/3d/f1-car-showcase'), {
@@ -24,7 +24,6 @@ export default function ShowcasePage() {
     <>
       <F1CarShowcase />
 
-      {/* Credits Footer */}
       <div className="fixed bottom-4 right-4 z-10">
         <Link
           href="/credits"

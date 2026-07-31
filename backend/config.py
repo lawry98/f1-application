@@ -28,7 +28,22 @@ FASTF1_CACHE_DIR: str = os.getenv("FASTF1_CACHE_DIR", "cache/")
 
 # ── Threading ────────────────────────────────────────────────────────────────
 
-EXECUTOR_MAX_WORKERS: int = int(os.getenv("EXECUTOR_MAX_WORKERS", "4"))
+_raw_max_workers = os.getenv("EXECUTOR_MAX_WORKERS", "4")
+try:
+    EXECUTOR_MAX_WORKERS: int = int(_raw_max_workers)
+except ValueError:
+    logger.warning("Invalid EXECUTOR_MAX_WORKERS=%r — falling back to 4", _raw_max_workers)
+    EXECUTOR_MAX_WORKERS = 4
+
+# ── API ──────────────────────────────────────────────────────────────────────
+
+CORS_ORIGINS: list[str] = [
+    origin.strip()
+    for origin in os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:3001").split(
+        ","
+    )
+    if origin.strip()
+]
 
 # ── Country codes for weather lookup ─────────────────────────────────────────
 
@@ -50,7 +65,7 @@ COUNTRY_CODE_MAP: dict[str, str] = {
     "Netherlands": "NL",
     "Mexico": "MX",
     "Brazil": "BR",
-    "UAE": "AE",
+    "United Arab Emirates": "AE",
     "Qatar": "QA",
     "China": "CN",
     "Azerbaijan": "AZ",

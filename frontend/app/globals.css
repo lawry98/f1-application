@@ -2,20 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --foreground-rgb: 255, 255, 255;
-  --background-start-rgb: 24, 24, 27;
-  --background-end-rgb: 24, 24, 27;
-}
-
 body {
-  background: rgb(var(--background-start-rgb));
-}
-
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
+  background: #09090b;
 }
 
 @layer base {

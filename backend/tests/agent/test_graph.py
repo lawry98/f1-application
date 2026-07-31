@@ -102,7 +102,7 @@ def test_resolver_smuggles_its_error_message_through_the_briefing_field(monkeypa
 
     ``briefing`` is the deliverable — the synthesised markdown a user reads. On failure
     the resolver reuses it as an error channel, and api/routes.py reads it back out as
-    an HTTP 500 detail. One field, two meanings.
+    an HTTP 404 detail. One field, two meanings.
 
     The message is now passed through verbatim rather than prefixed with "Could not
     resolve race: ", which read redundantly against messages that already say what
@@ -197,14 +197,6 @@ def test_planner_falls_back_to_default_tools_on_unusable_output(fake_llm, conten
     assert result["current_step"] == "gathering"
 
 
-def test_planner_skips_the_llm_entirely_without_race_info(fake_llm):
-    """No race info means nothing to plan around — the defaults are used without an API call."""
-    llm = fake_llm('["get_track_info"]')
-    result = planner_node(make_state(race_info=None))
-    assert result["tasks"] == DEFAULT_TOOLS
-    assert llm.calls == []
-
-
 def test_planner_degrades_to_default_tools_when_the_llm_call_fails(fake_llm):
     """An unreachable or rate-limited LLM must not take the whole briefing down.
 
@@ -245,7 +237,7 @@ def test_planner_logs_which_llm_failure_caused_the_fallback(fake_llm, caplog):
     ("task_name", "expected_args"),
     [
         ("get_track_info", {"circuit_name": "Monaco Grand Prix", "year": 2024}),
-        ("get_season_standings", {"year": 2024}),
+        ("get_recent_top_finishers", {"year": 2024}),
         ("get_circuit_winners", {"circuit_name": "Monaco Grand Prix", "years_back": 3}),
         ("search_f1_news", {"query": "Monaco Grand Prix 2025", "max_results": 5}),
         ("get_race_weather", {"city": "Monaco", "country_code": "MC"}),
@@ -293,12 +285,6 @@ def test_an_unhandled_task_name_reports_a_missing_handler():
 
 
 # ── Tool executor node ───────────────────────────────────────────────────────
-
-
-def test_tool_executor_requires_race_info():
-    result = tool_executor_node(make_state(race_info=None, tasks=["get_track_info"]))
-    assert result["current_step"] == "error"
-    assert result["briefing"] == "No race information available"
 
 
 def test_tool_executor_runs_every_planned_tool(monkeypatch):

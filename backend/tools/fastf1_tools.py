@@ -3,41 +3,34 @@
 from datetime import date
 from typing import Any
 
-import fastf1
 from langchain_core.tools import tool
 
+from tools.fastf1_helpers import find_event, format_position, load_race_session
 from tools.schedule_cache import get_schedule
 
 
 @tool
 def get_track_info(circuit_name: str, year: int) -> dict[str, Any]:
-    """Get detailed track information including characteristics, length, corners, and DRS zones.
+    """Get event details for a circuit: name, location, country, date, and format.
 
     Args:
         circuit_name: Name of the circuit/Grand Prix (e.g., 'Monaco', 'Silverstone').
         year: Year of the race.
 
     Returns:
-        Dictionary with track details or an 'error' key on failure.
+        Dictionary with event details or an 'error' key on failure.
     """
     try:
         schedule = get_schedule(year)
-        event = schedule[schedule["EventName"].str.contains(circuit_name, case=False, na=False)]
+        event_data = find_event(schedule, circuit_name)
 
-        if event.empty:
+        if event_data is None:
             return {"error": f"No event found for {circuit_name} in {year}"}
-
-        event_data = event.iloc[0]
-        session = fastf1.get_session(year, event_data["EventName"], "R")
-        session.load(telemetry=False, weather=False, messages=False)
-
-        circuit_length = session.event.get("CircuitLength")
 
         return {
             "circuit_name": event_data["EventName"],
             "country": event_data["Country"],
             "location": event_data["Location"],
-            "circuit_length_km": float(circuit_length) if circuit_length is not None else None,
             "date": str(event_data["EventDate"]),
             "event_format": event_data.get("EventFormat", "Standard"),
             "official_name": event_data.get("OfficialEventName", event_data["EventName"]),
@@ -58,8 +51,7 @@ def get_recent_race_results(event_name: str, year: int) -> dict[str, Any]:
         Dictionary with race results or an 'error' key on failure.
     """
     try:
-        session = fastf1.get_session(year, event_name, "R")
-        session.load(telemetry=False, weather=False, messages=False)
+        session = load_race_session(year, event_name)
 
         top_10 = session.results.head(10)[
             ["Position", "DriverNumber", "Abbreviation", "TeamName", "Points", "Status"]
@@ -80,7 +72,8 @@ def get_driver_form(driver_code: str, year: int, num_races: int = 5) -> dict[str
 
     Args:
         driver_code: Three-letter driver abbreviation (e.g., 'VER', 'HAM', 'LEC').
-        year: Current season year.
+        year: Season to analyse (the pipeline passes historical_year — the last
+            completed season for upcoming events).
         num_races: Number of recent races to analyse (default: 5).
 
     Returns:
@@ -96,20 +89,16 @@ def get_driver_form(driver_code: str, year: int, num_races: int = 5) -> dict[str
 
         for _, event in completed_events.iterrows():
             try:
-                session = fastf1.get_session(year, event["EventName"], "R")
-                session.load(telemetry=False, weather=False, messages=False)
+                session = load_race_session(year, event["EventName"])
                 driver_result = session.results[session.results["Abbreviation"] == driver_code]
 
                 if not driver_result.empty:
                     result_data = driver_result.iloc[0]
-                    position = (
-                        int(result_data["Position"]) if result_data["Position"] > 0 else "DNF"
-                    )
                     points = float(result_data["Points"])
                     driver_results.append(
                         {
                             "event": event["EventName"],
-                            "position": position,
+                            "position": format_position(result_data["Position"]),
                             "points": points,
                             "status": result_data["Status"],
                         }

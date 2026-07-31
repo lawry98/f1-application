@@ -4,19 +4,19 @@ An AI-powered F1 race weekend briefing generator that provides comprehensive pre
 
 ## Features
 
-- **Comprehensive Race Analysis**: Track profiles, championship standings, circuit history
+- **Comprehensive Race Analysis**: Track profiles, recent results, circuit history
 - **AI-Powered Insights**: Gemini 3.6 Flash synthesizes data into expert-level briefings
 - **Multi-Source Data**: FastF1 telemetry, web search (Tavily), weather forecasts (OpenWeather)
 - **Agent Transparency**: View the tool execution trace for each briefing
 - **Real-time Streaming**: Server-Sent Events for live updates as the agent works
 - **Modern 3D UI**: Three.js F1 car visualization with team liveries
 - **F1 Car Teardown**: Scroll-driven anatomy page — 192 frames reveal the car's internals as you scroll
-- **Team Explorer**: All 10 teams for 2026 with liveries, driver line-ups, and a side-by-side comparison grid
+- **Team Explorer**: All 11 teams for 2026 with liveries, driver line-ups, and a side-by-side comparison grid
 
 ## Tech Stack
 
 ### Backend
-- **Python 3.11+** with FastAPI + Uvicorn
+- **Python 3.12** with FastAPI + Uvicorn
 - **LangGraph** for agent orchestration (4-node pipeline)
 - **LangChain + Google Gemini** (`gemini-3.6-flash`)
 - **FastF1** for F1 telemetry and session data
@@ -27,7 +27,7 @@ An AI-powered F1 race weekend briefing generator that provides comprehensive pre
 ### Frontend
 - **Next.js 14** (App Router) + React 18
 - **TypeScript** (strict mode)
-- **Three.js / @react-three/fiber / @react-three/drei** for 3D car visuals
+- **Three.js / @react-three/fiber** for 3D car visuals
 - **Tailwind CSS** + **shadcn/ui** + **Magic UI** (vendored into `components/ui/`)
 - **Motion** for animation
 - **pnpm** package manager (versions pinned in `mise.toml`)
@@ -57,11 +57,11 @@ f1-application/
 │   │   └── ui/       shadcn/ui + Magic UI components
 │   ├── data/         Static team and driver data
 │   ├── hooks/        Custom React hooks
-│   ├── lib/          API client, constants, utilities
+│   ├── lib/          API client and utilities
 │   ├── types/        Shared TypeScript types
 │   └── package.json
 ├── docs/agents/      Issue tracker, triage, and domain-doc conventions
-├── mise.toml         Pinned Node and pnpm versions
+├── mise.toml         Pinned Node, pnpm, and Python versions
 ├── CLAUDE.md         Conventions and gotchas for AI coding agents
 └── README.md
 ```
@@ -73,7 +73,7 @@ f1-application/
 
 ### Prerequisites
 
-- Python 3.11+
+- Python 3.12 (pinned in `mise.toml`, matching CI)
 - Node.js and pnpm — versions are pinned in `mise.toml`, so with
   [mise](https://mise.jdx.dev) installed, `mise install` gets you the right ones.
   Without mise: Node.js 18+ and pnpm 11.
@@ -122,6 +122,9 @@ pnpm dev
 
 Frontend runs on `http://localhost:3000`.
 
+> **Windows shortcut**: `start-backend.ps1` and `start-frontend.ps1` at the repo root run the
+> setup steps above (venv/`node_modules` bootstrap + dev server) in one go.
+
 ### Frontend Environment (optional)
 
 Create `frontend/.env.local` to override the backend URL:
@@ -155,7 +158,7 @@ INPUT ("Monaco GP 2025")
 │               │  - get_track_info           (FastF1)
 │               │  - get_recent_race_results  (FastF1)
 │               │  - get_driver_form          (FastF1)
-│               │  - get_season_standings     (FastF1)
+│               │  - get_recent_top_finishers (FastF1)
 │               │  - get_circuit_winners      (FastF1)
 │               │  - search_f1_news           (Tavily)
 │               │  - get_race_weather         (OpenWeather)
@@ -186,7 +189,7 @@ OUTPUT (Race Briefing)
 | `/` | Landing page — features overview and entry point |
 | `/briefing` | AI race weekend briefing chat |
 | `/teardown` | Scroll-driven F1 car anatomy (192-frame canvas animation) |
-| `/showcase` | Interactive 3D car with all 10 team liveries |
+| `/showcase` | Interactive 3D car with all 11 team liveries |
 | `/teams` | 2026 team explorer — liveries, driver line-ups, comparison grid |
 | `/credits` | Credits & attributions |
 
@@ -236,8 +239,9 @@ pnpm format     # Prettier
 - The agent gracefully handles missing data and continues with available info
 
 ### Streaming Architecture
-- The backend runs the synchronous LangGraph agent in a `ThreadPoolExecutor`
-- Events are emitted over SSE as each node completes
+- The backend iterates the LangGraph agent's `astream()` directly — no thread bridge. LangGraph
+  runs the synchronous nodes on worker threads itself, so the event loop stays free
+- Each SSE event is emitted the moment its node returns, while the rest of the run is still going
 - Frontend consumes the typed `AsyncGenerator<StreamEvent>` from `lib/api.ts`
 
 ### Working on this with an AI agent

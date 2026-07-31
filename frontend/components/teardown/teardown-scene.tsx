@@ -64,7 +64,11 @@ export function TeardownScene() {
     for (let i = 0; i < FRAME_COUNT; i++) {
       const img = new Image();
       img.onload = onComplete;
-      img.onerror = onComplete;
+      // Null the slot so drawFrame skips broken frames instead of throwing on drawImage.
+      img.onerror = () => {
+        images[i] = null;
+        onComplete();
+      };
       img.src = framePath(i);
       images[i] = img;
     }

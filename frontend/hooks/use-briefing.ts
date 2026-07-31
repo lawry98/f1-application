@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { streamBriefing } from '@/lib/api';
 import { GENERIC_BRIEFING_ERROR } from '@/lib/constants';
 import type { ToolResult } from '@/types';
@@ -28,11 +28,22 @@ export function useBriefing(): UseBriefingReturn {
   const [toolTrace, setToolTrace] = useState<ToolResult[]>([]);
   const [error, setError] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
 
   const submit = useCallback(
     async (searchQuery?: string): Promise<void> => {
       const searchTerm = searchQuery ?? query;
       if (!searchTerm.trim()) return;
+
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
 
       setLoading(true);
       setError('');
@@ -42,7 +53,7 @@ export function useBriefing(): UseBriefingReturn {
       setStatusMessage('');
 
       try {
-        const stream = streamBriefing(searchTerm);
+        const stream = streamBriefing(searchTerm, controller.signal);
         const tools: ToolResult[] = [];
 
         for await (const event of stream) {
@@ -61,11 +72,15 @@ export function useBriefing(): UseBriefingReturn {
           }
         }
       } catch (err) {
-        console.error('Briefing request failed:', err);
-        setError(GENERIC_BRIEFING_ERROR);
+        if (!controller.signal.aborted) {
+          console.error('Briefing request failed:', err);
+          setError(GENERIC_BRIEFING_ERROR);
+        }
       } finally {
-        setLoading(false);
-        setStatusMessage('');
+        if (abortRef.current === controller) {
+          setLoading(false);
+          setStatusMessage('');
+        }
       }
     },
     [query],

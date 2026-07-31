@@ -9,15 +9,15 @@ Historical data year: {historical_year}
 
 Select which tools to run to gather data for the briefing. Available tools:
 - get_track_info: Track characteristics and circuit details
-- get_season_standings: Current championship standings
+- get_recent_top_finishers: Top-10 finishing order from the most recent race (not cumulative standings)
 - get_circuit_winners: Recent winners at this circuit
 - search_f1_news: Latest news about this race
 - get_race_weather: Weather forecast for race location
-- get_driver_form: Recent form for top drivers
+- get_driver_form: Recent form for Max Verstappen
 - get_recent_race_results: Results from the most recent race at this circuit
 
 Return ONLY a JSON array of tool names to run. Example:
-["get_track_info", "get_season_standings", "get_circuit_winners", "search_f1_news", "get_race_weather"]
+["get_track_info", "get_recent_top_finishers", "get_circuit_winners", "search_f1_news", "get_race_weather"]
 
 Do not include any other text, just the JSON array."""
 
@@ -46,6 +46,8 @@ Your informed picks:
 - Podium prediction
 - Dark horse to watch
 
+Some tool results may have success=false or contain an error — ignore their data, and either omit the corresponding section or note that the data was unavailable. Never invent facts for missing data.
+
 Write in an engaging, analytical style. Use data to support points but keep it readable. Be confident in analysis while acknowledging uncertainty where appropriate.
 
 Tool Results:
@@ -55,7 +57,7 @@ Generate the complete briefing now:"""
 
 DEFAULT_TOOLS = [
     "get_track_info",
-    "get_season_standings",
+    "get_recent_top_finishers",
     "get_circuit_winners",
     "search_f1_news",
     "get_race_weather",
