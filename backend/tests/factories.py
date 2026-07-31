@@ -83,16 +83,31 @@ def make_tool(name: str, result: dict[str, Any] | None = None, raises: Exception
     return _FakeTool()
 
 
-def make_llm(content: str = "[]", raises: Exception | None = None):
+def make_llm(
+    content: str = "[]",
+    raises: Exception | None = None,
+    chunks: list[str] | None = None,
+    stream_raises_after: int | None = None,
+):
     """Build a stand-in for the module-level ``ChatGoogleGenerativeAI`` client.
 
-    The graph only calls ``.invoke(messages)`` and reads ``.text`` off the result.
+    The planner calls ``.invoke(messages)``; the synthesizer calls ``.stream(messages)``.
+    Both read ``.text`` off what they get back.
 
     ``.content`` is modelled the way Gemini 3 actually returns it — a *list of content
     blocks*, not a string — while ``.text`` flattens to the string the graph wants. Keeping
     both faithful is the point: a fake that returned a plain ``.content`` string would let
     ``response.content`` pass in tests and then hand the API a list in production, which is
-    exactly the bug this shape exists to prevent.
+    exactly the bug this shape exists to prevent. Real ``AIMessageChunk``s behave the same
+    way, so streamed chunks carry the block shape too.
+
+    Args:
+        content: Text ``.invoke()`` returns, and the default single ``.stream()`` chunk.
+        raises: If given, both ``.invoke()`` and ``.stream()`` raise it immediately.
+        chunks: Successive ``.stream()`` chunks. Defaults to ``[content]``. Their
+            concatenation is what a complete streamed briefing comes to.
+        stream_raises_after: If given, ``.stream()`` raises after yielding this many
+            chunks. ``0`` models a failure before any prose exists.
     """
 
     class _FakeResponse:
@@ -109,6 +124,17 @@ def make_llm(content: str = "[]", raises: Exception | None = None):
             if raises is not None:
                 raise raises
             return _FakeResponse(content)
+
+        def stream(self, messages: Any):
+            self.calls.append(messages)
+            if raises is not None:
+                raise raises
+            for index, chunk in enumerate(chunks if chunks is not None else [content]):
+                if stream_raises_after is not None and index >= stream_raises_after:
+                    raise RuntimeError("stream died mid-iteration")
+                yield _FakeResponse(chunk)
+            if stream_raises_after is not None:
+                raise RuntimeError("stream died mid-iteration")
 
     return _FakeLLM()
 
@@ -141,6 +167,7 @@ def make_state(**overrides: Any) -> dict[str, Any]:
         "tasks": [],
         "tool_results": [],
         "briefing": None,
+        "briefing_truncated": False,
         "current_step": "resolving",
     }
     state.update(overrides)

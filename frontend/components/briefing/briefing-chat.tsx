@@ -15,8 +15,18 @@ const F1LoadingAnimation = dynamic(
 );
 
 export function BriefingChat() {
-  const { query, loading, race, briefing, toolTrace, error, statusMessage, setQuery, submit } =
-    useBriefing();
+  const {
+    query,
+    loading,
+    race,
+    briefing,
+    truncated,
+    toolTrace,
+    error,
+    statusMessage,
+    setQuery,
+    submit,
+  } = useBriefing();
 
   const handleRaceSelect = (raceName: string): void => {
     setQuery(raceName);
@@ -61,7 +71,7 @@ export function BriefingChat() {
 
       {briefing && (
         <>
-          <BriefingCard race={race} briefing={briefing} />
+          <BriefingCard race={race} briefing={briefing} truncated={truncated} />
           <ToolTrace tools={toolTrace} />
         </>
       )}

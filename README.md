@@ -8,7 +8,7 @@ An AI-powered F1 race weekend briefing generator that provides comprehensive pre
 - **AI-Powered Insights**: Gemini 3.6 Flash synthesizes data into expert-level briefings
 - **Multi-Source Data**: FastF1 telemetry, web search (Tavily), weather forecasts (OpenWeather)
 - **Agent Transparency**: View the tool execution trace for each briefing
-- **Real-time Streaming**: Server-Sent Events for live updates as the agent works
+- **Real-time Streaming**: Server-Sent Events for live updates as the agent works, with the briefing prose filling in as the model writes it
 - **Modern 3D UI**: Three.js F1 car visualization with team liveries
 - **F1 Car Teardown**: Scroll-driven anatomy page — 192 frames reveal the car's internals as you scroll
 - **Team Explorer**: All 11 teams for 2026 with liveries, driver line-ups, and a side-by-side comparison grid
@@ -59,6 +59,7 @@ f1-application/
 │   ├── hooks/        Custom React hooks
 │   ├── lib/          API client and utilities
 │   ├── types/        Shared TypeScript types
+│   ├── tests/        Vitest suite — jsdom, no network, real SSE fixtures
 │   └── package.json
 ├── docs/agents/      Issue tracker, triage, and domain-doc conventions
 ├── mise.toml         Pinned Node, pnpm, and Python versions
@@ -224,8 +225,16 @@ pnpm dev        # Dev server
 pnpm build      # Production build
 pnpm typecheck  # TypeScript check
 pnpm lint       # ESLint
+pnpm test       # Vitest (jsdom, no network)
+pnpm test:watch # Vitest in watch mode
 pnpm format     # Prettier
 ```
+
+Frontend tests live in `frontend/tests/`. They cover the SSE client, the `useBriefing`
+hook and the briefing card; `fetch` is replaced in every test that reaches the API client,
+so nothing touches the network. The `.sse` fixtures are real bytes captured from the
+FastAPI route — regenerate them with `cd backend && python scripts/dump_sse_fixtures.py`
+after any change to the SSE contract.
 
 ## Important Notes
 
@@ -241,8 +250,13 @@ pnpm format     # Prettier
 ### Streaming Architecture
 - The backend iterates the LangGraph agent's `astream()` directly — no thread bridge. LangGraph
   runs the synchronous nodes on worker threads itself, so the event loop stays free
-- Each SSE event is emitted the moment its node returns, while the rest of the run is still going
-- Frontend consumes the typed `AsyncGenerator<StreamEvent>` from `lib/api.ts`
+- Each SSE event is emitted the moment its node returns, while the rest of the run is still
+  going — except `briefing_delta`, which the synthesizer emits *during* its own run, one per
+  chunk of prose the model produces
+- Frontend consumes the typed `AsyncGenerator<StreamEvent>` from `lib/api.ts`, buffering deltas
+  and repainting on an 80ms timer rather than once per delta
+- A synthesis that dies partway still delivers the prose it wrote, marked as unfinished — see
+  [ADR-0002](docs/adr/0002-serve-truncated-briefings.md)
 
 ### Working on this with an AI agent
 

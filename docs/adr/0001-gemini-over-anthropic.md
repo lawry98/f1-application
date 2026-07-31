@@ -12,8 +12,9 @@ replaced `langchain-anthropic` / `claude-sonnet-4` with `langchain-google-genai`
 ## Considered options
 
 **A provider abstraction** (an `LLM_PROVIDER` env var selecting Gemini or Anthropic) was
-rejected. There are exactly two `llm.invoke()` call sites and no `bind_tools` usage, so the
-swap is roughly fifteen lines across three files. An abstraction would cost two dependency
+rejected. There were exactly two `llm.invoke()` call sites and no `bind_tools` usage, so the
+swap is roughly fifteen lines across three files. (The synthesizer's has since become an
+`llm.stream()` — see ADR-0002 — which does not change the count or the argument.) An abstraction would cost two dependency
 sets, two key-validation paths and a factory to test, permanently, to avoid a change that
 takes an afternoon. Reversal is cheap; optionality is not worth its upkeep here.
 
@@ -52,3 +53,8 @@ planner is an optimisation, not a prerequisite — the pipeline produces a brief
 
 The synthesizer deliberately still fails loudly: without it there is no Briefing to return, so
 there is nothing to degrade *to*.
+
+> **Superseded in part by [ADR-0002](0002-serve-truncated-briefings.md).** The synthesizer now
+> streams, and a stream that dies *after producing prose* returns that prose marked truncated
+> rather than failing. The reasoning above still holds for the case it was written about — a
+> failure before any prose still raises, because there is still nothing to degrade to.

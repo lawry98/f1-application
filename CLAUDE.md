@@ -23,6 +23,7 @@ frontend/
   hooks/         Custom hooks, use- prefix
   lib/           api.ts (typed client), utils.ts, team-utils.ts
   types/         Shared types, re-exported through types/index.ts
+  tests/         Vitest — flat, not mirroring the source tree; fixtures/ holds real SSE bytes
 ```
 
 ## Commands
@@ -34,6 +35,7 @@ pinned in `mise.toml`, so `mise exec -- pnpm …` always uses the right ones.
 ```bash
 cd frontend && pnpm typecheck   # tsc --noEmit
 cd frontend && pnpm lint        # ESLint
+cd frontend && pnpm test        # Vitest (jsdom)
 cd backend  && ruff check .
 cd backend  && ruff format .
 ```
@@ -95,12 +97,17 @@ lookup/session helpers). Adding a file here does not make it a tool.
 **Tools never raise.** Every `@tool` returns `{"error": "..."}` on failure. The agent is built to
 continue on partial data — preserve this or the pipeline loses its degradation behaviour.
 
-**The planner degrades, the synthesizer does not.** `planner_node` catches *any* LLM failure —
-a free-tier 429 above all — and falls back to `DEFAULT_TOOLS`, because the planner only chooses
-which tools to run and the pipeline works without it. `synthesizer_node` deliberately still
-raises: without it there is no Briefing, so there is nothing to degrade to. The planner's two
+**The planner and the synthesizer degrade differently, on purpose.** `planner_node` catches
+*any* LLM failure — a free-tier 429 above all — and falls back to `DEFAULT_TOOLS`, because the
+planner only chooses which tools to run and the pipeline works without it. The planner's two
 failure paths log differently on purpose ("LLM call failed" vs "failed to parse response") —
 one means the model was never reached, the other that it returned something unusable.
+
+`synthesizer_node` degrades only once it has prose: a stream that dies after at least one chunk
+returns the partial briefing with `briefing_truncated: True` and `current_step: "complete"`,
+while a failure before the first chunk still raises. That bare `except` around an LLM call
+followed by a "complete" step is deliberate and looks wrong on sight — read
+[ADR-0002](docs/adr/0002-serve-truncated-briefings.md) before changing it.
 
 **Read `response.text`, never `response.content`.** Gemini 3 returns `.content` as a *list of
 content blocks*, not a string. Using `.content` fails in two ways that both look like something
@@ -119,6 +126,11 @@ of the run is still going. The graph's nodes stay *synchronous* — LangGraph of
 worker threads itself, so the event loop is never blocked and node signatures need no `async`.
 There is no executor in the API layer; `EXECUTOR_MAX_WORKERS` governs only the tool fan-out inside
 `tool_executor_node`.
+
+Because it asks for two stream modes — `stream_mode=["updates", "custom"]` — `astream` yields
+`(mode, payload)` **tuples**, not the bare `{node: partial_state}` dicts a single mode gives. The
+`custom` mode carries the synthesizer's briefing Deltas, written with `get_stream_writer()`. That
+writer no-ops under plain `.invoke()`, so `/api/briefing` needs no special-casing.
 
 **SSE discrimination uses the `event:` line** from the SSE protocol, not field-presence
 heuristics on the payload.
@@ -151,6 +163,26 @@ is sized `min(92vw, calc(82vh * 800 / 420))` to respect both viewport constraint
 - **No `any` on SSE events** — everything flows through the `StreamEvent` discriminated union.
 - **shadcn/ui** components in `components/ui/` are generated; re-add with `pnpm dlx shadcn add
   <name>` from `frontend/` (where `components.json` lives) rather than editing them by hand.
+
+### Frontend tests
+
+Vitest with jsdom, in `frontend/tests/`. Three things about them are not guessable:
+
+- **`next lint` only walks the directories listed in `next.config.js`'s `eslint.dirs`.**
+  `tests/` is in that list *because* it is not one of Next's defaults — without the entry,
+  `pnpm lint` passes while never looking at a test file. Add any new top-level directory there.
+- **The `.sse` fixtures are real captured bytes, not hand-written.** `frontend/tests/fixtures/`
+  holds output from the actual FastAPI route; regenerate with
+  `cd backend && python scripts/dump_sse_fixtures.py`, which imports its step fixtures from
+  `backend/tests/api/test_routes.py`. Editing a `.sse` file by hand decouples the parser tests
+  from the format the backend really serves, which is the one thing they exist to catch.
+- **`tests/setup.ts` stubs `IntersectionObserver`.** jsdom has none, and `BlurFade` wraps most
+  page sections, so without it any test that renders one dies inside framer-motion's `useInView`.
+
+Fake timers are load-bearing in `use-briefing.test.tsx` — the flush interval is a module
+constant, so controlling the clock is the only way to observe a paint mid-stream. Use
+`vi.advanceTimersByTimeAsync` and not the sync variant; the stream's promise chain has to be
+allowed to run between pushes.
 
 ### Backend
 

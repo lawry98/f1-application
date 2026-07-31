@@ -7,9 +7,11 @@ import { BlurFade } from '@/components/ui/blur-fade';
 interface BriefingCardProps {
   race: string;
   briefing: string;
+  /** Whether synthesis stopped partway, leaving the prose unfinished. */
+  truncated?: boolean;
 }
 
-export function BriefingCard({ race, briefing }: BriefingCardProps) {
+export function BriefingCard({ race, briefing, truncated }: BriefingCardProps) {
   return (
     <BlurFade delay={0.1} inView>
       <Card className="border-zinc-800 bg-zinc-900 shadow-xl">
@@ -50,6 +52,18 @@ export function BriefingCard({ race, briefing }: BriefingCardProps) {
               {briefing}
             </ReactMarkdown>
           </div>
+
+          {/*
+            Deliberately calm, and deliberately *after* the prose: the briefing
+            above is worth reading, and an alarm at the top would say otherwise.
+            The alternative — an `error` event in the red banner — was rejected
+            in ADR-0002.
+          */}
+          {truncated && (
+            <p className="mt-6 border-t border-zinc-800 pt-4 text-sm italic text-zinc-500">
+              This briefing stopped early — the rest could not be generated.
+            </p>
+          )}
         </CardContent>
       </Card>
     </BlurFade>

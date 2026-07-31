@@ -24,4 +24,8 @@ class AgentState(TypedDict):
     tasks: list[str]
     tool_results: list[ToolResult]
     briefing: str | None
+    # Whether ``briefing`` is the whole synthesis or only what got written before it
+    # failed. Named for its subject because the state dict is flat — bare ``truncated``
+    # would not say truncated-what. See ADR-0002.
+    briefing_truncated: bool
     current_step: str

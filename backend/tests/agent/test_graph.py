@@ -7,7 +7,7 @@ monkeypatches ``agent.graph.llm``. No test here makes a network call.
 import logging
 
 import pytest
-from langgraph.graph import END
+from langgraph.graph import END, StateGraph
 
 from agent import graph as graph_module
 from agent.graph import (
@@ -19,6 +19,7 @@ from agent.graph import (
     tool_executor_node,
 )
 from agent.prompts import DEFAULT_TOOLS
+from agent.state import AgentState
 from tests.factories import make_llm, make_race_info, make_state, make_tool
 
 
@@ -26,12 +27,47 @@ from tests.factories import make_llm, make_race_info, make_state, make_tool
 def fake_llm(monkeypatch):
     """Install a fake LLM and hand back the installer so tests can set the response."""
 
-    def _install(content: str = "[]", raises: Exception | None = None):
-        llm = make_llm(content=content, raises=raises)
+    def _install(content: str = "[]", **kwargs):
+        llm = make_llm(content=content, **kwargs)
         monkeypatch.setattr(graph_module, "llm", llm)
         return llm
 
     return _install
+
+
+def run_synthesizer_streamed(state: dict | None = None) -> tuple[list[dict], dict]:
+    """Run ``synthesizer_node`` inside a one-node graph, streamed with ``custom`` mode.
+
+    This is how every test that reaches the node drives it. ``get_stream_writer()`` needs
+    an ambient runnable context, so the node cannot be called on its own; a throwaway
+    single-node graph is the smallest thing that provides one, and it exercises the writer
+    exactly as the production graph does instead of doubling it.
+
+    ``state`` defaults to a resolved race with one successful tool — enough to get past
+    the node's no-data short circuit, which is all most of these tests need.
+
+    Returns the custom payloads in order, and the node's state update.
+    """
+    if state is None:
+        state = make_state(
+            race_info=make_race_info(),
+            tool_results=[{"tool_name": "get_track_info", "success": True, "data": {"len": 3.3}}],
+        )
+
+    workflow = StateGraph(AgentState)
+    workflow.add_node("synthesizer", synthesizer_node)
+    workflow.set_entry_point("synthesizer")
+    workflow.add_edge("synthesizer", END)
+
+    deltas: list[dict] = []
+    update: dict = {}
+    for mode, payload in workflow.compile().stream(state, stream_mode=["updates", "custom"]):
+        if mode == "custom":
+            deltas.append(payload)
+        else:
+            update.update(payload.get("synthesizer", {}))
+
+    return deltas, update
 
 
 # ── Routing ──────────────────────────────────────────────────────────────────
@@ -357,23 +393,20 @@ def test_tool_executor_with_no_tasks_produces_no_results(monkeypatch):
 def test_synthesizer_returns_the_llm_output_as_the_briefing(fake_llm):
     fake_llm("## Monaco Grand Prix\n\nTight, slow, unforgiving.")
 
-    result = synthesizer_node(
-        make_state(
-            race_info=make_race_info(),
-            tool_results=[{"tool_name": "get_track_info", "success": True, "data": {"len": 3.3}}],
-        )
-    )
+    _, update = run_synthesizer_streamed()
 
-    assert result["briefing"].startswith("## Monaco Grand Prix")
-    assert result["current_step"] == "complete"
+    assert update["briefing"].startswith("## Monaco Grand Prix")
+    assert update["current_step"] == "complete"
 
 
 def test_synthesizer_short_circuits_without_tool_results(fake_llm):
     """No data means no API call — the node bails before reaching the LLM."""
     llm = fake_llm("should not be used")
-    result = synthesizer_node(make_state(race_info=make_race_info(), tool_results=[]))
-    assert result["briefing"] == "No data available to generate briefing"
-    assert result["current_step"] == "complete"
+
+    _, update = run_synthesizer_streamed(make_state(race_info=make_race_info(), tool_results=[]))
+
+    assert update["briefing"] == "No data available to generate briefing"
+    assert update["current_step"] == "complete"
     assert llm.calls == []
 
 
@@ -381,7 +414,7 @@ def test_synthesizer_includes_failed_tools_in_the_prompt(fake_llm):
     """Failures are handed to the LLM too, so it can say what it could not find out."""
     llm = fake_llm("briefing")
 
-    synthesizer_node(
+    run_synthesizer_streamed(
         make_state(
             race_info=make_race_info(),
             tool_results=[
@@ -393,3 +426,89 @@ def test_synthesizer_includes_failed_tools_in_the_prompt(fake_llm):
     system_prompt = llm.calls[0][0].content
     assert "get_race_weather" in system_prompt
     assert "no key" in system_prompt
+
+
+def test_synthesizer_writes_one_delta_per_chunk(fake_llm):
+    """Deltas are how the prose reaches the reader while it is still being written.
+
+    Exactly one write per chunk, in order, tagged with the ``kind`` the transport
+    switches on. Appending every Delta reconstructs the Briefing — the reconciliation
+    guarantee the terminal ``briefing`` event exists to check.
+    """
+    fake_llm(chunks=["## Mon", "aco\n\n", "Tight."])
+
+    deltas, update = run_synthesizer_streamed()
+
+    assert deltas == [
+        {"kind": "briefing_delta", "content": "## Mon"},
+        {"kind": "briefing_delta", "content": "aco\n\n"},
+        {"kind": "briefing_delta", "content": "Tight."},
+    ]
+    assert update["briefing"] == "## Monaco\n\nTight."
+
+
+def test_a_complete_synthesis_is_not_truncated(fake_llm):
+    fake_llm(chunks=["all ", "of it"])
+
+    _, update = run_synthesizer_streamed()
+
+    assert update["briefing"] == "all of it"
+    assert update["briefing_truncated"] is False
+
+
+def test_synthesizer_returns_partial_prose_when_the_stream_dies_mid_iteration(fake_llm):
+    """Both LLM nodes degrade, but on different terms — and the difference is deliberate.
+
+    ``test_planner_degrades_to_default_tools_when_the_llm_call_fails`` pins the node one
+    step earlier degrading *unconditionally*, because ``DEFAULT_TOOLS`` is always there to
+    fall back to. The synthesizer has no fallback prose, so it can only degrade once the
+    stream has produced some. See ADR-0002.
+    """
+    fake_llm(chunks=["## Monaco\n\n", "Tight, slow, ", "unforgiv"], stream_raises_after=2)
+
+    deltas, update = run_synthesizer_streamed()
+
+    assert update["briefing"] == "## Monaco\n\nTight, slow, "
+    assert update["briefing_truncated"] is True
+    assert [d["content"] for d in deltas] == ["## Monaco\n\n", "Tight, slow, "]
+
+
+def test_a_truncated_synthesis_still_reports_the_run_complete(fake_llm):
+    """The single thing stopping the sync endpoint discarding a readable partial Briefing.
+
+    ``routes.py`` 500s on ``current_step == "error"``. Truncation is a property of the
+    Briefing, not a phase of the pipeline — the pipeline reached the end either way — so
+    the Step stays ``complete`` and ``error`` keeps meaning exactly "Resolution failed".
+    """
+    fake_llm(chunks=["some prose"], stream_raises_after=1)
+
+    _, update = run_synthesizer_streamed()
+
+    assert update["current_step"] == "complete"
+    assert update["briefing_truncated"] is True
+
+
+def test_synthesizer_propagates_a_failure_before_any_prose_exists(fake_llm):
+    """The ≥1 Delta rule: no prose is not a Truncated Briefing, it is no Briefing.
+
+    There is nothing to degrade to, so the exception travels and the run surfaces as an
+    error rather than delivering an empty Briefing marked unfinished.
+    """
+    fake_llm(chunks=["never reached"], stream_raises_after=0)
+
+    with pytest.raises(RuntimeError, match="stream died mid-iteration"):
+        run_synthesizer_streamed()
+
+
+def test_chunks_that_carried_no_prose_do_not_count_as_a_truncated_briefing(fake_llm):
+    """The ≥1 Delta rule is about prose, not chunk count.
+
+    Gemini emits metadata-only chunks whose ``.text`` is empty. Counting those as prose
+    would return an empty briefing marked truncated, which the transport then drops on
+    its ``if briefing:`` guard — ending the stream with no ``briefing``, no ``complete``
+    and no ``error``, leaving the client waiting on a stream that is already over.
+    """
+    fake_llm(chunks=["", ""], stream_raises_after=2)
+
+    with pytest.raises(RuntimeError, match="stream died mid-iteration"):
+        run_synthesizer_streamed()

@@ -24,6 +24,7 @@ All agent state flows through a single `AgentState` TypedDict (`backend/agent/st
 - `tasks` - List of tool names to execute (strings matching tool function names)
 - `tool_results` - List of `ToolResult` TypedDicts tracking each tool's outcome
 - `briefing` - Final markdown briefing string or `None`
+- `briefing_truncated` - Whether `briefing` is the whole synthesis or only what was written before the LLM stream failed. Orthogonal to `current_step`: a truncated run still reports `"complete"` (see [ADR-0002](../../docs/adr/0002-serve-truncated-briefings.md)). Named for its subject because the state dict is flat — bare `truncated` would not say truncated-what; the API's `BriefingResponse` nests it under the briefing and so calls it `truncated`.
 - `current_step` - Progress marker: "resolving" | "planning" | "gathering" | "synthesizing" | "complete" | "error"
 
 Supporting TypedDicts (`RaceInfo`, `ToolResult`) are flat structures with no nesting beyond `data: dict` on ToolResult. There is no `messages` field and no LangGraph message reducer — the two LLM-calling nodes build local message lists.
@@ -63,9 +64,25 @@ This pattern appears uniformly across all 7 tools. The synthesizer receives fail
 ## 5. SSE Streaming over Native `astream` (API Layer)
 
 The streaming endpoint's `event_generator` is a single-layer async generator: it iterates
-`agent.astream(initial_state)` with `async for` and translates each `{node_name: partial_state}`
-chunk into one or more SSE events with typed event names (`status`, `race_info`, `tool_result`,
-`briefing`, `complete`, `error`).
+`agent.astream(initial_state, stream_mode=["updates", "custom"])` with `async for` and translates
+what comes out into SSE events with typed event names (`status`, `race_info`, `tool_result`,
+`briefing_delta`, `briefing`, `complete`, `error`).
+
+Asking for two stream modes changes the shape of what `astream` yields: **`(mode, payload)`
+tuples**, not the bare `{node_name: partial_state}` dicts a single mode produces. The generator
+switches on `mode` first.
+
+- `"updates"` → `{node_name: partial_state}`, one per completed node, as before.
+- `"custom"` → whatever a node wrote with `get_stream_writer()`, arriving *while* that node runs.
+  Payloads carry a `kind` discriminator; today the only one is `briefing_delta`. The discriminator
+  is not yet load-bearing — it is the seam a future per-tool trickle needs, so that
+  `tool_executor_node` can emit results one at a time instead of in a burst.
+
+**Deltas come from the node, not the transport.** `synthesizer_node` iterates `llm.stream()` and
+writes one custom payload per chunk while accumulating the text. The transport stays a dumb
+translator, and truncation therefore reaches *both* endpoints — `get_stream_writer()` no-ops under
+plain `.invoke()`, so `/api/briefing` needs no special-casing and still returns the partial prose
+it would otherwise have 500ed away.
 
 There is **no thread bridge**. LangGraph's `astream()` runs the graph's synchronous node functions
 on anyio worker threads itself, so the event loop is not blocked and node signatures stay
@@ -83,9 +100,12 @@ progress UI decorative. A change here that reintroduces buffering will pass ever
 - `status` -> `{step: string, message: string}`
 - `race_info` -> `RaceInfo` fields
 - `tool_result` -> `{tool: string, success: boolean}`
-- `briefing` -> `{content: string}` (the full markdown briefing)
-- `complete` -> `{message: "Briefing complete"}`
+- `briefing_delta` -> `{content: string}` (one increment of the briefing; no semantic boundaries — a delta may be a fraction of a word)
+- `briefing` -> `{content: string, truncated: boolean}` (the full markdown briefing). It no longer means "the briefing is complete" — `truncated` says that. It is retained as a reconciliation anchor: `lib/api.ts` silently swallows malformed frames, so without it a dropped delta would corrupt the rendered document undetectably.
+- `complete` -> `{message: "Briefing complete"}` (fires on a truncated run too; `error` does not)
 - `error` -> `{message: string}` (generic text — internal exception details are logged, never sent to the client)
+
+**The frontend coalesces deltas rather than rendering each one.** See §8 — the wire deliberately carries every delta, and batching is a rendering decision made in `use-briefing.ts`.
 
 ## 6. Dynamic Import with SSR Bypass (Frontend 3D)
 
@@ -110,15 +130,24 @@ The frontend consumes SSE streams via an `async function*` generator (`streamBri
 
 Event type discrimination uses the **SSE `event:` line**: the generator captures it into `eventType` and a `switch (eventType)` casts each JSON-parsed `data:` payload to the matching `StreamEvent` arm. It never inspects payload field presence — that heuristic was deliberately removed; do not reintroduce it.
 
-The consumer is `frontend/hooks/use-briefing.ts`, which drives the generator with `for await...of`.
+The generator is a **pure translator** — it yields every `briefing_delta` the backend sends and does no accumulation. Deciding what to do with them belongs to the consumer, `frontend/hooks/use-briefing.ts`, which drives the generator with `for await...of`.
 
 ## 8. React Hooks Local State (Frontend State Management)
 
 No global state store. Briefing state lives in the `useBriefing` custom hook (`frontend/hooks/use-briefing.ts`), which owns:
 
-- `query`, `loading`, `race`, `briefing`, `toolTrace`, `error`, `statusMessage`
+- `query`, `loading`, `race`, `briefing`, `truncated`, `toolTrace`, `error`, `statusMessage`
 
 plus an `AbortController` ref: each `submit()` aborts any in-flight stream, resets state, and consumes `streamBriefing`; unmount aborts via a `useEffect` cleanup. `BriefingChat` (`frontend/components/briefing/briefing-chat.tsx`) is a slim orchestrator over the hook; child components (`BriefingCard`, `ToolTrace`, `RaceSelector`) receive data via props only.
+
+**Deltas are buffered in a ref, not in state.** `briefing_delta` events append to a `bufferRef` and a `setTimeout` paints the accumulation every `FLUSH_INTERVAL_MS` (80ms). Setting state per delta would re-parse the whole accumulated markdown string on every one of an estimated 500–1500 deltas — quadratic in the length of the briefing. Ten flushes a second is perceptually continuous.
+
+Two consequences worth keeping:
+
+- **The terminal `briefing` event replaces the buffer, it does not append to it.** That is what makes it a reconciliation anchor, and it doubles as the final flush — so there is no stranded-deltas case to handle separately. Changing it to append would both double the prose and silently drop the anchor's error-correcting job.
+- **The flush timer is cleared on unmount and at the start of every `submit()`**, and the event loop `break`s if `abortRef.current` is no longer this request's controller. `bufferRef` is shared across requests, so a stale delta from a superseded stream would not merely paint late — it would prepend itself to the next briefing.
+
+All of the above is pinned by `frontend/tests/use-briefing.test.tsx`, which drives the hook through the real `streamBriefing` over a controllable reader — only `fetch` is faked. Each of those behaviours was verified to fail the suite when deliberately broken.
 
 ## 9. Pydantic Request/Response Models (API Contracts)
 
