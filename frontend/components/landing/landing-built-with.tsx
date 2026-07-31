@@ -3,7 +3,7 @@ import { BlurFade } from '@/components/ui/blur-fade';
 const TECH_STACK = [
   { label: 'FastF1', note: 'Telemetry & results' },
   { label: 'LangGraph', note: 'Agent orchestration' },
-  { label: 'Claude Sonnet 4', note: 'Synthesis & analysis' },
+  { label: 'Gemini 3.6 Flash', note: 'Synthesis & analysis' },
   { label: 'OpenWeather', note: 'Weather forecasts' },
   { label: 'Tavily', note: 'News & web search' },
   { label: 'Next.js 14', note: 'Frontend framework' },

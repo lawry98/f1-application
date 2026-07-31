@@ -29,7 +29,7 @@ if (-Not (Test-Path ".env")) {
     Write-Host "WARNING: .env file not found!" -ForegroundColor Red
     Write-Host "Please create .env file with your API keys:" -ForegroundColor Yellow
     Write-Host "  1. Copy env.example to .env" -ForegroundColor White
-    Write-Host "  2. Add your ANTHROPIC_API_KEY (required)" -ForegroundColor White
+    Write-Host "  2. Add your GOOGLE_API_KEY (required)" -ForegroundColor White
     Write-Host "  3. Optionally add TAVILY_API_KEY (news search)" -ForegroundColor White
     Write-Host "  4. Optionally add OPENWEATHER_API_KEY (weather)" -ForegroundColor White
     Write-Host ""

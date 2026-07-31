@@ -76,7 +76,9 @@ def resolve_next_race(query: str) -> dict[str, Any]:
 
     Returns dict with keys:
         name, year, location, country, date, is_upcoming, historical_year, circuit_id
-    Or dict with key 'error' on failure.
+    Or dict with key 'error' on failure. 'error' is always safe to display; a
+    schedule-load failure also carries a log-only 'detail' key with the upstream
+    exception text.
     """
     circuit_query, explicit_year = _parse_query(query)
 
@@ -92,7 +94,12 @@ def resolve_next_race(query: str) -> dict[str, Any]:
         try:
             schedule = get_schedule(explicit_year)
         except Exception as e:
-            return {"error": f"Could not load {explicit_year} schedule: {e}"}
+            # `error` is safe to display: the year is the user's own input. The
+            # upstream exception text is log-only, under the optional `detail` key.
+            return {
+                "error": f"Could not load the {explicit_year} season schedule.",
+                "detail": str(e),
+            }
 
         event = _find_event(schedule, search_term)
         if event is None:

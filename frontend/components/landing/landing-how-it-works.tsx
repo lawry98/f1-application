@@ -16,9 +16,9 @@ const STEPS = [
   },
   {
     number: '03',
-    title: 'Claude synthesizes',
+    title: 'Gemini synthesizes',
     description:
-      'Claude Sonnet 4 reads all gathered data and synthesizes it into a structured, insightful briefing — not a data dump, but coherent analysis calibrated for the race weekend ahead.',
+      'Gemini 3.6 Flash reads all gathered data and synthesizes it into a structured, insightful briefing — not a data dump, but coherent analysis calibrated for the race weekend ahead.',
   },
   {
     number: '04',

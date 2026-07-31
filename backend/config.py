@@ -7,9 +7,15 @@ logger = logging.getLogger(__name__)
 
 # ── LLM ─────────────────────────────────────────────────────────────────────
 
-ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
-LLM_MODEL: str = "claude-sonnet-4-20250514"
-LLM_TEMPERATURE: float = 0.7
+GOOGLE_API_KEY: str = os.getenv("GOOGLE_API_KEY", "")
+LLM_MODEL: str = "gemini-3.6-flash"
+
+# There is deliberately no LLM_TEMPERATURE here. gemini-3.6-flash uses fixed sampling
+# defaults and *ignores* a temperature argument entirely — passing one changes nothing and
+# makes the client log a UserWarning on every construction. Gemini 3 is optimised for its
+# default sampling in any case, and Google warns that lowering temperature risks looping or
+# degraded reasoning, so there is nothing to tune here even where the knob is honoured.
+# Do not reintroduce one for the synthesizer's prose.
 
 # ── Optional integrations ────────────────────────────────────────────────────
 
@@ -68,11 +74,11 @@ COUNTRY_CODE_MAP: dict[str, str] = {
 
 def validate_config() -> None:
     """Validate required environment variables; exit on fatal misconfiguration."""
-    if not ANTHROPIC_API_KEY or ANTHROPIC_API_KEY.startswith("sk-ant-your"):
+    if not GOOGLE_API_KEY or GOOGLE_API_KEY.startswith("your-google"):
         logger.critical(
-            "ANTHROPIC_API_KEY not configured. "
-            "Edit backend/.env and add your actual Anthropic API key. "
-            "Get your key from: https://console.anthropic.com"
+            "GOOGLE_API_KEY not configured. "
+            "Edit backend/.env and add your actual Google AI Studio API key. "
+            "Get your key from: https://aistudio.google.com/apikey"
         )
         raise SystemExit(1)
 

@@ -1,5 +1,5 @@
 """Tests for validate_config's contract, as documented in CLAUDE.md's env-var table:
-a missing (or placeholder) ANTHROPIC_API_KEY is fatal, missing optional keys warn.
+a missing (or placeholder) GOOGLE_API_KEY is fatal, missing optional keys warn.
 
 The constants are patched on the module rather than via the environment — config.py
 reads env vars once at import, which happened long before any test ran.
@@ -12,9 +12,11 @@ import pytest
 import config
 
 
-@pytest.mark.parametrize("key", ["", "sk-ant-your-key-here"], ids=["missing", "placeholder"])
-def test_an_unconfigured_anthropic_key_exits_with_code_1(monkeypatch, key):
-    monkeypatch.setattr(config, "ANTHROPIC_API_KEY", key)
+@pytest.mark.parametrize(
+    "key", ["", "your-google-ai-studio-api-key-here"], ids=["missing", "placeholder"]
+)
+def test_an_unconfigured_google_key_exits_with_code_1(monkeypatch, key):
+    monkeypatch.setattr(config, "GOOGLE_API_KEY", key)
 
     with pytest.raises(SystemExit) as excinfo:
         config.validate_config()
@@ -23,7 +25,7 @@ def test_an_unconfigured_anthropic_key_exits_with_code_1(monkeypatch, key):
 
 
 def test_missing_optional_keys_warn_but_do_not_fail(monkeypatch, caplog):
-    monkeypatch.setattr(config, "ANTHROPIC_API_KEY", "sk-ant-api-valid-key")
+    monkeypatch.setattr(config, "GOOGLE_API_KEY", "AIza-valid-key")
     monkeypatch.setattr(config, "TAVILY_API_KEY", "")
     monkeypatch.setattr(config, "OPENWEATHER_API_KEY", "")
 
@@ -36,7 +38,7 @@ def test_missing_optional_keys_warn_but_do_not_fail(monkeypatch, caplog):
 
 def test_placeholder_optional_keys_count_as_unconfigured(monkeypatch, caplog):
     """Values copied straight from env.example must warn like absent ones."""
-    monkeypatch.setattr(config, "ANTHROPIC_API_KEY", "sk-ant-api-valid-key")
+    monkeypatch.setattr(config, "GOOGLE_API_KEY", "AIza-valid-key")
     monkeypatch.setattr(config, "TAVILY_API_KEY", "tvly-your-key-here")
     monkeypatch.setattr(config, "OPENWEATHER_API_KEY", "your-openweather-api-key-here")
 
@@ -48,7 +50,7 @@ def test_placeholder_optional_keys_count_as_unconfigured(monkeypatch, caplog):
 
 
 def test_a_fully_configured_environment_validates_silently(monkeypatch, caplog):
-    monkeypatch.setattr(config, "ANTHROPIC_API_KEY", "sk-ant-api-valid-key")
+    monkeypatch.setattr(config, "GOOGLE_API_KEY", "AIza-valid-key")
     monkeypatch.setattr(config, "TAVILY_API_KEY", "tvly-real-key")
     monkeypatch.setattr(config, "OPENWEATHER_API_KEY", "a-real-openweather-key")
 

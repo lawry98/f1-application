@@ -5,18 +5,17 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
-from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import END, StateGraph
 
 from agent.prompts import DEFAULT_TOOLS, PLANNER_PROMPT, SYNTHESIZER_PROMPT
 from agent.state import AgentState, RaceInfo, ToolResult
 from config import (
-    ANTHROPIC_API_KEY,
     COUNTRY_CODE_MAP,
     EXECUTOR_MAX_WORKERS,
+    GOOGLE_API_KEY,
     LLM_MODEL,
-    LLM_TEMPERATURE,
 )
 from tools.f1_data_tools import get_circuit_winners, get_recent_top_finishers
 from tools.fastf1_tools import get_driver_form, get_recent_race_results, get_track_info
@@ -36,10 +35,11 @@ all_tools = [
     get_recent_race_results,
 ]
 
-llm = ChatAnthropic(
+# No temperature argument — gemini-3.6-flash uses fixed sampling defaults and ignores one.
+# See the note in config.py.
+llm = ChatGoogleGenerativeAI(
     model=LLM_MODEL,
-    api_key=ANTHROPIC_API_KEY,
-    temperature=LLM_TEMPERATURE,
+    api_key=GOOGLE_API_KEY,
 )
 
 
@@ -49,11 +49,22 @@ def resolver_node(state: AgentState) -> dict[str, Any]:
     result = resolve_next_race(query)
 
     if "error" in result:
-        logger.warning("Race resolution failed for '%s': %s", query, result["error"])
+        # `error` is contractually safe to display; `detail` is log-only and must
+        # never reach the user-facing briefing field.
+        detail = result.get("detail")
+        if detail:
+            logger.warning(
+                "Race resolution failed for '%s': %s (detail: %s)",
+                query,
+                result["error"],
+                detail,
+            )
+        else:
+            logger.warning("Race resolution failed for '%s': %s", query, result["error"])
         return {
             "race_info": None,
             "current_step": "error",
-            "briefing": f"Could not resolve race: {result['error']}",
+            "briefing": result["error"],
         }
 
     race_info = RaceInfo(
@@ -95,10 +106,25 @@ def planner_node(state: AgentState) -> dict[str, Any]:
         HumanMessage(content=f"Select tools for {race_info['name']} {race_info['year']}"),
     ]
 
-    response = llm.invoke(messages)
+    try:
+        response = llm.invoke(messages)
+    except Exception as exc:
+        # Broad on purpose, and deliberately separate from the parse block below. Any
+        # transport or API failure — a free-tier 429 above all — should degrade to the
+        # default tools rather than take the whole briefing down with an HTTP 500. The
+        # planner is an optimisation; the pipeline works without it.
+        logger.warning(
+            "Planner LLM call failed (%s: %s); falling back to default tools",
+            type(exc).__name__,
+            exc,
+        )
+        return {"tasks": DEFAULT_TOOLS, "current_step": "gathering"}
 
     try:
-        content = response.content
+        # `.text`, not `.content`: Gemini 3 returns content as a list of blocks, so
+        # `.content` is a list here rather than a str. `.text` flattens to the string
+        # for every provider and content shape.
+        content = response.text
         if "```json" in content:
             content = content.split("```json")[1].split("```")[0]
         elif "```" in content:
@@ -108,7 +134,9 @@ def planner_node(state: AgentState) -> dict[str, Any]:
         if isinstance(tasks, list) and all(isinstance(t, str) for t in tasks):
             logger.info("Planner selected %d tools: %s", len(tasks), tasks)
             return {"tasks": tasks, "current_step": "gathering"}
-    except Exception:
+    except (json.JSONDecodeError, AttributeError, TypeError, IndexError):
+        # Deliberately narrow. A bare `except Exception` here once hid a genuine type
+        # error behind the default-tools fallback, which looks like a working planner.
         pass
 
     logger.warning("Planner failed to parse response; falling back to default tools")
@@ -210,9 +238,13 @@ def synthesizer_node(state: AgentState) -> dict[str, Any]:
     ]
 
     response = llm.invoke(messages)
-    logger.info("Synthesizer produced %d chars", len(response.content))
 
-    return {"briefing": response.content, "current_step": "complete"}
+    # `.text` rather than `.content` — see the note in planner_node. A Briefing is a
+    # string; `.content` would hand the API a list of Gemini content blocks.
+    briefing = response.text
+    logger.info("Synthesizer produced %d chars", len(briefing))
+
+    return {"briefing": briefing, "current_step": "complete"}
 
 
 def should_continue_after_resolver(state: AgentState) -> str:

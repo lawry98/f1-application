@@ -12,6 +12,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from agent.graph import agent
 from agent.state import AgentState
+from api.errors import FAILED_TOOL_SUMMARY, GENERIC_BRIEFING_ERROR, GENERIC_SCHEDULE_ERROR
 from api.models import BriefingRequest, BriefingResponse, ToolTraceSummary
 from tools.schedule_cache import clear as clear_schedule_cache
 
@@ -31,6 +32,20 @@ def initial_state(query: str) -> AgentState:
     }
 
 
+def _tool_trace_summary(tool_result: dict[str, Any]) -> str:
+    """Build the UI-facing trace summary for one tool result.
+
+    A failed tool's payload is ``{"error": ...}`` and may carry upstream exception text,
+    so it is replaced rather than truncated. Successful payloads are public F1 data and
+    are only clipped to keep the trace readable.
+    """
+    if not tool_result["success"]:
+        return FAILED_TOOL_SUMMARY
+
+    data = str(tool_result["data"])
+    return data[:200] + "..." if len(data) > 200 else data
+
+
 @router.post("/briefing", response_model=BriefingResponse)
 async def generate_briefing(request: BriefingRequest) -> BriefingResponse:
     """Generate a complete race briefing in a single response."""
@@ -43,7 +58,7 @@ async def generate_briefing(request: BriefingRequest) -> BriefingResponse:
                 detail=result.get("briefing") or "Could not resolve race",
             )
         if not result.get("briefing"):
-            raise HTTPException(status_code=500, detail="Briefing generation failed")
+            raise HTTPException(status_code=500, detail=GENERIC_BRIEFING_ERROR)
 
         race_name: str = result.get("race_info", {}).get("name", "Unknown Race")
 
@@ -51,9 +66,7 @@ async def generate_briefing(request: BriefingRequest) -> BriefingResponse:
             ToolTraceSummary(
                 tool=tr["tool_name"],
                 success=tr["success"],
-                summary=(
-                    str(tr["data"])[:200] + "..." if len(str(tr["data"])) > 200 else str(tr["data"])
-                ),
+                summary=_tool_trace_summary(tr),
             )
             for tr in result.get("tool_results", [])
         ]
@@ -66,8 +79,8 @@ async def generate_briefing(request: BriefingRequest) -> BriefingResponse:
     except HTTPException:
         raise
     except Exception as exc:
-        logger.exception("Briefing generation failed: %s", exc)
-        raise HTTPException(status_code=500, detail="Briefing generation failed") from exc
+        logger.exception("Error generating briefing for '%s': %s", request.query, exc)
+        raise HTTPException(status_code=500, detail=GENERIC_BRIEFING_ERROR) from exc
     finally:
         clear_schedule_cache()
 
@@ -138,10 +151,7 @@ async def generate_briefing_stream(request: BriefingRequest) -> EventSourceRespo
 
         except Exception as exc:
             logger.exception("Error during briefing stream generation: %s", exc)
-            yield {
-                "event": "error",
-                "data": json.dumps({"message": "Briefing generation failed"}),
-            }
+            yield {"event": "error", "data": json.dumps({"message": GENERIC_BRIEFING_ERROR})}
         finally:
             clear_schedule_cache()
 
@@ -167,8 +177,8 @@ async def get_races(year: int = Path(ge=1950, le=date.today().year + 1)) -> dict
 
         return {"year": year, "races": races}
     except Exception as exc:
-        logger.exception("Failed to fetch race calendar for %d: %s", year, exc)
-        raise HTTPException(status_code=500, detail="Failed to fetch race calendar") from exc
+        logger.exception("Error loading the %d season schedule: %s", year, exc)
+        raise HTTPException(status_code=500, detail=GENERIC_SCHEDULE_ERROR) from exc
 
 
 @router.get("/health")

@@ -56,7 +56,7 @@ export function LandingFooter() {
             </a>
             . F1 car model CC BY 4.0.
           </p>
-          <p>Built with Claude Sonnet 4 &middot; Not affiliated with Formula 1 or the FIA.</p>
+          <p>Built with Gemini 3.6 Flash &middot; Not affiliated with Formula 1 or the FIA.</p>
         </div>
       </div>
     </footer>

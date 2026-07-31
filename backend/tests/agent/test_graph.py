@@ -4,6 +4,8 @@ The LLM is replaced wholesale — every test that reaches planner or synthesizer
 monkeypatches ``agent.graph.llm``. No test here makes a network call.
 """
 
+import logging
+
 import pytest
 from langgraph.graph import END
 
@@ -102,6 +104,10 @@ def test_resolver_smuggles_its_error_message_through_the_briefing_field(monkeypa
     the resolver reuses it as an error channel, and api/routes.py reads it back out as
     an HTTP 404 detail. One field, two meanings.
 
+    The message is now passed through verbatim rather than prefixed with "Could not
+    resolve race: ", which read redundantly against messages that already say what
+    failed.
+
     Splitting them (an ``error`` field on AgentState) should flip this test and the
     matching one in tests/api/test_routes.py together, deliberately.
     """
@@ -111,7 +117,26 @@ def test_resolver_smuggles_its_error_message_through_the_briefing_field(monkeypa
 
     assert result["current_step"] == "error"
     assert result["race_info"] is None
-    assert result["briefing"] == "Could not resolve race: no such race"
+    assert result["briefing"] == "no such race"
+
+
+def test_resolver_keeps_the_detail_field_out_of_the_briefing(monkeypatch):
+    """``detail`` is log-only. Only ``error`` is safe to put in front of a user."""
+    monkeypatch.setattr(
+        graph_module,
+        "resolve_next_race",
+        lambda query: {
+            "error": "Could not load the 1998 season schedule.",
+            "detail": "ConnectionError: fastf1 backend unreachable",
+        },
+    )
+
+    result = resolver_node(make_state(race_query="monaco 1998"))
+
+    assert result["current_step"] == "error"
+    assert result["race_info"] is None
+    assert result["briefing"] == "Could not load the 1998 season schedule."
+    assert "ConnectionError" not in result["briefing"]
 
 
 def test_resolver_handles_a_missing_query(monkeypatch):
@@ -172,18 +197,37 @@ def test_planner_falls_back_to_default_tools_on_unusable_output(fake_llm, conten
     assert result["current_step"] == "gathering"
 
 
-def test_planner_propagates_an_llm_failure_instead_of_degrading(fake_llm):
-    """Pins current behaviour, which is arguably wrong.
+def test_planner_degrades_to_default_tools_when_the_llm_call_fails(fake_llm):
+    """An unreachable or rate-limited LLM must not take the whole briefing down.
 
-    ``llm.invoke`` sits *outside* the try/except, so an Anthropic outage or rate limit
-    crashes the graph and surfaces as HTTP 500 — even though the node already has a
-    perfectly good fallback to DEFAULT_TOOLS one line below. Moving the call inside the
-    try would make the pipeline degrade the way the rest of the system does, and should
-    flip this test deliberately.
+    This previously raised: ``llm.invoke`` sat outside the try, so a Gemini outage or
+    rate limit surfaced as an HTTP 500 even though the node has a perfectly good fallback
+    to DEFAULT_TOOLS. On a free-tier key a 429 is an expected part of normal operation
+    rather than a rare outage, so the planner now degrades the way the rest of the
+    pipeline does — the planner is an optimisation, not a prerequisite.
     """
-    fake_llm(raises=RuntimeError("anthropic unavailable"))
-    with pytest.raises(RuntimeError, match="anthropic unavailable"):
+    fake_llm(raises=RuntimeError("429 rate limit exceeded"))
+
+    result = planner_node(make_state(race_info=make_race_info()))
+
+    assert result["tasks"] == DEFAULT_TOOLS
+    assert result["current_step"] == "gathering"
+
+
+def test_planner_logs_which_llm_failure_caused_the_fallback(fake_llm, caplog):
+    """A degraded planner must say *why*, or a persistent outage looks like normal operation.
+
+    The parse-failure path and the call-failure path log differently on purpose: one means
+    the model returned something unusable, the other means it was never reached.
+    """
+    fake_llm(raises=RuntimeError("429 rate limit exceeded"))
+
+    with caplog.at_level(logging.WARNING, logger="agent.graph"):
         planner_node(make_state(race_info=make_race_info()))
+
+    assert "Planner LLM call failed" in caplog.text
+    assert "RuntimeError" in caplog.text
+    assert "429 rate limit exceeded" in caplog.text
 
 
 # ── Tool argument dispatch ───────────────────────────────────────────────────

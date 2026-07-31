@@ -84,14 +84,21 @@ def make_tool(name: str, result: dict[str, Any] | None = None, raises: Exception
 
 
 def make_llm(content: str = "[]", raises: Exception | None = None):
-    """Build a stand-in for the module-level ``ChatAnthropic`` client.
+    """Build a stand-in for the module-level ``ChatGoogleGenerativeAI`` client.
 
-    The graph only calls ``.invoke(messages)`` and reads ``.content`` off the result.
+    The graph only calls ``.invoke(messages)`` and reads ``.text`` off the result.
+
+    ``.content`` is modelled the way Gemini 3 actually returns it — a *list of content
+    blocks*, not a string — while ``.text`` flattens to the string the graph wants. Keeping
+    both faithful is the point: a fake that returned a plain ``.content`` string would let
+    ``response.content`` pass in tests and then hand the API a list in production, which is
+    exactly the bug this shape exists to prevent.
     """
 
     class _FakeResponse:
         def __init__(self, text: str) -> None:
-            self.content = text
+            self.content = [{"type": "text", "text": text}]
+            self.text = text
 
     class _FakeLLM:
         def __init__(self) -> None:

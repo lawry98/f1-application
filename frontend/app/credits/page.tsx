@@ -77,7 +77,7 @@ export default function CreditsPage() {
               <ul className="space-y-2 text-zinc-300">
                 <li>• Python &amp; FastAPI</li>
                 <li>• LangChain &amp; LangGraph</li>
-                <li>• Claude Sonnet 4 (Anthropic)</li>
+                <li>• Gemini 3.6 Flash (Google)</li>
                 <li>• FastF1</li>
                 <li>• Tavily API</li>
                 <li>• OpenWeather API</li>

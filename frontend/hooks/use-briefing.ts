@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { streamBriefing } from '@/lib/api';
+import { GENERIC_BRIEFING_ERROR } from '@/lib/constants';
 import type { ToolResult } from '@/types';
 
 export interface BriefingState {
@@ -72,7 +73,8 @@ export function useBriefing(): UseBriefingReturn {
         }
       } catch (err) {
         if (!controller.signal.aborted) {
-          setError(err instanceof Error ? err.message : 'Failed to generate briefing');
+          console.error('Briefing request failed:', err);
+          setError(GENERIC_BRIEFING_ERROR);
         }
       } finally {
         if (abortRef.current === controller) {
