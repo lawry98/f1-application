@@ -59,6 +59,7 @@ f1-application/
 │   ├── hooks/        Custom React hooks
 │   ├── lib/          API client and utilities
 │   ├── types/        Shared TypeScript types
+│   ├── tests/        Vitest suite — jsdom, no network, real SSE fixtures
 │   └── package.json
 ├── docs/agents/      Issue tracker, triage, and domain-doc conventions
 ├── mise.toml         Pinned Node, pnpm, and Python versions
@@ -224,8 +225,16 @@ pnpm dev        # Dev server
 pnpm build      # Production build
 pnpm typecheck  # TypeScript check
 pnpm lint       # ESLint
+pnpm test       # Vitest (jsdom, no network)
+pnpm test:watch # Vitest in watch mode
 pnpm format     # Prettier
 ```
+
+Frontend tests live in `frontend/tests/`. They cover the SSE client, the `useBriefing`
+hook and the briefing card; `fetch` is replaced in every test that reaches the API client,
+so nothing touches the network. The `.sse` fixtures are real bytes captured from the
+FastAPI route — regenerate them with `cd backend && python scripts/dump_sse_fixtures.py`
+after any change to the SSE contract.
 
 ## Important Notes
 

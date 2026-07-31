@@ -40,7 +40,7 @@ jobs:
         run: pytest
 
   frontend:
-    name: Frontend (typecheck + lint + build)
+    name: Frontend (typecheck + lint + tests + build)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -68,6 +68,10 @@ jobs:
 
       - name: Lint
         run: pnpm lint
+
+      # jsdom, no network: `fetch` is replaced in every test that reaches the API client.
+      - name: Test
+        run: pnpm test
 
       - name: Build
         run: pnpm build

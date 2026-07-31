@@ -147,6 +147,8 @@ Two consequences worth keeping:
 - **The terminal `briefing` event replaces the buffer, it does not append to it.** That is what makes it a reconciliation anchor, and it doubles as the final flush — so there is no stranded-deltas case to handle separately. Changing it to append would both double the prose and silently drop the anchor's error-correcting job.
 - **The flush timer is cleared on unmount and at the start of every `submit()`**, and the event loop `break`s if `abortRef.current` is no longer this request's controller. `bufferRef` is shared across requests, so a stale delta from a superseded stream would not merely paint late — it would prepend itself to the next briefing.
 
+All of the above is pinned by `frontend/tests/use-briefing.test.tsx`, which drives the hook through the real `streamBriefing` over a controllable reader — only `fetch` is faked. Each of those behaviours was verified to fail the suite when deliberately broken.
+
 ## 9. Pydantic Request/Response Models (API Contracts)
 
 API input/output shapes are defined as Pydantic `BaseModel` classes in `backend/api/models.py`:

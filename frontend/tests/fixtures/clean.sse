@@ -1,0 +1,36 @@
+event: status
+data: {"step": "resolving", "message": "Resolving race..."}
+
+event: race_info
+data: {"name": "Monaco Grand Prix", "year": 2025, "circuit_id": "monaco_grand_prix", "location": "Monaco", "country": "Monaco", "date": "2025-05-25 00:00:00", "is_upcoming": true, "historical_year": 2024}
+
+event: status
+data: {"step": "planning", "message": "Planning data gathering..."}
+
+event: status
+data: {"step": "gathering", "message": "Gathering race data..."}
+
+event: tool_result
+data: {"tool": "get_track_info", "success": true}
+
+event: tool_result
+data: {"tool": "search_f1_news", "success": false}
+
+event: status
+data: {"step": "synthesizing", "message": "Generating briefing..."}
+
+event: briefing_delta
+data: {"content": "## Mon"}
+
+event: briefing_delta
+data: {"content": "aco\n\n"}
+
+event: briefing_delta
+data: {"content": "Tight."}
+
+event: briefing
+data: {"content": "## Monaco\n\nTight.", "truncated": false}
+
+event: complete
+data: {"message": "Briefing complete"}
+

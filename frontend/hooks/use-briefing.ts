@@ -108,11 +108,15 @@ export function useBriefing(): UseBriefingReturn {
               }, FLUSH_INTERVAL_MS);
             }
           } else if (event.type === 'briefing') {
-            // The terminal event replaces the accumulated prose rather than
-            // appending to it — it is the reconciliation anchor, and it doubles
-            // as the final flush, so pending deltas are never stranded.
+            // The terminal event is the authoritative full text, not one more
+            // increment: painting it *replaces* the accumulated prose, which is
+            // what makes a delta lost to a malformed frame recoverable. It also
+            // doubles as the final flush, so pending deltas are never stranded.
+            //
+            // Nothing reads the buffer after this — deltas always precede the
+            // terminal event, and the next submit() resets it — so it is left
+            // alone rather than resynced.
             cancelFlush();
-            bufferRef.current = event.data.content;
             setBriefing(event.data.content);
             setTruncated(Boolean(event.data.truncated));
             setStatusMessage('');

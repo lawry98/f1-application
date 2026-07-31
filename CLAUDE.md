@@ -23,6 +23,7 @@ frontend/
   hooks/         Custom hooks, use- prefix
   lib/           api.ts (typed client), utils.ts, team-utils.ts
   types/         Shared types, re-exported through types/index.ts
+  tests/         Vitest — flat, not mirroring the source tree; fixtures/ holds real SSE bytes
 ```
 
 ## Commands
@@ -34,6 +35,7 @@ pinned in `mise.toml`, so `mise exec -- pnpm …` always uses the right ones.
 ```bash
 cd frontend && pnpm typecheck   # tsc --noEmit
 cd frontend && pnpm lint        # ESLint
+cd frontend && pnpm test        # Vitest (jsdom)
 cd backend  && ruff check .
 cd backend  && ruff format .
 ```
@@ -161,6 +163,26 @@ is sized `min(92vw, calc(82vh * 800 / 420))` to respect both viewport constraint
 - **No `any` on SSE events** — everything flows through the `StreamEvent` discriminated union.
 - **shadcn/ui** components in `components/ui/` are generated; re-add with `pnpm dlx shadcn add
   <name>` from `frontend/` (where `components.json` lives) rather than editing them by hand.
+
+### Frontend tests
+
+Vitest with jsdom, in `frontend/tests/`. Three things about them are not guessable:
+
+- **`next lint` only walks the directories listed in `next.config.js`'s `eslint.dirs`.**
+  `tests/` is in that list *because* it is not one of Next's defaults — without the entry,
+  `pnpm lint` passes while never looking at a test file. Add any new top-level directory there.
+- **The `.sse` fixtures are real captured bytes, not hand-written.** `frontend/tests/fixtures/`
+  holds output from the actual FastAPI route; regenerate with
+  `cd backend && python scripts/dump_sse_fixtures.py`, which imports its step fixtures from
+  `backend/tests/api/test_routes.py`. Editing a `.sse` file by hand decouples the parser tests
+  from the format the backend really serves, which is the one thing they exist to catch.
+- **`tests/setup.ts` stubs `IntersectionObserver`.** jsdom has none, and `BlurFade` wraps most
+  page sections, so without it any test that renders one dies inside framer-motion's `useInView`.
+
+Fake timers are load-bearing in `use-briefing.test.tsx` — the flush interval is a module
+constant, so controlling the clock is the only way to observe a paint mid-stream. Use
+`vi.advanceTimersByTimeAsync` and not the sync variant; the stream's promise chain has to be
+allowed to run between pushes.
 
 ### Backend
 
