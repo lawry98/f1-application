@@ -7,6 +7,7 @@ from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langgraph.config import get_stream_writer
 from langgraph.graph import END, StateGraph
 
 from agent.prompts import DEFAULT_TOOLS, PLANNER_PROMPT, SYNTHESIZER_PROMPT
@@ -222,7 +223,11 @@ def synthesizer_node(state: AgentState) -> dict[str, Any]:
     race_info = state.get("race_info")
 
     if not tool_results:
-        return {"briefing": "No data available to generate briefing", "current_step": "complete"}
+        return {
+            "briefing": "No data available to generate briefing",
+            "briefing_truncated": False,
+            "current_step": "complete",
+        }
 
     results_text = json.dumps(
         [
@@ -237,14 +242,52 @@ def synthesizer_node(state: AgentState) -> dict[str, Any]:
         HumanMessage(content=f"Generate briefing for {race_info['name']} {race_info['year']}"),
     ]
 
-    response = llm.invoke(messages)
+    # No-ops when the graph is invoked rather than streamed, so /api/briefing needs no
+    # special-casing. It does require an ambient graph run, which is why the tests that
+    # reach this node drive it through one instead of calling it directly.
+    writer = get_stream_writer()
+    chunks: list[str] = []
 
-    # `.text` rather than `.content` — see the note in planner_node. A Briefing is a
-    # string; `.content` would hand the API a list of Gemini content blocks.
-    briefing = response.text
+    try:
+        for chunk in llm.stream(messages):
+            # `.text` rather than `.content` — see the note in planner_node. A Briefing is
+            # a string; `.content` would hand the API a list of Gemini content blocks.
+            text = chunk.text
+            chunks.append(text)
+            writer({"kind": "briefing_delta", "content": text})
+    except Exception as exc:
+        # Error-as-value, extended to the last node in the pipeline that still raised.
+        # With prose in hand a reader is better served by an unfinished briefing than by
+        # an error; with none there is no briefing to deliver, so the failure travels.
+        # The step stays "complete" on purpose — see ADR-0002 before "fixing" this.
+        #
+        # Broad on purpose, like the planner's transport block above and unlike its parse
+        # block: any provider failure should truncate. Enumerating provider exception
+        # types is the classify-by-exception-type approach the error-sanitising work
+        # rejected — a new upstream library would quietly stop being handled.
+        #
+        # The test is prose, not chunk count: Gemini emits metadata-only chunks whose
+        # `.text` is empty, and an empty briefing marked truncated would be dropped by the
+        # transport's `if briefing:` guard, ending the stream with nothing at all.
+        partial = "".join(chunks)
+        if not partial:
+            raise
+        logger.warning(
+            "Synthesizer stream failed after %d deltas (%s: %s); serving a truncated briefing",
+            len(chunks),
+            type(exc).__name__,
+            exc,
+        )
+        return {
+            "briefing": partial,
+            "briefing_truncated": True,
+            "current_step": "complete",
+        }
+
+    briefing = "".join(chunks)
     logger.info("Synthesizer produced %d chars", len(briefing))
 
-    return {"briefing": briefing, "current_step": "complete"}
+    return {"briefing": briefing, "briefing_truncated": False, "current_step": "complete"}
 
 
 def should_continue_after_resolver(state: AgentState) -> str:

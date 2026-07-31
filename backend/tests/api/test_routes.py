@@ -22,10 +22,15 @@ from tests.factories import make_race_info, make_schedule
 class FakeAgent:
     """Stand-in for the compiled LangGraph agent.
 
-    ``.astream()`` yields one ``{node_name: partial_state}`` dict per completed node,
-    matching LangGraph's default stream mode — which is what routes.py translates into
-    SSE events. It yields them all without suspending, so it says nothing about *when*
-    events reach the client; ``GatedAgent`` below is what pins that.
+    ``.astream()`` yields ``(mode, payload)`` tuples, which is what LangGraph produces
+    once more than one ``stream_mode`` is requested. Each entry in ``steps`` — still a
+    plain ``{node_name: partial_state}`` dict — wraps as ``("updates", step)``, and each
+    entry in ``deltas`` is emitted as ``("custom", …)`` immediately *before* the
+    synthesizer's update, mirroring reality: the writer fires while the node runs, the
+    update lands when it returns.
+
+    It yields everything without suspending, so it says nothing about *when* events reach
+    the client; ``GatedAgent`` below is what pins that.
     """
 
     def __init__(
@@ -33,11 +38,16 @@ class FakeAgent:
         steps: list[dict[str, Any]] | None = None,
         result: dict[str, Any] | None = None,
         raises: Exception | None = None,
+        deltas: list[str] | None = None,
+        raises_after: int | None = None,
     ) -> None:
         self.steps = steps or []
         self.result = result or {}
         self.raises = raises
+        self.deltas = deltas or []
+        self.raises_after = raises_after
         self.states: list[dict[str, Any]] = []
+        self.stream_modes: list[Any] = []
 
     async def ainvoke(self, state: dict[str, Any]) -> dict[str, Any]:
         self.states.append(state)
@@ -45,12 +55,18 @@ class FakeAgent:
             raise self.raises
         return self.result
 
-    async def astream(self, state: dict[str, Any]):
+    async def astream(self, state: dict[str, Any], stream_mode: Any = None):
         self.states.append(state)
-        if self.raises is not None:
+        self.stream_modes.append(stream_mode)
+        if self.raises is not None and self.raises_after is None:
             raise self.raises
-        for step in self.steps:
-            yield step
+        for index, step in enumerate(self.steps):
+            if "synthesizer" in step:
+                for delta in self.deltas:
+                    yield ("custom", {"kind": "briefing_delta", "content": delta})
+            yield ("updates", step)
+            if self.raises is not None and self.raises_after == index + 1:
+                raise self.raises
 
 
 class GatedAgent:
@@ -65,11 +81,11 @@ class GatedAgent:
         self.steps = steps
         self.gate = gate
 
-    async def astream(self, state: dict[str, Any]):
-        yield self.steps[0]
+    async def astream(self, state: dict[str, Any], stream_mode: Any = None):
+        yield ("updates", self.steps[0])
         await self.gate.wait()
         for step in self.steps[1:]:
-            yield step
+            yield ("updates", step)
 
 
 def parse_sse(body: str) -> list[tuple[str, Any]]:
@@ -106,8 +122,21 @@ def successful_steps() -> list[dict[str, Any]]:
                 "current_step": "synthesizing",
             }
         },
-        {"synthesizer": {"briefing": "## Monaco\n\nTight.", "current_step": "complete"}},
+        {
+            "synthesizer": {
+                "briefing": "## Monaco\n\nTight.",
+                "briefing_truncated": False,
+                "current_step": "complete",
+            }
+        },
     ]
+
+
+def successful_deltas() -> list[str]:
+    """The synthesizer's prose, split the way it is written — concatenating them gives
+    back exactly the briefing in ``successful_steps()``.
+    """
+    return ["## Mon", "aco\n\n", "Tight."]
 
 
 @pytest.fixture
@@ -155,6 +184,41 @@ def test_briefing_returns_race_briefing_and_trace(client, install_agent):
     assert body["briefing"] == "## Monaco\n\nTight."
     assert [t["tool"] for t in body["tool_trace"]] == ["get_track_info", "search_f1_news"]
     assert [t["success"] for t in body["tool_trace"]] == [True, False]
+
+
+def test_briefing_reports_an_untruncated_synthesis_as_complete(client, install_agent):
+    install_agent(
+        result={
+            "race_info": make_race_info(),
+            "briefing": "## Monaco\n\nTight.",
+            "briefing_truncated": False,
+            "current_step": "complete",
+        }
+    )
+    assert client.post("/api/briefing", json={"query": "monaco"}).json()["truncated"] is False
+
+
+def test_briefing_returns_a_truncated_synthesis_rather_than_failing(client, install_agent):
+    """The sync endpoint gets truncation for free because the node owns it.
+
+    ``agent.ainvoke()`` propagates, so had truncation lived in the transport this
+    endpoint would have had no partial to return at all — it would have 500ed away a
+    perfectly readable briefing. See ADR-0002.
+    """
+    install_agent(
+        result={
+            "race_info": make_race_info(),
+            "briefing": "## Mon",
+            "briefing_truncated": True,
+            "current_step": "complete",
+        }
+    )
+
+    response = client.post("/api/briefing", json={"query": "monaco"})
+
+    assert response.status_code == 200
+    assert response.json()["briefing"] == "## Mon"
+    assert response.json()["truncated"] is True
 
 
 def test_briefing_passes_the_query_into_the_initial_state(client, install_agent):
@@ -310,8 +374,15 @@ def test_briefing_clears_the_schedule_cache_even_when_it_fails(client, install_a
 
 
 def test_stream_emits_the_full_event_sequence(client, install_agent):
-    """The frontend's StreamEvent union depends on this order and these type names."""
-    install_agent(steps=successful_steps())
+    """The frontend's StreamEvent union depends on this order and these type names.
+
+    Flipped when Deltas landed. ``briefing_delta`` now sits between the synthesizing
+    status and the terminal ``briefing``, so the prose arrives as it is written. The
+    terminal ``briefing`` is retained after them — no longer as the reader's first sight
+    of the text, but as the reconciliation anchor a dropped Delta would otherwise
+    corrupt undetectably. See ADR-0002.
+    """
+    install_agent(steps=successful_steps(), deltas=successful_deltas())
 
     events = parse_sse(client.post("/api/briefing/stream", json={"query": "monaco"}).text)
 
@@ -323,9 +394,110 @@ def test_stream_emits_the_full_event_sequence(client, install_agent):
         "tool_result",
         "tool_result",
         "status",
+        "briefing_delta",
+        "briefing_delta",
+        "briefing_delta",
         "briefing",
         "complete",
     ]
+
+
+def test_stream_sends_every_delta_before_the_terminal_briefing(client, install_agent):
+    install_agent(steps=successful_steps(), deltas=successful_deltas())
+
+    events = parse_sse(client.post("/api/briefing/stream", json={"query": "monaco"}).text)
+    types = [event_type for event_type, _ in events]
+
+    assert types.index("briefing") > max(
+        index for index, name in enumerate(types) if name == "briefing_delta"
+    )
+
+
+def test_concatenated_deltas_reconstruct_the_terminal_briefing(client, install_agent):
+    """The reconciliation guarantee, which is the terminal event's entire justification.
+
+    ``lib/api.ts`` silently swallows malformed frames, so a Delta lost in transit would
+    leave the reader with a quietly corrupted document. The terminal event is what makes
+    that detectable — and this is the test that keeps the two in agreement.
+    """
+    install_agent(steps=successful_steps(), deltas=successful_deltas())
+
+    events = parse_sse(client.post("/api/briefing/stream", json={"query": "monaco"}).text)
+
+    joined = "".join(data["content"] for name, data in events if name == "briefing_delta")
+    terminal = next(data for name, data in events if name == "briefing")
+    assert joined == terminal["content"]
+
+
+def test_stream_asks_the_agent_for_both_update_and_custom_modes(client, install_agent):
+    """Deltas ride the ``custom`` mode; dropping it would silently lose every one of them.
+
+    Nothing else in this file catches that: ``FakeAgent`` yields what it likes regardless
+    of what was asked for, so every ordering assertion would still pass.
+    """
+    agent = install_agent(steps=successful_steps(), deltas=successful_deltas())
+
+    client.post("/api/briefing/stream", json={"query": "monaco"})
+
+    assert agent.stream_modes == [["updates", "custom"]]
+
+
+def test_stream_delivers_a_truncated_briefing_without_an_error_event(client, install_agent):
+    """A truncated run ends in ``complete``, not ``error``, and that is deliberate.
+
+    ``use-briefing.ts`` pipes error text into a red banner. Firing one directly above
+    readable prose would read as "everything broke" when in fact most of the briefing
+    arrived. The marker is the ``truncated`` field, rendered calmly after the text.
+    """
+    install_agent(
+        steps=[
+            {"resolver": {"race_info": make_race_info(), "current_step": "planning"}},
+            {
+                "synthesizer": {
+                    "briefing": "## Mon",
+                    "briefing_truncated": True,
+                    "current_step": "complete",
+                }
+            },
+        ],
+        deltas=["## Mon"],
+    )
+
+    events = parse_sse(client.post("/api/briefing/stream", json={"query": "monaco"}).text)
+
+    assert [name for name, _ in events] == [
+        "status",
+        "race_info",
+        "status",
+        "briefing_delta",
+        "briefing",
+        "complete",
+    ]
+    assert next(data for name, data in events if name == "briefing")["truncated"] is True
+
+
+def test_stream_reports_a_synthesis_that_died_before_any_delta_as_an_error(client, install_agent):
+    """The ≥1 Delta rule at the transport: no prose means no ``briefing`` event at all.
+
+    The node re-raises when it has nothing to deliver, so this arrives at the catch-all as
+    an ordinary crash — generic message, real reason in the log. The run gets as far as
+    announcing *synthesizing* and then stops there, which is the sequence the spec pins:
+    ``… → status{synthesizing} → error``.
+    """
+    install_agent(
+        steps=successful_steps()[:3],
+        raises=RuntimeError("stream died before any prose"),
+        raises_after=3,
+    )
+
+    events = parse_sse(client.post("/api/briefing/stream", json={"query": "monaco"}).text)
+    names = [name for name, _ in events]
+
+    assert "briefing" not in names
+    assert "briefing_delta" not in names
+    assert names[-2:] == ["status", "error"]
+    assert events[-2][1]["step"] == "synthesizing"
+    assert events[-1][1] == {"message": GENERIC_BRIEFING_ERROR}
 
 
 def test_stream_status_events_walk_through_every_step(client, install_agent):
@@ -357,7 +529,7 @@ def test_stream_reports_each_tool_with_its_success_flag_and_nothing_else(client,
 def test_stream_sends_the_briefing_then_completes(client, install_agent):
     install_agent(steps=successful_steps())
     events = parse_sse(client.post("/api/briefing/stream", json={"query": "monaco"}).text)
-    assert events[-2] == ("briefing", {"content": "## Monaco\n\nTight."})
+    assert events[-2] == ("briefing", {"content": "## Monaco\n\nTight.", "truncated": False})
     assert events[-1] == ("complete", {"message": "Briefing complete"})
 
 

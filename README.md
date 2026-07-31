@@ -241,7 +241,9 @@ pnpm format     # Prettier
 ### Streaming Architecture
 - The backend iterates the LangGraph agent's `astream()` directly — no thread bridge. LangGraph
   runs the synchronous nodes on worker threads itself, so the event loop stays free
-- Each SSE event is emitted the moment its node returns, while the rest of the run is still going
+- Each SSE event is emitted the moment its node returns, while the rest of the run is still
+  going — except `briefing_delta`, which the synthesizer emits *during* its own run, one per
+  chunk of prose the model produces
 - Frontend consumes the typed `AsyncGenerator<StreamEvent>` from `lib/api.ts`
 
 ### Working on this with an AI agent

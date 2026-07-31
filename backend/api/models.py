@@ -28,3 +28,7 @@ class BriefingResponse(BaseModel):
     race: str
     briefing: str
     tool_trace: list[ToolTraceSummary]
+    truncated: bool = Field(
+        default=False,
+        description="Whether synthesis stopped partway, leaving the briefing unfinished",
+    )

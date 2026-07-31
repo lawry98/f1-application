@@ -28,6 +28,7 @@ def initial_state(query: str) -> AgentState:
         "tasks": [],
         "tool_results": [],
         "briefing": None,
+        "briefing_truncated": False,
         "current_step": "resolving",
     }
 
@@ -75,6 +76,7 @@ async def generate_briefing(request: BriefingRequest) -> BriefingResponse:
             race=race_name,
             briefing=result["briefing"],
             tool_trace=tool_trace,
+            truncated=bool(result.get("briefing_truncated")),
         )
     except HTTPException:
         raise
@@ -98,7 +100,20 @@ async def generate_briefing_stream(request: BriefingRequest) -> EventSourceRespo
                 "data": json.dumps({"step": "resolving", "message": "Resolving race..."}),
             }
 
-            async for step_result in agent.astream(initial_state(request.query)):
+            stream = agent.astream(initial_state(request.query), stream_mode=["updates", "custom"])
+
+            async for mode, payload in stream:
+                if mode == "custom":
+                    # Node-to-transport writes. The `kind` discriminator is the seam the
+                    # deferred per-tool trickle needs; today only Deltas come through.
+                    if payload.get("kind") == "briefing_delta":
+                        yield {
+                            "event": "briefing_delta",
+                            "data": json.dumps({"content": payload["content"]}),
+                        }
+                    continue
+
+                step_result = payload
                 current_step = next(iter(step_result), "unknown")
                 step_data = step_result.get(current_step, {})
 
@@ -143,7 +158,15 @@ async def generate_briefing_stream(request: BriefingRequest) -> EventSourceRespo
                 elif current_step == "synthesizer":
                     briefing = step_data.get("briefing")
                     if briefing:
-                        yield {"event": "briefing", "data": json.dumps({"content": briefing})}
+                        yield {
+                            "event": "briefing",
+                            "data": json.dumps(
+                                {
+                                    "content": briefing,
+                                    "truncated": bool(step_data.get("briefing_truncated")),
+                                }
+                            ),
+                        }
                         yield {
                             "event": "complete",
                             "data": json.dumps({"message": "Briefing complete"}),

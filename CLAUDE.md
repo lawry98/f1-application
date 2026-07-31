@@ -95,12 +95,17 @@ lookup/session helpers). Adding a file here does not make it a tool.
 **Tools never raise.** Every `@tool` returns `{"error": "..."}` on failure. The agent is built to
 continue on partial data — preserve this or the pipeline loses its degradation behaviour.
 
-**The planner degrades, the synthesizer does not.** `planner_node` catches *any* LLM failure —
-a free-tier 429 above all — and falls back to `DEFAULT_TOOLS`, because the planner only chooses
-which tools to run and the pipeline works without it. `synthesizer_node` deliberately still
-raises: without it there is no Briefing, so there is nothing to degrade to. The planner's two
+**The planner and the synthesizer degrade differently, on purpose.** `planner_node` catches
+*any* LLM failure — a free-tier 429 above all — and falls back to `DEFAULT_TOOLS`, because the
+planner only chooses which tools to run and the pipeline works without it. The planner's two
 failure paths log differently on purpose ("LLM call failed" vs "failed to parse response") —
 one means the model was never reached, the other that it returned something unusable.
+
+`synthesizer_node` degrades only once it has prose: a stream that dies after at least one chunk
+returns the partial briefing with `briefing_truncated: True` and `current_step: "complete"`,
+while a failure before the first chunk still raises. That bare `except` around an LLM call
+followed by a "complete" step is deliberate and looks wrong on sight — read
+[ADR-0002](docs/adr/0002-serve-truncated-briefings.md) before changing it.
 
 **Read `response.text`, never `response.content`.** Gemini 3 returns `.content` as a *list of
 content blocks*, not a string. Using `.content` fails in two ways that both look like something
@@ -119,6 +124,11 @@ of the run is still going. The graph's nodes stay *synchronous* — LangGraph of
 worker threads itself, so the event loop is never blocked and node signatures need no `async`.
 There is no executor in the API layer; `EXECUTOR_MAX_WORKERS` governs only the tool fan-out inside
 `tool_executor_node`.
+
+Because it asks for two stream modes — `stream_mode=["updates", "custom"]` — `astream` yields
+`(mode, payload)` **tuples**, not the bare `{node: partial_state}` dicts a single mode gives. The
+`custom` mode carries the synthesizer's briefing Deltas, written with `get_stream_writer()`. That
+writer no-ops under plain `.invoke()`, so `/api/briefing` needs no special-casing.
 
 **SSE discrimination uses the `event:` line** from the SSE protocol, not field-presence
 heuristics on the payload.

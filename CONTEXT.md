@@ -53,11 +53,20 @@ the two are equal only for completed Events.
 ## Briefing generation
 
 **Briefing** — the synthesised prose about one Event that is the product of this system.
-The deliverable a user reads.
+The deliverable a user reads. A Briefing may be Truncated and is still the deliverable.
 
 > ⚠️ The `briefing` field is also used as an error channel when Resolution fails. That is
 > a conflation, not part of the definition. A Briefing is the deliverable; an error is
 > not a Briefing.
+
+**Delta** — an increment of a Briefing, emitted while the *synthesizing* Step runs.
+Deltas have no semantic boundaries: one may be a fraction of a word. Appending every
+Delta in order reconstructs the Briefing, but a Delta is not itself a Briefing.
+
+**Truncation** — the condition of a Briefing whose synthesis stopped partway. A
+Truncated Briefing is still delivered, and is marked as Truncated so a reader knows
+the prose is unfinished. A synthesis that produced no prose at all is not Truncated —
+there is no Briefing to deliver.
 
 **Tool** — a capability the agent can call to gather data about an Event. There are seven.
 Modules that support the pipeline without being callable by the agent — the resolver and
