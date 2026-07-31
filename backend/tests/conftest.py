@@ -32,7 +32,7 @@ from tests.factories import make_schedule
 # A fixed "now" for the whole suite. Chosen mid-season so that both "earlier this year"
 # and "later this year" events are expressible against the same fixture schedule.
 FROZEN_TODAY = date(2025, 5, 1)
-FROZEN_NOW = "2025-05-01"
+FROZEN_NOW = FROZEN_TODAY.isoformat()
 
 
 @pytest.fixture(autouse=True)

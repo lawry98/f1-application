@@ -19,7 +19,10 @@ export function RaceSelector({ onSelectRace }: RaceSelectorProps) {
     async function fetchRaces() {
       try {
         const raceData = await getRaces(currentYear);
-        const upcoming = raceData.filter((race) => new Date(race.date) >= new Date()).slice(0, 6);
+        // An event happening today is still upcoming, so compare against start of today.
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const upcoming = raceData.filter((race) => new Date(race.date) >= today).slice(0, 6);
         setRaces(upcoming);
       } catch (error) {
         console.error('Failed to fetch races:', error);

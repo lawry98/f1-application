@@ -14,7 +14,6 @@ export default function BriefingPage() {
     <div className="min-h-screen bg-zinc-950">
       <LandingNav />
 
-      {/* Page header */}
       <div className="border-b border-zinc-800/60 bg-zinc-950 pt-14">
         <div className="container mx-auto max-w-7xl px-4 py-8">
           <p className="text-[11px] font-semibold uppercase tracking-widest text-f1-red">
@@ -27,7 +26,6 @@ export default function BriefingPage() {
         </div>
       </div>
 
-      {/* Briefing chat */}
       <div className="relative">
         <DotPattern className="text-zinc-800/30" />
         <div className="container relative mx-auto max-w-7xl px-4 py-10">

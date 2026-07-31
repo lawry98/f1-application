@@ -2,7 +2,7 @@
  * API types — discriminated union matching SSE events emitted by
  * backend/api/routes.py event_generator()
  */
-import type { RaceInfo, ToolResult } from './f1';
+import type { RaceInfo } from './f1';
 
 export type StreamEvent =
   | { type: 'status'; data: { step: string; message: string } }
@@ -11,9 +11,3 @@ export type StreamEvent =
   | { type: 'briefing'; data: { content: string } }
   | { type: 'complete'; data: { message: string } }
   | { type: 'error'; data: { message: string } };
-
-export interface BriefingResponse {
-  race: string;
-  briefing: string;
-  tool_trace: ToolResult[];
-}

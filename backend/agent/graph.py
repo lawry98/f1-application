@@ -18,7 +18,7 @@ from config import (
     LLM_MODEL,
     LLM_TEMPERATURE,
 )
-from tools.f1_data_tools import get_circuit_winners, get_season_standings
+from tools.f1_data_tools import get_circuit_winners, get_recent_top_finishers
 from tools.fastf1_tools import get_driver_form, get_recent_race_results, get_track_info
 from tools.race_resolver import resolve_next_race
 from tools.search_tools import search_f1_news
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 all_tools = [
     get_track_info,
-    get_season_standings,
+    get_recent_top_finishers,
     get_circuit_winners,
     search_f1_news,
     get_race_weather,
@@ -44,14 +44,7 @@ llm = ChatAnthropic(
 
 
 def resolver_node(state: AgentState) -> dict[str, Any]:
-    """Resolve the user query to a specific race using deterministic lookup.
-
-    Args:
-        state: Current agent state with 'race_query' populated.
-
-    Returns:
-        Partial state dict with 'race_info' and 'current_step'.
-    """
+    """Resolve the user query to a specific race using deterministic lookup."""
     query = state.get("race_query", "")
     result = resolve_next_race(query)
 
@@ -84,17 +77,8 @@ def resolver_node(state: AgentState) -> dict[str, Any]:
 
 
 def planner_node(state: AgentState) -> dict[str, Any]:
-    """Select which tools to run based on resolved race info.
-
-    Args:
-        state: Current agent state with 'race_info' populated.
-
-    Returns:
-        Partial state dict with 'tasks' and 'current_step'.
-    """
-    race_info = state.get("race_info")
-    if not race_info:
-        return {"tasks": DEFAULT_TOOLS, "current_step": "gathering"}
+    """Select which tools to run based on resolved race info."""
+    race_info = state["race_info"]
 
     prompt = PLANNER_PROMPT.format(
         race_name=race_info["name"],
@@ -132,22 +116,13 @@ def planner_node(state: AgentState) -> dict[str, Any]:
 
 
 def _invoke_tool(tool: Any, task_name: str, race_info: dict) -> ToolResult:
-    """Invoke a single tool with the appropriate arguments derived from race_info.
-
-    Args:
-        tool: LangChain @tool callable.
-        task_name: Name matching the tool's .name attribute.
-        race_info: Resolved race info dict.
-
-    Returns:
-        ToolResult TypedDict with success flag and data/error payload.
-    """
+    """Invoke a single tool with arguments derived from race_info; never raises."""
     try:
         if task_name == "get_track_info":
             result = tool.invoke(
                 {"circuit_name": race_info["name"], "year": race_info["historical_year"]}
             )
-        elif task_name == "get_season_standings":
+        elif task_name == "get_recent_top_finishers":
             result = tool.invoke({"year": race_info["historical_year"]})
         elif task_name == "get_circuit_winners":
             result = tool.invoke({"circuit_name": race_info["name"], "years_back": 3})
@@ -159,6 +134,7 @@ def _invoke_tool(tool: Any, task_name: str, race_info: dict) -> ToolResult:
             country_code = COUNTRY_CODE_MAP.get(race_info["country"], "US")
             result = tool.invoke({"city": race_info["location"], "country_code": country_code})
         elif task_name == "get_driver_form":
+            # Hardcoded to Verstappen — the planner prompt advertises exactly this scope.
             result = tool.invoke(
                 {"driver_code": "VER", "year": race_info["historical_year"], "num_races": 5}
             )
@@ -180,19 +156,9 @@ def _invoke_tool(tool: Any, task_name: str, race_info: dict) -> ToolResult:
 
 
 def tool_executor_node(state: AgentState) -> dict[str, Any]:
-    """Execute all planned tools in parallel and collect results.
-
-    Args:
-        state: Current agent state with 'tasks' and 'race_info' populated.
-
-    Returns:
-        Partial state dict with 'tool_results' and 'current_step'.
-    """
-    race_info = state.get("race_info")
+    """Execute all planned tools in parallel and collect results."""
+    race_info = state["race_info"]
     tasks = state.get("tasks", [])
-
-    if not race_info:
-        return {"current_step": "error", "briefing": "No race information available"}
 
     tool_map = {tool.name: tool for tool in all_tools}
     tool_results: list[ToolResult] = []
@@ -223,14 +189,7 @@ def tool_executor_node(state: AgentState) -> dict[str, Any]:
 
 
 def synthesizer_node(state: AgentState) -> dict[str, Any]:
-    """Synthesize tool results into the final race briefing.
-
-    Args:
-        state: Current agent state with 'tool_results' and 'race_info' populated.
-
-    Returns:
-        Partial state dict with 'briefing' and 'current_step'.
-    """
+    """Synthesize tool results into the final race briefing."""
     tool_results = state.get("tool_results", [])
     race_info = state.get("race_info")
 
@@ -257,14 +216,7 @@ def synthesizer_node(state: AgentState) -> dict[str, Any]:
 
 
 def should_continue_after_resolver(state: AgentState) -> str:
-    """Route after resolver: continue to planner or end with error.
-
-    Args:
-        state: Current agent state.
-
-    Returns:
-        Next node name: 'planner' or END.
-    """
+    """Route after resolver: continue to planner or end with error."""
     if state.get("current_step") == "error":
         return END
     return "planner"
@@ -278,6 +230,7 @@ workflow.add_node("tool_executor", tool_executor_node)
 workflow.add_node("synthesizer", synthesizer_node)
 
 workflow.set_entry_point("resolver")
+# This edge is the pipeline's only error gate: downstream nodes assume race_info is set.
 workflow.add_conditional_edges(
     "resolver", should_continue_after_resolver, {END: END, "planner": "planner"}
 )

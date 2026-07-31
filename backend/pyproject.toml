@@ -26,3 +26,7 @@ addopts = [
     "--cov=config",
     "--cov-report=term-missing",
 ]
+
+[tool.coverage.report]
+# Floor set to the achieved suite coverage (99%) rounded down to the nearest 5.
+fail_under = 95

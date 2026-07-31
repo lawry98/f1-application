@@ -9,52 +9,56 @@ resolver -> planner -> tool_executor -> synthesizer -> END
     └── current_step == "error" ──────────────────────> END
 ```
 
-Defined in `backend/agent/graph.py:169-180`. Each node is a plain function that receives the full `AgentState` TypedDict and returns a partial dict of updated fields. LangGraph merges the returned fields into state automatically.
+Assembled at the bottom of `backend/agent/graph.py` (`workflow = StateGraph(AgentState)` through `agent = workflow.compile()`). Each node is a plain function that receives the full `AgentState` TypedDict and returns a partial dict of updated fields. LangGraph merges the returned fields into state automatically.
 
-**Adding a new node**: Define a function matching `(AgentState) -> Dict[str, Any]`, register it with `workflow.add_node()`, and insert it into the edge chain.
+The resolver's conditional edge is the pipeline's **only** error gate: downstream nodes index `state["race_info"]` directly and assume it is set. Do not add defensive `if not race_info` fallbacks to later nodes — an error step returned by a mid-pipeline node would be silently clobbered by the next unconditional edge.
+
+**Adding a new node**: Define a function matching `(AgentState) -> dict[str, Any]`, register it with `workflow.add_node()`, and insert it into the edge chain.
 
 ## 2. TypedDict State Management (Backend)
 
-All agent state flows through a single `AgentState` TypedDict (`backend/agent/state.py:16-23`). Key fields:
+All agent state flows through a single `AgentState` TypedDict (`backend/agent/state.py`). Fields:
 
-- `messages` - LangGraph message list with `add_messages` reducer (append-only)
 - `race_query` - Original user input string
-- `race_info` - Parsed `RaceInfo` TypedDict (name, year, circuit_id, location, country)
+- `race_info` - Resolved `RaceInfo` TypedDict or `None` (name, year, circuit_id, location, country, date, is_upcoming, historical_year)
 - `tasks` - List of tool names to execute (strings matching tool function names)
 - `tool_results` - List of `ToolResult` TypedDicts tracking each tool's outcome
+- `briefing` - Final markdown briefing string or `None`
 - `current_step` - Progress marker: "resolving" | "planning" | "gathering" | "synthesizing" | "complete" | "error"
 
-Supporting TypedDicts (`RaceInfo` at line 4, `ToolResult` at line 11) are flat structures with no nesting beyond `data: dict` on ToolResult.
+Supporting TypedDicts (`RaceInfo`, `ToolResult`) are flat structures with no nesting beyond `data: dict` on ToolResult. There is no `messages` field and no LangGraph message reducer — the two LLM-calling nodes build local message lists.
 
 **Convention**: Node functions return only the fields they change; LangGraph handles the merge.
 
 ## 3. LangChain @tool Decorator Pattern (Tool Interface)
 
-Every data-gathering tool uses the `@tool` decorator from `langchain_core.tools`. This appears in all four tool files:
+Every data-gathering tool uses the `@tool` decorator from `langchain_core.tools`. Seven tools across four files:
 
-- `backend/tools/fastf1_tools.py:11,45,71` (get_track_info, get_recent_race_results, get_driver_form)
-- `backend/tools/f1_data_tools.py:5,55,105` (get_season_standings, get_circuit_winners, get_circuit_info)
-- `backend/tools/search_tools.py:6` (search_f1_news)
-- `backend/tools/weather_tools.py:7` (get_race_weather)
+- `backend/tools/fastf1_tools.py` - get_track_info, get_recent_race_results, get_driver_form
+- `backend/tools/f1_data_tools.py` - get_recent_top_finishers, get_circuit_winners
+- `backend/tools/search_tools.py` - search_f1_news
+- `backend/tools/weather_tools.py` - get_race_weather
+
+The other files in `tools/` (`race_resolver.py`, `schedule_cache.py`, `fastf1_helpers.py`) are plain helpers, not LLM-callable tools.
 
 **Convention for all tools**:
-- Signature: typed parameters -> `Dict[str, Any]`
+- Signature: typed parameters -> `dict[str, Any]`
 - Docstring with Args/Returns sections (LangChain uses these for tool descriptions)
 - Return `{"error": "message"}` on failure, never raise exceptions
-- Tool names must match keys in the `tool_map` dispatch in `backend/agent/graph.py:86`
-- Each tool's invocation arguments are hardcoded per-tool in `tool_executor_node` (`backend/agent/graph.py:99-125`)
+- Tool names must match keys in the `tool_map` dispatch built in `tool_executor_node` (`backend/agent/graph.py`)
+- Each tool's invocation arguments are hardcoded per-tool in `_invoke_tool` (`backend/agent/graph.py`)
 
-**Adding a new tool**: Create the `@tool` function in the appropriate tools file, add it to `all_tools` list in `graph.py:19-28`, add its dispatch case in `tool_executor_node`, and include it in the planner prompt's task list if it should be auto-selected.
+**Adding a new tool**: Create the `@tool` function in the appropriate tools file, add it to the `all_tools` list at the top of `graph.py`, add its dispatch case in `_invoke_tool`, and list it in `PLANNER_PROMPT` (and `DEFAULT_TOOLS` if it should run when the planner's response is unparseable). The planner selects tools by string name, so the prompt string, the dispatch string, and the tool's `.name` must all match.
 
 ## 4. Error-as-Value Pattern (Tools)
 
-Tools never throw exceptions to the caller. Every tool wraps its body in try/except and returns a dict with an `"error"` key on failure. The tool executor checks for this at `backend/agent/graph.py:129`:
+Tools never throw exceptions to the caller. Every tool wraps its body in try/except and returns a dict with an `"error"` key on failure. `_invoke_tool` checks for this when building each `ToolResult`:
 
 ```python
 success="error" not in result
 ```
 
-This pattern appears uniformly across all 8 tools. The synthesizer receives failed tool results alongside successful ones and generates briefings with whatever data is available.
+This pattern appears uniformly across all 7 tools. The synthesizer receives failed tool results alongside successful ones and generates briefings with whatever data is available (its prompt explicitly tells the model to omit sections whose data is missing rather than invent facts).
 
 ## 5. SSE Streaming over Native `astream` (API Layer)
 
@@ -65,7 +69,7 @@ chunk into one or more SSE events with typed event names (`status`, `race_info`,
 
 There is **no thread bridge**. LangGraph's `astream()` runs the graph's synchronous node functions
 on anyio worker threads itself, so the event loop is not blocked and node signatures stay
-`(AgentState) -> Dict[str, Any]` with no `async`. The API layer holds no executor; the only
+`(AgentState) -> dict[str, Any]` with no `async`. The API layer holds no executor; the only
 `ThreadPoolExecutor` in the backend is the tool fan-out inside `tool_executor_node`, which is what
 `EXECUTOR_MAX_WORKERS` sizes.
 
@@ -81,51 +85,57 @@ progress UI decorative. A change here that reintroduces buffering will pass ever
 - `tool_result` -> `{tool: string, success: boolean}`
 - `briefing` -> `{content: string}` (the full markdown briefing)
 - `complete` -> `{message: "Briefing complete"}`
-- `error` -> `{message: string}`
+- `error` -> `{message: string}` (generic text — internal exception details are logged, never sent to the client)
 
 ## 6. Dynamic Import with SSR Bypass (Frontend 3D)
 
-All Three.js components are loaded via `next/dynamic` with `ssr: false` to prevent server-side rendering failures (Three.js requires browser APIs). This pattern appears in:
+All Three.js components are loaded via `next/dynamic` with `ssr: false` to prevent server-side rendering failures (Three.js requires browser APIs). The four import sites:
 
-- `frontend/app/page.tsx:4` - F1HeroScene
-- `frontend/components/BriefingChat.tsx:10` - F1LoadingAnimation
+- `frontend/app/showcase/page.tsx` - F1CarShowcase
+- `frontend/components/briefing/briefing-chat.tsx` - F1LoadingAnimation (named-only export, mapped via `.then((mod) => ({ default: mod.F1LoadingAnimation }))`)
+- `frontend/components/teams/sticky-car-viewer.tsx` - F1HeroScene
+- `frontend/components/teams/inspect-modal.tsx` - F1HeroScene
 
-Each dynamic import includes a loading fallback (placeholder div or null). The 3D components live in `frontend/components/3d/` and are never imported directly by server components.
+Each dynamic import uses a **direct file path** (`import('@/components/3d/f1-hero-scene')`) — there is no barrel in `components/3d/`. Each includes a loading fallback (placeholder div or null). The 3D components are never imported by server components.
 
 ## 7. AsyncGenerator SSE Consumer (Frontend API Client)
 
-The frontend consumes SSE streams via an `async function*` generator (`frontend/lib/api.ts:53-122`). The pattern:
+The frontend consumes SSE streams via an `async function*` generator (`streamBriefing` in `frontend/lib/api.ts`). The pattern:
 
-1. `fetch()` with POST to the streaming endpoint
+1. `fetch()` with POST to the streaming endpoint, forwarding an optional `AbortSignal`
 2. `response.body.getReader()` to get a `ReadableStream` reader
 3. Manual line-by-line parsing of `event:` and `data:` SSE fields
 4. `yield` typed `StreamEvent` objects to the caller
-5. Consumer (`BriefingChat.tsx:48-65`) uses `for await...of` to process events and update React state
+5. A `finally` block cancels the reader so early generator exit (abort, consumer break) tears down the HTTP connection
 
-Event type discrimination happens by checking data field presence (`data.step` -> status, `data.tool` -> tool_result, etc.) at `api.ts:100-112`.
+Event type discrimination uses the **SSE `event:` line**: the generator captures it into `eventType` and a `switch (eventType)` casts each JSON-parsed `data:` payload to the matching `StreamEvent` arm. It never inspects payload field presence — that heuristic was deliberately removed; do not reintroduce it.
+
+The consumer is `frontend/hooks/use-briefing.ts`, which drives the generator with `for await...of`.
 
 ## 8. React Hooks Local State (Frontend State Management)
 
-No global state store. Each component manages its own state with `useState`. The main stateful component is `BriefingChat` (`frontend/components/BriefingChat.tsx:21-27`) which tracks:
+No global state store. Briefing state lives in the `useBriefing` custom hook (`frontend/hooks/use-briefing.ts`), which owns:
 
 - `query`, `loading`, `race`, `briefing`, `toolTrace`, `error`, `statusMessage`
 
-State is reset at the start of each new request (`BriefingChat.tsx:34-39`). Child components (`BriefingCard`, `ToolTrace`, `RaceSelector`) receive data via props only.
+plus an `AbortController` ref: each `submit()` aborts any in-flight stream, resets state, and consumes `streamBriefing`; unmount aborts via a `useEffect` cleanup. `BriefingChat` (`frontend/components/briefing/briefing-chat.tsx`) is a slim orchestrator over the hook; child components (`BriefingCard`, `ToolTrace`, `RaceSelector`) receive data via props only.
 
 ## 9. Pydantic Request/Response Models (API Contracts)
 
-API input/output shapes are defined as Pydantic `BaseModel` classes (`backend/api/routes.py:16-22`):
+API input/output shapes are defined as Pydantic `BaseModel` classes in `backend/api/models.py`:
 
-- `BriefingRequest` - `{query: str}`
-- `BriefingResponse` - `{race: str, briefing: str, tool_trace: List[Dict]}`
+- `BriefingRequest` - `query: str` with `Field(min_length=1, max_length=500)` validation
+- `ToolTraceSummary` - `{tool: str, success: bool, summary: str}`
+- `BriefingResponse` - `{race: str, briefing: str, tool_trace: list[ToolTraceSummary]}`
 
-The non-streaming endpoint uses `response_model=BriefingResponse` for automatic validation. The streaming endpoint bypasses this since it returns an `EventSourceResponse`.
+The non-streaming endpoint uses `response_model=BriefingResponse` for automatic validation, and maps outcomes to status codes: 404 when resolution fails (client-input problem), 500 with a generic detail for unexpected failures. The streaming endpoint bypasses `response_model` since it returns an `EventSourceResponse`. The `/api/races/{year}` path param is bounded (`ge=1950, le=current year + 1`), so out-of-range years 422 before touching FastF1.
 
 ## 10. Prompt Template with Variable Injection
 
-Both LLM prompts in `backend/agent/prompts.py` use Python f-string-style `{variable}` placeholders (escaped with `{{` `}}` for literal braces in JSON examples):
+Both LLM prompts in `backend/agent/prompts.py` use Python `str.format`-style `{variable}` placeholders:
 
-- `PLANNER_PROMPT` (line 1): Takes `{query}`, returns structured JSON with race info and tool list
-- `SYNTHESIZER_PROMPT` (line 45): Takes `{tool_results}`, returns markdown briefing
+- `PLANNER_PROMPT`: receives the already-resolved race fields (`{race_name}`, `{race_year}`, `{race_location}`, `{race_country}`, `{race_date}`, `{is_upcoming}`, `{historical_year}`) and returns **only a JSON array of tool names**. It does not resolve races and contains no race-name mapping.
+- `SYNTHESIZER_PROMPT`: takes `{tool_results}` (JSON-serialized ToolResults), returns the markdown briefing. It instructs the model to skip or caveat sections whose tool data failed.
+- `DEFAULT_TOOLS`: the planner's fallback tool list, used when the LLM response fails to parse as a JSON string array.
 
-The planner prompt includes a hardcoded mapping of common race names to official names (lines 8-29). When adding new races or name aliases, update this mapping.
+Race-name resolution is deterministic, not prompted: the `ALIASES` dict in `backend/tools/race_resolver.py` maps common names ("monaco", "spa", …) to official event names. When adding new races or name aliases, update `ALIASES` — not the prompts.

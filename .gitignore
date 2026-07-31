@@ -51,7 +51,10 @@ pnpm-debug.log*
 
 # Claude code mcp servers
 .mcp.json
-.claude/
+# Ignore .claude/ except the tracked docs tree (the /* form is required —
+# git will not descend into a fully-ignored directory to apply negations)
+.claude/*
+!.claude/docs/
 
 # Local markdown issue tracker (see docs/agents/issue-tracker.md)
 .scratch/

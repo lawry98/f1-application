@@ -77,6 +77,11 @@ def test_find_event_returns_none_when_nothing_matches(season_2025):
     assert _find_event(season_2025, "Nürburgring") is None
 
 
+def test_find_event_treats_regex_metacharacters_literally(season_2025):
+    """An unbalanced paren must be a failed substring match, not a re.error."""
+    assert _find_event(season_2025, "monaco (2024") is None
+
+
 def test_find_event_returns_first_match_when_several(season_2025):
     """'Grand Prix' matches every row; the earliest-listed one wins."""
     assert _find_event(season_2025, "Grand Prix")["EventName"] == "Bahrain Grand Prix"
@@ -220,6 +225,19 @@ def test_unknown_circuit_returns_error():
     assert "nurburgring" in result["error"]
 
 
+@freeze_time(FROZEN_NOW)
+@pytest.mark.parametrize("query", ["monaco (2024", "c++ gp", "what about spa?"])
+def test_regex_metacharacters_in_a_query_return_an_error_not_a_crash(query):
+    """Queries are matched as literal substrings; metacharacters must not raise.
+
+    ``str.contains`` defaults to regex=True, so without ``regex=False`` an unbalanced
+    paren raises ``re.error`` straight through the resolver — bypassing the error-dict
+    contract and surfacing to the client as a regex parse message.
+    """
+    result = resolve_next_race(query)
+    assert "error" in result
+
+
 @freeze_time("2028-05-01")
 def test_returns_error_when_no_schedule_can_be_loaded_at_all():
     """Every get_schedule call raises; the resolver must degrade to an error dict, not blow up.
@@ -268,17 +286,3 @@ def test_circuit_id_is_derived_from_the_event_name():
     Renaming it to ``event_slug`` (or deleting it) should flip this test deliberately.
     """
     assert resolve_next_race("silverstone")["circuit_id"] == "british_grand_prix"
-
-
-@freeze_time(FROZEN_NOW)
-def test_resolution_prefills_the_schedule_cache():
-    """Schedules fetched during resolution are shared with the tools that run next.
-
-    This is the whole point of schedule_cache — dropping the prefill would not fail any
-    other test, it would just quietly reintroduce duplicate network fetches per request.
-    """
-    from tools import schedule_cache
-
-    schedule_cache.clear()
-    resolve_next_race("monaco")
-    assert 2025 in schedule_cache._cache

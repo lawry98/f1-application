@@ -3,10 +3,11 @@
 import asyncio
 import json
 import logging
+from datetime import date
 from typing import Any
 
 import fastf1
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Path
 from sse_starlette.sse import EventSourceResponse
 
 from agent.graph import agent
@@ -19,32 +20,30 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api")
 
 
+def initial_state(query: str) -> AgentState:
+    return {
+        "race_query": query,
+        "race_info": None,
+        "tasks": [],
+        "tool_results": [],
+        "briefing": None,
+        "current_step": "resolving",
+    }
+
+
 @router.post("/briefing", response_model=BriefingResponse)
 async def generate_briefing(request: BriefingRequest) -> BriefingResponse:
-    """Generate a complete race briefing synchronously.
-
-    Args:
-        request: BriefingRequest with the user's race query.
-
-    Returns:
-        BriefingResponse containing the briefing text and tool trace.
-    """
+    """Generate a complete race briefing in a single response."""
     try:
-        initial_state: AgentState = {
-            "messages": [],
-            "race_query": request.query,
-            "race_info": None,
-            "tasks": [],
-            "tool_results": [],
-            "briefing": None,
-            "current_step": "resolving",
-        }
+        result: dict[str, Any] = await agent.ainvoke(initial_state(request.query))
 
-        result: dict[str, Any] = agent.invoke(initial_state)
-
-        if result.get("current_step") == "error" or not result.get("briefing"):
-            error_msg = result.get("briefing", "Failed to generate briefing")
-            raise HTTPException(status_code=500, detail=error_msg)
+        if result.get("current_step") == "error":
+            raise HTTPException(
+                status_code=404,
+                detail=result.get("briefing") or "Could not resolve race",
+            )
+        if not result.get("briefing"):
+            raise HTTPException(status_code=500, detail="Briefing generation failed")
 
         race_name: str = result.get("race_info", {}).get("name", "Unknown Race")
 
@@ -67,44 +66,26 @@ async def generate_briefing(request: BriefingRequest) -> BriefingResponse:
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logger.exception("Briefing generation failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Briefing generation failed") from exc
     finally:
         clear_schedule_cache()
 
 
 @router.post("/briefing/stream")
 async def generate_briefing_stream(request: BriefingRequest) -> EventSourceResponse:
-    """Stream briefing generation via Server-Sent Events.
-
-    Args:
-        request: BriefingRequest with the user's race query.
-
-    Returns:
-        EventSourceResponse that yields typed SSE events as the agent executes.
-    """
+    """Stream briefing generation via Server-Sent Events, one event per completed node."""
 
     async def event_generator():
         try:
             logger.info("Starting briefing generation for: %s", request.query)
-
-            initial_state: AgentState = {
-                "messages": [],
-                "race_query": request.query,
-                "race_info": None,
-                "tasks": [],
-                "tool_results": [],
-                "briefing": None,
-                "current_step": "resolving",
-            }
 
             yield {
                 "event": "status",
                 "data": json.dumps({"step": "resolving", "message": "Resolving race..."}),
             }
 
-            await asyncio.sleep(0.1)
-
-            async for step_result in agent.astream(initial_state):
+            async for step_result in agent.astream(initial_state(request.query)):
                 current_step = next(iter(step_result), "unknown")
                 step_data = step_result.get(current_step, {})
 
@@ -157,7 +138,10 @@ async def generate_briefing_stream(request: BriefingRequest) -> EventSourceRespo
 
         except Exception as exc:
             logger.exception("Error during briefing stream generation: %s", exc)
-            yield {"event": "error", "data": json.dumps({"message": str(exc)})}
+            yield {
+                "event": "error",
+                "data": json.dumps({"message": "Briefing generation failed"}),
+            }
         finally:
             clear_schedule_cache()
 
@@ -165,17 +149,10 @@ async def generate_briefing_stream(request: BriefingRequest) -> EventSourceRespo
 
 
 @router.get("/races/{year}")
-async def get_races(year: int) -> dict[str, Any]:
-    """Get the F1 calendar for a specific year.
-
-    Args:
-        year: Championship year (e.g., 2025).
-
-    Returns:
-        Dict with 'year' and 'races' list.
-    """
+async def get_races(year: int = Path(ge=1950, le=date.today().year + 1)) -> dict[str, Any]:
+    """Get the F1 calendar for a specific year."""
     try:
-        schedule = fastf1.get_event_schedule(year)
+        schedule = await asyncio.to_thread(fastf1.get_event_schedule, year)
 
         races = [
             {
@@ -190,7 +167,8 @@ async def get_races(year: int) -> dict[str, Any]:
 
         return {"year": year, "races": races}
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logger.exception("Failed to fetch race calendar for %d: %s", year, exc)
+        raise HTTPException(status_code=500, detail="Failed to fetch race calendar") from exc
 
 
 @router.get("/health")

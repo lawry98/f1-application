@@ -1,11 +1,11 @@
 """OpenWeather API tool for race location weather forecasts."""
 
-import os
-from datetime import datetime  # noqa: F401 — kept for future use
 from typing import Any
 
 import requests
 from langchain_core.tools import tool
+
+from config import OPENWEATHER_API_KEY
 
 
 @tool
@@ -20,25 +20,28 @@ def get_race_weather(city: str, country_code: str) -> dict[str, Any]:
         Dictionary with weather forecast data or an 'error' key on failure.
     """
     try:
-        api_key = os.getenv("OPENWEATHER_API_KEY")
-        if not api_key:
+        if not OPENWEATHER_API_KEY:
             return {"error": "OPENWEATHER_API_KEY not configured"}
 
         geo_response = requests.get(
             "https://api.openweathermap.org/geo/1.0/direct",
-            params={"q": f"{city},{country_code}", "limit": 1, "appid": api_key},
+            params={"q": f"{city},{country_code}", "limit": 1, "appid": OPENWEATHER_API_KEY},
             timeout=10,
         )
-        if geo_response.status_code != 200 or not geo_response.json():
+        if geo_response.status_code != 200:
+            return {"error": f"Geocoding request failed with status {geo_response.status_code}"}
+
+        geo_results = geo_response.json()
+        if not geo_results:
             return {"error": f"Could not find location for {city}, {country_code}"}
 
-        location = geo_response.json()[0]
+        location = geo_results[0]
         lat = location["lat"]
         lon = location["lon"]
 
         forecast_response = requests.get(
             "https://api.openweathermap.org/data/2.5/forecast",
-            params={"lat": lat, "lon": lon, "appid": api_key, "units": "metric"},
+            params={"lat": lat, "lon": lon, "appid": OPENWEATHER_API_KEY, "units": "metric"},
             timeout=10,
         )
         if forecast_response.status_code != 200:

@@ -106,10 +106,29 @@ def make_llm(content: str = "[]", raises: Exception | None = None):
     return _FakeLLM()
 
 
+def make_session(results_rows: list[dict[str, Any]]):
+    """Build a stand-in for a FastF1 ``Session``.
+
+    The tools only touch ``.load(...)`` and ``.results`` (a DataFrame), so that is the
+    whole surface worth doubling. ``loads`` records the kwargs each ``load`` call got,
+    letting tests pin that telemetry/weather/messages stay disabled.
+    """
+    frame = pd.DataFrame(results_rows)
+
+    class _FakeSession:
+        def __init__(self) -> None:
+            self.results = frame
+            self.loads: list[dict[str, Any]] = []
+
+        def load(self, **kwargs: Any) -> None:
+            self.loads.append(kwargs)
+
+    return _FakeSession()
+
+
 def make_state(**overrides: Any) -> dict[str, Any]:
     """Build an AgentState dict with sensible defaults, overridable per test."""
     state: dict[str, Any] = {
-        "messages": [],
         "race_query": "monaco",
         "race_info": None,
         "tasks": [],

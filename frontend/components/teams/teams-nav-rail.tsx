@@ -37,7 +37,6 @@ function NavButton({
           isActive
             ? {
                 backgroundColor: `${team.color}33`,
-                borderColor: team.color,
                 border: `1px solid ${team.color}`,
               }
             : { border: '1px solid transparent' }

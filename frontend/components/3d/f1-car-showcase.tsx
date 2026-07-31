@@ -1,243 +1,32 @@
 'use client';
 
-import { Suspense, useState, useRef, useEffect, useMemo } from 'react';
+import { Suspense, useState } from 'react';
 import Link from 'next/link';
-import { Canvas, useFrame, useLoader } from '@react-three/fiber';
-import { GLTFLoader } from 'three-stdlib';
-import * as THREE from 'three';
-
-const teamColors = {
-  redbull: '#1e41ff',
-  ferrari: '#dc0000',
-  mercedes: '#00d2be',
-  mclaren: '#ff8700',
-  astonmartin: '#006f62',
-  alpine: '#0090ff',
-  williams: '#005aff',
-  haas: '#ffffff',
-  sauber: '#52e252',
-  rb: '#2b4562',
-};
-
-type TeamName = keyof typeof teamColors;
-
-function RealShowcaseCar({ teamColor }: { teamColor: string }) {
-  const groupRef = useRef<THREE.Group>(null);
-  const gltf = useLoader(GLTFLoader, '/models/f1-car.glb');
-
-  const clonedScene = useMemo(() => {
-    const scene = gltf.scene.clone();
-    scene.traverse((child: THREE.Object3D) => {
-      if (child instanceof THREE.Mesh) {
-        child.castShadow = true;
-        child.receiveShadow = true;
-        if (child.material) {
-          const material = child.material as THREE.MeshStandardMaterial;
-          if (
-            material.name &&
-            (material.name.includes('body') ||
-              material.name.includes('Body') ||
-              material.name.includes('paint'))
-          ) {
-            const newMaterial = material.clone();
-            newMaterial.color.set(teamColor);
-            newMaterial.metalness = 0.9;
-            newMaterial.roughness = 0.15;
-            child.material = newMaterial;
-          }
-        }
-      }
-    });
-    return scene;
-  }, [gltf.scene, teamColor]);
-
-  useFrame((state, delta) => {
-    if (groupRef.current) {
-      groupRef.current.rotation.y += delta * 0.15;
-    }
-  });
-
-  return (
-    <group ref={groupRef}>
-      <primitive object={clonedScene} scale={2} position={[0, 0, 0]} />
-    </group>
-  );
-}
-
-function DetailedShowcaseCar({ teamColor }: { teamColor: string }) {
-  const groupRef = useRef<THREE.Group>(null);
-
-  useFrame((state, delta) => {
-    if (groupRef.current) {
-      groupRef.current.rotation.y += delta * 0.15;
-    }
-  });
-
-  return (
-    <group ref={groupRef}>
-      {/* Main body */}
-      <mesh castShadow>
-        <boxGeometry args={[1.2, 0.25, 3.5]} />
-        <meshStandardMaterial color={teamColor} metalness={0.9} roughness={0.15} />
-      </mesh>
-
-      {/* Nose cone */}
-      <mesh castShadow position={[0, 0, 2]}>
-        <coneGeometry args={[0.3, 0.8, 4]} />
-        <meshStandardMaterial color={teamColor} metalness={0.9} roughness={0.15} />
-      </mesh>
-
-      {/* Cockpit */}
-      <mesh castShadow position={[0, 0.35, 0.5]}>
-        <boxGeometry args={[0.7, 0.35, 1.2]} />
-        <meshStandardMaterial
-          color="#1a1a1a"
-          metalness={0.3}
-          roughness={0.7}
-          transparent
-          opacity={0.4}
-        />
-      </mesh>
-
-      {/* Driver helmet */}
-      <mesh castShadow position={[0, 0.45, 0.5]}>
-        <sphereGeometry args={[0.2, 16, 16]} />
-        <meshStandardMaterial color="#ffd700" metalness={0.9} roughness={0.1} />
-      </mesh>
-
-      {/* Front wing */}
-      <mesh castShadow position={[0, -0.1, 2.3]}>
-        <boxGeometry args={[1.8, 0.05, 0.4]} />
-        <meshStandardMaterial color="#1a1a1a" metalness={0.8} roughness={0.2} />
-      </mesh>
-
-      {/* Rear wing main */}
-      <mesh castShadow position={[0, 0.5, -1.8]}>
-        <boxGeometry args={[1.6, 0.05, 0.6]} />
-        <meshStandardMaterial color="#1a1a1a" metalness={0.8} roughness={0.2} />
-      </mesh>
-
-      {/* Rear wing upper */}
-      <mesh castShadow position={[0, 0.7, -1.8]}>
-        <boxGeometry args={[1.6, 0.05, 0.5]} />
-        <meshStandardMaterial color="#1a1a1a" metalness={0.8} roughness={0.2} />
-      </mesh>
-
-      {/* Wing supports */}
-      <mesh castShadow position={[-0.7, 0.3, -1.8]}>
-        <cylinderGeometry args={[0.03, 0.03, 0.6, 8]} />
-        <meshStandardMaterial color="#1a1a1a" metalness={0.8} />
-      </mesh>
-      <mesh castShadow position={[0.7, 0.3, -1.8]}>
-        <cylinderGeometry args={[0.03, 0.03, 0.6, 8]} />
-        <meshStandardMaterial color="#1a1a1a" metalness={0.8} />
-      </mesh>
-
-      {/* Side pods */}
-      <mesh castShadow position={[-0.5, 0, 0]}>
-        <boxGeometry args={[0.3, 0.3, 1.8]} />
-        <meshStandardMaterial color={teamColor} metalness={0.85} roughness={0.2} />
-      </mesh>
-      <mesh castShadow position={[0.5, 0, 0]}>
-        <boxGeometry args={[0.3, 0.3, 1.8]} />
-        <meshStandardMaterial color={teamColor} metalness={0.85} roughness={0.2} />
-      </mesh>
-
-      {/* Front wheels */}
-      <group position={[-0.7, -0.15, 1.2]}>
-        <mesh castShadow rotation={[0, 0, Math.PI / 2]}>
-          <cylinderGeometry args={[0.25, 0.25, 0.2, 24]} />
-          <meshStandardMaterial color="#000000" metalness={0.2} roughness={0.8} />
-        </mesh>
-        <mesh castShadow rotation={[0, 0, Math.PI / 2]}>
-          <cylinderGeometry args={[0.15, 0.15, 0.22, 24]} />
-          <meshStandardMaterial color="#1a1a1a" metalness={0.9} roughness={0.1} />
-        </mesh>
-      </group>
-      <group position={[0.7, -0.15, 1.2]}>
-        <mesh castShadow rotation={[0, 0, Math.PI / 2]}>
-          <cylinderGeometry args={[0.25, 0.25, 0.2, 24]} />
-          <meshStandardMaterial color="#000000" metalness={0.2} roughness={0.8} />
-        </mesh>
-        <mesh castShadow rotation={[0, 0, Math.PI / 2]}>
-          <cylinderGeometry args={[0.15, 0.15, 0.22, 24]} />
-          <meshStandardMaterial color="#1a1a1a" metalness={0.9} roughness={0.1} />
-        </mesh>
-      </group>
-
-      {/* Rear wheels */}
-      <group position={[-0.8, -0.15, -1.2]}>
-        <mesh castShadow rotation={[0, 0, Math.PI / 2]}>
-          <cylinderGeometry args={[0.3, 0.3, 0.25, 24]} />
-          <meshStandardMaterial color="#000000" metalness={0.2} roughness={0.8} />
-        </mesh>
-        <mesh castShadow rotation={[0, 0, Math.PI / 2]}>
-          <cylinderGeometry args={[0.18, 0.18, 0.27, 24]} />
-          <meshStandardMaterial color="#1a1a1a" metalness={0.9} roughness={0.1} />
-        </mesh>
-      </group>
-      <group position={[0.8, -0.15, -1.2]}>
-        <mesh castShadow rotation={[0, 0, Math.PI / 2]}>
-          <cylinderGeometry args={[0.3, 0.3, 0.25, 24]} />
-          <meshStandardMaterial color="#000000" metalness={0.2} roughness={0.8} />
-        </mesh>
-        <mesh castShadow rotation={[0, 0, Math.PI / 2]}>
-          <cylinderGeometry args={[0.18, 0.18, 0.27, 24]} />
-          <meshStandardMaterial color="#1a1a1a" metalness={0.9} roughness={0.1} />
-        </mesh>
-      </group>
-
-      {/* Exhaust */}
-      <mesh castShadow position={[0.15, 0.1, -1.6]}>
-        <cylinderGeometry args={[0.05, 0.05, 0.3, 12]} />
-        <meshStandardMaterial
-          color="#444444"
-          metalness={1}
-          roughness={0.3}
-          emissive="#ff4400"
-          emissiveIntensity={0.3}
-        />
-      </mesh>
-      <mesh castShadow position={[-0.15, 0.1, -1.6]}>
-        <cylinderGeometry args={[0.05, 0.05, 0.3, 12]} />
-        <meshStandardMaterial
-          color="#444444"
-          metalness={1}
-          roughness={0.3}
-          emissive="#ff4400"
-          emissiveIntensity={0.3}
-        />
-      </mesh>
-    </group>
-  );
-}
+import { Canvas } from '@react-three/fiber';
+import { TEAMS, type Team } from '@/data/teams-data';
+import { PrimitiveCar, RealCar } from './f1-car-model';
 
 function ShowcaseCarModel({ teamColor }: { teamColor: string }) {
-  const [hasModel, setHasModel] = useState(false);
+  const fallback = (
+    <PrimitiveCar
+      bodyColor={teamColor}
+      sidepodColor={teamColor}
+      rotationSpeed={0.15}
+      exhaustEmissiveIntensity={0.3}
+    />
+  );
 
-  useEffect(() => {
-    fetch('/models/f1-car.glb', { method: 'HEAD' })
-      .then((response) => {
-        setHasModel(response.ok);
-      })
-      .catch(() => {
-        setHasModel(false);
-      });
-  }, []);
-
-  if (hasModel) {
-    return (
-      <Suspense fallback={<DetailedShowcaseCar teamColor={teamColor} />}>
-        <RealShowcaseCar teamColor={teamColor} />
-      </Suspense>
-    );
-  }
-
-  return <DetailedShowcaseCar teamColor={teamColor} />;
+  return (
+    <Suspense fallback={fallback}>
+      <RealCar teamColor={teamColor} scale={2} position={[0, 0, 0]} rotationSpeed={0.15} />
+    </Suspense>
+  );
 }
 
 export default function F1CarShowcase() {
-  const [selectedTeam, setSelectedTeam] = useState<TeamName>('ferrari');
+  const [selectedTeam, setSelectedTeam] = useState<Team>(
+    () => TEAMS.find((team) => team.id === 'ferrari') ?? TEAMS[0]!,
+  );
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white">
@@ -254,7 +43,7 @@ export default function F1CarShowcase() {
         <h1 className="mb-2 text-center text-4xl font-bold md:text-5xl">
           <span className="text-f1-red">F1</span> Car Showcase
         </h1>
-        <p className="mb-8 text-center text-lg text-zinc-400">Explore all 10 team liveries in 3D</p>
+        <p className="mb-8 text-center text-lg text-zinc-400">Explore all 11 team liveries in 3D</p>
 
         <div className="mb-8 h-[70vh] overflow-hidden rounded-xl border border-zinc-800 bg-gradient-to-b from-zinc-900 to-zinc-950 shadow-2xl">
           <Canvas camera={{ position: [5, 2.5, 5], fov: 50 }} dpr={[1, 2]} shadows>
@@ -274,7 +63,7 @@ export default function F1CarShowcase() {
             <spotLight position={[0, 8, 8]} angle={0.3} penumbra={1} intensity={1} castShadow />
 
             <Suspense fallback={null}>
-              <ShowcaseCarModel teamColor={teamColors[selectedTeam]} />
+              <ShowcaseCarModel teamColor={selectedTeam.color} />
 
               <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.5, 0]} receiveShadow>
                 <planeGeometry args={[50, 50]} />
@@ -289,24 +78,24 @@ export default function F1CarShowcase() {
         <div className="mx-auto max-w-5xl">
           <h3 className="mb-6 text-center text-2xl font-semibold">Select Team Livery</h3>
           <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
-            {Object.entries(teamColors).map(([team, color]) => (
+            {TEAMS.map((team) => (
               <button
-                key={team}
-                onClick={() => setSelectedTeam(team as TeamName)}
-                className={`rounded-xl border-2 px-4 py-4 font-semibold capitalize transition-all duration-300 ${
-                  selectedTeam === team
+                key={team.id}
+                onClick={() => setSelectedTeam(team)}
+                className={`rounded-xl border-2 px-4 py-4 font-semibold transition-all duration-300 ${
+                  selectedTeam.id === team.id
                     ? 'scale-105 border-f1-red bg-zinc-800 shadow-lg'
-                    : 'hover:scale-102 border-zinc-700 bg-zinc-900 hover:border-zinc-600'
+                    : 'border-zinc-700 bg-zinc-900 hover:scale-[1.02] hover:border-zinc-600'
                 } `}
                 style={{
-                  boxShadow: selectedTeam === team ? `0 0 30px ${color}50` : 'none',
+                  boxShadow: selectedTeam.id === team.id ? `0 0 30px ${team.color}50` : 'none',
                 }}
               >
                 <div
                   className="mb-3 h-12 w-full rounded-lg shadow-inner"
-                  style={{ backgroundColor: color }}
+                  style={{ backgroundColor: team.color }}
                 />
-                <span className="text-sm">{team.replace(/([A-Z])/g, ' $1').trim()}</span>
+                <span className="text-sm">{team.shortName}</span>
               </button>
             ))}
           </div>

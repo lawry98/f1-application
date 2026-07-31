@@ -13,7 +13,7 @@ export function LandingCtaBand() {
         className="pointer-events-none absolute inset-0 flex items-center justify-center"
         aria-hidden="true"
       >
-        <div className="bg-red-600/8 h-[600px] w-[600px] rounded-full blur-3xl" />
+        <div className="h-[600px] w-[600px] rounded-full bg-red-600/[0.08] blur-3xl" />
       </div>
 
       <div className="container relative mx-auto max-w-4xl px-4 text-center">

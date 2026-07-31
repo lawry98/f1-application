@@ -37,7 +37,7 @@ class FakeAgent:
         self.raises = raises
         self.states: list[dict[str, Any]] = []
 
-    def invoke(self, state: dict[str, Any]) -> dict[str, Any]:
+    async def ainvoke(self, state: dict[str, Any]) -> dict[str, Any]:
         self.states.append(state)
         if self.raises is not None:
             raise self.raises
@@ -204,17 +204,9 @@ def test_briefing_falls_back_to_unknown_race_without_race_info(client, install_a
     assert client.post("/api/briefing", json={"query": "monaco"}).json()["race"] == "Unknown Race"
 
 
-def test_an_unresolvable_query_returns_500(client, install_agent):
-    """Pins current behaviour, which is arguably the wrong status code.
-
-    A query the resolver cannot match is a *client* error — the user typed something
-    that is not a Grand Prix. It surfaces as 500 because the resolver writes its message
-    into ``briefing`` (see tests/agent/test_graph.py) and routes.py reads that field back
-    out as an internal-error detail.
-
-    400 or 404 would be more honest. Changing it should flip this test deliberately, and
-    would also need frontend work: lib/api.ts throws the same generic message for every
-    non-ok status, so the improvement would not reach the UI on its own.
+def test_an_unresolvable_query_returns_404_with_the_resolver_message(client, install_agent):
+    """Resolution failure is a client error — the user typed something that is not a
+    Grand Prix — and the resolver's message is deliberately user-facing.
     """
     install_agent(
         result={"current_step": "error", "briefing": "Could not resolve race: no such race"}
@@ -222,47 +214,33 @@ def test_an_unresolvable_query_returns_500(client, install_agent):
 
     response = client.post("/api/briefing", json={"query": "monakko"})
 
-    assert response.status_code == 500
+    assert response.status_code == 404
     assert response.json()["detail"] == "Could not resolve race: no such race"
 
 
-def test_a_none_briefing_loses_the_fallback_message(client, install_agent):
-    """Pins current behaviour, which contains a real defect.
-
-    routes.py reads ``result.get("briefing", "Failed to generate briefing")``. A dict
-    default only applies when the key is *absent* — here the key is present and set to
-    None, so ``detail`` becomes None and FastAPI renders a bare "Internal Server Error".
-
-    This is the case the fallback was written for, and it is the case that always
-    happens: AgentState declares ``briefing`` and the initial state sets it to None, so
-    the key is never missing in practice. The message below is effectively unreachable.
-
-    Fixing it (``result.get("briefing") or "Failed to generate briefing"``) should flip
-    this test.
+@pytest.mark.parametrize(
+    "result",
+    [
+        {"current_step": "complete", "briefing": None},
+        {"current_step": "complete"},
+    ],
+    ids=["briefing-is-none", "briefing-key-absent"],
+)
+def test_a_completed_run_without_a_briefing_is_a_500(client, install_agent, result):
+    """None and absent must behave identically: the initial state sets ``briefing`` to
+    None, so a ``dict.get`` default alone would never fire in practice.
     """
-    install_agent(result={"current_step": "complete", "briefing": None})
+    install_agent(result=result)
     response = client.post("/api/briefing", json={"query": "monaco"})
     assert response.status_code == 500
-    assert response.json()["detail"] == "Internal Server Error"
+    assert response.json()["detail"] == "Briefing generation failed"
 
 
-def test_the_fallback_message_only_appears_when_the_key_is_absent(client, install_agent):
-    """The contrast case for the test above: no ``briefing`` key at all reaches the default.
-
-    The agent never actually produces this state; it is here to show that the fallback
-    works and that the bug is specifically about None, not about the message itself.
-    """
-    install_agent(result={"current_step": "complete"})
-    response = client.post("/api/briefing", json={"query": "monaco"})
-    assert response.status_code == 500
-    assert response.json()["detail"] == "Failed to generate briefing"
-
-
-def test_an_agent_crash_returns_500(client, install_agent):
+def test_an_agent_crash_returns_500_without_leaking_the_exception(client, install_agent):
     install_agent(raises=RuntimeError("graph exploded"))
     response = client.post("/api/briefing", json={"query": "monaco"})
     assert response.status_code == 500
-    assert "graph exploded" in response.json()["detail"]
+    assert response.json()["detail"] == "Briefing generation failed"
 
 
 def test_a_missing_query_field_is_rejected_before_the_agent_runs(client, install_agent):
@@ -359,14 +337,15 @@ def test_stream_stops_at_the_resolver_when_resolution_fails(client, install_agen
     assert events[1][1] == {"message": "Could not resolve race: no such race"}
 
 
-def test_stream_reports_an_agent_crash_as_an_error_event(client, install_agent):
-    """A stream cannot change its status code once open, so failures arrive as events."""
+def test_stream_reports_an_agent_crash_as_a_generic_error_event(client, install_agent):
+    """A stream cannot change its status code once open, so failures arrive as events —
+    and the exception text stays server-side.
+    """
     install_agent(raises=RuntimeError("graph exploded"))
 
     events = parse_sse(client.post("/api/briefing/stream", json={"query": "monaco"}).text)
 
-    assert events[-1][0] == "error"
-    assert "graph exploded" in events[-1][1]["message"]
+    assert events[-1] == ("error", {"message": "Briefing generation failed"})
 
 
 def test_stream_omits_the_briefing_event_when_the_synthesizer_produces_nothing(
@@ -455,17 +434,25 @@ def test_races_returns_an_empty_list_for_an_empty_schedule(client, monkeypatch):
     assert response.json()["races"] == []
 
 
-def test_races_returns_500_when_the_schedule_cannot_be_loaded(client, monkeypatch):
+def test_races_returns_a_generic_500_when_the_schedule_cannot_be_loaded(client, monkeypatch):
     def boom(year):
         raise ValueError(f"No data for {year}")
 
     monkeypatch.setattr(routes_module.fastf1, "get_event_schedule", boom)
 
-    response = client.get("/api/races/1066")
+    response = client.get("/api/races/2025")
 
     assert response.status_code == 500
-    assert "No data for 1066" in response.json()["detail"]
+    assert response.json()["detail"] == "Failed to fetch race calendar"
 
 
 def test_races_rejects_a_non_numeric_year(client):
     assert client.get("/api/races/next").status_code == 422
+
+
+@pytest.mark.parametrize("year", [1949, 99999, -5])
+def test_races_rejects_an_out_of_range_year_before_touching_fastf1(client, year):
+    """Validation happens at the path parameter, so fastf1 is never reached — the
+    conftest network guard would fail this loudly otherwise.
+    """
+    assert client.get(f"/api/races/{year}").status_code == 422

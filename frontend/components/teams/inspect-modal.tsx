@@ -24,25 +24,45 @@ interface InspectModalProps {
 
 export function InspectModal({ team, onClose }: InspectModalProps) {
   const previousFocusRef = useRef<Element | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Store previously focused element to restore on close
     previousFocusRef.current = document.activeElement;
 
-    // Lock body scroll
     const original = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
 
-    // Escape key close
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+
+      // aria-modal claims the background is inert, so Tab must wrap within the panel.
+      if (e.key !== 'Tab' || !panelRef.current) return;
+      const focusable = panelRef.current.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
+      const active = document.activeElement;
+      const inPanel = active instanceof Node && panelRef.current.contains(active);
+      if (e.shiftKey) {
+        if (!inPanel || active === first) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else if (!inPanel || active === last) {
+        e.preventDefault();
+        first.focus();
+      }
     };
     document.addEventListener('keydown', onKey);
 
     return () => {
       document.body.style.overflow = original;
       document.removeEventListener('keydown', onKey);
-      // Restore focus
       if (previousFocusRef.current instanceof HTMLElement) {
         previousFocusRef.current.focus();
       }
@@ -64,6 +84,7 @@ export function InspectModal({ team, onClose }: InspectModalProps) {
 
       {/* Panel */}
       <motion.div
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-label={`Inspect ${team.name} in 3D`}
