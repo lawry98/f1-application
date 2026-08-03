@@ -23,9 +23,15 @@ function monogram(shortName: string): string {
  *
  * `logo` is always a populated path, so the fallback is driven purely by the image
  * failing to load — an asset that has not been fetched yet behaves exactly like a 404.
+ *
+ * The failure is tracked by team id, not a bare boolean: a persistent instance (e.g. a
+ * sticky rail whose `team` prop swaps without remounting) must re-attempt the new team's
+ * image rather than latching on whichever team failed first. Consumers need no `key` for
+ * this correctness — it holds across prop changes on the same instance.
  */
 export function TeamLogo({ team, size, className }: TeamLogoProps) {
-  const [failed, setFailed] = useState(false);
+  const [failedId, setFailedId] = useState<string | null>(null);
+  const failed = failedId === team.id;
 
   if (failed) {
     return (
@@ -53,7 +59,7 @@ export function TeamLogo({ team, size, className }: TeamLogoProps) {
       alt={`${team.shortName} logo`}
       width={size}
       height={size}
-      onError={() => setFailed(true)}
+      onError={() => setFailedId(team.id)}
       className={cn('flex-shrink-0 object-contain', className)}
       style={{ width: size, height: size }}
     />

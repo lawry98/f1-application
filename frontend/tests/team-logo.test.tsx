@@ -6,6 +6,7 @@ import { TEAM_MAP } from '@/data/teams-data';
 
 const ferrari = TEAM_MAP['ferrari']!;
 const haas = TEAM_MAP['haas']!;
+const mclaren = TEAM_MAP['mclaren']!;
 
 describe('TeamLogo', () => {
   it('renders the logo image from the team path', () => {
@@ -38,5 +39,28 @@ describe('TeamLogo', () => {
     render(<TeamLogo team={haas} size={48} />);
     fireEvent.error(screen.getByAltText('Haas logo'));
     expect(screen.getByText('HAA')).toHaveStyle({ color: '#000000' });
+  });
+
+  it('re-attempts the image when the team prop changes on the same instance, even after a prior failure', () => {
+    const { rerender } = render(<TeamLogo team={ferrari} size={48} />);
+    fireEvent.error(screen.getByAltText('Ferrari logo'));
+    expect(screen.getByText('FER')).toBeInTheDocument();
+
+    rerender(<TeamLogo team={mclaren} size={48} />);
+
+    expect(screen.getByAltText('McLaren logo')).toBeInTheDocument();
+    expect(screen.queryByText('FER')).not.toBeInTheDocument();
+    expect(screen.queryByText('MCL')).not.toBeInTheDocument();
+  });
+
+  it('keeps the fallback latched when the same failed team is re-rendered', () => {
+    const { rerender } = render(<TeamLogo team={ferrari} size={48} />);
+    fireEvent.error(screen.getByAltText('Ferrari logo'));
+    expect(screen.getByText('FER')).toBeInTheDocument();
+
+    rerender(<TeamLogo team={ferrari} size={48} />);
+
+    expect(screen.getByText('FER')).toBeInTheDocument();
+    expect(screen.queryByAltText('Ferrari logo')).not.toBeInTheDocument();
   });
 });
