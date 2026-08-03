@@ -160,8 +160,7 @@ is sized `min(92vw, calc(82vh * 800 / 420))` to respect both viewport constraint
 - **File naming**: kebab-case, no exceptions — including `components/3d/`. Component *names*
   stay PascalCase (`f1-hero-scene.tsx` exports `F1HeroScene`).
 - **Exports**: named exports. The only `default export`s outside `app/` are
-  `3d/f1-car-showcase.tsx` and `3d/f1-hero-scene.tsx`. `3d/f1-loading-car.tsx` is named-only, so
-  its consumer maps it: `.then((mod) => ({ default: mod.F1LoadingAnimation }))`.
+  `3d/f1-car-showcase.tsx` and `3d/f1-hero-scene.tsx`.
 - **Shared types** come from `@/types` — *except* `Team` and `Driver`, which live in
   `@/data/teams-data` alongside the `TEAMS` data they describe.
 - **3D components**: always `next/dynamic` with `ssr: false`; server-rendering Three.js throws.

@@ -109,10 +109,9 @@ progress UI decorative. A change here that reintroduces buffering will pass ever
 
 ## 6. Dynamic Import with SSR Bypass (Frontend 3D)
 
-All Three.js components are loaded via `next/dynamic` with `ssr: false` to prevent server-side rendering failures (Three.js requires browser APIs). The four import sites:
+All Three.js components are loaded via `next/dynamic` with `ssr: false` to prevent server-side rendering failures (Three.js requires browser APIs). The three import sites:
 
 - `frontend/app/showcase/page.tsx` - F1CarShowcase
-- `frontend/components/briefing/briefing-chat.tsx` - F1LoadingAnimation (named-only export, mapped via `.then((mod) => ({ default: mod.F1LoadingAnimation }))`)
 - `frontend/components/teams/sticky-car-viewer.tsx` - F1HeroScene
 - `frontend/components/teams/inspect-modal.tsx` - F1HeroScene
 

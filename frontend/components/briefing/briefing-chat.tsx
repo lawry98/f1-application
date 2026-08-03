@@ -1,18 +1,12 @@
 'use client';
 
-import dynamic from 'next/dynamic';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useBriefing } from '@/hooks/use-briefing';
 import { BriefingCard } from './briefing-card';
+import { BriefingLoader } from './briefing-loader';
 import { ToolTrace } from './tool-trace';
 import { RaceSelector } from './race-selector';
-
-const F1LoadingAnimation = dynamic(
-  () =>
-    import('@/components/3d/f1-loading-car').then((mod) => ({ default: mod.F1LoadingAnimation })),
-  { ssr: false },
-);
 
 export function BriefingChat() {
   const {
@@ -24,6 +18,8 @@ export function BriefingChat() {
     toolTrace,
     error,
     statusMessage,
+    step,
+    startedAt,
     setQuery,
     submit,
   } = useBriefing();
@@ -60,7 +56,13 @@ export function BriefingChat() {
       </div>
 
       {loading && !briefing && (
-        <F1LoadingAnimation message={statusMessage || 'Agent is analyzing race data...'} />
+        <BriefingLoader
+          race={race}
+          step={step}
+          statusMessage={statusMessage}
+          tools={toolTrace}
+          startedAt={startedAt}
+        />
       )}
 
       {error && (

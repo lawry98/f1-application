@@ -37,23 +37,6 @@ is no local color map to keep in sync.
 
 **Consumer:** `app/showcase/page.tsx`.
 
-### F1LoadingAnimation (`f1-loading-car.tsx`, **named** export)
-
-Loading state with a spinning primitive-mesh car — no GLB required. Because it is a
-named export, its dynamic import maps the module:
-
-```tsx
-const F1LoadingAnimation = dynamic(
-  () =>
-    import('@/components/3d/f1-loading-car').then((mod) => ({ default: mod.F1LoadingAnimation })),
-  { ssr: false },
-);
-```
-
-**Props:** `message?: string`
-
-**Consumer:** `components/briefing/briefing-chat.tsx`.
-
 ### Shared internals (`f1-car-model.tsx`, named exports)
 
 Not a page-level scene — the building blocks both scenes compose:
