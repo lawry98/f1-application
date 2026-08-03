@@ -56,6 +56,17 @@ const config: Config = {
         md: 'calc(var(--radius) - 2px)',
         sm: 'calc(var(--radius) - 4px)',
       },
+      keyframes: {
+        // A short gradient segment crossing the panel's top edge. The segment is a quarter
+        // of the track's width, so 400% of its own width carries it fully off the far end.
+        sweep: {
+          '0%': { transform: 'translateX(-100%)' },
+          '100%': { transform: 'translateX(400%)' },
+        },
+      },
+      animation: {
+        sweep: 'sweep 1.6s linear infinite',
+      },
     },
   },
   plugins: [require('tailwindcss-animate')],
