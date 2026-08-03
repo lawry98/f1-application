@@ -238,6 +238,28 @@ def test_planner_tolerates_surrounding_whitespace(fake_llm):
     assert planner_node(make_state(race_info=make_race_info()))["tasks"] == ["get_track_info"]
 
 
+def test_planner_deduplicates_a_repeated_tool(fake_llm):
+    """A repeat would run the tool twice — a wasted, sometimes paid, call — and collide
+    two chips in the loading panel's footer, whose result lookup is keyed by tool name."""
+    fake_llm('["get_track_info", "search_f1_news", "get_track_info"]')
+    result = planner_node(make_state(race_info=make_race_info()))
+    assert result["tasks"] == ["get_track_info", "search_f1_news"]
+
+
+def test_planner_keeps_first_appearance_order_when_deduplicating(fake_llm):
+    """Pins that this is a dedupe, not a sort — a plain ``set`` would not reliably
+    preserve ``["b", "a"]`` here, and order now drives the footer's chip order."""
+    fake_llm('["b", "a", "b"]')
+    result = planner_node(make_state(race_info=make_race_info()))
+    assert result["tasks"] == ["b", "a"]
+
+
+def test_planner_leaves_a_repeat_free_plan_unchanged(fake_llm):
+    fake_llm('["get_track_info", "search_f1_news"]')
+    result = planner_node(make_state(race_info=make_race_info()))
+    assert result["tasks"] == ["get_track_info", "search_f1_news"]
+
+
 @pytest.mark.parametrize(
     "content",
     [

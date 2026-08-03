@@ -133,6 +133,13 @@ def planner_node(state: AgentState) -> dict[str, Any]:
 
         tasks = json.loads(content.strip())
         if isinstance(tasks, list) and all(isinstance(t, str) for t in tasks):
+            # A repeated name isn't harmless: tool_executor_node would submit it twice
+            # (a wasted, sometimes paid, call for something like search_f1_news), emit two
+            # tool_result events for one name, and collide two chips in the loading
+            # panel's footer, whose result lookup is keyed by tool name. dict.fromkeys
+            # dedupes while keeping first-appearance order — the plan's order is now the
+            # order the footer renders in, and a set would shuffle it between runs.
+            tasks = list(dict.fromkeys(tasks))
             logger.info("Planner selected %d tools: %s", len(tasks), tasks)
             return {"tasks": tasks, "current_step": "gathering"}
     except (json.JSONDecodeError, AttributeError, TypeError, IndexError):
