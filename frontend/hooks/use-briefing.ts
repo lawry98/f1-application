@@ -27,6 +27,10 @@ export interface BriefingState {
   toolTrace: ToolResult[];
   error: string;
   statusMessage: string;
+  /** The graph stage the run is in: resolving | planning | gathering | synthesizing. */
+  step: string;
+  /** Epoch ms the current request began. Zero before the first submit. */
+  startedAt: number;
 }
 
 export interface UseBriefingReturn extends BriefingState {
@@ -43,6 +47,8 @@ export function useBriefing(): UseBriefingReturn {
   const [toolTrace, setToolTrace] = useState<ToolResult[]>([]);
   const [error, setError] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
+  const [step, setStep] = useState('');
+  const [startedAt, setStartedAt] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
   // The prose accumulated so far, including deltas not yet painted.
   const bufferRef = useRef('');
@@ -80,6 +86,8 @@ export function useBriefing(): UseBriefingReturn {
       setRace('');
       setToolTrace([]);
       setStatusMessage('');
+      setStep('');
+      setStartedAt(Date.now());
 
       try {
         const stream = streamBriefing(searchTerm, controller.signal);
@@ -94,6 +102,7 @@ export function useBriefing(): UseBriefingReturn {
 
           if (event.type === 'status') {
             setStatusMessage(event.data.message);
+            setStep(event.data.step);
           } else if (event.type === 'race_info') {
             setRace(event.data.name);
           } else if (event.type === 'tool_result') {
@@ -120,6 +129,7 @@ export function useBriefing(): UseBriefingReturn {
             setBriefing(event.data.content);
             setTruncated(Boolean(event.data.truncated));
             setStatusMessage('');
+            setStep('');
           } else if (event.type === 'error') {
             setError(event.data.message);
           }
@@ -133,6 +143,7 @@ export function useBriefing(): UseBriefingReturn {
         if (abortRef.current === controller) {
           setLoading(false);
           setStatusMessage('');
+          setStep('');
         }
       }
     },
@@ -148,6 +159,8 @@ export function useBriefing(): UseBriefingReturn {
     toolTrace,
     error,
     statusMessage,
+    step,
+    startedAt,
     setQuery,
     submit,
   };
