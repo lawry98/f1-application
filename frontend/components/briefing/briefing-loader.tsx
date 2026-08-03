@@ -156,13 +156,19 @@ export function BriefingLoader({
             <div className="grid grid-cols-2 gap-x-3 gap-y-2">
               {tools.map((tool) => (
                 <div key={tool.tool} className="flex items-center gap-2">
+                  {/* Shape carries the failure signal, colour only reinforces it: a
+                      colour-blind reader still sees the dot become a cross. The wrapper
+                      is a fixed footprint so neither state reflows the two-column grid. */}
                   <span
-                    className={cn(
-                      'h-1.5 w-1.5 shrink-0 rounded-full',
-                      tool.success ? 'bg-green-500' : 'bg-red-500',
-                    )}
+                    className="flex h-3 w-3 shrink-0 items-center justify-center"
                     aria-hidden="true"
-                  />
+                  >
+                    {tool.success ? (
+                      <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                    ) : (
+                      <span className="text-xs font-bold leading-none text-red-500">×</span>
+                    )}
+                  </span>
                   <span className="truncate text-[11px] text-zinc-400">
                     {toolLabel(tool.tool)}
                     {!tool.success && <span className="sr-only"> failed</span>}

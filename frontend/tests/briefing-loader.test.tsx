@@ -193,6 +193,10 @@ describe('the tool footer', () => {
   it('does not signal failure by colour alone', () => {
     renderLoader({ tools: [{ tool: 'search_f1_news', success: false }] });
 
+    // The visible marker: a colour-blind reader needs a shape difference, not just red vs
+    // green. The sr-only text below is a second, independent channel for AT — neither
+    // assertion substitutes for the other.
+    expect(screen.getByText('×')).toBeInTheDocument();
     expect(screen.getByText(/failed/i)).toBeInTheDocument();
   });
 
@@ -200,6 +204,12 @@ describe('the tool footer', () => {
     renderLoader({ tools: [{ tool: 'search_f1_news', success: true }] });
 
     expect(screen.queryByText(/failed/i)).not.toBeInTheDocument();
+  });
+
+  it('shows no failure marker for a tool that succeeded', () => {
+    renderLoader({ tools: [{ tool: 'search_f1_news', success: true }] });
+
+    expect(screen.queryByText('×')).not.toBeInTheDocument();
   });
 });
 
