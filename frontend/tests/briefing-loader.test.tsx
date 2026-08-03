@@ -411,6 +411,22 @@ describe('the stage elapsed hint', () => {
     expect(screen.queryByText('24s in this stage')).not.toBeInTheDocument();
   });
 
+  it('shows the hint at exactly the threshold, not a tick later', () => {
+    // `>=`, not `>`. The boundary is the part a future edit is most likely to move
+    // without noticing, since every other test sits comfortably to one side of it.
+    renderLoader({ step: 'synthesizing' });
+
+    act(() => {
+      vi.advanceTimersByTime(2900);
+    });
+    expect(screen.queryByText(/in this stage/i)).not.toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(100);
+    });
+    expect(screen.getByText('3s in this stage')).toBeInTheDocument();
+  });
+
   it('shows the tool count and the stage time together while gathering', () => {
     renderLoader({
       step: 'gathering',
