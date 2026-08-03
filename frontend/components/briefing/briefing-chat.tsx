@@ -32,7 +32,7 @@ export function BriefingChat() {
   return (
     <div className="mx-auto max-w-4xl">
       <div className="mb-8 rounded-lg border border-zinc-800 bg-zinc-900 p-6 shadow-xl">
-        <RaceSelector onSelectRace={handleRaceSelect} />
+        <RaceSelector onSelectRace={handleRaceSelect} disabled={loading} activeRace={query} />
 
         <div className="flex gap-2">
           <Input

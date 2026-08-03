@@ -5,12 +5,17 @@ import { getRaces } from '@/lib/api';
 import type { Race } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
 
 interface RaceSelectorProps {
   onSelectRace: (raceName: string) => void;
+  /** Whether a briefing is generating. Locks every button so a run cannot be discarded. */
+  disabled?: boolean;
+  /** The race whose briefing is on screen, marked so the user keeps their bearings. */
+  activeRace?: string;
 }
 
-export function RaceSelector({ onSelectRace }: RaceSelectorProps) {
+export function RaceSelector({ onSelectRace, disabled = false, activeRace }: RaceSelectorProps) {
   const [races, setRaces] = useState<Race[]>([]);
   const [loading, setLoading] = useState(true);
   const currentYear = new Date().getFullYear();
@@ -57,7 +62,14 @@ export function RaceSelector({ onSelectRace }: RaceSelectorProps) {
             variant="outline"
             size="sm"
             onClick={() => onSelectRace(race.name)}
-            className="border-zinc-700 bg-zinc-800 text-white hover:border-f1-red hover:bg-zinc-700"
+            disabled={disabled}
+            className={cn(
+              // hover:border-red-600 (not hover:border-f1-red — same color, #dc2626 both ways):
+              // "border-f1-red" must appear only on the active button, or the marker's
+              // substring assertion in race-selector.test.tsx can't tell active from hover.
+              'bg-zinc-800 text-white hover:border-red-600 hover:bg-zinc-700',
+              race.name === activeRace ? 'border-f1-red' : 'border-zinc-700',
+            )}
           >
             {race.name}
           </Button>

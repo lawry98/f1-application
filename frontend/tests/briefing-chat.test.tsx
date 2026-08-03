@@ -31,6 +31,16 @@ async function settle(ms = 0): Promise<void> {
   });
 }
 
+const RACES = [
+  {
+    name: 'Monaco Grand Prix',
+    location: 'Monaco',
+    country: 'Monaco',
+    date: '2099-05-25',
+    round: 8,
+  },
+];
+
 /**
  * `BriefingChat` also mounts `RaceSelector`, which fetches `/api/races/:year` on its own.
  * Route on the URL so both callers share one `fetch` stub, the way the real app does.
@@ -39,7 +49,7 @@ function stubFetch(feed: ChunkFeed): void {
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     const url = typeof input === 'string' ? input : input.toString();
     if (url.includes('/api/races/')) {
-      return { ok: true, json: async () => ({ races: [] }) } as unknown as Response;
+      return { ok: true, json: async () => ({ races: RACES }) } as unknown as Response;
     }
     return feed.fetch();
   }) as typeof fetch;
@@ -71,5 +81,21 @@ describe('BriefingChat wiring', () => {
       'active',
     );
     expect(screen.getByText('Track profile')).toBeInTheDocument();
+  });
+
+  it('locks the race selector once a submit is in flight', async () => {
+    // Pins `disabled={loading}` at the `RaceSelector` call site — nothing else in the
+    // suite would catch a regression that dropped it back to always-live buttons.
+    const feed = new ChunkFeed();
+    stubFetch(feed);
+
+    render(<BriefingChat />);
+    await settle(); // RaceSelector's own fetch effect
+
+    fireEvent.change(screen.getByLabelText('Circuit name'), { target: { value: 'Monaco' } });
+    fireEvent.click(screen.getByRole('button', { name: /generate/i }));
+    await settle(); // starts the stream
+
+    expect(screen.getByRole('button', { name: /monaco grand prix/i })).toBeDisabled();
   });
 });
