@@ -728,8 +728,7 @@ Create `frontend/tests/sticky-team-panel.test.tsx`:
 
 ```tsx
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { render, screen, fireEvent } from '@testing-library/react';
 
 import { StickyTeamPanel } from '@/components/teams/sticky-team-panel';
 import { TEAM_MAP } from '@/data/teams-data';
@@ -753,13 +752,15 @@ describe('StickyTeamPanel', () => {
 
   it('shows the championship count', () => {
     render(<StickyTeamPanel activeTeam={ferrari} onInspect={vi.fn()} />);
-    expect(screen.getByText('16')).toBeInTheDocument();
+    // Scoped by testid, not getByText('16'): Ferrari has 16 championships AND
+    // Leclerc is car 16, so a bare text query matches twice and throws.
+    expect(screen.getByTestId('championship-count')).toHaveTextContent('16');
   });
 
-  it('calls onInspect when the CTA is pressed', async () => {
+  it('calls onInspect when the CTA is pressed', () => {
     const onInspect = vi.fn();
     render(<StickyTeamPanel activeTeam={ferrari} onInspect={onInspect} />);
-    await userEvent.click(screen.getByRole('button', { name: /inspect/i }));
+    fireEvent.click(screen.getByRole('button', { name: /inspect/i }));
     expect(onInspect).toHaveBeenCalledOnce();
   });
 
@@ -868,7 +869,10 @@ export function StickyTeamPanel({ activeTeam, onInspect }: StickyTeamPanelProps)
               Championships
             </p>
             <div className="mt-1 flex items-center gap-2">
-              <span className="text-2xl font-black leading-none text-white">
+              <span
+                data-testid="championship-count"
+                className="text-2xl font-black leading-none text-white"
+              >
                 {activeTeam.championships > 0 ? activeTeam.championships : '—'}
               </span>
               <span className="h-[7px] flex-1 overflow-hidden bg-zinc-800">
@@ -1006,11 +1010,16 @@ describe('TeamSection', () => {
     expect(watermark).toHaveAttribute('aria-hidden', 'true');
   });
 
-  it('reports itself active through the IntersectionObserver callback', () => {
+  it('reports itself active once the stubbed observer fires', () => {
     const onActivate = vi.fn();
     renderSection({ onActivate });
-    // tests/setup.ts stubs IntersectionObserver; assert the section registered an id
-    // the page can scroll to.
+    // tests/setup.ts's IntersectionObserver stub reports everything as immediately
+    // in view, so observe() invokes the callback synchronously on mount.
+    expect(onActivate).toHaveBeenCalledWith('mclaren');
+  });
+
+  it('exposes a scroll target id for the nav rail and hero to jump to', () => {
+    renderSection();
     expect(document.getElementById('team-mclaren')).toBeInTheDocument();
   });
 });
@@ -1115,8 +1124,7 @@ Create `frontend/tests/teams-hero.test.tsx`:
 
 ```tsx
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { render, screen, fireEvent } from '@testing-library/react';
 
 import { TeamsHero } from '@/components/teams/teams-hero';
 import { TEAMS } from '@/data/teams-data';
@@ -1132,10 +1140,10 @@ describe('TeamsHero', () => {
     expect(screen.getByText(/the grid/i)).toBeInTheDocument();
   });
 
-  it('scrolls to the team whose column is clicked', async () => {
+  it('scrolls to the team whose column is clicked', () => {
     const onSelectTeam = vi.fn();
     render(<TeamsHero onSelectTeam={onSelectTeam} />);
-    await userEvent.click(screen.getByRole('button', { name: /jump to Ferrari/i }));
+    fireEvent.click(screen.getByRole('button', { name: /jump to Ferrari/i }));
     expect(onSelectTeam).toHaveBeenCalledWith('ferrari');
   });
 
@@ -1196,37 +1204,40 @@ Insert immediately after the `DotPattern`:
   ))}
 </div>
 
-{/* Clickable column overlay. Separate from the decorative layer so the visual
-    columns can stay aria-hidden while these carry the accessible names. */}
-<div className="absolute inset-0 hidden lg:flex">
+{/* Clickable columns. Separate from the decorative layer above so those visual
+    columns can stay aria-hidden while these carry the accessible names.
+
+    ONE set of buttons, laid out responsively — full-height columns at lg and up,
+    a four-across logo grid below. Rendering a second `lg:hidden` set instead would
+    put 22 buttons in the DOM under jsdom, where no media query applies, and every
+    getByRole in the test would throw on multiple matches. */}
+<div
+  className={cn(
+    'absolute inset-x-0 bottom-16 grid grid-cols-4 justify-items-center gap-3 px-6',
+    'lg:inset-0 lg:bottom-auto lg:flex lg:gap-0 lg:px-0',
+  )}
+>
   {TEAMS.map((team) => (
     <button
       key={team.id}
       onClick={() => onSelectTeam(team.id)}
       aria-label={`Jump to ${team.shortName}`}
-      className="group relative flex-1 transition-opacity duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-zinc-400"
+      className={cn(
+        'group relative transition-transform duration-150 active:scale-[0.96]',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 lg:focus-visible:ring-inset',
+        'lg:h-full lg:flex-1 lg:active:scale-100',
+      )}
     >
+      {/* Hover wash — lg only, where there is a column to wash. */}
       <span
-        className="absolute inset-0 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+        aria-hidden="true"
+        className="absolute inset-0 hidden opacity-0 transition-opacity duration-200 group-hover:opacity-100 lg:block"
         style={{ background: `linear-gradient(to top, ${team.color}44, transparent 70%)` }}
       />
-      <span className="absolute bottom-5 left-0 right-0 flex justify-center opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-        <TeamLogo team={team} size={28} />
+      {/* Always visible below lg; revealed on hover at lg and up. */}
+      <span className="relative flex justify-center lg:absolute lg:bottom-5 lg:left-0 lg:right-0 lg:opacity-0 lg:transition-opacity lg:duration-200 lg:group-hover:opacity-100">
+        <TeamLogo team={team} size={30} />
       </span>
-    </button>
-  ))}
-</div>
-
-{/* Below lg the wall becomes a three-row logo grid. */}
-<div className="absolute bottom-16 left-0 right-0 grid grid-cols-4 justify-items-center gap-3 px-6 lg:hidden">
-  {TEAMS.map((team) => (
-    <button
-      key={team.id}
-      onClick={() => onSelectTeam(team.id)}
-      aria-label={`Jump to ${team.shortName}`}
-      className="transition-transform duration-150 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
-    >
-      <TeamLogo team={team} size={34} />
     </button>
   ))}
 </div>
@@ -1235,6 +1246,8 @@ Insert immediately after the `DotPattern`:
 Hover reveal animates `opacity` only — never `flex`, which would re-run layout for all eleven
 columns every frame. The visible width change from the mockup is deliberately dropped for
 that reason; the colour wash and logo carry the affordance instead.
+
+`cn` must be imported from `@/lib/utils` — the file does not currently import it.
 
 Add `TEAMS` and `TeamLogo` to the imports; `TEAMS` is already imported for the CTA.
 
@@ -1278,8 +1291,7 @@ Create `frontend/tests/teams-nav-rail.test.tsx`:
 
 ```tsx
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { render, screen, fireEvent } from '@testing-library/react';
 
 import { TeamsNavRail } from '@/components/teams/teams-nav-rail';
 
@@ -1290,10 +1302,10 @@ describe('TeamsNavRail', () => {
     expect(screen.getByText('P2 · 307 PTS')).toBeInTheDocument();
   });
 
-  it('selects the team that was clicked', async () => {
+  it('selects the team that was clicked', () => {
     const onSelectTeam = vi.fn();
     render(<TeamsNavRail activeTeamId="ferrari" onSelectTeam={onSelectTeam} />);
-    await userEvent.click(screen.getByRole('button', { name: /mclaren/i }));
+    fireEvent.click(screen.getByRole('button', { name: /mclaren/i }));
     expect(onSelectTeam).toHaveBeenCalledWith('mclaren');
   });
 
@@ -1397,8 +1409,7 @@ Create `frontend/tests/teams-comparison-grid.test.tsx`:
 
 ```tsx
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { render, screen, within, fireEvent } from '@testing-library/react';
 
 import { TeamsComparisonGrid } from '@/components/teams/teams-comparison-grid';
 import { TEAMS } from '@/data/teams-data';
@@ -1427,16 +1438,16 @@ describe('TeamsComparisonGrid', () => {
     expect(rowNames()[10]).toMatch(/Cadillac/);
   });
 
-  it('re-sorts by championships when the Titles tab is chosen', async () => {
+  it('re-sorts by championships when the Titles tab is chosen', () => {
     renderGrid();
-    await userEvent.click(screen.getByRole('button', { name: 'Titles' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Titles' }));
     // Ferrari has 16 championships, more than Mercedes' 8.
     expect(rowNames()[0]).toMatch(/Ferrari/);
   });
 
-  it('re-sorts by debut year when the Since tab is chosen', async () => {
+  it('re-sorts by debut year when the Since tab is chosen', () => {
     renderGrid();
-    await userEvent.click(screen.getByRole('button', { name: 'Since' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Since' }));
     expect(rowNames()[0]).toMatch(/Ferrari/); // 1950, the oldest entry
   });
 
@@ -1448,10 +1459,10 @@ describe('TeamsComparisonGrid', () => {
     expect(bar).toHaveStyle({ transform: 'scaleX(0.81)' });
   });
 
-  it('scrolls to the team whose row is clicked', async () => {
+  it('scrolls to the team whose row is clicked', () => {
     const onScrollToTeam = vi.fn();
     renderGrid(onScrollToTeam);
-    await userEvent.click(screen.getByRole('button', { name: /jump to McLaren/i }));
+    fireEvent.click(screen.getByRole('button', { name: /jump to McLaren/i }));
     expect(onScrollToTeam).toHaveBeenCalledWith('mclaren');
   });
 
