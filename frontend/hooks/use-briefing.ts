@@ -25,6 +25,8 @@ export interface BriefingState {
   /** Whether synthesis stopped partway, leaving `briefing` unfinished. */
   truncated: boolean;
   toolTrace: ToolResult[];
+  /** The tools the planner chose, in its order. Empty until the `tool_plan` event lands. */
+  toolPlan: string[];
   error: string;
   statusMessage: string;
   /** The graph stage the run is in: resolving | planning | gathering | synthesizing. */
@@ -45,6 +47,7 @@ export function useBriefing(): UseBriefingReturn {
   const [briefing, setBriefing] = useState('');
   const [truncated, setTruncated] = useState(false);
   const [toolTrace, setToolTrace] = useState<ToolResult[]>([]);
+  const [toolPlan, setToolPlan] = useState<string[]>([]);
   const [error, setError] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
   const [step, setStep] = useState('');
@@ -85,6 +88,7 @@ export function useBriefing(): UseBriefingReturn {
       setTruncated(false);
       setRace('');
       setToolTrace([]);
+      setToolPlan([]);
       setStatusMessage('');
       setStep('');
       setStartedAt(Date.now());
@@ -105,6 +109,8 @@ export function useBriefing(): UseBriefingReturn {
             setStep(event.data.step);
           } else if (event.type === 'race_info') {
             setRace(event.data.name);
+          } else if (event.type === 'tool_plan') {
+            setToolPlan(event.data.tools);
           } else if (event.type === 'tool_result') {
             tools.push({ tool: event.data.tool, success: event.data.success });
             setToolTrace([...tools]);
@@ -161,6 +167,7 @@ export function useBriefing(): UseBriefingReturn {
     briefing,
     truncated,
     toolTrace,
+    toolPlan,
     error,
     statusMessage,
     step,

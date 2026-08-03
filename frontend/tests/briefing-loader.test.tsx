@@ -29,6 +29,7 @@ function renderLoader(
     step: string;
     statusMessage: string;
     tools: ToolResult[];
+    toolPlan: string[];
     startedAt: number;
   }> = {},
 ) {
@@ -37,6 +38,7 @@ function renderLoader(
     step: 'gathering',
     statusMessage: 'Gathering race data...',
     tools: [] as ToolResult[],
+    toolPlan: [] as string[],
     startedAt: Date.now(),
     ...overrides,
   };
@@ -128,6 +130,7 @@ describe('the elapsed timer', () => {
         step="gathering"
         statusMessage=""
         tools={[]}
+        toolPlan={[]}
         startedAt={startedAt - 30_000}
       />,
     );
@@ -140,6 +143,7 @@ describe('the elapsed timer', () => {
         step="resolving"
         statusMessage=""
         tools={[]}
+        toolPlan={[]}
         startedAt={startedAt}
       />,
     );
@@ -210,6 +214,122 @@ describe('the tool footer', () => {
     renderLoader({ tools: [{ tool: 'search_f1_news', success: true }] });
 
     expect(screen.queryByText('×')).not.toBeInTheDocument();
+  });
+});
+
+describe('the planned tool chips', () => {
+  it('shows a pending chip for every planned tool before any result', () => {
+    renderLoader({ toolPlan: ['get_track_info', 'get_race_weather'], tools: [] });
+
+    expect(screen.getByText('Track profile').closest('li')).toHaveAttribute(
+      'data-state',
+      'pending',
+    );
+    expect(screen.getByText('Weather forecast').closest('li')).toHaveAttribute(
+      'data-state',
+      'pending',
+    );
+  });
+
+  it('shows the footer as soon as a plan exists, with no results yet', () => {
+    // This is the whole point: the footer covers the ~15s gathering stage instead of
+    // appearing for the last moment of it.
+    renderLoader({ toolPlan: ['get_track_info'], tools: [] });
+
+    expect(screen.getByText(/agent tool trace/i)).toBeInTheDocument();
+  });
+
+  it('fills a chip in when its result arrives, leaving the others pending', () => {
+    renderLoader({
+      toolPlan: ['get_track_info', 'get_race_weather'],
+      tools: [{ tool: 'get_race_weather', success: true }],
+    });
+
+    expect(screen.getByText('Weather forecast').closest('li')).toHaveAttribute('data-state', 'ok');
+    expect(screen.getByText('Track profile').closest('li')).toHaveAttribute(
+      'data-state',
+      'pending',
+    );
+  });
+
+  it('marks a returned tool that failed', () => {
+    renderLoader({
+      toolPlan: ['search_f1_news'],
+      tools: [{ tool: 'search_f1_news', success: false }],
+    });
+
+    expect(screen.getByText('News search').closest('li')).toHaveAttribute('data-state', 'failed');
+    expect(screen.getByText('×')).toBeInTheDocument();
+    expect(screen.getByText(/failed/i)).toBeInTheDocument();
+  });
+
+  it('keeps chips in the plan order even when results arrive out of order', () => {
+    // Six tools racing in a pool finish however they finish. Reordering chips as they land
+    // would make the footer twitch for fifteen seconds.
+    renderLoader({
+      toolPlan: ['get_track_info', 'get_race_weather', 'search_f1_news'],
+      tools: [
+        { tool: 'search_f1_news', success: true },
+        { tool: 'get_track_info', success: true },
+      ],
+    });
+
+    const labels = screen.getAllByRole('listitem').map((li) => li.textContent);
+
+    expect(labels?.[0]).toContain('Track profile');
+    expect(labels?.[1]).toContain('Weather forecast');
+    expect(labels?.[2]).toContain('News search');
+  });
+
+  it('falls back to arrival order when the plan is missing', () => {
+    // Degrades to exactly what shipped before, not to nothing.
+    renderLoader({
+      toolPlan: [],
+      tools: [
+        { tool: 'search_f1_news', success: true },
+        { tool: 'get_track_info', success: true },
+      ],
+    });
+
+    const labels = screen.getAllByRole('listitem').map((li) => li.textContent);
+
+    expect(labels?.[0]).toContain('News search');
+    expect(labels?.[1]).toContain('Track profile');
+  });
+
+  it('shows no footer with neither a plan nor a result', () => {
+    renderLoader({ toolPlan: [], tools: [] });
+
+    expect(screen.queryByText(/agent tool trace/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('the gathering sub-line', () => {
+  it('counts returned tools against the plan', () => {
+    renderLoader({
+      step: 'gathering',
+      toolPlan: ['get_track_info', 'get_race_weather', 'search_f1_news'],
+      tools: [{ tool: 'get_track_info', success: true }],
+    });
+
+    expect(screen.getByText('1 of 3 tools returned')).toBeInTheDocument();
+  });
+
+  it('omits the total when there is no plan to count against', () => {
+    // Counting up without a denominator is still real. A made-up denominator is not.
+    renderLoader({
+      step: 'gathering',
+      toolPlan: [],
+      tools: [{ tool: 'get_track_info', success: true }],
+    });
+
+    expect(screen.getByText('1 tool returned')).toBeInTheDocument();
+  });
+
+  it('says nothing on the stages that have nothing true to report', () => {
+    renderLoader({ step: 'synthesizing', toolPlan: ['get_track_info'], tools: [] });
+
+    expect(screen.queryByText(/tools? returned/i)).not.toBeInTheDocument();
   });
 });
 

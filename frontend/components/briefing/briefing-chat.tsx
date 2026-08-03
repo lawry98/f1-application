@@ -16,6 +16,7 @@ export function BriefingChat() {
     briefing,
     truncated,
     toolTrace,
+    toolPlan,
     error,
     statusMessage,
     step,
@@ -61,6 +62,7 @@ export function BriefingChat() {
           step={step}
           statusMessage={statusMessage}
           tools={toolTrace}
+          toolPlan={toolPlan}
           startedAt={startedAt}
         />
       )}

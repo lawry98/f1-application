@@ -30,8 +30,39 @@ interface BriefingLoaderProps {
   statusMessage: string;
   /** Tools that have returned so far, in arrival order. */
   tools: ToolResult[];
+  /** The tools the planner chose, in its order. Empty when the plan is unknown. */
+  toolPlan: string[];
   /** Epoch ms the current request began; the elapsed timer's baseline. */
   startedAt: number;
+}
+
+type ChipState = 'pending' | 'ok' | 'failed';
+
+interface Chip {
+  tool: string;
+  state: ChipState;
+}
+
+/**
+ * The footer's chips: one per planned tool, in the plan's order, each pending until its
+ * result lands.
+ *
+ * Plan order rather than arrival order because the tools run in a pool and finish in
+ * whatever order they finish — reordering as results land would make the footer twitch for
+ * the whole gathering stage, which is the opposite of what it is for.
+ *
+ * With no plan — a stream where the event was lost — this degrades to arrival order, which
+ * is exactly the behaviour that shipped before the plan existed.
+ */
+function chipsFor(toolPlan: string[], tools: ToolResult[]): Chip[] {
+  const resultFor = new Map(tools.map((tool) => [tool.tool, tool.success]));
+  const names = toolPlan.length > 0 ? toolPlan : tools.map((tool) => tool.tool);
+
+  return names.map((tool) => {
+    const success = resultFor.get(tool);
+    if (success === undefined) return { tool, state: 'pending' };
+    return { tool, state: success ? 'ok' : 'failed' };
+  });
 }
 
 /** `M:SS.d` — tenths are what make it read as a lap timer rather than a stopwatch. */
@@ -68,6 +99,7 @@ export function BriefingLoader({
   step,
   statusMessage,
   tools,
+  toolPlan,
   startedAt,
 }: BriefingLoaderProps) {
   const elapsed = useElapsed(startedAt);
@@ -75,6 +107,8 @@ export function BriefingLoader({
     0,
     STAGES.findIndex((stage) => stage.step === step),
   );
+  const chips = chipsFor(toolPlan, tools);
+  const returned = chips.filter((chip) => chip.state !== 'pending').length;
 
   return (
     <div className="relative">
@@ -134,50 +168,65 @@ export function BriefingLoader({
                     />
                   )}
                 </div>
-                <p
-                  className={cn(
-                    'text-sm',
-                    !isLast && 'pb-4',
-                    state === 'done' && 'text-zinc-400',
-                    state === 'active' && 'font-medium text-white',
-                    state === 'pending' && 'text-zinc-600',
+                <div className={cn(!isLast && 'pb-4')}>
+                  <p
+                    className={cn(
+                      'text-sm',
+                      state === 'done' && 'text-zinc-400',
+                      state === 'active' && 'font-medium text-white',
+                      state === 'pending' && 'text-zinc-600',
+                    )}
+                  >
+                    {label}
+                  </p>
+                  {state === 'active' && stageStep === 'gathering' && (
+                    <p className="mt-0.5 text-[11px] tabular-nums text-zinc-500">
+                      {toolPlan.length > 0
+                        ? `${returned} of ${toolPlan.length} tools returned`
+                        : `${returned} ${returned === 1 ? 'tool' : 'tools'} returned`}
+                    </p>
                   )}
-                >
-                  {label}
-                </p>
+                </div>
               </li>
             );
           })}
         </ol>
 
-        {tools.length > 0 && (
+        {chips.length > 0 && (
           <div className="border-t border-zinc-800 bg-zinc-950/50 px-5 py-3">
             <p className="mb-2.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
               Agent tool trace
             </p>
-            <div className="grid grid-cols-2 gap-x-3 gap-y-2">
-              {tools.map((tool) => (
-                <div key={tool.tool} className="flex items-center gap-2">
+            <ul className="grid grid-cols-2 gap-x-3 gap-y-2">
+              {chips.map(({ tool, state }) => (
+                <li key={tool} data-state={state} className="flex items-center gap-2">
                   {/* Shape carries the failure signal, colour only reinforces it: a
                       colour-blind reader still sees the dot become a cross. The wrapper
-                      is a fixed footprint so neither state reflows the two-column grid. */}
+                      is a fixed footprint so no state reflows the two-column grid. */}
                   <span
                     className="flex h-3 w-3 shrink-0 items-center justify-center"
                     aria-hidden="true"
                   >
-                    {tool.success ? (
-                      <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-                    ) : (
+                    {state === 'ok' && <span className="h-1.5 w-1.5 rounded-full bg-green-500" />}
+                    {state === 'failed' && (
                       <span className="text-xs font-bold leading-none text-red-500">×</span>
                     )}
+                    {state === 'pending' && (
+                      <span className="h-1.5 w-1.5 rounded-full border border-zinc-700" />
+                    )}
                   </span>
-                  <span className="truncate text-[11px] text-zinc-400">
-                    {toolLabel(tool.tool)}
-                    {!tool.success && <span className="sr-only"> failed</span>}
+                  <span
+                    className={cn(
+                      'truncate text-[11px]',
+                      state === 'pending' ? 'text-zinc-600' : 'text-zinc-400',
+                    )}
+                  >
+                    {toolLabel(tool)}
+                    {state === 'failed' && <span className="sr-only"> failed</span>}
                   </span>
-                </div>
+                </li>
               ))}
-            </div>
+            </ul>
           </div>
         )}
       </div>

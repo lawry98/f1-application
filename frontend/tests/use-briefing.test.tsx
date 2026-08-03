@@ -357,6 +357,39 @@ describe('the pipeline step', () => {
   });
 });
 
+describe('the tool plan', () => {
+  it('starts empty', async () => {
+    const feed = new ChunkFeed();
+    const { result } = start(feed);
+
+    expect(result.current.toolPlan).toEqual([]);
+  });
+
+  it('records the planned tools', async () => {
+    const feed = new ChunkFeed();
+    const { result, submit } = start(feed);
+    await submit('Monaco');
+
+    feed.push(frame('tool_plan', { tools: ['get_track_info', 'search_f1_news'] }));
+    await settle();
+
+    expect(result.current.toolPlan).toEqual(['get_track_info', 'search_f1_news']);
+  });
+
+  it('clears the plan when a new request starts', async () => {
+    const first = new ChunkFeed();
+    const second = new ChunkFeed();
+    const { result, submit } = start(first, second);
+    await submit('Monaco');
+
+    first.push(frame('tool_plan', { tools: ['get_track_info'] }));
+    await settle();
+    await submit('Silverstone');
+
+    expect(result.current.toolPlan).toEqual([]);
+  });
+});
+
 describe('the request timestamp', () => {
   it('stamps startedAt when a request begins', async () => {
     const feed = new ChunkFeed();

@@ -83,6 +83,29 @@ describe('BriefingChat wiring', () => {
     expect(screen.getByText('Track profile')).toBeInTheDocument();
   });
 
+  it('shows a pending chip from the plan before any tool has returned', async () => {
+    // Pins `toolPlan={toolPlan}` at the `BriefingLoader` call site — a plausible
+    // simplification that dropped the prop would leave the hook's plan on the floor and
+    // nothing else in the suite would catch it.
+    const feed = new ChunkFeed();
+    stubFetch(feed);
+
+    render(<BriefingChat />);
+    await settle(); // RaceSelector's own fetch effect
+
+    fireEvent.change(screen.getByLabelText('Circuit name'), { target: { value: 'Monaco' } });
+    fireEvent.click(screen.getByRole('button', { name: /generate/i }));
+    await settle(); // starts the stream
+
+    feed.push(frame('tool_plan', { tools: ['get_track_info'] }));
+    await settle();
+
+    expect(screen.getByText('Track profile').closest('li')).toHaveAttribute(
+      'data-state',
+      'pending',
+    );
+  });
+
   it('locks the race selector once a submit is in flight', async () => {
     // Pins `disabled={loading}` at the `RaceSelector` call site — nothing else in the
     // suite would catch a regression that dropped it back to always-live buttons.
