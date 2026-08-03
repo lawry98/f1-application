@@ -9,7 +9,7 @@
  * prop, so both the initial read and the tick need a controlled clock.
  */
 
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BriefingLoader } from '@/components/briefing/briefing-loader';
 import type { ToolResult } from '@/types';
@@ -49,6 +49,14 @@ function renderLoader(
 /** The row a stage label sits in, so its `data-state` can be read. */
 function stageState(label: string): string | null | undefined {
   return screen.getByText(label).closest('li')?.getAttribute('data-state');
+}
+
+/** The footer's own chips, scoped to its container so these order checks do not
+ *  depend on the stage `<ol>` staying `aria-hidden`. */
+function footerChips(): HTMLElement[] {
+  const footer = screen.getByText(/agent tool trace/i).closest('div');
+  if (!footer) throw new Error('tool trace footer not found');
+  return within(footer).getAllByRole('listitem');
 }
 
 describe('stage progression', () => {
@@ -274,7 +282,7 @@ describe('the planned tool chips', () => {
       ],
     });
 
-    const labels = screen.getAllByRole('listitem').map((li) => li.textContent);
+    const labels = footerChips().map((li) => li.textContent);
 
     expect(labels?.[0]).toContain('Track profile');
     expect(labels?.[1]).toContain('Weather forecast');
@@ -291,7 +299,7 @@ describe('the planned tool chips', () => {
       ],
     });
 
-    const labels = screen.getAllByRole('listitem').map((li) => li.textContent);
+    const labels = footerChips().map((li) => li.textContent);
 
     expect(labels?.[0]).toContain('News search');
     expect(labels?.[1]).toContain('Track profile');

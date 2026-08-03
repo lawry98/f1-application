@@ -577,8 +577,8 @@ def test_each_tool_is_reported_exactly_once(client, install_agent):
 
 
 def test_an_empty_plan_still_announces_itself(client, install_agent):
-    """A planner that chose nothing is different from a planner whose plan went missing —
-    the frontend falls back to arrival order only for the latter."""
+    """An empty plan still fires `tool_plan` with `tools: []` — the event's presence does
+    not depend on the plan being non-empty."""
     install_agent(
         steps=[
             {"resolver": {"race_info": make_race_info(), "current_step": "planning"}},

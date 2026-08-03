@@ -269,7 +269,8 @@ after any change to the SSE contract.
   runs the synchronous nodes on worker threads itself, so the event loop stays free
 - Each SSE event is emitted the moment its node returns, while the rest of the run is still
   going — except `briefing_delta`, which the synthesizer emits *during* its own run, one per
-  chunk of prose the model produces
+  chunk of prose the model produces, and `tool_result`, which `tool_executor_node` emits
+  per tool as each one completes inside the node's `as_completed` loop
 - Frontend consumes the typed `AsyncGenerator<StreamEvent>` from `lib/api.ts`, buffering deltas
   and repainting on an 80ms timer rather than once per delta
 - A synthesis that dies partway still delivers the prose it wrote, marked as unfinished — see

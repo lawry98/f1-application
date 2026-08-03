@@ -141,9 +141,10 @@ The generator is a **pure translator** — it yields every `briefing_delta` the 
 
 No global state store. Briefing state lives in the `useBriefing` custom hook (`frontend/hooks/use-briefing.ts`), which owns:
 
-- `query`, `loading`, `race`, `briefing`, `truncated`, `toolTrace`, `error`, `statusMessage`
+- `query`, `loading`, `race`, `briefing`, `truncated`, `toolTrace`, `toolPlan`, `error`,
+  `statusMessage`, `step`, `startedAt`
 
-plus an `AbortController` ref: each `submit()` aborts any in-flight stream, resets state, and consumes `streamBriefing`; unmount aborts via a `useEffect` cleanup. `BriefingChat` (`frontend/components/briefing/briefing-chat.tsx`) is a slim orchestrator over the hook; child components (`BriefingCard`, `ToolTrace`, `RaceSelector`) receive data via props only.
+plus an `AbortController` ref: each `submit()` aborts any in-flight stream, resets state, and consumes `streamBriefing`; unmount aborts via a `useEffect` cleanup. `BriefingChat` (`frontend/components/briefing/briefing-chat.tsx`) is a slim orchestrator over the hook; child components (`BriefingCard`, `BriefingLoader`, `ToolTrace`, `RaceSelector`) receive data via props only.
 
 **Deltas are buffered in a ref, not in state.** `briefing_delta` events append to a `bufferRef` and a `setTimeout` paints the accumulation every `FLUSH_INTERVAL_MS` (80ms). Setting state per delta would re-parse the whole accumulated markdown string on every one of an estimated 500–1500 deltas — quadratic in the length of the briefing. Ten flushes a second is perceptually continuous.
 

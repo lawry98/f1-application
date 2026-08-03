@@ -402,8 +402,9 @@ describe('the request timestamp', () => {
   });
 
   it('restamps startedAt on a second request, so the timer cannot carry over', async () => {
-    // The loader does not unmount between overlapping runs — the race buttons stay live
-    // while loading — so a stale baseline would show the abandoned run's elapsed time.
+    // The loader does not unmount between overlapping runs. No on-screen control can
+    // trigger one any more — the selector locks during a run — but `submit()` is a public
+    // part of the hook's contract, callable programmatically, so the guard stays correct.
     const first = new ChunkFeed();
     const second = new ChunkFeed();
     const { result, submit } = start(first, second);
