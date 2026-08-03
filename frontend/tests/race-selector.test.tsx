@@ -46,6 +46,12 @@ async function renderSelector(props: Partial<Parameters<typeof RaceSelector>[0]>
   return { onSelectRace };
 }
 
+/** The active-race marker, asserted as a whole class token — `className` substring
+ *  matching also hits `hover:border-f1-red`, which every button carries. */
+function isMarked(button: HTMLElement): boolean {
+  return button.classList.contains('border-f1-red');
+}
+
 describe('RaceSelector', () => {
   it('selects a race when nothing is generating', async () => {
     const { onSelectRace } = await renderSelector();
@@ -75,24 +81,22 @@ describe('RaceSelector', () => {
   it('marks the race that is running', async () => {
     await renderSelector({ disabled: true, activeRace: 'Monaco Grand Prix' });
 
-    expect(screen.getByRole('button', { name: /monaco/i }).className).toContain('border-f1-red');
-    expect(screen.getByRole('button', { name: /british/i }).className).not.toContain(
-      'border-f1-red',
-    );
+    expect(isMarked(screen.getByRole('button', { name: /monaco/i }))).toBe(true);
+    expect(isMarked(screen.getByRole('button', { name: /british/i }))).toBe(false);
   });
 
   it('keeps marking the race after its run has finished', async () => {
     // `activeRace` marks the briefing on screen, not just the one generating.
     await renderSelector({ disabled: false, activeRace: 'Monaco Grand Prix' });
 
-    expect(screen.getByRole('button', { name: /monaco/i }).className).toContain('border-f1-red');
+    expect(isMarked(screen.getByRole('button', { name: /monaco/i }))).toBe(true);
   });
 
   it('marks nothing when no race is active', async () => {
     await renderSelector();
 
     for (const button of screen.getAllByRole('button')) {
-      expect(button.className).not.toContain('border-f1-red');
+      expect(isMarked(button)).toBe(false);
     }
   });
 });
