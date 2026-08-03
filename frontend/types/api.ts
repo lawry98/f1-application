@@ -6,6 +6,7 @@ import type { RaceInfo } from './f1';
 
 export type StreamEvent =
   | { type: 'status'; data: { step: string; message: string } }
+  | { type: 'tool_plan'; data: { tools: string[] } }
   | { type: 'race_info'; data: RaceInfo }
   | { type: 'tool_result'; data: { tool: string; success: boolean } }
   | { type: 'briefing_delta'; data: { content: string } }

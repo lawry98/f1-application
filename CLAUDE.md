@@ -134,8 +134,10 @@ There is no executor in the API layer; `EXECUTOR_MAX_WORKERS` governs only the t
 
 Because it asks for two stream modes — `stream_mode=["updates", "custom"]` — `astream` yields
 `(mode, payload)` **tuples**, not the bare `{node: partial_state}` dicts a single mode gives. The
-`custom` mode carries the synthesizer's briefing Deltas, written with `get_stream_writer()`. That
-writer no-ops under plain `.invoke()`, so `/api/briefing` needs no special-casing.
+`custom` mode carries the synthesizer's briefing Deltas and `tool_executor_node`'s per-tool
+`tool_result` writes — both written with `get_stream_writer()`, one per chunk and one per
+completed tool respectively, discriminated by a `kind` field. That writer no-ops under plain
+`.invoke()`, so `/api/briefing` needs no special-casing.
 
 **SSE discrimination uses the `event:` line** from the SSE protocol, not field-presence
 heuristics on the payload.

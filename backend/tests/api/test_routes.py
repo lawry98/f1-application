@@ -24,10 +24,13 @@ class FakeAgent:
 
     ``.astream()`` yields ``(mode, payload)`` tuples, which is what LangGraph produces
     once more than one ``stream_mode`` is requested. Each entry in ``steps`` — still a
-    plain ``{node_name: partial_state}`` dict — wraps as ``("updates", step)``, and each
-    entry in ``deltas`` is emitted as ``("custom", …)`` immediately *before* the
-    synthesizer's update, mirroring reality: the writer fires while the node runs, the
-    update lands when it returns.
+    plain ``{node_name: partial_state}`` dict — wraps as ``("updates", step)``. Custom
+    writes are derived from that same step data rather than passed in separately, so the
+    fake and the fixtures stay in step by construction: each entry in ``deltas`` is
+    emitted as ``("custom", …)`` immediately before the synthesizer's update, and each
+    ``tool_executor`` step's ``tool_results`` is emitted the same way before its update —
+    mirroring reality, where the writer fires while the node runs and the update lands
+    when it returns.
 
     It yields everything without suspending, so it says nothing about *when* events reach
     the client; ``GatedAgent`` below is what pins that.
@@ -61,6 +64,16 @@ class FakeAgent:
         if self.raises is not None and self.raises_after is None:
             raise self.raises
         for index, step in enumerate(self.steps):
+            if "tool_executor" in step:
+                for tr in step["tool_executor"].get("tool_results", []):
+                    yield (
+                        "custom",
+                        {
+                            "kind": "tool_result",
+                            "tool": tr["tool_name"],
+                            "success": tr["success"],
+                        },
+                    )
             if "synthesizer" in step:
                 for delta in self.deltas:
                     yield ("custom", {"kind": "briefing_delta", "content": delta})
@@ -390,6 +403,7 @@ def test_stream_emits_the_full_event_sequence(client, install_agent):
         "status",
         "race_info",
         "status",
+        "tool_plan",
         "status",
         "tool_result",
         "tool_result",
@@ -524,6 +538,58 @@ def test_stream_reports_each_tool_with_its_success_flag_and_nothing_else(client,
         {"tool": "get_track_info", "success": True},
         {"tool": "search_f1_news", "success": False},
     ]
+
+
+def test_the_planner_step_announces_the_planned_tools(client, install_agent):
+    """The plan is what lets the loader show pending chips instead of counting up from zero."""
+    install_agent(steps=successful_steps(), deltas=successful_deltas())
+
+    events = parse_sse(client.post("/api/briefing/stream", json={"query": "monaco"}).text)
+
+    plans = [data for event_type, data in events if event_type == "tool_plan"]
+    assert plans == [{"tools": ["get_track_info", "search_f1_news"]}]
+
+
+def test_the_plan_is_announced_before_gathering_begins(client, install_agent):
+    install_agent(steps=successful_steps(), deltas=successful_deltas())
+
+    events = parse_sse(client.post("/api/briefing/stream", json={"query": "monaco"}).text)
+    names = [event_type for event_type, _ in events]
+
+    gathering = next(
+        i
+        for i, (event_type, data) in enumerate(events)
+        if event_type == "status" and data["step"] == "gathering"
+    )
+
+    assert names.index("tool_plan") < gathering
+
+
+def test_each_tool_is_reported_exactly_once(client, install_agent):
+    """The emission moved from the node's update to the writer. Emitting from both would
+    double every chip, and a duplicate reads as a tool that ran twice."""
+    install_agent(steps=successful_steps(), deltas=successful_deltas())
+
+    events = parse_sse(client.post("/api/briefing/stream", json={"query": "monaco"}).text)
+    results = [data for event_type, data in events if event_type == "tool_result"]
+
+    assert [r["tool"] for r in results] == ["get_track_info", "search_f1_news"]
+
+
+def test_an_empty_plan_still_announces_itself(client, install_agent):
+    """A planner that chose nothing is different from a planner whose plan went missing —
+    the frontend falls back to arrival order only for the latter."""
+    install_agent(
+        steps=[
+            {"resolver": {"race_info": make_race_info(), "current_step": "planning"}},
+            {"planner": {"tasks": [], "current_step": "gathering"}},
+        ]
+    )
+
+    events = parse_sse(client.post("/api/briefing/stream", json={"query": "monaco"}).text)
+    plans = [data for event_type, data in events if event_type == "tool_plan"]
+
+    assert plans == [{"tools": []}]
 
 
 def test_stream_sends_the_briefing_then_completes(client, install_agent):
