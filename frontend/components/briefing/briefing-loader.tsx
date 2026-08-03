@@ -21,6 +21,13 @@ const STAGES = [
 
 const TICK_MS = 100;
 
+/**
+ * How long a stage must run before its elapsed time is worth showing. Resolving and planning
+ * finish in a second or two, and a hint that flashes `0s` on every run is noise; the question
+ * this answers — is anything still happening — only arises after a few seconds of silence.
+ */
+const STAGE_HINT_AFTER_MS = 3000;
+
 interface BriefingLoaderProps {
   /** The resolved race name; empty until the `race_info` event lands. */
   race: string;
@@ -75,15 +82,14 @@ function formatElapsed(ms: number): string {
 }
 
 /**
- * Milliseconds since `startedAt`, computed at render time from a ticking clock.
+ * A clock that ticks every {@link TICK_MS}, for callers to subtract their own baseline from.
  *
- * The baseline is a prop rather than mount time on purpose: overlapping runs do not
- * remount this component, so a mount-based clock would carry the abandoned run's elapsed
- * time into the new one. `now` — not the elapsed value itself — is what lives in state:
- * a fresh `startedAt` is reflected in the very next render, with no stale value from the
- * old run visible before the interval's next tick.
+ * Returning `now` rather than an elapsed value is what lets one interval serve both the
+ * request timer and the stage timer, and it is why a fresh baseline is reflected in the very
+ * next render: the subtraction happens at render time, so no stale elapsed value from an old
+ * run is ever visible while waiting for the next tick.
  */
-function useElapsed(startedAt: number): number {
+function useNow(): number {
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -91,7 +97,7 @@ function useElapsed(startedAt: number): number {
     return () => clearInterval(id);
   }, []);
 
-  return now - startedAt;
+  return now;
 }
 
 export function BriefingLoader({
@@ -102,7 +108,19 @@ export function BriefingLoader({
   toolPlan,
   startedAt,
 }: BriefingLoaderProps) {
-  const elapsed = useElapsed(startedAt);
+  const now = useNow();
+  const elapsed = now - startedAt;
+
+  const [stageStartedAt, setStageStartedAt] = useState(() => Date.now());
+  useEffect(() => {
+    setStageStartedAt(Date.now());
+    // `startedAt` as well as `step`: a resubmit can land while `step` still holds the
+    // previous run's value, and without it the new run opens showing the abandoned run's
+    // stage clock.
+  }, [step, startedAt]);
+
+  const stageElapsed = now - stageStartedAt;
+
   const activeIndex = Math.max(
     0,
     STAGES.findIndex((stage) => stage.step === step),
@@ -179,12 +197,21 @@ export function BriefingLoader({
                   >
                     {label}
                   </p>
-                  {state === 'active' && stageStep === 'gathering' && (
-                    <p className="mt-0.5 text-[11px] tabular-nums text-zinc-500">
-                      {toolPlan.length > 0
-                        ? `${returned} of ${toolPlan.length} tools returned`
-                        : `${returned} ${returned === 1 ? 'tool' : 'tools'} returned`}
-                    </p>
+                  {state === 'active' && (
+                    <>
+                      {stageStep === 'gathering' && (
+                        <p className="mt-0.5 text-[11px] tabular-nums text-zinc-500">
+                          {toolPlan.length > 0
+                            ? `${returned} of ${toolPlan.length} tools returned`
+                            : `${returned} ${returned === 1 ? 'tool' : 'tools'} returned`}
+                        </p>
+                      )}
+                      {stageElapsed >= STAGE_HINT_AFTER_MS && (
+                        <p className="mt-0.5 text-[11px] tabular-nums text-zinc-500">
+                          {Math.floor(stageElapsed / 1000)}s in this stage
+                        </p>
+                      )}
+                    </>
                   )}
                 </div>
               </li>

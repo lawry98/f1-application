@@ -341,6 +341,92 @@ describe('the gathering sub-line', () => {
   });
 });
 
+describe('the stage elapsed hint', () => {
+  it('says nothing before the threshold', () => {
+    renderLoader({ step: 'synthesizing' });
+
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+
+    expect(screen.queryByText(/in this stage/i)).not.toBeInTheDocument();
+  });
+
+  it('reports the time once a stage has run long enough to wonder about', () => {
+    renderLoader({ step: 'synthesizing' });
+
+    act(() => {
+      vi.advanceTimersByTime(15_000);
+    });
+
+    expect(screen.getByText('15s in this stage')).toBeInTheDocument();
+  });
+
+  it('puts the hint on the active row, not a completed one', () => {
+    renderLoader({ step: 'synthesizing' });
+
+    act(() => {
+      vi.advanceTimersByTime(15_000);
+    });
+
+    expect(screen.getByText(/in this stage/i).closest('li')).toHaveAttribute(
+      'data-state',
+      'active',
+    );
+  });
+
+  it('restarts when the pipeline advances a stage', () => {
+    const { rerender, props } = renderLoader({ step: 'gathering' });
+
+    act(() => {
+      vi.advanceTimersByTime(20_000);
+    });
+    expect(screen.getByText('20s in this stage')).toBeInTheDocument();
+
+    rerender(<BriefingLoader {...props} step="synthesizing" />);
+    act(() => {
+      vi.advanceTimersByTime(4000);
+    });
+
+    expect(screen.getByText('4s in this stage')).toBeInTheDocument();
+    expect(screen.queryByText('24s in this stage')).not.toBeInTheDocument();
+  });
+
+  it('restarts on a new request even when the stage name has not changed', () => {
+    // Overlapping runs do not remount the loader, and a resubmit can land while `step`
+    // still holds its old value — so the stage clock has to follow `startedAt` too, or the
+    // new run opens showing the abandoned run's stage time.
+    const { rerender, props } = renderLoader({ step: 'gathering' });
+
+    act(() => {
+      vi.advanceTimersByTime(20_000);
+    });
+
+    rerender(<BriefingLoader {...props} step="gathering" startedAt={Date.now()} />);
+    act(() => {
+      vi.advanceTimersByTime(4000);
+    });
+
+    expect(screen.getByText('4s in this stage')).toBeInTheDocument();
+    expect(screen.queryByText('24s in this stage')).not.toBeInTheDocument();
+  });
+
+  it('shows the tool count and the stage time together while gathering', () => {
+    renderLoader({
+      step: 'gathering',
+      toolPlan: ['get_track_info', 'get_race_weather'],
+      tools: [{ tool: 'get_track_info', success: true }],
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(9000);
+    });
+
+    expect(screen.getByText('1 of 2 tools returned')).toBeInTheDocument();
+    expect(screen.getByText('9s in this stage')).toBeInTheDocument();
+  });
+});
+
 describe('accessibility', () => {
   it('announces the backend status message through a live region', () => {
     renderLoader({ statusMessage: 'Gathering race data...' });
