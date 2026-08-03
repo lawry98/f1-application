@@ -142,8 +142,10 @@ completed tool respectively, discriminated by a `kind` field. That writer no-ops
 **SSE discrimination uses the `event:` line** from the SSE protocol, not field-presence
 heuristics on the payload.
 
-**FastF1's first requests are slow** — telemetry downloads into `backend/cache/`, which is
-gitignored. Cold requests taking 30–60s is expected, not a bug.
+**FastF1 session loads hit the network every time, cache or no cache.** `backend/cache/`
+(gitignored) never gets populated: FastF1 only persists a session that loaded cleanly, and
+these loads never do, so warming it achieves nothing. A briefing takes seconds for that
+reason, not because of cold-cache telemetry downloads.
 
 **`gltf.scene.clone()` must stay inside `useMemo`** — without it Three.js re-clones the scene on
 every render.

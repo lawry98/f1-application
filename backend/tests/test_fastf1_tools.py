@@ -128,10 +128,18 @@ def test_race_results_return_the_top_ten_columns(race_session):
     }
 
 
-def test_race_results_load_the_session_without_telemetry(race_session):
-    """Telemetry/weather/messages stay off — they are megabytes the tools never read."""
+def test_race_results_load_the_session_without_laps_or_telemetry(race_session):
+    """Laps, telemetry, weather and messages all stay off.
+
+    Telemetry and friends are megabytes the tools never read. Laps matter for a second
+    reason: their endpoints fail on every call, and FastF1 refuses to persist a session
+    that loaded partially — so loading laps made these calls slow *and* uncacheable.
+    """
     get_recent_race_results.invoke({"event_name": "Monaco Grand Prix", "year": 2024})
-    assert race_session.loads == [{"telemetry": False, "weather": False, "messages": False}]
+
+    assert race_session.loads == [
+        {"laps": False, "telemetry": False, "weather": False, "messages": False}
+    ]
 
 
 def test_race_results_convert_a_session_failure_into_an_error(monkeypatch):
