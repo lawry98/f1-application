@@ -53,6 +53,33 @@ describe('TeamLogo', () => {
     expect(screen.queryByText('MCL')).not.toBeInTheDocument();
   });
 
+  // Real team marks are horizontal lockups (0.91:1 up to 9.48:1). A square box makes
+  // object-contain scale them to fit the width, so a wide logo draws a few px tall and the
+  // monogram it replaced was more legible. These pin height-driven sizing so a refactor
+  // cannot quietly restore `width: size, height: size`.
+  it('sizes by height and lets the width follow the logo’s natural aspect ratio', () => {
+    render(<TeamLogo team={mclaren} size={48} />);
+    const img = screen.getByAltText('McLaren logo');
+    expect(img).toHaveStyle({ height: '48px' });
+    expect(img).toHaveStyle({ width: 'auto' });
+  });
+
+  it('caps the width so an extreme wordmark cannot blow the container open', () => {
+    render(<TeamLogo team={ferrari} size={48} />);
+    expect(screen.getByAltText('Ferrari logo')).toHaveStyle({ maxWidth: '192px' });
+  });
+
+  it('lets a narrow container override the width cap', () => {
+    render(<TeamLogo team={ferrari} size={48} maxWidth={120} />);
+    expect(screen.getByAltText('Ferrari logo')).toHaveStyle({ maxWidth: '120px' });
+  });
+
+  it('keeps the monogram fallback square — it is a tile, not a wordmark', () => {
+    render(<TeamLogo team={ferrari} size={48} />);
+    fireEvent.error(screen.getByAltText('Ferrari logo'));
+    expect(screen.getByText('FER')).toHaveStyle({ width: '48px', height: '48px' });
+  });
+
   it('keeps the fallback latched when the same failed team is re-rendered', () => {
     const { rerender } = render(<TeamLogo team={ferrari} size={48} />);
     fireEvent.error(screen.getByAltText('Ferrari logo'));

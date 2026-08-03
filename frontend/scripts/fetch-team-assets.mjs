@@ -19,6 +19,15 @@
  * committed pixel count). Without `sips` the headshots are skipped rather than written
  * with a lying extension — see rule 1.
  *
+ * REQUIRES macOS. The JPEG-to-PNG step shells out to `sips`, which ships with macOS and
+ * nothing else. On Linux the logos still download and every headshot is skipped with a
+ * warning — deliberately, since the alternative is a JPEG named `.png`. Porting means
+ * swapping `sips` for ImageMagick/`vips`, not adding an npm dependency.
+ *
+ * Attribution for what this downloads lives in public/drivers/CREDITS.md (the photographs
+ * are CC BY / CC BY-SA and oblige it) and public/logos/CREDITS.md. Adding an entry to a map
+ * below means adding a row there too.
+ *
  * Usage: mise exec -- node scripts/fetch-team-assets.mjs
  */
 import { mkdir, writeFile, rm } from 'node:fs/promises';
