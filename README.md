@@ -62,6 +62,7 @@ f1-application/
 │   ├── tests/        Vitest suite — jsdom, no network, real SSE fixtures
 │   └── package.json
 ├── docs/agents/      Issue tracker, triage, and domain-doc conventions
+├── Makefile          Cross-platform entry points — make dev, make ci
 ├── mise.toml         Pinned Node, pnpm, and Python versions
 ├── CLAUDE.md         Conventions and gotchas for AI coding agents
 └── README.md
@@ -91,9 +92,9 @@ f1-application/
 cd backend
 
 # Create and activate virtual environment
-python -m venv venv
-venv\Scripts\activate          # Windows
-source venv/bin/activate       # Mac/Linux
+python -m venv .venv
+.venv\Scripts\activate         # Windows
+source .venv/bin/activate      # Mac/Linux
 
 # Install dependencies (add requirements-dev.txt for linting and tests)
 pip install -r requirements.txt -r requirements-dev.txt
@@ -123,8 +124,24 @@ pnpm dev
 
 Frontend runs on `http://localhost:3000`.
 
-> **Windows shortcut**: `start-backend.ps1` and `start-frontend.ps1` at the repo root run the
-> setup steps above (venv/`node_modules` bootstrap + dev server) in one go.
+### Or use the Makefile
+
+`make dev` does both setups above and starts both servers. Run `make` on its own for the
+full target list.
+
+| Target | Does |
+|---|---|
+| `make dev` | Both servers — backend on `:8000`, frontend on `:3000` |
+| `make backend` / `make frontend` | One server |
+| `make install` | `.venv` + `requirements*.txt`, then `pnpm install` |
+| `make lint` `make format` `make typecheck` `make test` | Checks, both platforms |
+| `make ci` | Everything [ci.yml](.github/workflows/ci.yml) runs, in its order |
+| `make clean` | Drops `.venv`, `node_modules`, `.next` — leaves the FastF1 cache |
+
+Dependency installs are keyed to `requirements*.txt` and `pnpm-lock.yaml`, so they re-run
+only when those change. Every recipe shells through `mise exec --` when mise is available,
+so the pinned versions apply without activating anything. Windows needs `make` from Git Bash
+or WSL; it is not part of the OS.
 
 ### Frontend Environment (optional)
 

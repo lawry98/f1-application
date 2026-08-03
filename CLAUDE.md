@@ -40,6 +40,11 @@ cd backend  && ruff check .
 cd backend  && ruff format .
 ```
 
+The root `Makefile` wraps all of these — `make dev`, `make lint`, `make test`, `make ci`, and
+`make` alone for the list. It is a dispatcher only: if a recipe ever disagrees with
+`.github/workflows/ci.yml`, CI is right and the Makefile is the bug. The backend venv it
+creates and expects is **`backend/.venv`**, not `venv`.
+
 Full setup (venv, API keys, both platforms) → [README.md](README.md).
 
 ## Environment variables
