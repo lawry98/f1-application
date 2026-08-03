@@ -44,23 +44,23 @@ function formatElapsed(ms: number): string {
 }
 
 /**
- * Milliseconds since `startedAt`, reread on an interval.
+ * Milliseconds since `startedAt`, computed at render time from a ticking clock.
  *
  * The baseline is a prop rather than mount time on purpose: overlapping runs do not
  * remount this component, so a mount-based clock would carry the abandoned run's elapsed
- * time into the new one.
+ * time into the new one. `now` — not the elapsed value itself — is what lives in state:
+ * a fresh `startedAt` is reflected in the very next render, with no stale value from the
+ * old run visible before the interval's next tick.
  */
 function useElapsed(startedAt: number): number {
-  const [elapsed, setElapsed] = useState(() => Date.now() - startedAt);
+  const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
-    const tick = (): void => setElapsed(Date.now() - startedAt);
-    tick();
-    const id = setInterval(tick, TICK_MS);
+    const id = setInterval(() => setNow(Date.now()), TICK_MS);
     return () => clearInterval(id);
-  }, [startedAt]);
+  }, []);
 
-  return elapsed;
+  return now - startedAt;
 }
 
 export function BriefingLoader({
@@ -127,7 +127,9 @@ export function BriefingLoader({
                     <span
                       className={cn(
                         'w-px flex-1',
-                        state === 'done' ? 'bg-f1-red/40' : 'bg-zinc-800',
+                        state === 'done'
+                          ? 'bg-gradient-to-b from-f1-red/40 via-zinc-800 to-transparent'
+                          : 'bg-zinc-800',
                       )}
                     />
                   )}

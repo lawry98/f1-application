@@ -143,6 +143,10 @@ export function useBriefing(): UseBriefingReturn {
         if (abortRef.current === controller) {
           setLoading(false);
           setStatusMessage('');
+          // Belt-and-braces, not a reachable case: the `briefing` event already clears
+          // `step`, and on the error path the loader unmounts in the same batch. Kept
+          // because `step` and `statusMessage` are meant to move together — the invariant
+          // is the point, not this specific line.
           setStep('');
         }
       }
