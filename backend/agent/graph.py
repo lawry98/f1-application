@@ -151,35 +151,39 @@ def planner_node(state: AgentState) -> dict[str, Any]:
     return {"tasks": DEFAULT_TOOLS, "current_step": "gathering"}
 
 
+def _build_tool_args(task_name: str, race_info: dict) -> dict[str, Any] | None:
+    """Build the invocation arguments for a tool, or None when no handler exists.
+
+    Also the cache identity: two queries that resolve to the same race produce
+    identical args here, which is what lets them share a cache entry.
+    """
+    if task_name == "get_track_info":
+        return {"circuit_name": race_info["name"], "year": race_info["historical_year"]}
+    if task_name == "get_recent_top_finishers":
+        return {"year": race_info["historical_year"]}
+    if task_name == "get_circuit_winners":
+        return {"circuit_name": race_info["name"], "years_back": 3}
+    if task_name == "search_f1_news":
+        return {"query": f"{race_info['name']} {race_info['year']}", "max_results": 5}
+    if task_name == "get_race_weather":
+        country_code = COUNTRY_CODE_MAP.get(race_info["country"], "US")
+        return {"city": race_info["location"], "country_code": country_code}
+    if task_name == "get_driver_form":
+        # Hardcoded to Verstappen — the planner prompt advertises exactly this scope.
+        return {"driver_code": "VER", "year": race_info["historical_year"], "num_races": 5}
+    if task_name == "get_recent_race_results":
+        return {"event_name": race_info["name"], "year": race_info["historical_year"]}
+    return None
+
+
 def _invoke_tool(tool: Any, task_name: str, race_info: dict) -> ToolResult:
     """Invoke a single tool with arguments derived from race_info; never raises."""
     try:
-        if task_name == "get_track_info":
-            result = tool.invoke(
-                {"circuit_name": race_info["name"], "year": race_info["historical_year"]}
-            )
-        elif task_name == "get_recent_top_finishers":
-            result = tool.invoke({"year": race_info["historical_year"]})
-        elif task_name == "get_circuit_winners":
-            result = tool.invoke({"circuit_name": race_info["name"], "years_back": 3})
-        elif task_name == "search_f1_news":
-            result = tool.invoke(
-                {"query": f"{race_info['name']} {race_info['year']}", "max_results": 5}
-            )
-        elif task_name == "get_race_weather":
-            country_code = COUNTRY_CODE_MAP.get(race_info["country"], "US")
-            result = tool.invoke({"city": race_info["location"], "country_code": country_code})
-        elif task_name == "get_driver_form":
-            # Hardcoded to Verstappen — the planner prompt advertises exactly this scope.
-            result = tool.invoke(
-                {"driver_code": "VER", "year": race_info["historical_year"], "num_races": 5}
-            )
-        elif task_name == "get_recent_race_results":
-            result = tool.invoke(
-                {"event_name": race_info["name"], "year": race_info["historical_year"]}
-            )
-        else:
+        args = _build_tool_args(task_name, race_info)
+        if args is None:
             result = {"error": f"No handler for tool: {task_name}"}
+        else:
+            result = tool.invoke(args)
 
         return ToolResult(
             tool_name=task_name,
