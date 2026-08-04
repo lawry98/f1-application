@@ -28,6 +28,22 @@
  * are CC BY / CC BY-SA and oblige it) and public/logos/CREDITS.md. Adding an entry to a map
  * below means adding a row there too.
  *
+ * RE-RUNNING REVERTS A DELIBERATE RECOLOUR. The Commons originals for ferrari, cadillac,
+ * haas, williams and aston-martin carry no usable fill for a dark page — most paths default
+ * to black (SVG's initial value), and aston-martin's `fill="currentColor"` resolves to black
+ * too, because an SVG loaded through `<img>`/`next/image` is an opaque document that does not
+ * inherit the page's CSS `color`. Since the /teams page background is zinc-950, every one of
+ * those marks rendered invisible before this file was hand-edited to give the offending paths
+ * an explicit `#fafafa`. Two of the five are NOT flat recolours: cadillac only relights the
+ * eight "CADILLAC" wordmark paths (ids path86/90/94/96/100/104/108/112) and leaves the
+ * crest's black-on-white detail alone, and haas only relights the unclassed paths (the
+ * `.st0`/`.st1` classes stay their brand red). This script writes Commons bytes verbatim
+ * (see rule 1) and does not know any of that — re-running it overwrites all five with the
+ * original black versions. Redo the recolour by hand afterward, or diff against the commit
+ * that introduced it before committing a fresh download. mercedes and mclaren are
+ * intentionally left black-in-places too (partial, same root cause) — out of scope for that
+ * pass, not fixed here either.
+ *
  * Usage: mise exec -- node scripts/fetch-team-assets.mjs
  */
 import { mkdir, writeFile, rm } from 'node:fs/promises';
