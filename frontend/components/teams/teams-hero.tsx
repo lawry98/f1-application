@@ -8,9 +8,15 @@ import { TextAnimate } from '@/components/ui/text-animate';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DotPattern } from '@/components/ui/dot-pattern';
+import { cn } from '@/lib/utils';
 import { TEAMS } from '@/data/teams-data';
+import { TeamLogo } from './team-logo';
 
-export function TeamsHero() {
+interface TeamsHeroProps {
+  onSelectTeam: (id: string) => void;
+}
+
+export function TeamsHero({ onSelectTeam }: TeamsHeroProps) {
   const reducedMotion = useReducedMotion();
 
   return (
@@ -18,15 +24,69 @@ export function TeamsHero() {
       {/* Dot pattern background */}
       <DotPattern className="absolute inset-0 opacity-30 [mask-image:radial-gradient(ellipse_at_center,white_20%,transparent_75%)]" />
 
-      {/* Ambient glow blobs */}
+      {/* Livery wall — one column per constructor, hidden on small viewports where
+          eleven columns would be ~34px each. */}
+      <div className="pointer-events-none absolute inset-0 hidden lg:flex" aria-hidden="true">
+        {TEAMS.map((team, i) => (
+          <motion.div
+            key={team.id}
+            className="relative flex-1 origin-bottom"
+            initial={reducedMotion ? { opacity: 1 } : { opacity: 0, transform: 'scaleY(0)' }}
+            animate={{ opacity: 1, transform: 'scaleY(1)' }}
+            transition={
+              reducedMotion
+                ? { duration: 0 }
+                : { type: 'spring', duration: 0.6, bounce: 0, delay: i * 0.06 }
+            }
+            style={{
+              background: `linear-gradient(to top, ${team.color}22, transparent 65%)`,
+            }}
+          >
+            <span
+              className="absolute bottom-0 left-0 right-0 h-1"
+              style={{ backgroundColor: team.color }}
+            />
+          </motion.div>
+        ))}
+      </div>
+
+      {/* Clickable columns. Separate from the decorative layer above so those visual
+          columns can stay aria-hidden while these carry the accessible names.
+
+          ONE set of buttons, laid out responsively — full-height columns at lg and up,
+          a four-across logo grid below. Rendering a second `lg:hidden` set instead would
+          put 22 buttons in the DOM under jsdom, where no media query applies, and every
+          getByRole in the test would throw on multiple matches. */}
       <div
-        className="pointer-events-none absolute -bottom-32 -left-32 h-[600px] w-[600px] rounded-full opacity-[0.07]"
-        style={{ background: '#dc2626', filter: 'blur(120px)' }}
-      />
-      <div
-        className="pointer-events-none absolute -right-32 -top-32 h-[500px] w-[500px] rounded-full opacity-[0.04]"
-        style={{ background: '#52525b', filter: 'blur(100px)' }}
-      />
+        className={cn(
+          'absolute inset-x-0 bottom-16 grid grid-cols-4 justify-items-center gap-3 px-6',
+          'lg:inset-0 lg:bottom-auto lg:flex lg:gap-0 lg:px-0',
+        )}
+      >
+        {TEAMS.map((team) => (
+          <button
+            key={team.id}
+            onClick={() => onSelectTeam(team.id)}
+            aria-label={`Jump to ${team.shortName}`}
+            className={cn(
+              'group relative transition-transform duration-150 active:scale-[0.96]',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 lg:focus-visible:ring-inset',
+              'lg:h-full lg:flex-1 lg:active:scale-100',
+            )}
+          >
+            {/* Hover wash — lg only, where there is a column to wash. */}
+            <span
+              aria-hidden="true"
+              className="absolute inset-0 hidden opacity-0 transition-opacity duration-200 group-hover:opacity-100 lg:block"
+              style={{ background: `linear-gradient(to top, ${team.color}44, transparent 70%)` }}
+            />
+            {/* Always visible below lg; revealed on hover at lg and up. */}
+            <span className="relative flex justify-center lg:absolute lg:bottom-5 lg:left-0 lg:right-0 lg:opacity-0 lg:transition-opacity lg:duration-200 lg:group-hover:opacity-100">
+              <TeamLogo team={team} size={30} />
+            </span>
+          </button>
+        ))}
+      </div>
 
       {/* Content */}
       <div className="relative z-10 flex flex-col items-center gap-6 px-6 text-center">

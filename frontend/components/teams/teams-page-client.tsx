@@ -48,7 +48,7 @@ export function TeamsPageClient() {
   return (
     <div className="relative bg-zinc-950">
       {/* Hero */}
-      <TeamsHero />
+      <TeamsHero onSelectTeam={scrollToTeam} />
 
       {/* Mobile nav strip */}
       <div className="sticky top-14 z-20 bg-zinc-950/90 backdrop-blur-sm lg:hidden">
