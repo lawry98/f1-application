@@ -3,7 +3,18 @@ import { render, screen, fireEvent } from '@testing-library/react';
 
 import { TeamsNavRail } from '@/components/teams/teams-nav-rail';
 import { monogram } from '@/components/teams/team-monogram-tile';
+import { contrastRatio, DARK_BG, MIN_CONTRAST } from '@/lib/team-utils';
 import { TEAMS } from '@/data/teams-data';
+
+/** jsdom normalises any inline colour to `rgb(r, g, b)`; contrastRatio wants hex. */
+function rgbToHex(value: string): string {
+  const parts = value.match(/\d+/g);
+  if (!parts || parts.length < 3) throw new Error(`not an rgb() colour: ${value}`);
+  return `#${parts
+    .slice(0, 3)
+    .map((n) => Number(n).toString(16).padStart(2, '0'))
+    .join('')}`;
+}
 
 describe('TeamsNavRail', () => {
   it('shows position and points for each team on desktop', () => {
@@ -37,6 +48,22 @@ describe('TeamsNavRail', () => {
     expect(TEAMS).toHaveLength(11);
     for (const team of TEAMS) {
       expect(screen.getByText(monogram(team.shortName))).toBeInTheDocument();
+    }
+  });
+
+  // The active row's `P4 · 177 PTS` line is 9px in the team colour. Seven of eleven liveries
+  // fail 4.5:1 against zinc-950 raw, so the row that draws the eye hardest was the one whose
+  // standing could not be read. Asserted for every team as the active one.
+  it('keeps the active row’s standings line above AA for every team', () => {
+    expect(TEAMS).toHaveLength(11);
+    for (const team of TEAMS) {
+      const { unmount } = render(<TeamsNavRail activeTeamId={team.id} onSelectTeam={vi.fn()} />);
+      const line = screen.getByText(`P${team.position} · ${team.points} PTS`);
+      expect(
+        contrastRatio(rgbToHex(line.style.color), DARK_BG),
+        `${team.shortName} standings ${line.style.color}`,
+      ).toBeGreaterThanOrEqual(MIN_CONTRAST);
+      unmount();
     }
   });
 

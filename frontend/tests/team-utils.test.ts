@@ -1,6 +1,14 @@
 import { describe, it, expect } from 'vitest';
 
-import { seasonsSince, duotoneFor, teamColorButtonStyle } from '@/lib/team-utils';
+import {
+  seasonsSince,
+  duotoneFor,
+  teamColorButtonStyle,
+  contrastRatio,
+  readableOnDark,
+  DARK_BG,
+  MIN_CONTRAST,
+} from '@/lib/team-utils';
 import { TEAMS, TEAM_MAP, STANDINGS_AS_OF } from '@/data/teams-data';
 
 describe('seasonsSince', () => {
@@ -28,6 +36,89 @@ describe('duotoneFor', () => {
     // tint plus a visible keyline instead.
     expect(duotoneFor(haas).color).not.toBe('#ffffff');
     expect(duotoneFor(haas).keyline).toBe('#ffffff');
+  });
+});
+
+describe('contrastRatio', () => {
+  // Anchors against the two ends of the scale, so a regression in the luminance maths cannot
+  // hide behind the readableOnDark assertions below all still passing.
+  it('returns 21 for black on white and 1 for a colour against itself', () => {
+    expect(contrastRatio('#000000', '#ffffff')).toBeCloseTo(21, 2);
+    expect(contrastRatio('#dc0000', '#dc0000')).toBeCloseTo(1, 5);
+  });
+
+  it('agrees with the published ratios for the failing liveries', () => {
+    expect(contrastRatio('#2b4562', DARK_BG)).toBeCloseTo(2.02, 1); // Racing Bulls
+    expect(contrastRatio('#1e41ff', DARK_BG)).toBeCloseTo(3.08, 1); // Red Bull
+    expect(contrastRatio('#e8002d', DARK_BG)).toBeCloseTo(4.23, 1); // Audi
+  });
+});
+
+describe('readableOnDark', () => {
+  // The finding this closes: seven of eleven 2026 liveries fail 4.5:1 as small text on
+  // zinc-950 — Racing Bulls' #2b4562 at 2.02:1 is effectively invisible at 10px. Asserted
+  // over the whole set, not the seven, so adding a twelfth team cannot slip through.
+  it('clears WCAG AA for every team on the dark page background', () => {
+    expect(TEAMS).toHaveLength(11);
+    for (const team of TEAMS) {
+      const text = readableOnDark(team.color);
+      expect(
+        contrastRatio(text, DARK_BG),
+        `${team.shortName} (${team.color} -> ${text})`,
+      ).toBeGreaterThanOrEqual(MIN_CONTRAST);
+    }
+  });
+
+  it('leaves a colour that already clears AA untouched', () => {
+    // Haas is #ffffff at 19.3:1; McLaren's #ff8000 also passes raw.
+    expect(readableOnDark('#ffffff')).toBe('#ffffff');
+    expect(contrastRatio('#ff8000', DARK_BG)).toBeGreaterThanOrEqual(MIN_CONTRAST);
+    expect(readableOnDark('#ff8000')).toBe('#ff8000');
+  });
+
+  // Lightening in HSL rather than blending toward white is what keeps the result reading as
+  // the brand colour. Racing Bulls' navy must come back as a lighter navy, not as grey.
+  it('keeps the hue when it lightens, rather than washing to white', () => {
+    const lifted = readableOnDark('#2b4562');
+    expect(lifted).not.toBe('#2b4562');
+    expect(lifted).not.toBe('#ffffff');
+
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(lifted.slice(i, i + 2), 16)) as [
+      number,
+      number,
+      number,
+    ];
+    // Still blue-dominant, and still visibly saturated.
+    expect(b).toBeGreaterThan(r);
+    expect(b).toBeGreaterThan(g);
+    expect(b - r).toBeGreaterThan(20);
+  });
+
+  it('is stable across calls, so the cache cannot return a different colour', () => {
+    for (const team of TEAMS) {
+      expect(readableOnDark(team.color)).toBe(readableOnDark(team.color));
+    }
+  });
+});
+
+describe('duotoneFor', () => {
+  // The keyline labels the 10px nationality line, so it is text and must clear AA. The wash
+  // is a large blended fill and keeps the true livery — lightening it drains the portrait.
+  it('returns an AA-passing keyline while the wash keeps the true livery', () => {
+    for (const team of TEAMS) {
+      const { color, keyline } = duotoneFor(team);
+      expect(
+        contrastRatio(keyline, DARK_BG),
+        `${team.shortName} keyline ${keyline}`,
+      ).toBeGreaterThanOrEqual(MIN_CONTRAST);
+      if (team.color !== '#ffffff') expect(color).toBe(team.color);
+    }
+  });
+
+  it('lifts Racing Bulls out of invisibility', () => {
+    const racingBulls = TEAM_MAP['racing-bulls']!;
+    expect(racingBulls.color).toBe('#2b4562');
+    expect(duotoneFor(racingBulls).keyline).not.toBe('#2b4562');
   });
 });
 

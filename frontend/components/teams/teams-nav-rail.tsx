@@ -4,6 +4,7 @@ import { motion } from 'motion/react';
 
 import { TEAMS, type Team } from '@/data/teams-data';
 import { cn } from '@/lib/utils';
+import { readableOnDark } from '@/lib/team-utils';
 import { TeamMonogramTile } from './team-monogram-tile';
 
 interface TeamsNavRailProps {
@@ -84,14 +85,15 @@ function NavButton({
       </span>
 
       {/* Logo chip */}
-      <TeamMonogramTile team={team} size={22} />
+      <TeamMonogramTile team={team} size={22} className="relative z-10" />
 
       {/* Team name + standings */}
       <span className="relative z-10 min-w-0 flex-1">
         <span className="block truncate text-sm font-medium">{team.shortName}</span>
         <span
           className="block truncate font-mono text-[9px] tracking-wide"
-          style={{ color: isActive ? team.color : '#71717a' }}
+          // 9px text, so the livery colour has to clear AA — seven of eleven do not raw.
+          style={{ color: isActive ? readableOnDark(team.color) : '#71717a' }}
         >
           {`P${team.position} · ${team.points} PTS`}
         </span>
