@@ -72,7 +72,7 @@ class FakeAgent:
                             "kind": "tool_result",
                             "tool": tr["tool_name"],
                             "success": tr["success"],
-                            "cached": tr.get("cached", False),
+                            "cached": tr["cached"],
                         },
                     )
             if "synthesizer" in step:
@@ -130,8 +130,18 @@ def successful_steps() -> list[dict[str, Any]]:
         {
             "tool_executor": {
                 "tool_results": [
-                    {"tool_name": "get_track_info", "success": True, "data": {"length_km": 3.3}},
-                    {"tool_name": "search_f1_news", "success": False, "data": {"error": "no key"}},
+                    {
+                        "tool_name": "get_track_info",
+                        "success": True,
+                        "data": {"length_km": 3.3},
+                        "cached": False,
+                    },
+                    {
+                        "tool_name": "search_f1_news",
+                        "success": False,
+                        "data": {"error": "no key"},
+                        "cached": False,
+                    },
                 ],
                 "current_step": "synthesizing",
             }
@@ -184,8 +194,18 @@ def test_briefing_returns_race_briefing_and_trace(client, install_agent):
             "briefing": "## Monaco\n\nTight.",
             "current_step": "complete",
             "tool_results": [
-                {"tool_name": "get_track_info", "success": True, "data": {"length_km": 3.3}},
-                {"tool_name": "search_f1_news", "success": False, "data": {"error": "no key"}},
+                {
+                    "tool_name": "get_track_info",
+                    "success": True,
+                    "data": {"length_km": 3.3},
+                    "cached": False,
+                },
+                {
+                    "tool_name": "search_f1_news",
+                    "success": False,
+                    "data": {"error": "no key"},
+                    "cached": False,
+                },
             ],
         }
     )
@@ -252,7 +272,12 @@ def test_briefing_truncates_long_tool_payloads_in_the_trace(client, install_agen
             "briefing": "x",
             "current_step": "complete",
             "tool_results": [
-                {"tool_name": "search_f1_news", "success": True, "data": {"body": "y" * 500}}
+                {
+                    "tool_name": "search_f1_news",
+                    "success": True,
+                    "data": {"body": "y" * 500},
+                    "cached": False,
+                }
             ],
         }
     )
@@ -270,7 +295,14 @@ def test_briefing_leaves_short_tool_payloads_intact(client, install_agent):
             "race_info": make_race_info(),
             "briefing": "x",
             "current_step": "complete",
-            "tool_results": [{"tool_name": "get_track_info", "success": True, "data": {"a": 1}}],
+            "tool_results": [
+                {
+                    "tool_name": "get_track_info",
+                    "success": True,
+                    "data": {"a": 1},
+                    "cached": False,
+                }
+            ],
         }
     )
     summary = client.post("/api/briefing", json={"query": "monaco"}).json()["tool_trace"][0][
@@ -299,6 +331,7 @@ def test_briefing_replaces_a_failed_tools_payload_in_the_trace(client, install_a
                         "error": "HTTPSConnectionPool(host='api.openweathermap.org', "
                         "port=443): Read timed out"
                     },
+                    "cached": False,
                 }
             ],
         }
