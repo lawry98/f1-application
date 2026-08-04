@@ -28,4 +28,16 @@ describe('TeamsHero', () => {
       expect(button.tagName).toBe('BUTTON');
     }
   });
+
+  it('reaches the Explore Constructors CTA before any livery column in tab order', () => {
+    render(<TeamsHero onSelectTeam={vi.fn()} />);
+    const cta = screen.getByRole('button', { name: /explore constructors/i });
+    const firstColumn = screen.getAllByRole('button', { name: /jump to /i })[0]!;
+
+    // DOCUMENT_POSITION_FOLLOWING (4) means firstColumn comes after cta in the DOM,
+    // which is what puts it later in the natural tab order.
+    expect(cta.compareDocumentPosition(firstColumn) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
 });
