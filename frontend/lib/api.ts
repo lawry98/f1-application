@@ -69,6 +69,9 @@ export async function* streamBriefing(
               case 'status':
                 yield { type: 'status', data: parsed as { step: string; message: string } };
                 break;
+              case 'tool_plan':
+                yield { type: 'tool_plan', data: parsed as { tools: string[] } };
+                break;
               case 'race_info':
                 yield { type: 'race_info', data: parsed as RaceInfo };
                 break;

@@ -70,6 +70,30 @@ def run_synthesizer_streamed(state: dict | None = None) -> tuple[list[dict], dic
     return deltas, update
 
 
+def run_tool_executor_streamed(state: dict) -> tuple[list[dict], dict]:
+    """Run ``tool_executor_node`` inside a one-node graph, streamed with ``custom`` mode.
+
+    Same reason as ``run_synthesizer_streamed`` above: the node calls
+    ``get_stream_writer()``, which raises outside a runnable context, so it cannot be
+    called on its own. Returns the custom payloads in the order they were written, and
+    the node's state update.
+    """
+    workflow = StateGraph(AgentState)
+    workflow.add_node("tool_executor", tool_executor_node)
+    workflow.set_entry_point("tool_executor")
+    workflow.add_edge("tool_executor", END)
+
+    written: list[dict] = []
+    update: dict = {}
+    for mode, payload in workflow.compile().stream(state, stream_mode=["updates", "custom"]):
+        if mode == "custom":
+            written.append(payload)
+        else:
+            update.update(payload.get("tool_executor", {}))
+
+    return written, update
+
+
 # ── Routing ──────────────────────────────────────────────────────────────────
 
 
@@ -214,6 +238,28 @@ def test_planner_tolerates_surrounding_whitespace(fake_llm):
     assert planner_node(make_state(race_info=make_race_info()))["tasks"] == ["get_track_info"]
 
 
+def test_planner_deduplicates_a_repeated_tool(fake_llm):
+    """A repeat would run the tool twice — a wasted, sometimes paid, call — and collide
+    two chips in the loading panel's footer, whose result lookup is keyed by tool name."""
+    fake_llm('["get_track_info", "search_f1_news", "get_track_info"]')
+    result = planner_node(make_state(race_info=make_race_info()))
+    assert result["tasks"] == ["get_track_info", "search_f1_news"]
+
+
+def test_planner_keeps_first_appearance_order_when_deduplicating(fake_llm):
+    """Pins that this is a dedupe, not a sort — a plain ``set`` would not reliably
+    preserve ``["b", "a"]`` here, and order now drives the footer's chip order."""
+    fake_llm('["b", "a", "b"]')
+    result = planner_node(make_state(race_info=make_race_info()))
+    assert result["tasks"] == ["b", "a"]
+
+
+def test_planner_leaves_a_repeat_free_plan_unchanged(fake_llm):
+    fake_llm('["get_track_info", "search_f1_news"]')
+    result = planner_node(make_state(race_info=make_race_info()))
+    assert result["tasks"] == ["get_track_info", "search_f1_news"]
+
+
 @pytest.mark.parametrize(
     "content",
     [
@@ -330,7 +376,7 @@ def test_tool_executor_runs_every_planned_tool(monkeypatch):
         [make_tool("get_track_info", {"length": 3.3}), make_tool("search_f1_news", {"count": 2})],
     )
 
-    result = tool_executor_node(
+    _, result = run_tool_executor_streamed(
         make_state(race_info=make_race_info(), tasks=["get_track_info", "search_f1_news"])
     )
 
@@ -346,7 +392,7 @@ def test_tool_executor_reports_an_unknown_tool_without_running_anything(monkeypa
     """The planner is an LLM and can hallucinate a tool name that does not exist."""
     monkeypatch.setattr(graph_module, "all_tools", [make_tool("get_track_info")])
 
-    result = tool_executor_node(
+    _, result = run_tool_executor_streamed(
         make_state(race_info=make_race_info(), tasks=["get_track_info", "get_vibes"])
     )
 
@@ -368,7 +414,7 @@ def test_tool_executor_continues_past_a_failing_tool(monkeypatch):
         ],
     )
 
-    result = tool_executor_node(
+    _, result = run_tool_executor_streamed(
         make_state(
             race_info=make_race_info(),
             tasks=["get_track_info", "search_f1_news", "get_race_weather"],
@@ -382,9 +428,70 @@ def test_tool_executor_continues_past_a_failing_tool(monkeypatch):
 
 def test_tool_executor_with_no_tasks_produces_no_results(monkeypatch):
     monkeypatch.setattr(graph_module, "all_tools", [make_tool("get_track_info")])
-    result = tool_executor_node(make_state(race_info=make_race_info(), tasks=[]))
+    _, result = run_tool_executor_streamed(make_state(race_info=make_race_info(), tasks=[]))
     assert result["tool_results"] == []
     assert result["current_step"] == "synthesizing"
+
+
+def test_tool_executor_writes_one_event_per_tool_as_it_completes(monkeypatch):
+    """The write is why the gathering stage can report progress at all.
+
+    Results are collected with ``as_completed``, so this is the only place a result exists
+    before the node returns. Without the write, the transport cannot emit anything until
+    every tool has finished — which was a 14.7-second silence on a real run.
+    """
+    monkeypatch.setattr(
+        graph_module,
+        "all_tools",
+        [make_tool("get_track_info", {"length": 3.3}), make_tool("search_f1_news", {"count": 2})],
+    )
+
+    written, result = run_tool_executor_streamed(
+        make_state(race_info=make_race_info(), tasks=["get_track_info", "search_f1_news"])
+    )
+
+    assert [w["kind"] for w in written] == ["tool_result", "tool_result"]
+    assert {(w["tool"], w["success"]) for w in written} == {
+        ("get_track_info", True),
+        ("search_f1_news", True),
+    }
+    # The state update is unchanged — the write is additional, not a replacement.
+    assert len(result["tool_results"]) == 2
+
+
+def test_tool_executor_writes_a_failing_tool_as_unsuccessful(monkeypatch):
+    monkeypatch.setattr(
+        graph_module,
+        "all_tools",
+        [make_tool("search_f1_news", {"error": "no key"})],
+    )
+
+    written, _ = run_tool_executor_streamed(
+        make_state(race_info=make_race_info(), tasks=["search_f1_news"])
+    )
+
+    assert written == [{"kind": "tool_result", "tool": "search_f1_news", "success": False}]
+
+
+def test_tool_executor_writes_an_unknown_tool_it_never_ran(monkeypatch):
+    """The unknown-tool path appends before the pool, so it is easy to write past."""
+    monkeypatch.setattr(graph_module, "all_tools", [])
+
+    written, result = run_tool_executor_streamed(
+        make_state(race_info=make_race_info(), tasks=["get_tyre_compounds"])
+    )
+
+    assert written == [{"kind": "tool_result", "tool": "get_tyre_compounds", "success": False}]
+    assert result["tool_results"][0]["success"] is False
+
+
+def test_tool_executor_with_no_tasks_writes_nothing(monkeypatch):
+    monkeypatch.setattr(graph_module, "all_tools", [])
+
+    written, result = run_tool_executor_streamed(make_state(race_info=make_race_info(), tasks=[]))
+
+    assert written == []
+    assert result["tool_results"] == []
 
 
 # ── Synthesizer node ─────────────────────────────────────────────────────────

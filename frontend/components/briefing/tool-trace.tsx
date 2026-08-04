@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import type { ToolResult } from '@/types';
 import { Badge } from '@/components/ui/badge';
+import { toolLabel } from '@/lib/constants';
 
 interface ToolTraceProps {
   tools: ToolResult[];
@@ -43,8 +44,9 @@ export function ToolTrace({ tools }: ToolTraceProps) {
               >
                 {tool.success ? 'OK' : 'FAIL'}
               </Badge>
-              <div className="flex-1">
-                <h4 className="mb-1 font-mono text-sm text-zinc-300">{tool.tool}</h4>
+              <div className="min-w-0 flex-1">
+                <h4 className="text-sm font-medium text-zinc-200">{toolLabel(tool.tool)}</h4>
+                <p className="truncate font-mono text-xs text-zinc-500">{tool.tool}</p>
               </div>
             </div>
           ))}

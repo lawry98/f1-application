@@ -7,6 +7,9 @@ data: {"name": "Monaco Grand Prix", "year": 2025, "circuit_id": "monaco_grand_pr
 event: status
 data: {"step": "planning", "message": "Planning data gathering..."}
 
+event: tool_plan
+data: {"tools": ["get_track_info", "search_f1_news"]}
+
 event: status
 data: {"step": "gathering", "message": "Gathering race data..."}
 

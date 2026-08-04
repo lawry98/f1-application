@@ -35,6 +35,7 @@ describe.each(CHUNK_SIZES)('streamBriefing (reader chunk size %i)', (chunkSize) 
       'status',
       'race_info',
       'status',
+      'tool_plan',
       'status',
       'tool_result',
       'tool_result',
@@ -45,6 +46,13 @@ describe.each(CHUNK_SIZES)('streamBriefing (reader chunk size %i)', (chunkSize) 
       'briefing',
       'complete',
     ]);
+  });
+
+  it('carries the planned tool names', async () => {
+    const events = await collect('clean.sse', chunkSize);
+    const plan = events.find((e) => e.type === 'tool_plan');
+
+    expect(plan?.data).toEqual({ tools: ['get_track_info', 'search_f1_news'] });
   });
 
   it('concatenates deltas into exactly the terminal briefing', async () => {

@@ -134,14 +134,18 @@ There is no executor in the API layer; `EXECUTOR_MAX_WORKERS` governs only the t
 
 Because it asks for two stream modes — `stream_mode=["updates", "custom"]` — `astream` yields
 `(mode, payload)` **tuples**, not the bare `{node: partial_state}` dicts a single mode gives. The
-`custom` mode carries the synthesizer's briefing Deltas, written with `get_stream_writer()`. That
-writer no-ops under plain `.invoke()`, so `/api/briefing` needs no special-casing.
+`custom` mode carries the synthesizer's briefing Deltas and `tool_executor_node`'s per-tool
+`tool_result` writes — both written with `get_stream_writer()`, one per chunk and one per
+completed tool respectively, discriminated by a `kind` field. That writer no-ops under plain
+`.invoke()`, so `/api/briefing` needs no special-casing.
 
 **SSE discrimination uses the `event:` line** from the SSE protocol, not field-presence
 heuristics on the payload.
 
-**FastF1's first requests are slow** — telemetry downloads into `backend/cache/`, which is
-gitignored. Cold requests taking 30–60s is expected, not a bug.
+**FastF1 session loads hit the network every time, cache or no cache.** `backend/cache/`
+(gitignored) never gets populated: FastF1 only persists a session that loaded cleanly, and
+these loads never do, so warming it achieves nothing. A briefing takes seconds for that
+reason, not because of cold-cache telemetry downloads.
 
 **`gltf.scene.clone()` must stay inside `useMemo`** — without it Three.js re-clones the scene on
 every render.
@@ -160,8 +164,7 @@ is sized `min(92vw, calc(82vh * 800 / 420))` to respect both viewport constraint
 - **File naming**: kebab-case, no exceptions — including `components/3d/`. Component *names*
   stay PascalCase (`f1-hero-scene.tsx` exports `F1HeroScene`).
 - **Exports**: named exports. The only `default export`s outside `app/` are
-  `3d/f1-car-showcase.tsx` and `3d/f1-hero-scene.tsx`. `3d/f1-loading-car.tsx` is named-only, so
-  its consumer maps it: `.then((mod) => ({ default: mod.F1LoadingAnimation }))`.
+  `3d/f1-car-showcase.tsx` and `3d/f1-hero-scene.tsx`.
 - **Shared types** come from `@/types` — *except* `Team` and `Driver`, which live in
   `@/data/teams-data` alongside the `TEAMS` data they describe.
 - **3D components**: always `next/dynamic` with `ssr: false`; server-rendering Three.js throws.

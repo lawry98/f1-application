@@ -1,18 +1,12 @@
 'use client';
 
-import dynamic from 'next/dynamic';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useBriefing } from '@/hooks/use-briefing';
 import { BriefingCard } from './briefing-card';
+import { BriefingLoader } from './briefing-loader';
 import { ToolTrace } from './tool-trace';
 import { RaceSelector } from './race-selector';
-
-const F1LoadingAnimation = dynamic(
-  () =>
-    import('@/components/3d/f1-loading-car').then((mod) => ({ default: mod.F1LoadingAnimation })),
-  { ssr: false },
-);
 
 export function BriefingChat() {
   const {
@@ -22,8 +16,11 @@ export function BriefingChat() {
     briefing,
     truncated,
     toolTrace,
+    toolPlan,
     error,
     statusMessage,
+    step,
+    startedAt,
     setQuery,
     submit,
   } = useBriefing();
@@ -36,7 +33,7 @@ export function BriefingChat() {
   return (
     <div className="mx-auto max-w-4xl">
       <div className="mb-8 rounded-lg border border-zinc-800 bg-zinc-900 p-6 shadow-xl">
-        <RaceSelector onSelectRace={handleRaceSelect} />
+        <RaceSelector onSelectRace={handleRaceSelect} disabled={loading} activeRace={query} />
 
         <div className="flex gap-2">
           <Input
@@ -60,7 +57,14 @@ export function BriefingChat() {
       </div>
 
       {loading && !briefing && (
-        <F1LoadingAnimation message={statusMessage || 'Agent is analyzing race data...'} />
+        <BriefingLoader
+          race={race}
+          step={step}
+          statusMessage={statusMessage}
+          tools={toolTrace}
+          toolPlan={toolPlan}
+          startedAt={startedAt}
+        />
       )}
 
       {error && (

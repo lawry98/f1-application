@@ -304,3 +304,118 @@ describe('other events', () => {
     expect(result.current.loading).toBe(false);
   });
 });
+
+describe('the pipeline step', () => {
+  it('tracks the step of a status event, not its message', async () => {
+    const feed = new ChunkFeed();
+    const { result, submit } = start(feed);
+    await submit('Monaco');
+
+    feed.push(frame('status', { step: 'gathering', message: 'Gathering race data...' }));
+    await settle();
+
+    expect(result.current.step).toBe('gathering');
+  });
+
+  it('advances as later stages report', async () => {
+    const feed = new ChunkFeed();
+    const { result, submit } = start(feed);
+    await submit('Monaco');
+
+    feed.push(frame('status', { step: 'resolving', message: 'Resolving race...' }));
+    await settle();
+    feed.push(frame('status', { step: 'synthesizing', message: 'Generating briefing...' }));
+    await settle();
+
+    expect(result.current.step).toBe('synthesizing');
+  });
+
+  it('clears the step when the briefing lands', async () => {
+    const feed = new ChunkFeed();
+    const { result, submit } = start(feed);
+    await submit('Monaco');
+
+    feed.push(frame('status', { step: 'synthesizing', message: 'Generating briefing...' }));
+    await settle();
+    feed.push(frame('briefing', { content: 'Done.', truncated: false }));
+    await settle();
+
+    expect(result.current.step).toBe('');
+  });
+
+  it('clears the step when a new request starts', async () => {
+    const first = new ChunkFeed();
+    const second = new ChunkFeed();
+    const { result, submit } = start(first, second);
+    await submit('Monaco');
+
+    first.push(frame('status', { step: 'gathering', message: 'Gathering race data...' }));
+    await settle();
+    await submit('Silverstone');
+
+    expect(result.current.step).toBe('');
+  });
+});
+
+describe('the tool plan', () => {
+  it('starts empty', async () => {
+    const feed = new ChunkFeed();
+    const { result } = start(feed);
+
+    expect(result.current.toolPlan).toEqual([]);
+  });
+
+  it('records the planned tools', async () => {
+    const feed = new ChunkFeed();
+    const { result, submit } = start(feed);
+    await submit('Monaco');
+
+    feed.push(frame('tool_plan', { tools: ['get_track_info', 'search_f1_news'] }));
+    await settle();
+
+    expect(result.current.toolPlan).toEqual(['get_track_info', 'search_f1_news']);
+  });
+
+  it('clears the plan when a new request starts', async () => {
+    const first = new ChunkFeed();
+    const second = new ChunkFeed();
+    const { result, submit } = start(first, second);
+    await submit('Monaco');
+
+    first.push(frame('tool_plan', { tools: ['get_track_info'] }));
+    await settle();
+    await submit('Silverstone');
+
+    expect(result.current.toolPlan).toEqual([]);
+  });
+});
+
+describe('the request timestamp', () => {
+  it('stamps startedAt when a request begins', async () => {
+    const feed = new ChunkFeed();
+    const { result, submit } = start(feed);
+
+    expect(result.current.startedAt).toBe(0);
+    await submit('Monaco');
+
+    expect(result.current.startedAt).toBe(Date.now());
+  });
+
+  it('restamps startedAt on a second request, so the timer cannot carry over', async () => {
+    // The loader does not unmount between overlapping runs. No on-screen control can
+    // trigger one any more — the selector locks during a run — but `submit()` is a public
+    // part of the hook's contract, callable programmatically, so the guard stays correct.
+    const first = new ChunkFeed();
+    const second = new ChunkFeed();
+    const { result, submit } = start(first, second);
+    await submit('Monaco');
+    const firstStamp = result.current.startedAt;
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    await submit('Silverstone');
+
+    expect(result.current.startedAt).toBe(firstStamp + 5000);
+  });
+});

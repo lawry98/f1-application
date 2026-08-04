@@ -133,6 +133,13 @@ def planner_node(state: AgentState) -> dict[str, Any]:
 
         tasks = json.loads(content.strip())
         if isinstance(tasks, list) and all(isinstance(t, str) for t in tasks):
+            # A repeated name isn't harmless: tool_executor_node would submit it twice
+            # (a wasted, sometimes paid, call for something like search_f1_news), emit two
+            # tool_result events for one name, and collide two chips in the loading
+            # panel's footer, whose result lookup is keyed by tool name. dict.fromkeys
+            # dedupes while keeping first-appearance order — the plan's order is now the
+            # order the footer renders in, and a set would shuffle it between runs.
+            tasks = list(dict.fromkeys(tasks))
             logger.info("Planner selected %d tools: %s", len(tasks), tasks)
             return {"tasks": tasks, "current_step": "gathering"}
     except (json.JSONDecodeError, AttributeError, TypeError, IndexError):
@@ -188,6 +195,19 @@ def tool_executor_node(state: AgentState) -> dict[str, Any]:
     """Execute all planned tools in parallel and collect results."""
     race_info = state["race_info"]
     tasks = state.get("tasks", [])
+    # Written per completion rather than per node return: `as_completed` already hands
+    # results over one at a time, and the node's return is the only other chance the
+    # transport gets — which is a burst of every chip at once after a long silence.
+    writer = get_stream_writer()
+
+    def report(result: ToolResult) -> None:
+        writer(
+            {
+                "kind": "tool_result",
+                "tool": result["tool_name"],
+                "success": result["success"],
+            }
+        )
 
     tool_map = {tool.name: tool for tool in all_tools}
     tool_results: list[ToolResult] = []
@@ -197,19 +217,24 @@ def tool_executor_node(state: AgentState) -> dict[str, Any]:
         for task_name in tasks:
             if task_name not in tool_map:
                 logger.warning("Unknown tool requested: '%s'", task_name)
-                tool_results.append(
-                    ToolResult(
-                        tool_name=task_name,
-                        success=False,
-                        data={"error": f"Unknown tool: {task_name}"},
-                    )
+                unknown = ToolResult(
+                    tool_name=task_name,
+                    success=False,
+                    data={"error": f"Unknown tool: {task_name}"},
                 )
+                tool_results.append(unknown)
+                report(unknown)
                 continue
             future = pool.submit(_invoke_tool, tool_map[task_name], task_name, race_info)
             futures[future] = task_name
 
+        # This loop body runs in the node's own thread, not in a pool worker —
+        # `as_completed` yields control back to its caller rather than running inline in
+        # whichever future finished. That is what makes calling the writer here safe.
         for future in as_completed(futures):
-            tool_results.append(future.result())
+            result = future.result()
+            tool_results.append(result)
+            report(result)
 
     successes = sum(1 for tr in tool_results if tr["success"])
     logger.info("Tool executor: %d/%d tools succeeded", successes, len(tool_results))

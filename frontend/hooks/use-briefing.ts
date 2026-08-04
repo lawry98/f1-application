@@ -25,8 +25,14 @@ export interface BriefingState {
   /** Whether synthesis stopped partway, leaving `briefing` unfinished. */
   truncated: boolean;
   toolTrace: ToolResult[];
+  /** The tools the planner chose, in its order. Empty until the `tool_plan` event lands. */
+  toolPlan: string[];
   error: string;
   statusMessage: string;
+  /** The graph stage the run is in: resolving | planning | gathering | synthesizing. */
+  step: string;
+  /** Epoch ms the current request began. Zero before the first submit. */
+  startedAt: number;
 }
 
 export interface UseBriefingReturn extends BriefingState {
@@ -41,8 +47,11 @@ export function useBriefing(): UseBriefingReturn {
   const [briefing, setBriefing] = useState('');
   const [truncated, setTruncated] = useState(false);
   const [toolTrace, setToolTrace] = useState<ToolResult[]>([]);
+  const [toolPlan, setToolPlan] = useState<string[]>([]);
   const [error, setError] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
+  const [step, setStep] = useState('');
+  const [startedAt, setStartedAt] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
   // The prose accumulated so far, including deltas not yet painted.
   const bufferRef = useRef('');
@@ -79,7 +88,10 @@ export function useBriefing(): UseBriefingReturn {
       setTruncated(false);
       setRace('');
       setToolTrace([]);
+      setToolPlan([]);
       setStatusMessage('');
+      setStep('');
+      setStartedAt(Date.now());
 
       try {
         const stream = streamBriefing(searchTerm, controller.signal);
@@ -94,8 +106,11 @@ export function useBriefing(): UseBriefingReturn {
 
           if (event.type === 'status') {
             setStatusMessage(event.data.message);
+            setStep(event.data.step);
           } else if (event.type === 'race_info') {
             setRace(event.data.name);
+          } else if (event.type === 'tool_plan') {
+            setToolPlan(event.data.tools);
           } else if (event.type === 'tool_result') {
             tools.push({ tool: event.data.tool, success: event.data.success });
             setToolTrace([...tools]);
@@ -120,6 +135,7 @@ export function useBriefing(): UseBriefingReturn {
             setBriefing(event.data.content);
             setTruncated(Boolean(event.data.truncated));
             setStatusMessage('');
+            setStep('');
           } else if (event.type === 'error') {
             setError(event.data.message);
           }
@@ -133,6 +149,11 @@ export function useBriefing(): UseBriefingReturn {
         if (abortRef.current === controller) {
           setLoading(false);
           setStatusMessage('');
+          // Belt-and-braces, not a reachable case: the `briefing` event already clears
+          // `step`, and on the error path the loader unmounts in the same batch. Kept
+          // because `step` and `statusMessage` are meant to move together — the invariant
+          // is the point, not this specific line.
+          setStep('');
         }
       }
     },
@@ -146,8 +167,11 @@ export function useBriefing(): UseBriefingReturn {
     briefing,
     truncated,
     toolTrace,
+    toolPlan,
     error,
     statusMessage,
+    step,
+    startedAt,
     setQuery,
     submit,
   };

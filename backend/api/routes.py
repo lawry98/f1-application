@@ -104,12 +104,18 @@ async def generate_briefing_stream(request: BriefingRequest) -> EventSourceRespo
 
             async for mode, payload in stream:
                 if mode == "custom":
-                    # Node-to-transport writes. The `kind` discriminator is the seam the
-                    # deferred per-tool trickle needs; today only Deltas come through.
+                    # Node-to-transport writes, discriminated by `kind`.
                     if payload.get("kind") == "briefing_delta":
                         yield {
                             "event": "briefing_delta",
                             "data": json.dumps({"content": payload["content"]}),
+                        }
+                    elif payload.get("kind") == "tool_result":
+                        yield {
+                            "event": "tool_result",
+                            "data": json.dumps(
+                                {"tool": payload["tool"], "success": payload["success"]}
+                            ),
                         }
                     continue
 
@@ -135,6 +141,13 @@ async def generate_briefing_stream(request: BriefingRequest) -> EventSourceRespo
                         return
 
                 elif current_step == "planner":
+                    # Announced before "gathering" so the frontend knows the full set of
+                    # tools it is waiting on, rather than discovering them one arrival at
+                    # a time.
+                    yield {
+                        "event": "tool_plan",
+                        "data": json.dumps({"tools": step_data.get("tasks", [])}),
+                    }
                     yield {
                         "event": "status",
                         "data": json.dumps(
@@ -143,11 +156,9 @@ async def generate_briefing_stream(request: BriefingRequest) -> EventSourceRespo
                     }
 
                 elif current_step == "tool_executor":
-                    for tr in step_data.get("tool_results", []):
-                        yield {
-                            "event": "tool_result",
-                            "data": json.dumps({"tool": tr["tool_name"], "success": tr["success"]}),
-                        }
+                    # Results themselves already crossed the wire from the `custom` branch
+                    # above, one per completion — this node's update carries nothing new to
+                    # emit, only the status transition.
                     yield {
                         "event": "status",
                         "data": json.dumps(

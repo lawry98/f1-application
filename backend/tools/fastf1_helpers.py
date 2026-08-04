@@ -13,9 +13,16 @@ def find_event(schedule: pd.DataFrame, name: str) -> pd.Series | None:
 
 
 def load_race_session(year: int, event_name: str):
-    """Fetch a race session with telemetry, weather, and messages disabled."""
+    """Fetch a race session with lap, telemetry, weather, and message loading disabled.
+
+    Every consumer reads ``session.results`` and nothing else — ``session.laps`` appears
+    nowhere in this codebase. Lap loading is not merely unused, it is actively harmful:
+    its endpoints fail on every call, and FastF1 only persists a session that loaded
+    cleanly, so requesting laps made these calls both slow (3.5s against 1.1s per
+    session) and permanently uncacheable.
+    """
     session = fastf1.get_session(year, event_name, "R")
-    session.load(telemetry=False, weather=False, messages=False)
+    session.load(laps=False, telemetry=False, weather=False, messages=False)
     return session
 
 
