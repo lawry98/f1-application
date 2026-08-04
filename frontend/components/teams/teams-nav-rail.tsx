@@ -10,6 +10,7 @@ import { TeamMonogramTile } from './team-monogram-tile';
 interface TeamsNavRailProps {
   activeTeamId: string;
   onSelectTeam: (id: string) => void;
+  reducedMotion: boolean;
   mobile?: boolean;
 }
 
@@ -17,12 +18,14 @@ function NavButton({
   team,
   isActive,
   onClick,
+  reducedMotion,
   mobile,
   index,
 }: {
   team: Team;
   isActive: boolean;
   onClick: () => void;
+  reducedMotion: boolean;
   mobile?: boolean;
   index: number;
 }) {
@@ -61,12 +64,16 @@ function NavButton({
         isActive ? 'text-white' : 'text-zinc-500 hover:text-zinc-300',
       )}
     >
-      {/* Active background highlight via shared layout */}
+      {/* Active background highlight via shared layout. The highlight slides between rows on
+          every section crossing, so under `reduce` it is cut to a straight cross-fade — the
+          block still moves, it just no longer travels. */}
       {isActive && (
         <motion.div
           layoutId="teams-nav-active"
           className="absolute inset-0 rounded-r-md bg-zinc-800/60"
-          transition={{ type: 'spring', stiffness: 400, damping: 35 }}
+          transition={
+            reducedMotion ? { duration: 0 } : { type: 'spring', duration: 0.3, bounce: 0 }
+          }
         />
       )}
 
@@ -102,7 +109,12 @@ function NavButton({
   );
 }
 
-export function TeamsNavRail({ activeTeamId, onSelectTeam, mobile = false }: TeamsNavRailProps) {
+export function TeamsNavRail({
+  activeTeamId,
+  onSelectTeam,
+  reducedMotion,
+  mobile = false,
+}: TeamsNavRailProps) {
   if (mobile) {
     return (
       <div className="flex gap-2 overflow-x-auto px-4 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -112,6 +124,7 @@ export function TeamsNavRail({ activeTeamId, onSelectTeam, mobile = false }: Tea
             team={team}
             isActive={activeTeamId === team.id}
             onClick={() => onSelectTeam(team.id)}
+            reducedMotion={reducedMotion}
             mobile
             index={i}
           />
@@ -129,6 +142,7 @@ export function TeamsNavRail({ activeTeamId, onSelectTeam, mobile = false }: Tea
           team={team}
           isActive={activeTeamId === team.id}
           onClick={() => onSelectTeam(team.id)}
+          reducedMotion={reducedMotion}
           index={i}
         />
       ))}
@@ -139,7 +153,12 @@ export function TeamsNavRail({ activeTeamId, onSelectTeam, mobile = false }: Tea
         className="pointer-events-none absolute right-0 top-0 h-full w-[2px] bg-zinc-900"
       >
         <span
-          className="block w-full origin-top bg-zinc-600 transition-transform duration-300"
+          className={cn(
+            'block w-full origin-top bg-zinc-600',
+            // The active team changes on every section crossing — eleven animations per
+            // scroll of the page — so this is exactly the motion `reduce` asks to be spared.
+            !reducedMotion && 'transition-transform duration-300',
+          )}
           style={{
             height: '100%',
             transform: `scaleY(${(TEAMS.findIndex((t) => t.id === activeTeamId) + 1) / TEAMS.length})`,

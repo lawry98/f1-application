@@ -16,35 +16,63 @@ function rgbToHex(value: string): string {
     .join('')}`;
 }
 
+function renderRail({
+  activeTeamId = 'ferrari',
+  onSelectTeam = vi.fn(),
+  reducedMotion = false,
+  mobile = false,
+}: {
+  activeTeamId?: string;
+  onSelectTeam?: () => void;
+  reducedMotion?: boolean;
+  mobile?: boolean;
+} = {}) {
+  return render(
+    <TeamsNavRail
+      activeTeamId={activeTeamId}
+      onSelectTeam={onSelectTeam}
+      reducedMotion={reducedMotion}
+      mobile={mobile}
+    />,
+  );
+}
+
+/** The progress track's fill — the element whose transform the active index drives. */
+function progressFill(container: HTMLElement): HTMLElement {
+  const el = container.querySelector('.origin-top');
+  if (!el) throw new Error('progress fill not found');
+  return el as HTMLElement;
+}
+
 describe('TeamsNavRail', () => {
   it('shows position and points for each team on desktop', () => {
-    render(<TeamsNavRail activeTeamId="ferrari" onSelectTeam={vi.fn()} />);
+    renderRail();
     expect(screen.getByText('P1 · 379 PTS')).toBeInTheDocument();
     expect(screen.getByText('P2 · 307 PTS')).toBeInTheDocument();
   });
 
   it('selects the team that was clicked', () => {
     const onSelectTeam = vi.fn();
-    render(<TeamsNavRail activeTeamId="ferrari" onSelectTeam={onSelectTeam} />);
+    renderRail({ onSelectTeam });
     fireEvent.click(screen.getByRole('button', { name: /mclaren/i }));
     expect(onSelectTeam).toHaveBeenCalledWith('mclaren');
   });
 
   it('marks only the active team as current', () => {
-    render(<TeamsNavRail activeTeamId="ferrari" onSelectTeam={vi.fn()} />);
+    renderRail();
     const current = screen.getAllByRole('button', { current: true });
     expect(current).toHaveLength(1);
     expect(current[0]).toHaveAccessibleName(/ferrari/i);
   });
 
   it('drops points but keeps position in the mobile pills', () => {
-    render(<TeamsNavRail activeTeamId="ferrari" onSelectTeam={vi.fn()} mobile />);
+    renderRail({ mobile: true });
     expect(screen.queryByText('P1 · 379 PTS')).not.toBeInTheDocument();
     expect(screen.getByText('P1')).toBeInTheDocument();
   });
 
   it('renders a uniform monogram tile for every team, including racing-bulls', () => {
-    render(<TeamsNavRail activeTeamId="ferrari" onSelectTeam={vi.fn()} />);
+    renderRail();
     expect(TEAMS).toHaveLength(11);
     for (const team of TEAMS) {
       expect(screen.getByText(monogram(team.shortName))).toBeInTheDocument();
@@ -57,7 +85,7 @@ describe('TeamsNavRail', () => {
   it('keeps the active row’s standings line above AA for every team', () => {
     expect(TEAMS).toHaveLength(11);
     for (const team of TEAMS) {
-      const { unmount } = render(<TeamsNavRail activeTeamId={team.id} onSelectTeam={vi.fn()} />);
+      const { unmount } = renderRail({ activeTeamId: team.id });
       const line = screen.getByText(`P${team.position} · ${team.points} PTS`);
       expect(
         contrastRatio(rgbToHex(line.style.color), DARK_BG),
@@ -72,16 +100,26 @@ describe('TeamsNavRail', () => {
     const last = TEAMS.at(-1);
     if (!first || !last) throw new Error('TEAMS must not be empty');
 
-    const { container: firstContainer } = render(
-      <TeamsNavRail activeTeamId={first.id} onSelectTeam={vi.fn()} />,
-    );
-    const firstFill = firstContainer.querySelector('.origin-top') as HTMLElement;
-    expect(firstFill.style.transform).toBe(`scaleY(${1 / TEAMS.length})`);
+    const { container: firstContainer } = renderRail({ activeTeamId: first.id });
+    expect(progressFill(firstContainer).style.transform).toBe(`scaleY(${1 / TEAMS.length})`);
 
-    const { container: lastContainer } = render(
-      <TeamsNavRail activeTeamId={last.id} onSelectTeam={vi.fn()} />,
-    );
-    const lastFill = lastContainer.querySelector('.origin-top') as HTMLElement;
-    expect(lastFill.style.transform).toBe('scaleY(1)');
+    const { container: lastContainer } = renderRail({ activeTeamId: last.id });
+    expect(progressFill(lastContainer).style.transform).toBe('scaleY(1)');
+  });
+
+  // The rail was the one surface teams-page-client never threaded reducedMotion into, so the
+  // right-edge fill swept on every section crossing — eleven animations per scroll of the page
+  // — for a user who had asked the platform for the opposite.
+  it('animates the progress track only when motion is allowed', () => {
+    const { container } = renderRail();
+    expect(progressFill(container).className).toMatch(/transition-transform/);
+  });
+
+  it('drops the progress track transition under reduced motion', () => {
+    const { container } = renderRail({ reducedMotion: true });
+    const fill = progressFill(container);
+    expect(fill.className).not.toMatch(/transition-transform/);
+    // The fill still tracks the active team — only the tween is gone.
+    expect(fill.style.transform).toBe(`scaleY(${2 / TEAMS.length})`);
   });
 });

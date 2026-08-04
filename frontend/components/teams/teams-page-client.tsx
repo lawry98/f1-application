@@ -52,14 +52,23 @@ export function TeamsPageClient() {
 
       {/* Mobile nav strip */}
       <div className="sticky top-14 z-20 bg-zinc-950/90 backdrop-blur-sm lg:hidden">
-        <TeamsNavRail activeTeamId={activeTeamId} onSelectTeam={scrollToTeam} mobile />
+        <TeamsNavRail
+          activeTeamId={activeTeamId}
+          onSelectTeam={scrollToTeam}
+          reducedMotion={reducedMotion}
+          mobile
+        />
       </div>
 
       {/* Main body: three-column layout */}
       <div className="flex">
         {/* Desktop left nav rail */}
         <aside className="sticky top-14 hidden h-[calc(100vh-3.5rem)] w-[200px] self-start overflow-y-auto border-r border-zinc-900 lg:block xl:w-[240px]">
-          <TeamsNavRail activeTeamId={activeTeamId} onSelectTeam={scrollToTeam} />
+          <TeamsNavRail
+            activeTeamId={activeTeamId}
+            onSelectTeam={scrollToTeam}
+            reducedMotion={reducedMotion}
+          />
         </aside>
 
         {/* Center: scrollable team sections */}
