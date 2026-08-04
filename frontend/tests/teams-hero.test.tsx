@@ -68,6 +68,18 @@ describe('TeamsHero', () => {
     expect(unsetsBlockEdge).toEqual([]);
   });
 
+  // The 3.5rem site nav sits above the hero in normal flow, so a 100vh hero overflows the
+  // viewport by exactly the nav's height and everything anchored to its bottom edge goes with
+  // it. The hover wordmark is at `bottom-5` and 30px tall, so it sat 6px below the fold at
+  // every window height — the wall had its height back but the reveal still could not be seen.
+  it('subtracts the site nav from the hero height rather than claiming a full 100vh', () => {
+    const { container } = render(<TeamsHero onSelectTeam={vi.fn()} />);
+    const section = container.querySelector('section');
+    expect(section).not.toBeNull();
+    expect(section!.className).not.toMatch(/\bmin-h-screen\b/);
+    expect(section!.className).toMatch(/min-h-\[calc\(100vh-3\.5rem\)\]/);
+  });
+
   it('gives the column layer a full-height flex layout at lg and up', () => {
     const { container } = render(<TeamsHero onSelectTeam={vi.fn()} />);
     const tokens = columnLayer(container).className.split(/\s+/);

@@ -21,7 +21,14 @@ export function TeamsHero({ onSelectTeam }: TeamsHeroProps) {
   const reducedMotion = useReducedMotion();
 
   return (
-    <section className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-zinc-950">
+    // `min-h-[calc(100vh-3.5rem)]`, not `min-h-screen`. The 3.5rem site nav sits above this
+    // section in normal flow, so a 100vh hero pushes its own last 56px below the fold — and
+    // everything anchored to the section's bottom edge with it. The livery wall's hover
+    // wordmark sits at `bottom-5` and is 30px tall, so it landed 6px past the viewport at
+    // *every* window height and could never be seen; the scroll cue and the bottom gradient
+    // fade were clipped with it. `components/landing/landing-hero.tsx` already subtracts the
+    // nav for the same reason, and teams-page-client.tsx's asides use the same 3.5rem.
+    <section className="relative flex min-h-[calc(100vh-3.5rem)] flex-col items-center justify-center overflow-hidden bg-zinc-950">
       {/* Dot pattern background */}
       <DotPattern className="absolute inset-0 opacity-30 [mask-image:radial-gradient(ellipse_at_center,white_20%,transparent_75%)]" />
 
