@@ -38,7 +38,13 @@ describe('driver photograph credits', () => {
     const credits = readFileSync(CREDITS_PATH, 'utf8');
     const files = new Set(pngFiles());
 
-    const cited = [...credits.matchAll(/`([a-z0-9-]+\.png)`/g)].map((m) => m[1]!);
+    // A plain exec loop rather than [...matchAll()]: the tsconfig target predates
+    // downlevelIteration, so spreading a RegExpStringIterator does not typecheck.
+    const cited: string[] = [];
+    const pattern = /`([a-z0-9-]+\.png)`/g;
+    for (let m = pattern.exec(credits); m !== null; m = pattern.exec(credits)) {
+      cited.push(m[1]!);
+    }
     expect(cited.length).toBeGreaterThan(0);
     expect(cited.filter((f) => !files.has(f))).toEqual([]);
   });
