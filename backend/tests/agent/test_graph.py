@@ -617,7 +617,9 @@ def test_tool_executor_writes_a_failing_tool_as_unsuccessful(monkeypatch):
         make_state(race_info=make_race_info(), tasks=["search_f1_news"])
     )
 
-    assert written == [{"kind": "tool_result", "tool": "search_f1_news", "success": False}]
+    assert written == [
+        {"kind": "tool_result", "tool": "search_f1_news", "success": False, "cached": False}
+    ]
 
 
 def test_tool_executor_writes_an_unknown_tool_it_never_ran(monkeypatch):
@@ -628,7 +630,9 @@ def test_tool_executor_writes_an_unknown_tool_it_never_ran(monkeypatch):
         make_state(race_info=make_race_info(), tasks=["get_tyre_compounds"])
     )
 
-    assert written == [{"kind": "tool_result", "tool": "get_tyre_compounds", "success": False}]
+    assert written == [
+        {"kind": "tool_result", "tool": "get_tyre_compounds", "success": False, "cached": False}
+    ]
     assert result["tool_results"][0]["success"] is False
 
 
@@ -639,6 +643,25 @@ def test_tool_executor_with_no_tasks_writes_nothing(monkeypatch):
 
     assert written == []
     assert result["tool_results"] == []
+
+
+def test_tool_executor_writes_a_cache_hit_as_cached(monkeypatch):
+    """The wire must distinguish a served-from-cache chip from a live fetch —
+    that honesty is the whole reason the field exists (spec decision 5)."""
+    tool = make_tool("get_track_info", {"length_km": 3.3})
+    monkeypatch.setattr(graph_module, "all_tools", [tool])
+    state = make_state(race_info=make_race_info(), tasks=["get_track_info"])
+
+    first_written, _ = run_tool_executor_streamed(state)
+    second_written, _ = run_tool_executor_streamed(state)
+
+    assert len(tool.calls) == 1
+    assert first_written == [
+        {"kind": "tool_result", "tool": "get_track_info", "success": True, "cached": False}
+    ]
+    assert second_written == [
+        {"kind": "tool_result", "tool": "get_track_info", "success": True, "cached": True}
+    ]
 
 
 # ── Synthesizer node ─────────────────────────────────────────────────────────

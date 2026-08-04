@@ -72,6 +72,7 @@ class FakeAgent:
                             "kind": "tool_result",
                             "tool": tr["tool_name"],
                             "success": tr["success"],
+                            "cached": tr.get("cached", False),
                         },
                     )
             if "synthesizer" in step:
@@ -529,15 +530,29 @@ def test_stream_sends_the_resolved_race_info(client, install_agent):
     assert race_info["historical_year"] == 2024
 
 
-def test_stream_reports_each_tool_with_its_success_flag_and_nothing_else(client, install_agent):
-    """Only tool name and success cross the wire — payloads stay server-side."""
+def test_stream_reports_each_tool_with_its_success_and_cached_flags_and_nothing_else(
+    client, install_agent
+):
+    """Only tool name, success, and cache provenance cross the wire — payloads stay
+    server-side."""
     install_agent(steps=successful_steps())
     events = parse_sse(client.post("/api/briefing/stream", json={"query": "monaco"}).text)
     tool_results = [data for event_type, data in events if event_type == "tool_result"]
     assert tool_results == [
-        {"tool": "get_track_info", "success": True},
-        {"tool": "search_f1_news", "success": False},
+        {"tool": "get_track_info", "success": True, "cached": False},
+        {"tool": "search_f1_news", "success": False, "cached": False},
     ]
+
+
+def test_stream_forwards_a_cached_result_as_cached(client, install_agent):
+    steps = successful_steps()
+    steps[2]["tool_executor"]["tool_results"][0]["cached"] = True
+    install_agent(steps=steps)
+
+    events = parse_sse(client.post("/api/briefing/stream", json={"query": "monaco"}).text)
+
+    tool_results = [data for event_type, data in events if event_type == "tool_result"]
+    assert tool_results[0] == {"tool": "get_track_info", "success": True, "cached": True}
 
 
 def test_the_planner_step_announces_the_planned_tools(client, install_agent):

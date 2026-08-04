@@ -275,6 +275,7 @@ def tool_executor_node(state: AgentState) -> dict[str, Any]:
                 "kind": "tool_result",
                 "tool": result["tool_name"],
                 "success": result["success"],
+                "cached": result["cached"],
             }
         )
 

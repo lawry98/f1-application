@@ -114,7 +114,11 @@ async def generate_briefing_stream(request: BriefingRequest) -> EventSourceRespo
                         yield {
                             "event": "tool_result",
                             "data": json.dumps(
-                                {"tool": payload["tool"], "success": payload["success"]}
+                                {
+                                    "tool": payload["tool"],
+                                    "success": payload["success"],
+                                    "cached": payload["cached"],
+                                }
                             ),
                         }
                     continue
