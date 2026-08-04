@@ -1733,3 +1733,42 @@ keeps only the colour wash and logo reveal, because animating `flex` re-runs lay
 eleven columns every frame. This is the one place the plan knowingly diverges from what was
 shown; flag it at review if the affordance feels too weak and it can be restored as a
 `transform: scaleX` on the column's inner layer.
+
+---
+
+## Known deferred items (recorded at completion, 2026-08-04)
+
+Everything below was found during execution, judged non-blocking, and deliberately not
+fixed. Recorded here because the execution ledger it came from was scratch.
+
+**Spec claims that did not land.** The spec says `STANDINGS_AS_OF` renders "in the comparison
+section and the nav rail header"; the rail header is still the bare word "Constructors", which
+is the one surface showing `P1 · 379 PTS` on every screen. The spec also says bars "sweep from
+zero when the section scrolls in" — they paint at their final `scaleX` and only transition on a
+sort-tab change, so the bar race's entrance animation never happens on arrival. `NumberTicker`
+does count up. The spec's "active row gains a colour gradient" shipped as flat
+`bg-zinc-800/60`.
+
+**Asset caveats.** `alpine.svg`'s navy is legible-but-dim on `zinc-950` — a genuine brand
+colour, not a missing-fill defect, so it was left alone. Ten of eleven logos are committed;
+`racing-bulls` has none and renders a monogram tile. Several logo files were deliberately
+recoloured to near-white because their paths carried no fill and rendered black on black;
+`scripts/fetch-team-assets.mjs` documents that re-running it reverts them. That script also
+requires macOS `sips` for its JPEG→PNG step.
+
+**Pre-existing data staleness, out of this spec's scope.** `teams-data.ts` says "MoneyGram Haas
+F1 Team" while `haas.svg` reads "TGR Haas"; `audi.svg` reads "Audi Revolut" and `williams.svg`
+"Atlassian Williams". Team naming was never in scope here.
+
+**Smaller things.** `monogram()` strips non-alphabetic characters then slices three, which only
+works because every team's first word is at least three letters — a shorter first word would
+leak into the second. The comparison rows' `active:scale-[0.96]` may be dead, since motion's
+`layout` prop writes `transform` inline and inline beats a class; unverified in a browser. The
+sticky panel's Inspect button is the last tab stop on the page (~38 stops in) despite sitting
+visually top-right, because its `<aside>` follows the whole centre column. Below `lg` the hero's
+bottom gradient paints over the logo grid, dimming the bottom row slightly. `TeamMonogramTile`
+carries `role="img"` even where it sits inside a button whose `aria-label` overrides it.
+
+**Never verified aesthetically.** Every check in this plan was mechanical. Stagger timing, hover
+feel, sticky-rail scroll sync, sort-spring motion, and the narrow-viewport layout were confirmed
+to *function* in a real browser but never judged as design.
