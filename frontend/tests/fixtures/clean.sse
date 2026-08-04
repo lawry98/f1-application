@@ -14,10 +14,10 @@ event: status
 data: {"step": "gathering", "message": "Gathering race data..."}
 
 event: tool_result
-data: {"tool": "get_track_info", "success": true}
+data: {"tool": "get_track_info", "success": true, "cached": false}
 
 event: tool_result
-data: {"tool": "search_f1_news", "success": false}
+data: {"tool": "search_f1_news", "success": false, "cached": false}
 
 event: status
 data: {"step": "synthesizing", "message": "Generating briefing..."}

@@ -8,7 +8,7 @@ export type StreamEvent =
   | { type: 'status'; data: { step: string; message: string } }
   | { type: 'tool_plan'; data: { tools: string[] } }
   | { type: 'race_info'; data: RaceInfo }
-  | { type: 'tool_result'; data: { tool: string; success: boolean } }
+  | { type: 'tool_result'; data: { tool: string; success: boolean; cached?: boolean } }
   | { type: 'briefing_delta'; data: { content: string } }
   | { type: 'briefing'; data: { content: string; truncated: boolean } }
   | { type: 'complete'; data: { message: string } }
