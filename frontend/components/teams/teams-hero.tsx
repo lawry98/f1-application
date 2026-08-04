@@ -11,6 +11,7 @@ import { DotPattern } from '@/components/ui/dot-pattern';
 import { cn } from '@/lib/utils';
 import { TEAMS } from '@/data/teams-data';
 import { TeamLogo } from './team-logo';
+import { TeamMonogramTile } from './team-monogram-tile';
 
 interface TeamsHeroProps {
   onSelectTeam: (id: string) => void;
@@ -126,7 +127,12 @@ export function TeamsHero({ onSelectTeam }: TeamsHeroProps) {
       <div
         className={cn(
           'absolute inset-x-0 bottom-16 z-0 grid grid-cols-4 justify-items-center gap-3 px-6',
-          'lg:inset-0 lg:bottom-auto lg:flex lg:gap-0 lg:px-0',
+          // No `lg:bottom-auto` here. It was a leftover from the mobile `bottom-16`, and inside
+          // the `lg` block it is emitted *after* `inset-0`, so it won. That left the container
+          // `top:0; bottom:auto; height:auto` around `h-full` children whose only content is
+          // absolutely positioned — a 0px-tall flex line, i.e. eleven invisible zero-size
+          // buttons and a livery wall that could not be hovered or clicked on any desktop.
+          'lg:inset-0 lg:flex lg:gap-0 lg:px-0',
         )}
       >
         {TEAMS.map((team) => (
@@ -146,8 +152,21 @@ export function TeamsHero({ onSelectTeam }: TeamsHeroProps) {
               className="absolute inset-0 hidden opacity-0 transition-opacity duration-200 group-hover:opacity-100 lg:block"
               style={{ background: `linear-gradient(to top, ${team.color}44, transparent 70%)` }}
             />
-            {/* Always visible below lg; revealed on hover at lg and up. */}
-            <span className="relative flex justify-center lg:absolute lg:bottom-5 lg:left-0 lg:right-0 lg:opacity-0 lg:transition-opacity lg:duration-200 lg:group-hover:opacity-100">
+            {/* Two marks, one button. Below `lg` the grid shows all eleven at once, four
+                across, so wordmarks are directly comparable — and `object-contain`
+                letterboxing makes Aston Martin draw at 42% of the box height next to
+                McLaren's 59% at *every* size, which is the disparity the monogram tile
+                exists to remove. At `lg` and up only one mark is visible at a time, revealed
+                on hover against a full-height column, so the real wordmark reads better and
+                has nothing to be compared against.
+
+                CSS visibility on two spans, not two `TEAMS.map`s of buttons: a second button
+                set would put 22 buttons in the DOM under jsdom, where no media query applies,
+                and every getByRole in the hero tests would throw on multiple matches. */}
+            <span className="relative flex justify-center lg:hidden">
+              <TeamMonogramTile team={team} size={36} />
+            </span>
+            <span className="absolute bottom-5 left-0 right-0 hidden justify-center opacity-0 transition-opacity duration-200 group-hover:opacity-100 lg:flex">
               <TeamLogo team={team} size={30} />
             </span>
           </button>
