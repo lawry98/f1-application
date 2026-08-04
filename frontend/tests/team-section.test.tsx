@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
 import { TeamSection } from '@/components/teams/team-section';
+import { monogram } from '@/components/teams/team-monogram-tile';
 import { TEAM_MAP } from '@/data/teams-data';
 
 const mclaren = TEAM_MAP['mclaren']!;
@@ -50,5 +51,22 @@ describe('TeamSection', () => {
   it('exposes a scroll target id for the nav rail and hero to jump to', () => {
     renderSection();
     expect(document.getElementById('team-mclaren')).toBeInTheDocument();
+  });
+
+  // The glow blob only ever animates `opacity`. Hinting `transform` promoted eleven
+  // 40vw×40vw compositor layers for the whole life of the page and bought nothing.
+  it('hints will-change for the only property the glow blob animates', () => {
+    const { container } = renderSection();
+    const blob = container.querySelector('.pointer-events-none.absolute[style*="blur"]');
+    expect(blob).not.toBeNull();
+    expect(blob!.className).toMatch(/will-change-\[opacity\]/);
+    expect(blob!.className).not.toMatch(/will-change-transform/);
+  });
+
+  it('draws the watermark from the shared monogram helper', () => {
+    const { container } = renderSection();
+    expect(container.querySelector('[data-testid="team-watermark"]')).toHaveTextContent(
+      monogram(mclaren.shortName),
+    );
   });
 });

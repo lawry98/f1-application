@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils';
 import { teamColorButtonStyle } from '@/lib/team-utils';
 import { type Team } from '@/data/teams-data';
 import { DriverPortrait } from './driver-portrait';
-import { TeamMonogramTile } from './team-monogram-tile';
+import { TeamMonogramTile, monogram } from './team-monogram-tile';
 
 interface TeamSectionProps {
   team: Team;
@@ -62,9 +62,11 @@ export function TeamSection({
       {/* Top separator */}
       <div className="h-px w-full" style={{ backgroundColor: team.color, opacity: 0.4 }} />
 
-      {/* Ambient glow blob — alternates position for visual variety */}
+      {/* Ambient glow blob — alternates position for visual variety. The only animated
+          property is `opacity`, so that is what `will-change` hints: hinting `transform`
+          promoted eleven 40vw×40vw layers permanently and bought nothing. */}
       <motion.div
-        className="pointer-events-none absolute will-change-transform"
+        className="pointer-events-none absolute will-change-[opacity]"
         style={{
           width: '40vw',
           height: '40vw',
@@ -88,7 +90,7 @@ export function TeamSection({
           blobOnRight ? '-left-10' : '-right-10',
         )}
       >
-        {team.shortName.replace(/[^a-zA-Z]/g, '').slice(0, 3).toUpperCase()}
+        {monogram(team.shortName)}
       </span>
 
       {/* Content grid — fixed layout: left info, right drivers */}

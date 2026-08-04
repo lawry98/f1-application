@@ -5,6 +5,7 @@ import Image from 'next/image';
 
 import { cn } from '@/lib/utils';
 import { type Team } from '@/data/teams-data';
+import { TeamMonogramTile } from './team-monogram-tile';
 
 /**
  * How many times `size` a logo's rendered width may reach before it is clamped.
@@ -30,11 +31,6 @@ interface TeamLogoProps {
    */
   maxWidth?: number;
   className?: string;
-}
-
-/** First three letters of the short name, spaces and punctuation dropped. */
-function monogram(shortName: string): string {
-  return shortName.replace(/[^a-zA-Z]/g, '').slice(0, 3).toUpperCase();
 }
 
 /**
@@ -64,24 +60,9 @@ export function TeamLogo({
   const failed = failedId === team.id;
 
   if (failed) {
-    // The fallback stays square on purpose: it is a monogram tile, not a wordmark.
-    return (
-      <div
-        className={cn(
-          'flex flex-shrink-0 items-center justify-center rounded font-black leading-none',
-          className,
-        )}
-        style={{
-          width: size,
-          height: size,
-          backgroundColor: team.color,
-          color: team.textOnColor === 'black' ? '#000000' : '#ffffff',
-          fontSize: size * 0.3,
-        }}
-      >
-        {monogram(team.shortName)}
-      </div>
-    );
+    // The fallback stays square on purpose: it is a monogram tile, not a wordmark — and it is
+    // literally `TeamMonogramTile`, so the two cannot drift in glyph scale or accessible name.
+    return <TeamMonogramTile team={team} size={size} className={className} />;
   }
 
   return (

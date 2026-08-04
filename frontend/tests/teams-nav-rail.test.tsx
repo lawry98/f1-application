@@ -2,12 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
 import { TeamsNavRail } from '@/components/teams/teams-nav-rail';
+import { monogram } from '@/components/teams/team-monogram-tile';
 import { TEAMS } from '@/data/teams-data';
-
-/** Mirrors the local `monogram()` helper in teams-nav-rail.tsx. */
-function expectedMonogram(shortName: string): string {
-  return shortName.replace(/[^a-zA-Z]/g, '').slice(0, 3).toUpperCase();
-}
 
 describe('TeamsNavRail', () => {
   it('shows position and points for each team on desktop', () => {
@@ -40,7 +36,7 @@ describe('TeamsNavRail', () => {
     render(<TeamsNavRail activeTeamId="ferrari" onSelectTeam={vi.fn()} />);
     expect(TEAMS).toHaveLength(11);
     for (const team of TEAMS) {
-      expect(screen.getByText(expectedMonogram(team.shortName))).toBeInTheDocument();
+      expect(screen.getByText(monogram(team.shortName))).toBeInTheDocument();
     }
   });
 
