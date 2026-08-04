@@ -247,7 +247,10 @@ def _invoke_tool(tool: Any, task_name: str, race_info: dict) -> ToolResult:
 
         if cacheable and success:
             with _result_cache_lock:
-                _result_cache[cache_key] = result
+                # deepcopy on the way in too: the caller keeps `result` and may pass it
+                # on or (in principle) mutate it, so the cache must hold its own private
+                # copy rather than the same object the miss caller received.
+                _result_cache[cache_key] = copy.deepcopy(result)
 
         return ToolResult(tool_name=task_name, success=success, data=result, cached=False)
     except Exception as exc:

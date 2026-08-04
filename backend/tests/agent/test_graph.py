@@ -498,6 +498,21 @@ def test_mutating_a_cache_hits_data_does_not_corrupt_later_hits():
     assert third_hit["data"] == {"length_km": 3.3, "corners": [1, 2, 3]}
 
 
+def test_mutating_a_cache_miss_result_does_not_corrupt_later_hits():
+    """Same defect, other side: the caller that populates the cache must not be able
+    to corrupt it either by mutating the fresh result it was handed back."""
+    tool = make_tool("get_track_info", {"length_km": 3.3, "corners": [1, 2, 3]})
+
+    first_miss = _invoke_tool(tool, "get_track_info", make_race_info())
+    assert first_miss["cached"] is False
+    first_miss["data"]["length_km"] = 999
+    first_miss["data"]["corners"].append(4)
+
+    hit = _invoke_tool(tool, "get_track_info", make_race_info())
+    assert hit["cached"] is True
+    assert hit["data"] == {"length_km": 3.3, "corners": [1, 2, 3]}
+
+
 # ── Tool executor node ───────────────────────────────────────────────────────
 
 
