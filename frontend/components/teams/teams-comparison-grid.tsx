@@ -17,6 +17,22 @@ const SORTS: { key: SortKey; label: string }[] = [
   { key: 'firstEntry', label: 'Since' },
 ];
 
+/**
+ * How the currently-sorted metric reads aloud, singular-aware.
+ *
+ * Each row's rank, bar and number are sighted-only: the bar is `aria-hidden` decoration and
+ * the button's `aria-label` overrides all of its inner text. Without this a screen-reader user
+ * heard "Jump to Mercedes, button" eleven times and learned no standing at all — the section
+ * is a championship table, so the standing *is* the content.
+ */
+function metricPhrase(sort: SortKey, team: Team): string {
+  if (sort === 'firstEntry') return `first entered ${team.firstEntry}`;
+  if (sort === 'championships') {
+    return `${team.championships} ${team.championships === 1 ? 'championship' : 'championships'}`;
+  }
+  return `${team.points} ${team.points === 1 ? 'point' : 'points'}`;
+}
+
 interface TeamsComparisonGridProps {
   teams: Team[];
   activeTeamId: string;
@@ -97,7 +113,12 @@ export function TeamsComparisonGrid({
                 reducedMotion ? { duration: 0 } : { type: 'spring', duration: 0.3, bounce: 0 }
               }
               onClick={() => onScrollToTeam(team.id)}
-              aria-label={`Jump to ${team.shortName}`}
+              // Team name first, so the eleven rows stay quick to tell apart when skimmed by
+              // name, then the standing the row actually displays.
+              aria-label={`Jump to ${team.shortName}, ${i + 1} of ${ranked.length}, ${metricPhrase(
+                sort,
+                team,
+              )}`}
               className={cn(
                 'flex items-center gap-3 rounded px-2 py-2 text-left transition-colors duration-200 active:scale-[0.96]',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500',

@@ -61,6 +61,52 @@ describe('TeamsComparisonGrid', () => {
     expect(screen.getByText(/Round 11/)).toBeInTheDocument();
   });
 
+  // The button's aria-label overrides all of its inner text, so before this the rank, the bar
+  // and the points were sighted-only: eleven identical "Jump to <team>, button" announcements
+  // in a section whose entire content is the standings.
+  it('announces each row’s rank and points, not just the team name', () => {
+    renderGrid();
+    const mercedes = screen.getByRole('button', { name: /jump to Mercedes/i });
+    const name = mercedes.getAttribute('aria-label')!;
+    expect(name).toMatch(/1 of 11/);
+    expect(name).toMatch(/379 points/);
+  });
+
+  it('announces the metric the chosen sort actually displays', () => {
+    renderGrid();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Titles' }));
+    expect(screen.getByRole('button', { name: /jump to Ferrari/i })).toHaveAccessibleName(
+      /16 championships/,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Since' }));
+    expect(screen.getByRole('button', { name: /jump to Ferrari/i })).toHaveAccessibleName(
+      /first entered 1950/,
+    );
+  });
+
+  it('renumbers the announced rank when the sort changes', () => {
+    renderGrid();
+    // Ferrari is 2nd on points and 1st on championships.
+    expect(screen.getByRole('button', { name: /jump to Ferrari/i })).toHaveAccessibleName(
+      /2 of 11/,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Titles' }));
+    expect(screen.getByRole('button', { name: /jump to Ferrari/i })).toHaveAccessibleName(
+      /1 of 11/,
+    );
+  });
+
+  it('still identifies every row by team name so the section stays skimmable', () => {
+    renderGrid();
+    const names = rowNames();
+    expect(names).toHaveLength(TEAMS.length);
+    for (const team of TEAMS) {
+      expect(names.some((n) => n?.includes(team.shortName))).toBe(true);
+    }
+  });
+
   it('drops the bar-fill transition under reduced motion', () => {
     renderGrid(vi.fn(), true);
     const ferrariRow = screen.getByRole('button', { name: /jump to Ferrari/i });
