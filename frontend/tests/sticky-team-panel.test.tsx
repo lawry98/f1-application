@@ -9,10 +9,16 @@ const ferrari = TEAM_MAP['ferrari']!;
 describe('StickyTeamPanel', () => {
   it('shows the logo, both drivers and the meta grid', () => {
     render(<StickyTeamPanel activeTeam={ferrari} onInspect={vi.fn()} />);
+    // Scoped to the logo's own accessible name — a bare getByText('Ferrari') is satisfied
+    // by the Power-unit MetaCell (Ferrari supplies its own engine) and never touches the
+    // logo at all.
+    expect(screen.getByRole('img', { name: /ferrari logo/i })).toBeInTheDocument();
     expect(screen.getByText('Charles Leclerc')).toBeInTheDocument();
     expect(screen.getByText('Lewis Hamilton')).toBeInTheDocument();
     expect(screen.getByText('Maranello, Italy')).toBeInTheDocument();
-    expect(screen.getByText('Ferrari')).toBeInTheDocument();
+    // Label and value asserted together so this can't be satisfied by the logo alt text
+    // or a stray team-name element — only the Power-unit cell has both.
+    expect(screen.getByText('Power unit').nextElementSibling).toHaveTextContent('Ferrari');
   });
 
   it('carries the debut year and derives seasons from it', () => {
