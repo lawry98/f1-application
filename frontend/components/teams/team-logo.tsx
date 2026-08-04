@@ -5,6 +5,7 @@ import Image from 'next/image';
 
 import { cn } from '@/lib/utils';
 import { type Team } from '@/data/teams-data';
+import { readableOnDark } from '@/lib/team-utils';
 import { TeamMonogramTile } from './team-monogram-tile';
 
 /**
@@ -16,6 +17,31 @@ import { TeamMonogramTile } from './team-monogram-tile';
  * tear a nav rail open, so the box stops at 4:1 and `object-contain` letterboxes the rest.
  */
 const MAX_ASPECT_RATIO = 4;
+
+/**
+ * Smallest `size` at which a failed logo falls back to a styled text wordmark instead of the
+ * square monogram tile.
+ *
+ * `TeamLogo`'s two call sites that want a wordmark pass 56 (`sticky-team-panel`'s lockup) and
+ * 30 (`teams-hero`'s hover reveal); everywhere else that shows a team mark — the 22px nav rail,
+ * the 22px comparison grid, `team-section`'s 20px byline — renders `TeamMonogramTile` directly
+ * and never reaches this component at all. 30 is therefore the lowest value that must clear the
+ * bar, and nothing between 22 and 30 currently exists to argue for a tighter number: a text
+ * fallback below ~30px has too little room to stay legible as more than a handful of letters,
+ * which is exactly what the monogram tile is for.
+ */
+const WORDMARK_FALLBACK_MIN_SIZE = 30;
+
+/**
+ * Fraction of `size` used as the wordmark fallback's font size.
+ *
+ * Lower than `TeamMonogramTile`'s 0.36 glyph ratio: a three-letter monogram fills most of its
+ * square, but a full short name ("Racing Bulls") is several characters wide, so a comparable
+ * ratio would run the text past `maxWidth` inside the box heights these call sites actually use.
+ * 0.42 keeps two-word names inside the default `maxWidth` (`size * MAX_ASPECT_RATIO`) at both
+ * 56 and 30 while still reading as deliberate type, not a caption.
+ */
+const WORDMARK_FONT_RATIO = 0.42;
 
 interface TeamLogoProps {
   team: Team;
@@ -60,8 +86,31 @@ export function TeamLogo({
   const failed = failedId === team.id;
 
   if (failed) {
-    // The fallback stays square on purpose: it is a monogram tile, not a wordmark — and it is
-    // literally `TeamMonogramTile`, so the two cannot drift in glyph scale or accessible name.
+    // Above the threshold the caller wants a wordmark-shaped box (the sticky panel's lockup,
+    // the hero's hover reveal) — a monogram square there reads as a broken image next to real
+    // wordmarks like McLaren's or Ferrari's. Below it, stay exactly as before: the square
+    // monogram tile, sharing glyph scale and accessible name with `TeamMonogramTile` by being it.
+    if (size >= WORDMARK_FALLBACK_MIN_SIZE) {
+      return (
+        <span
+          role="img"
+          aria-label={`${team.shortName} logo`}
+          className={cn(
+            'inline-flex flex-shrink-0 items-center justify-center truncate',
+            'font-black uppercase leading-none tracking-tight',
+            className,
+          )}
+          style={{
+            height: size,
+            maxWidth,
+            fontSize: Math.round(size * WORDMARK_FONT_RATIO),
+            color: readableOnDark(team.color),
+          }}
+        >
+          {team.shortName}
+        </span>
+      );
+    }
     return <TeamMonogramTile team={team} size={size} className={className} />;
   }
 

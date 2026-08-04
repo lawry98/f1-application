@@ -118,6 +118,20 @@ export function TeamsHero({ onSelectTeam }: TeamsHeroProps) {
         </BlurFade>
       </div>
 
+      {/* Bottom gradient fade — hints at content below. Placed before the clickable-columns
+          layer, not after it, on purpose: both are position:absolute with no explicit
+          z-index (or `z-0`, which stacks identically to `auto`), so within that shared
+          level painting follows DOM order. Sequenced after it, this gradient painted on
+          top of every descendant of that layer — including the `lg` hover reveal's real
+          wordmark at `bottom-5`, which sits inside this band (0–112px from the bottom) and
+          rendered dim grey instead of near-white on hover. Ahead of it in DOM, the gradient
+          still paints over the decorative dot pattern and livery wall behind it, but now
+          sits below the interactive layer, so the reveal it hovers above stays undimmed. */}
+      <div
+        className="pointer-events-none absolute bottom-0 left-0 right-0 h-28 bg-gradient-to-t from-zinc-950 to-transparent"
+        aria-hidden="true"
+      />
+
       {/* Clickable columns. Separate from the decorative layer above so those visual
           columns can stay aria-hidden while these carry the accessible names.
 
@@ -196,12 +210,6 @@ export function TeamsHero({ onSelectTeam }: TeamsHeroProps) {
           </motion.div>
         </motion.div>
       )}
-
-      {/* Bottom gradient fade — hints at content below */}
-      <div
-        className="pointer-events-none absolute bottom-0 left-0 right-0 h-28 bg-gradient-to-t from-zinc-950 to-transparent"
-        aria-hidden="true"
-      />
     </section>
   );
 }
