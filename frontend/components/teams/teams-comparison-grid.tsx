@@ -115,7 +115,10 @@ export function TeamsComparisonGrid({
               <span className="h-[9px] min-w-0 flex-1 overflow-hidden bg-zinc-900">
                 <span
                   data-testid="bar-fill"
-                  className="block h-full origin-left transition-transform duration-700 ease-out"
+                  className={cn(
+                    'block h-full origin-left ease-out',
+                    !reducedMotion && 'transition-transform duration-700',
+                  )}
                   style={{
                     backgroundColor: team.color,
                     transform: `scaleX(${Number((metric / leader).toFixed(2))})`,

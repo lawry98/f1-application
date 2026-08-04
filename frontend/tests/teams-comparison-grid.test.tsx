@@ -4,12 +4,12 @@ import { render, screen, within, fireEvent } from '@testing-library/react';
 import { TeamsComparisonGrid } from '@/components/teams/teams-comparison-grid';
 import { TEAMS } from '@/data/teams-data';
 
-function renderGrid(onScrollToTeam = vi.fn()) {
+function renderGrid(onScrollToTeam = vi.fn(), reducedMotion = false) {
   render(
     <TeamsComparisonGrid
       teams={TEAMS}
       activeTeamId="ferrari"
-      reducedMotion={false}
+      reducedMotion={reducedMotion}
       onScrollToTeam={onScrollToTeam}
     />,
   );
@@ -59,5 +59,12 @@ describe('TeamsComparisonGrid', () => {
   it('dates its own numbers', () => {
     renderGrid();
     expect(screen.getByText(/Round 11/)).toBeInTheDocument();
+  });
+
+  it('drops the bar-fill transition under reduced motion', () => {
+    renderGrid(vi.fn(), true);
+    const ferrariRow = screen.getByRole('button', { name: /jump to Ferrari/i });
+    const bar = within(ferrariRow).getByTestId('bar-fill');
+    expect(bar.className).not.toMatch(/transition-transform/);
   });
 });

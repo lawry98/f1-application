@@ -12,15 +12,16 @@ interface TeamMonogramTileProps {
 
 /**
  * Uniform square colour tile carrying a three-letter monogram — a logo mark for surfaces where
- * every team must render at the same size.
+ * every team must render at the same size, shared across the nav rail, the comparison grid, and
+ * any other compact row of teams.
  *
- * Real wordmarks (`TeamLogo`) range from ~1:1 (Mercedes) to 9.48:1 (Aston Martin). Object-fit
- * into a shared box at a small height either leaves near-invisible slivers (Aston Martin renders
- * ~4px tall at 22px) or forces the box open across a wide row — neither reads as a uniform set.
- * A flat monogram tile keeps every row the same size and legible, including `racing-bulls`,
- * which has no logo file at all and would otherwise be the only fallback square in a list of
- * wordmarks. Full logos still belong on wider surfaces (the sticky panel, the hero) via
- * `TeamLogo` — this tile is for compact, uniform rows on purpose.
+ * Real wordmarks (`TeamLogo`) range from ~1:1 (Mercedes) to 9.48:1 (Aston Martin). At the small,
+ * fixed heights these surfaces use, `object-contain` either letterboxes a wide wordmark into a
+ * near-invisible sliver or forces the box open wide enough to break the row's alignment —
+ * neither reads as a uniform set. A flat monogram tile keeps every row the same size and
+ * legible, including `racing-bulls`, which has no logo file at all and would otherwise be the
+ * only fallback square in a list of wordmarks. Full logos still belong on wider surfaces (the
+ * sticky panel, the hero) via `TeamLogo` — this tile is for compact, uniform rows on purpose.
  */
 export function TeamMonogramTile({ team, size = 22 }: TeamMonogramTileProps) {
   return (

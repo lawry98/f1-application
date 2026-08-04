@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils';
 import { teamColorButtonStyle } from '@/lib/team-utils';
 import { type Team } from '@/data/teams-data';
 import { DriverPortrait } from './driver-portrait';
-import { TeamLogo } from './team-logo';
+import { TeamMonogramTile } from './team-monogram-tile';
 
 interface TeamSectionProps {
   team: Team;
@@ -198,7 +198,7 @@ export function TeamSection({
 
           <BlurFade delay={reducedMotion ? 0 : 0.3} inView>
             <div className="flex items-center gap-3 pt-2">
-              <TeamLogo team={team} size={20} />
+              <TeamMonogramTile team={team} size={20} />
               <span className="text-xs uppercase tracking-[0.15em] text-zinc-500">{team.name}</span>
             </div>
           </BlurFade>
