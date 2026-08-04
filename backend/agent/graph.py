@@ -1,5 +1,6 @@
 """LangGraph agent workflow: resolver -> planner -> tool_executor -> synthesizer."""
 
+import copy
 import json
 import logging
 import threading
@@ -229,10 +230,15 @@ def _invoke_tool(tool: Any, task_name: str, race_info: dict) -> ToolResult:
             with _result_cache_lock:
                 if cache_key in _result_cache:
                     # Only successes are ever stored, so a hit is always success=True.
+                    # deepcopy: the cache is cross-request and lives for the process
+                    # lifetime, so handing out the stored dict by reference would let
+                    # any consumer that mutates ToolResult["data"] in place silently
+                    # corrupt every later hit. No consumer does today, but the cost of
+                    # a copy is nothing next to the fetch it replaces.
                     return ToolResult(
                         tool_name=task_name,
                         success=True,
-                        data=_result_cache[cache_key],
+                        data=copy.deepcopy(_result_cache[cache_key]),
                         cached=True,
                     )
 

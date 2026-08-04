@@ -481,6 +481,23 @@ def test_a_fresh_result_is_marked_not_cached():
     assert result["cached"] is False
 
 
+def test_mutating_a_cache_hits_data_does_not_corrupt_later_hits():
+    """The cache is cross-request and process-lifetime; a consumer that mutates
+    ToolResult["data"] in place must not poison every later request."""
+    tool = make_tool("get_track_info", {"length_km": 3.3, "corners": [1, 2, 3]})
+
+    _invoke_tool(tool, "get_track_info", make_race_info())  # miss, populates the cache
+
+    second_hit = _invoke_tool(tool, "get_track_info", make_race_info())
+    assert second_hit["cached"] is True
+    second_hit["data"]["length_km"] = 999
+    second_hit["data"]["corners"].append(4)
+
+    third_hit = _invoke_tool(tool, "get_track_info", make_race_info())
+    assert third_hit["cached"] is True
+    assert third_hit["data"] == {"length_km": 3.3, "corners": [1, 2, 3]}
+
+
 # ── Tool executor node ───────────────────────────────────────────────────────
 
 
