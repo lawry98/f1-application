@@ -366,6 +366,121 @@ def test_an_unhandled_task_name_reports_a_missing_handler():
     assert result["data"] == {"error": "No handler for tool: brand_new_tool"}
 
 
+# ── Tool result cache ────────────────────────────────────────────────────────
+
+
+def test_a_cacheable_tool_is_invoked_once_across_repeat_calls():
+    """The feature: the second briefing for the same race skips the fetch."""
+    tool = make_tool("get_track_info", {"length_km": 3.3})
+
+    first = _invoke_tool(tool, "get_track_info", make_race_info())
+    second = _invoke_tool(tool, "get_track_info", make_race_info())
+
+    assert len(tool.calls) == 1
+    assert first["cached"] is False
+    assert second["cached"] is True
+    assert second["success"] is True
+    assert second["data"] == {"length_km": 3.3}
+
+
+@pytest.mark.parametrize(
+    "task_name",
+    [
+        "get_track_info",
+        "get_recent_top_finishers",
+        "get_circuit_winners",
+        "get_driver_form",
+        "get_recent_race_results",
+    ],
+)
+def test_every_historical_tool_is_cacheable(task_name):
+    tool = make_tool(task_name, {"ok": True})
+    _invoke_tool(tool, task_name, make_race_info())
+    _invoke_tool(tool, task_name, make_race_info())
+    assert len(tool.calls) == 1
+
+
+@pytest.mark.parametrize("task_name", ["get_race_weather", "search_f1_news"])
+def test_weather_and_news_are_never_cached(task_name):
+    """A cache that serves yesterday's forecast is worse than no cache; news exists
+    to be current. Neither tool ever reads or writes the cache."""
+    tool = make_tool(task_name, {"ok": True})
+
+    first = _invoke_tool(tool, task_name, make_race_info())
+    second = _invoke_tool(tool, task_name, make_race_info())
+
+    assert len(tool.calls) == 2
+    assert first["cached"] is False
+    assert second["cached"] is False
+
+
+def test_an_error_result_is_not_cached():
+    """Caching an error would turn one transient upstream failure into a
+    persistently degraded briefing. Only successes are stored."""
+    tool = make_tool("get_track_info", {"error": "FastF1 timeout"})
+
+    _invoke_tool(tool, "get_track_info", make_race_info())
+    second = _invoke_tool(tool, "get_track_info", make_race_info())
+
+    assert len(tool.calls) == 2
+    assert second["cached"] is False
+
+
+def test_a_raising_tool_is_not_cached():
+    """The exception path must not poison the cache either."""
+    tool = make_tool("get_track_info", raises=ValueError("kaboom"))
+    _invoke_tool(tool, "get_track_info", make_race_info())
+    _invoke_tool(tool, "get_track_info", make_race_info())
+    assert len(tool.calls) == 2
+
+
+def test_a_failure_then_success_serves_the_success_from_cache():
+    """The recovery story the error-not-cached rule exists for."""
+    failing = make_tool("get_track_info", {"error": "down"})
+    working = make_tool("get_track_info", {"length_km": 3.3})
+
+    _invoke_tool(failing, "get_track_info", make_race_info())
+    _invoke_tool(working, "get_track_info", make_race_info())
+    third = _invoke_tool(make_tool("get_track_info"), "get_track_info", make_race_info())
+
+    assert third["cached"] is True
+    assert third["data"] == {"length_km": 3.3}
+
+
+def test_cache_keys_distinguish_different_races():
+    """Different args must not collide: Monaco's winners are not Silverstone's."""
+    tool = make_tool("get_recent_race_results", {"ok": True})
+
+    _invoke_tool(tool, "get_recent_race_results", make_race_info())
+    _invoke_tool(
+        tool,
+        "get_recent_race_results",
+        make_race_info(name="British Grand Prix"),
+    )
+
+    assert len(tool.calls) == 2
+
+
+def test_cache_keys_distinguish_different_years():
+    tool = make_tool("get_recent_top_finishers", {"ok": True})
+    _invoke_tool(tool, "get_recent_top_finishers", make_race_info(historical_year=2024))
+    _invoke_tool(tool, "get_recent_top_finishers", make_race_info(historical_year=2023))
+    assert len(tool.calls) == 2
+
+
+def test_clear_result_cache_forces_a_refetch():
+    tool = make_tool("get_track_info", {"ok": True})
+    _invoke_tool(tool, "get_track_info", make_race_info())
+    graph_module.clear_result_cache()
+    _invoke_tool(tool, "get_track_info", make_race_info())
+    assert len(tool.calls) == 2
+
+
+def test_a_fresh_result_is_marked_not_cached():
+    result = _invoke_tool(make_tool("get_track_info"), "get_track_info", make_race_info())
+    assert result["cached"] is False
+
+
 # ── Tool executor node ───────────────────────────────────────────────────────
 
 

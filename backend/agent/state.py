@@ -16,6 +16,9 @@ class ToolResult(TypedDict):
     tool_name: str
     success: bool
     data: dict
+    # True when ``data`` was served from the cross-request result cache rather
+    # than a live tool invocation. See ADR-0003.
+    cached: bool
 
 
 class AgentState(TypedDict):

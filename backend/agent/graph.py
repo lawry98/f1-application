@@ -2,6 +2,7 @@
 
 import json
 import logging
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
@@ -35,6 +36,34 @@ all_tools = [
     get_driver_form,
     get_recent_race_results,
 ]
+
+# Cross-request cache for the historical FastF1 tools — the finishing order of a
+# past race does not change, and these five are the 9-20s of a briefing's wall
+# clock. Weather (a forecast) and news (current by definition) are deliberately
+# absent: serving either stale is worse than refetching. Only successful results
+# are stored, so a transient upstream failure cannot poison later briefings.
+# Deliberately cross-request, unlike the per-request schedule cache routes.py
+# clears — see ADR-0003. Key space is bounded (~races x 5 tools x a few years),
+# so there is no eviction.
+CACHEABLE_TOOLS = frozenset(
+    {
+        "get_track_info",
+        "get_recent_top_finishers",
+        "get_circuit_winners",
+        "get_driver_form",
+        "get_recent_race_results",
+    }
+)
+
+_result_cache_lock = threading.Lock()
+_result_cache: dict[tuple[str, tuple], dict] = {}
+
+
+def clear_result_cache() -> None:
+    """Clear all cached tool results."""
+    with _result_cache_lock:
+        _result_cache.clear()
+
 
 # No temperature argument — gemini-3.6-flash uses fixed sampling defaults and ignores one.
 # See the note in config.py.
@@ -177,22 +206,49 @@ def _build_tool_args(task_name: str, race_info: dict) -> dict[str, Any] | None:
 
 
 def _invoke_tool(tool: Any, task_name: str, race_info: dict) -> ToolResult:
-    """Invoke a single tool with arguments derived from race_info; never raises."""
+    """Invoke a single tool with arguments derived from race_info; never raises.
+
+    Serves cacheable tools from the result cache when possible. The lock is
+    released during the invocation, as in tools/schedule_cache.py: concurrent
+    misses on the same key both fetch, and the last write wins.
+    """
     try:
         args = _build_tool_args(task_name, race_info)
         if args is None:
-            result = {"error": f"No handler for tool: {task_name}"}
-        else:
-            result = tool.invoke(args)
+            return ToolResult(
+                tool_name=task_name,
+                success=False,
+                data={"error": f"No handler for tool: {task_name}"},
+                cached=False,
+            )
 
-        return ToolResult(
-            tool_name=task_name,
-            success="error" not in result,
-            data=result,
-        )
+        cacheable = task_name in CACHEABLE_TOOLS
+        cache_key = (task_name, tuple(sorted(args.items())))
+
+        if cacheable:
+            with _result_cache_lock:
+                if cache_key in _result_cache:
+                    # Only successes are ever stored, so a hit is always success=True.
+                    return ToolResult(
+                        tool_name=task_name,
+                        success=True,
+                        data=_result_cache[cache_key],
+                        cached=True,
+                    )
+
+        result = tool.invoke(args)
+        success = "error" not in result
+
+        if cacheable and success:
+            with _result_cache_lock:
+                _result_cache[cache_key] = result
+
+        return ToolResult(tool_name=task_name, success=success, data=result, cached=False)
     except Exception as exc:
         logger.exception("Tool '%s' raised an unexpected exception: %s", task_name, exc)
-        return ToolResult(tool_name=task_name, success=False, data={"error": str(exc)})
+        return ToolResult(
+            tool_name=task_name, success=False, data={"error": str(exc)}, cached=False
+        )
 
 
 def tool_executor_node(state: AgentState) -> dict[str, Any]:
@@ -225,6 +281,7 @@ def tool_executor_node(state: AgentState) -> dict[str, Any]:
                     tool_name=task_name,
                     success=False,
                     data={"error": f"Unknown tool: {task_name}"},
+                    cached=False,
                 )
                 tool_results.append(unknown)
                 report(unknown)
