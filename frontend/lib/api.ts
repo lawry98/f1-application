@@ -76,7 +76,10 @@ export async function* streamBriefing(
                 yield { type: 'race_info', data: parsed as RaceInfo };
                 break;
               case 'tool_result':
-                yield { type: 'tool_result', data: parsed as { tool: string; success: boolean } };
+                yield {
+                  type: 'tool_result',
+                  data: parsed as { tool: string; success: boolean; cached?: boolean },
+                };
                 break;
               case 'briefing_delta':
                 yield { type: 'briefing_delta', data: parsed as { content: string } };

@@ -1,8 +1,11 @@
 """LangGraph agent workflow: resolver -> planner -> tool_executor -> synthesizer."""
 
+import copy
 import json
 import logging
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import date
 from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -35,6 +38,56 @@ all_tools = [
     get_driver_form,
     get_recent_race_results,
 ]
+
+# Cross-request cache for the historical FastF1 tools — the finishing order of a
+# past race does not change, and these five are the ~9s concurrent wall clock of
+# the FastF1 tools, the dominant share of a 15-20s gathering stage. Weather (a
+# forecast) and news (current by definition) are deliberately absent: serving
+# either stale is worse than refetching. Only successful results are stored, so a
+# transient upstream failure cannot poison later briefings. Deliberately
+# cross-request, unlike the per-request schedule cache routes.py clears — see
+# ADR-0003. Key space is bounded (~races x 5 tools x a few years), so there is no
+# eviction.
+CACHEABLE_TOOLS = frozenset(
+    {
+        "get_track_info",
+        "get_recent_top_finishers",
+        "get_circuit_winners",
+        "get_driver_form",
+        "get_recent_race_results",
+    }
+)
+
+# Of the five cacheable tools, these three answer a question whose meaning shifts
+# with the calendar even though the race data behind it is immutable — it is the
+# query, not the data, that is date-relative:
+#   - get_recent_top_finishers: "the season's most recent completed race" — a new
+#     race weekend changes which race that is.
+#   - get_driver_form: "the last N races" — same sliding window.
+#   - get_circuit_winners: "the last `years_back` years" — the window's boundary
+#     year advances every 1 January.
+# Their cache key includes today's date so a new day (or, for get_circuit_winners,
+# a new year) forces a refetch instead of serving an answer that was only true
+# yesterday. The other two tools (get_track_info, get_recent_race_results) take an
+# explicit year and are pure functions of their arguments — they need no date
+# component.
+DATE_DEPENDENT_TOOLS = frozenset(
+    {
+        "get_recent_top_finishers",
+        "get_driver_form",
+        "get_circuit_winners",
+    }
+)
+
+_result_cache_lock = threading.Lock()
+_result_cache: dict[tuple, dict] = {}
+
+
+def clear_result_cache() -> None:
+    """Clear all cached tool results."""
+    with _result_cache_lock:
+        _result_cache.clear()
+
 
 # No temperature argument — gemini-3.6-flash uses fixed sampling defaults and ignores one.
 # See the note in config.py.
@@ -151,44 +204,88 @@ def planner_node(state: AgentState) -> dict[str, Any]:
     return {"tasks": DEFAULT_TOOLS, "current_step": "gathering"}
 
 
-def _invoke_tool(tool: Any, task_name: str, race_info: dict) -> ToolResult:
-    """Invoke a single tool with arguments derived from race_info; never raises."""
-    try:
-        if task_name == "get_track_info":
-            result = tool.invoke(
-                {"circuit_name": race_info["name"], "year": race_info["historical_year"]}
-            )
-        elif task_name == "get_recent_top_finishers":
-            result = tool.invoke({"year": race_info["historical_year"]})
-        elif task_name == "get_circuit_winners":
-            result = tool.invoke({"circuit_name": race_info["name"], "years_back": 3})
-        elif task_name == "search_f1_news":
-            result = tool.invoke(
-                {"query": f"{race_info['name']} {race_info['year']}", "max_results": 5}
-            )
-        elif task_name == "get_race_weather":
-            country_code = COUNTRY_CODE_MAP.get(race_info["country"], "US")
-            result = tool.invoke({"city": race_info["location"], "country_code": country_code})
-        elif task_name == "get_driver_form":
-            # Hardcoded to Verstappen — the planner prompt advertises exactly this scope.
-            result = tool.invoke(
-                {"driver_code": "VER", "year": race_info["historical_year"], "num_races": 5}
-            )
-        elif task_name == "get_recent_race_results":
-            result = tool.invoke(
-                {"event_name": race_info["name"], "year": race_info["historical_year"]}
-            )
-        else:
-            result = {"error": f"No handler for tool: {task_name}"}
+def _build_tool_args(task_name: str, race_info: dict) -> dict[str, Any] | None:
+    """Build the invocation arguments for a tool, or None when no handler exists.
 
-        return ToolResult(
-            tool_name=task_name,
-            success="error" not in result,
-            data=result,
-        )
+    Also the cache identity: two queries that resolve to the same race produce
+    identical args here, which is what lets them share a cache entry.
+    """
+    if task_name == "get_track_info":
+        return {"circuit_name": race_info["name"], "year": race_info["historical_year"]}
+    if task_name == "get_recent_top_finishers":
+        return {"year": race_info["historical_year"]}
+    if task_name == "get_circuit_winners":
+        return {"circuit_name": race_info["name"], "years_back": 3}
+    if task_name == "search_f1_news":
+        return {"query": f"{race_info['name']} {race_info['year']}", "max_results": 5}
+    if task_name == "get_race_weather":
+        country_code = COUNTRY_CODE_MAP.get(race_info["country"], "US")
+        return {"city": race_info["location"], "country_code": country_code}
+    if task_name == "get_driver_form":
+        # Hardcoded to Verstappen — the planner prompt advertises exactly this scope.
+        return {"driver_code": "VER", "year": race_info["historical_year"], "num_races": 5}
+    if task_name == "get_recent_race_results":
+        return {"event_name": race_info["name"], "year": race_info["historical_year"]}
+    return None
+
+
+def _invoke_tool(tool: Any, task_name: str, race_info: dict) -> ToolResult:
+    """Invoke a single tool with arguments derived from race_info; never raises.
+
+    Serves cacheable tools from the result cache when possible. The lock is
+    released during the invocation, as in tools/schedule_cache.py: concurrent
+    misses on the same key both fetch, and the last write wins.
+    """
+    try:
+        args = _build_tool_args(task_name, race_info)
+        if args is None:
+            return ToolResult(
+                tool_name=task_name,
+                success=False,
+                data={"error": f"No handler for tool: {task_name}"},
+                cached=False,
+            )
+
+        cacheable = task_name in CACHEABLE_TOOLS
+        # The date belongs in the key, not the args: `_build_tool_args` stays a pure
+        # function of race_info, and the three date-dependent tools (see
+        # DATE_DEPENDENT_TOOLS above) get an extra key component that changes once a
+        # day, forcing a refetch instead of serving yesterday's "most recent" race.
+        date_component = date.today().isoformat() if task_name in DATE_DEPENDENT_TOOLS else None
+        cache_key = (task_name, tuple(sorted(args.items())), date_component)
+
+        if cacheable:
+            with _result_cache_lock:
+                if cache_key in _result_cache:
+                    # Only successes are ever stored, so a hit is always success=True.
+                    # deepcopy: the cache is cross-request and lives for the process
+                    # lifetime, so handing out the stored dict by reference would let
+                    # any consumer that mutates ToolResult["data"] in place silently
+                    # corrupt every later hit. No consumer does today, but the cost of
+                    # a copy is nothing next to the fetch it replaces.
+                    return ToolResult(
+                        tool_name=task_name,
+                        success=True,
+                        data=copy.deepcopy(_result_cache[cache_key]),
+                        cached=True,
+                    )
+
+        result = tool.invoke(args)
+        success = "error" not in result
+
+        if cacheable and success:
+            with _result_cache_lock:
+                # deepcopy on the way in too: the caller keeps `result` and may pass it
+                # on or (in principle) mutate it, so the cache must hold its own private
+                # copy rather than the same object the miss caller received.
+                _result_cache[cache_key] = copy.deepcopy(result)
+
+        return ToolResult(tool_name=task_name, success=success, data=result, cached=False)
     except Exception as exc:
         logger.exception("Tool '%s' raised an unexpected exception: %s", task_name, exc)
-        return ToolResult(tool_name=task_name, success=False, data={"error": str(exc)})
+        return ToolResult(
+            tool_name=task_name, success=False, data={"error": str(exc)}, cached=False
+        )
 
 
 def tool_executor_node(state: AgentState) -> dict[str, Any]:
@@ -206,6 +303,7 @@ def tool_executor_node(state: AgentState) -> dict[str, Any]:
                 "kind": "tool_result",
                 "tool": result["tool_name"],
                 "success": result["success"],
+                "cached": result["cached"],
             }
         )
 
@@ -221,6 +319,7 @@ def tool_executor_node(state: AgentState) -> dict[str, Any]:
                     tool_name=task_name,
                     success=False,
                     data={"error": f"Unknown tool: {task_name}"},
+                    cached=False,
                 )
                 tool_results.append(unknown)
                 report(unknown)
