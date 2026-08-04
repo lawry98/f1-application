@@ -160,6 +160,27 @@ export function TeamsComparisonGrid({
           );
         })}
       </div>
+
+      {/* Photograph credits. The page publicly displays 22 driver headshots, 20 of which are
+          CC BY or CC BY-SA and so oblige attribution — and because the committed PNGs are
+          downscaled and transcoded from the Commons originals, BY-SA's share-alike attaches
+          too. `public/drivers/CREDITS.md` carries the per-file author and licence, but a file
+          reachable only by guessing its URL does not discharge "provide attribution in any
+          reasonable manner based on the medium". This is the last section of /teams, so the
+          link lives here: small, but genuinely visible and keyboard reachable. */}
+      <footer className="mt-14 border-t border-zinc-900 pt-6">
+        <p className="max-w-2xl text-[11px] leading-relaxed text-zinc-500">
+          Driver photographs sourced from Wikimedia Commons and used under CC BY / CC BY-SA;
+          resized and transcoded from the originals.{' '}
+          <a
+            href="/drivers/CREDITS.md"
+            className="rounded text-zinc-300 underline decoration-zinc-700 underline-offset-2 transition-colors duration-200 hover:text-white hover:decoration-zinc-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500"
+          >
+            Full attribution and licence details
+          </a>
+          .
+        </p>
+      </footer>
     </section>
   );
 }
