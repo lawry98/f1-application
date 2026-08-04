@@ -29,20 +29,35 @@
  * below means adding a row there too.
  *
  * RE-RUNNING REVERTS A DELIBERATE RECOLOUR. The Commons originals for ferrari, cadillac,
- * haas, williams and aston-martin carry no usable fill for a dark page — most paths default
- * to black (SVG's initial value), and aston-martin's `fill="currentColor"` resolves to black
- * too, because an SVG loaded through `<img>`/`next/image` is an opaque document that does not
- * inherit the page's CSS `color`. Since the /teams page background is zinc-950, every one of
- * those marks rendered invisible before this file was hand-edited to give the offending paths
- * an explicit `#fafafa`. Two of the five are NOT flat recolours: cadillac only relights the
- * eight "CADILLAC" wordmark paths (ids path86/90/94/96/100/104/108/112) and leaves the
- * crest's black-on-white detail alone, and haas only relights the unclassed paths (the
- * `.st0`/`.st1` classes stay their brand red). This script writes Commons bytes verbatim
- * (see rule 1) and does not know any of that — re-running it overwrites all five with the
- * original black versions. Redo the recolour by hand afterward, or diff against the commit
- * that introduced it before committing a fresh download. mercedes and mclaren are
- * intentionally left black-in-places too (partial, same root cause) — out of scope for that
- * pass, not fixed here either.
+ * haas, williams, aston-martin, mercedes and mclaren carry no usable fill for a dark page —
+ * most paths default to black (SVG's initial value), and aston-martin's `fill="currentColor"`
+ * resolves to black too, because an SVG loaded through `<img>`/`next/image` is an opaque
+ * document that does not inherit the page's CSS `color`. Since the /teams page background is
+ * zinc-950, every one of those marks rendered invisible (or, for mercedes/mclaren, partly
+ * invisible) before these files were hand-edited to give the offending paths an explicit
+ * `#fafafa`. None of the seven are a flat "recolour everything" pass — every genuinely
+ * brand-coloured path was left alone, matched per file:
+ *   - ferrari: its one path had no fill at all.
+ *   - haas: relit only the unclassed paths via a root-level `fill` attribute; the `.st0`/`.st1`
+ *     CSS classes (its red curl mark and "TGR" text) keep winning the cascade and stay red.
+ *   - cadillac: relit only the eight "CADILLAC" wordmark paths (ids
+ *     path86/90/94/96/100/104/108/112); the crest's black-on-white internal detail (15 other
+ *     black paths) is left black on purpose — it already contrasts fine against the shield's
+ *     own white face, and relighting it would wash the crest into the shield.
+ *   - williams: relit only its second, unfilled path (the "Williams F1 TEAM" wordmark); its
+ *     first path (`fill="#1868db"`, the Atlassian sponsor mark) is untouched.
+ *   - aston-martin: swapped every `fill="currentColor"` for `#fafafa`, since `currentColor`
+ *     never had a page colour to resolve against in the first place (see above).
+ *   - mercedes: relit its three unfilled paths (the roundel badge and the two text/sponsor-row
+ *     paths); its one already-filled path (`fill="#00b1a9"`, the "PETRONAS" text) is untouched.
+ *   - mclaren: relit its one unfilled path (the "McLaren" wordmark); its one already-filled
+ *     path (`fill="#ff9800"`, the papaya arrow accent) is untouched.
+ * This script writes Commons bytes verbatim (see rule 1) and does not know any of that —
+ * re-running it overwrites all seven with their original, partly-or-fully-black versions.
+ * Redo the recolour by hand afterward, or diff against the commit that introduced it before
+ * committing a fresh download. audi, red-bull and alpine were checked against the same
+ * per-path audit and are genuinely fully brand-coloured (no unfilled path anywhere) — re-running
+ * for those three is safe.
  *
  * Usage: mise exec -- node scripts/fetch-team-assets.mjs
  */
