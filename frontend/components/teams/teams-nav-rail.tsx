@@ -2,18 +2,38 @@
 
 import { motion } from 'motion/react';
 
-import { TeamLogo } from '@/components/teams/team-logo';
 import { TEAMS, type Team } from '@/data/teams-data';
 import { cn } from '@/lib/utils';
 
+/** First three alphabetic characters of a team's short name, uppercased. */
+function monogram(shortName: string): string {
+  return shortName.replace(/[^a-zA-Z]/g, '').slice(0, 3).toUpperCase();
+}
+
 /**
- * Cap on the logo chip's rendered width in the 200px (240 at xl) rail. `TeamLogo`'s own
- * default (`size * 4` = 88px) is sized for wider surfaces; a row here also has to fit an
- * index numeral, the team name, and the `P3 · 220 PTS` standings line, so the logo is
- * capped well below the widest wordmarks (Aston Martin 9.5:1, McLaren 6.8:1 at size 22
- * would otherwise run to 209px / 150px).
+ * Uniform square colour tile carrying a three-letter monogram — the rail's logo mark.
+ *
+ * Real wordmarks (`TeamLogo`) range from ~1:1 (Mercedes) to 9.48:1 (Aston Martin). Object-fit
+ * into a shared box at this row's 22px height either leaves near-invisible slivers (Aston
+ * Martin renders ~4px tall) or forces the box open across a 200px rail — neither reads as a
+ * chip set. A flat monogram tile keeps every one of the eleven rows the same size and legible,
+ * including `racing-bulls`, which has no logo file at all and would otherwise be the only
+ * fallback square in a list of wordmarks. Full logos still belong on wider surfaces (the
+ * sticky panel, the hero) via `TeamLogo` — this tile is local to the rail on purpose.
  */
-const NAV_LOGO_MAX_WIDTH = 40;
+function NavLogoTile({ team }: { team: Team }) {
+  return (
+    <div
+      className="relative z-10 flex h-[22px] w-[22px] flex-shrink-0 items-center justify-center rounded text-[8px] font-black leading-none"
+      style={{
+        backgroundColor: team.color,
+        color: team.textOnColor === 'black' ? '#000000' : '#ffffff',
+      }}
+    >
+      {monogram(team.shortName)}
+    </div>
+  );
+}
 
 interface TeamsNavRailProps {
   activeTeamId: string;
@@ -93,18 +113,13 @@ function NavButton({
       </span>
 
       {/* Logo chip */}
-      <TeamLogo
-        team={team}
-        size={22}
-        maxWidth={NAV_LOGO_MAX_WIDTH}
-        className="relative z-10"
-      />
+      <NavLogoTile team={team} />
 
       {/* Team name + standings */}
       <span className="relative z-10 min-w-0 flex-1">
         <span className="block truncate text-sm font-medium">{team.shortName}</span>
         <span
-          className="block font-mono text-[9px] tracking-wide"
+          className="block truncate font-mono text-[9px] tracking-wide"
           style={{ color: isActive ? team.color : '#71717a' }}
         >
           {`P${team.position} · ${team.points} PTS`}
