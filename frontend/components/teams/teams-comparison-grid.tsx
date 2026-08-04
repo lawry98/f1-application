@@ -1,12 +1,21 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 
 import { TextAnimate } from '@/components/ui/text-animate';
 import { NumberTicker } from '@/components/ui/number-ticker';
-import { Card } from '@/components/ui/card';
-import { type Team } from '@/data/teams-data';
+import { cn } from '@/lib/utils';
+import { STANDINGS_AS_OF, type Team } from '@/data/teams-data';
+import { TeamMonogramTile } from './team-monogram-tile';
+
+type SortKey = 'points' | 'championships' | 'firstEntry';
+
+const SORTS: { key: SortKey; label: string }[] = [
+  { key: 'points', label: 'Points' },
+  { key: 'championships', label: 'Titles' },
+  { key: 'firstEntry', label: 'Since' },
+];
 
 interface TeamsComparisonGridProps {
   teams: Team[];
@@ -15,163 +24,118 @@ interface TeamsComparisonGridProps {
   onScrollToTeam: (id: string) => void;
 }
 
-const containerVariants = {
-  hidden: {},
-  show: {
-    transition: {
-      staggerChildren: 0.05,
-    },
-  },
-};
-
-function getItemVariants(reducedMotion: boolean) {
-  return {
-    hidden: reducedMotion ? { opacity: 0 } : { opacity: 0, y: 20 },
-    show: reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0, transition: { duration: 0.4 } },
-  };
-}
-
 export function TeamsComparisonGrid({
   teams,
   activeTeamId,
   reducedMotion,
   onScrollToTeam,
 }: TeamsComparisonGridProps) {
-  const itemVariants = getItemVariants(reducedMotion);
+  const [sort, setSort] = useState<SortKey>('points');
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent, teamId: string) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        onScrollToTeam(teamId);
-      }
-    },
-    [onScrollToTeam],
+  const ranked = useMemo(() => {
+    const copy = [...teams];
+    // firstEntry sorts ascending (oldest first); the other two descending.
+    copy.sort((a, b) => (sort === 'firstEntry' ? a[sort] - b[sort] : b[sort] - a[sort]));
+    return copy;
+  }, [teams, sort]);
+
+  const leader = useMemo(
+    () => Math.max(...teams.map((t) => t[sort === 'firstEntry' ? 'points' : sort]), 1),
+    [teams, sort],
   );
+
+  const handleSort = useCallback((key: SortKey) => setSort(key), []);
 
   return (
     <section className="bg-zinc-950 px-6 py-20 lg:px-12">
-      {/* Section header */}
-      <div className="mb-12">
-        <p className="mb-3 text-xs uppercase tracking-[0.3em] text-zinc-500">Overview</p>
-        <TextAnimate
-          as="h2"
-          animation={reducedMotion ? 'fadeIn' : 'slideUp'}
-          by="word"
-          startOnView
-          once
-          className="text-3xl font-black uppercase tracking-tight text-white md:text-4xl"
-        >
-          2026 Season Grid
-        </TextAnimate>
+      <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="mb-3 text-xs uppercase tracking-[0.3em] text-zinc-500">Overview</p>
+          <TextAnimate
+            as="h2"
+            animation={reducedMotion ? 'fadeIn' : 'slideUp'}
+            by="word"
+            startOnView
+            once
+            className="text-3xl font-black uppercase tracking-tight text-white md:text-4xl"
+          >
+            Constructors&apos; Championship
+          </TextAnimate>
+        </div>
+        <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-500">
+          {STANDINGS_AS_OF}
+        </p>
       </div>
 
-      <div className="mb-10 h-px w-full bg-zinc-800" />
+      <div className="mb-6 flex gap-2">
+        {SORTS.map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => handleSort(key)}
+            aria-pressed={sort === key}
+            className={cn(
+              'rounded px-3 py-1.5 text-[10px] uppercase tracking-[0.12em] transition-[background-color,color,border-color] duration-200 active:scale-[0.96]',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500',
+              sort === key
+                ? 'bg-zinc-800 text-white'
+                : 'border border-zinc-800 text-zinc-500 hover:text-zinc-300',
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
-      {/* Grid */}
-      <motion.div
-        className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
-        variants={containerVariants}
-        initial="hidden"
-        whileInView="show"
-        viewport={{ once: true, margin: '-100px' }}
-      >
-        {teams.map((team) => {
-          const isActive = team.id === activeTeamId;
+      <div className="flex flex-col">
+        {ranked.map((team, i) => {
+          const metric = sort === 'firstEntry' ? team.points : team[sort];
           return (
-            <motion.div
+            <motion.button
               key={team.id}
-              variants={itemVariants}
-              role="button"
-              tabIndex={0}
-              aria-label={`Scroll to ${team.shortName}`}
-              onClick={() => onScrollToTeam(team.id)}
-              onKeyDown={(e) => handleKeyDown(e, team.id)}
-              className="cursor-pointer rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
-              whileHover={
-                reducedMotion
-                  ? {}
-                  : {
-                      y: -4,
-                      boxShadow: `0 20px 40px ${team.color}30`,
-                    }
+              layout={!reducedMotion}
+              transition={
+                reducedMotion ? { duration: 0 } : { type: 'spring', duration: 0.3, bounce: 0 }
               }
-              transition={{ duration: 0.2 }}
+              onClick={() => onScrollToTeam(team.id)}
+              aria-label={`Jump to ${team.shortName}`}
+              className={cn(
+                'flex items-center gap-3 rounded px-2 py-2 text-left transition-colors duration-200 active:scale-[0.96]',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500',
+                team.id === activeTeamId ? 'bg-zinc-900/60' : 'hover:bg-zinc-900/30',
+              )}
             >
-              <Card
-                className="relative overflow-hidden border-zinc-800 bg-zinc-900/40 p-0 transition-colors duration-300"
-                style={
-                  isActive
-                    ? {
-                        outline: `2px solid ${team.color}`,
-                        outlineOffset: '0px',
-                      }
-                    : {}
-                }
-              >
-                {/* Top color bar */}
-                <div className="h-[3px] w-full" style={{ backgroundColor: team.color }} />
+              <span className="w-5 flex-shrink-0 font-mono text-[11px] text-zinc-600">
+                {i + 1}
+              </span>
+              <TeamMonogramTile team={team} size={22} />
+              <span className="w-24 flex-shrink-0 truncate text-xs font-medium text-white">
+                {team.shortName}
+              </span>
 
-                <div className="space-y-4 p-4">
-                  {/* Team name row */}
-                  <div className="flex items-center gap-3">
-                    <span
-                      className="h-3 w-3 flex-shrink-0 rounded-full"
-                      style={{ backgroundColor: team.color }}
-                    />
-                    <p className="truncate text-sm font-bold uppercase tracking-wide text-white">
-                      {team.shortName}
-                    </p>
-                  </div>
+              <span className="h-[9px] min-w-0 flex-1 overflow-hidden bg-zinc-900">
+                <span
+                  data-testid="bar-fill"
+                  className="block h-full origin-left transition-transform duration-700 ease-out"
+                  style={{
+                    backgroundColor: team.color,
+                    transform: `scaleX(${Number((metric / leader).toFixed(2))})`,
+                  }}
+                />
+              </span>
 
-                  {/* Drivers */}
-                  <div className="space-y-1">
-                    {team.drivers.map((driver) => (
-                      <div key={driver.id} className="flex items-center gap-2">
-                        <span className="w-8 font-mono text-[10px] text-zinc-500">
-                          #{driver.number}
-                        </span>
-                        <span className="truncate text-xs text-zinc-400">{driver.name}</span>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="h-px bg-zinc-800" />
-
-                  {/* Stats */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <p className="text-[10px] uppercase tracking-[0.15em] text-zinc-500">WCC</p>
-                      <p className="mt-0.5 text-lg font-black text-white">
-                        {team.championships > 0 ? (
-                          <NumberTicker
-                            value={team.championships}
-                            className="text-lg font-black text-white"
-                          />
-                        ) : (
-                          '—'
-                        )}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] uppercase tracking-[0.15em] text-zinc-500">Est.</p>
-                      <p className="mt-0.5 text-lg font-black text-white">{team.firstEntry}</p>
-                    </div>
-                  </div>
-
-                  {/* Base */}
-                  <p className="truncate text-[10px] text-zinc-500">{team.base}</p>
-                </div>
-              </Card>
-            </motion.div>
+              <span className="w-10 flex-shrink-0 text-right font-mono text-sm font-bold text-white">
+                {reducedMotion ? (
+                  sort === 'firstEntry' ? team.firstEntry : metric
+                ) : sort === 'firstEntry' ? (
+                  team.firstEntry
+                ) : (
+                  <NumberTicker value={metric} className="text-sm text-white" />
+                )}
+              </span>
+            </motion.button>
           );
         })}
-      </motion.div>
-
-      {/* Footer note */}
-      <p className="mt-10 text-center text-xs uppercase tracking-widest text-zinc-600">
-        2026 Formula 1 World Championship
-      </p>
+      </div>
     </section>
   );
 }

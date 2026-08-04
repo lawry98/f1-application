@@ -4,36 +4,7 @@ import { motion } from 'motion/react';
 
 import { TEAMS, type Team } from '@/data/teams-data';
 import { cn } from '@/lib/utils';
-
-/** First three alphabetic characters of a team's short name, uppercased. */
-function monogram(shortName: string): string {
-  return shortName.replace(/[^a-zA-Z]/g, '').slice(0, 3).toUpperCase();
-}
-
-/**
- * Uniform square colour tile carrying a three-letter monogram — the rail's logo mark.
- *
- * Real wordmarks (`TeamLogo`) range from ~1:1 (Mercedes) to 9.48:1 (Aston Martin). Object-fit
- * into a shared box at this row's 22px height either leaves near-invisible slivers (Aston
- * Martin renders ~4px tall) or forces the box open across a 200px rail — neither reads as a
- * chip set. A flat monogram tile keeps every one of the eleven rows the same size and legible,
- * including `racing-bulls`, which has no logo file at all and would otherwise be the only
- * fallback square in a list of wordmarks. Full logos still belong on wider surfaces (the
- * sticky panel, the hero) via `TeamLogo` — this tile is local to the rail on purpose.
- */
-function NavLogoTile({ team }: { team: Team }) {
-  return (
-    <div
-      className="relative z-10 flex h-[22px] w-[22px] flex-shrink-0 items-center justify-center rounded text-[8px] font-black leading-none"
-      style={{
-        backgroundColor: team.color,
-        color: team.textOnColor === 'black' ? '#000000' : '#ffffff',
-      }}
-    >
-      {monogram(team.shortName)}
-    </div>
-  );
-}
+import { TeamMonogramTile } from './team-monogram-tile';
 
 interface TeamsNavRailProps {
   activeTeamId: string;
@@ -113,7 +84,7 @@ function NavButton({
       </span>
 
       {/* Logo chip */}
-      <NavLogoTile team={team} />
+      <TeamMonogramTile team={team} size={22} />
 
       {/* Team name + standings */}
       <span className="relative z-10 min-w-0 flex-1">
