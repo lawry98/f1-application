@@ -5,6 +5,7 @@ monkeypatches ``agent.graph.llm``. No test here makes a network call.
 """
 
 import logging
+from datetime import date
 
 import pytest
 from langgraph.graph import END, StateGraph
@@ -511,6 +512,84 @@ def test_mutating_a_cache_miss_result_does_not_corrupt_later_hits():
     hit = _invoke_tool(tool, "get_track_info", make_race_info())
     assert hit["cached"] is True
     assert hit["data"] == {"length_km": 3.3, "corners": [1, 2, 3]}
+
+
+def _make_fake_date(initial: date):
+    """Build a stand-in for the ``datetime.date`` class with a controllable ``.today()``.
+
+    A fresh class per test avoids the classvar leaking state between tests — unlike
+    monkeypatching a shared instance, nothing here survives past the test that made it.
+
+    Note the parameter is not named ``today``: a class body treats any name it assigns
+    anywhere (here, the ``today`` classmethod below) as local to the class's own
+    namespace throughout, so a same-named reference to the enclosing function's
+    parameter would raise ``NameError`` instead of finding it by closure.
+    """
+
+    class _FakeDate:
+        _today = initial
+
+        @classmethod
+        def today(cls):
+            return cls._today
+
+    return _FakeDate
+
+
+@pytest.mark.parametrize(
+    "task_name", ["get_recent_top_finishers", "get_driver_form", "get_circuit_winners"]
+)
+def test_a_date_dependent_tool_is_refetched_when_the_date_advances(monkeypatch, task_name):
+    """The key IS the expiry: a new day forces a refetch with no TTL machinery involved.
+
+    Verified against the `date` seam graph.py imports, not a real clock — this must not
+    sleep or depend on when the suite happens to run.
+    """
+    fake_date = _make_fake_date(date(2026, 8, 4))
+    monkeypatch.setattr(graph_module, "date", fake_date)
+    tool = make_tool(task_name, {"ok": True})
+
+    _invoke_tool(tool, task_name, make_race_info())
+    fake_date._today = date(2026, 8, 5)
+    _invoke_tool(tool, task_name, make_race_info())
+
+    assert len(tool.calls) == 2
+
+
+@pytest.mark.parametrize(
+    "task_name", ["get_recent_top_finishers", "get_driver_form", "get_circuit_winners"]
+)
+def test_a_date_dependent_tool_still_hits_the_cache_within_the_same_day(monkeypatch, task_name):
+    monkeypatch.setattr(graph_module, "date", _make_fake_date(date(2026, 8, 4)))
+    tool = make_tool(task_name, {"ok": True})
+
+    _invoke_tool(tool, task_name, make_race_info())
+    _invoke_tool(tool, task_name, make_race_info())
+
+    assert len(tool.calls) == 1
+
+
+def test_an_argument_pure_tool_still_hits_the_cache_across_a_date_change(monkeypatch):
+    """Proves the date component is scoped to the three date-dependent tools, not global —
+    ``get_track_info`` takes an explicit year and must not refetch just because the
+    calendar moved on."""
+    fake_date = _make_fake_date(date(2026, 8, 4))
+    monkeypatch.setattr(graph_module, "date", fake_date)
+    tool = make_tool("get_track_info", {"ok": True})
+
+    _invoke_tool(tool, "get_track_info", make_race_info())
+    fake_date._today = date(2026, 8, 5)
+    _invoke_tool(tool, "get_track_info", make_race_info())
+
+    assert len(tool.calls) == 1
+
+
+def test_cacheable_tool_names_all_exist_among_the_real_tools():
+    """A tool rename must break this test rather than silently disable its caching."""
+    real_tool_names = {t.name for t in graph_module.all_tools}
+    assert real_tool_names >= graph_module.CACHEABLE_TOOLS
+    assert real_tool_names >= graph_module.DATE_DEPENDENT_TOOLS
+    assert graph_module.CACHEABLE_TOOLS >= graph_module.DATE_DEPENDENT_TOOLS
 
 
 # ── Tool executor node ───────────────────────────────────────────────────────

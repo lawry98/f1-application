@@ -5,6 +5,7 @@ import json
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import date
 from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -39,13 +40,14 @@ all_tools = [
 ]
 
 # Cross-request cache for the historical FastF1 tools — the finishing order of a
-# past race does not change, and these five are the 9-20s of a briefing's wall
-# clock. Weather (a forecast) and news (current by definition) are deliberately
-# absent: serving either stale is worse than refetching. Only successful results
-# are stored, so a transient upstream failure cannot poison later briefings.
-# Deliberately cross-request, unlike the per-request schedule cache routes.py
-# clears — see ADR-0003. Key space is bounded (~races x 5 tools x a few years),
-# so there is no eviction.
+# past race does not change, and these five are the ~9s concurrent wall clock of
+# the FastF1 tools, the dominant share of a 15-20s gathering stage. Weather (a
+# forecast) and news (current by definition) are deliberately absent: serving
+# either stale is worse than refetching. Only successful results are stored, so a
+# transient upstream failure cannot poison later briefings. Deliberately
+# cross-request, unlike the per-request schedule cache routes.py clears — see
+# ADR-0003. Key space is bounded (~races x 5 tools x a few years), so there is no
+# eviction.
 CACHEABLE_TOOLS = frozenset(
     {
         "get_track_info",
@@ -56,8 +58,29 @@ CACHEABLE_TOOLS = frozenset(
     }
 )
 
+# Of the five cacheable tools, these three answer a question whose meaning shifts
+# with the calendar even though the race data behind it is immutable — it is the
+# query, not the data, that is date-relative:
+#   - get_recent_top_finishers: "the season's most recent completed race" — a new
+#     race weekend changes which race that is.
+#   - get_driver_form: "the last N races" — same sliding window.
+#   - get_circuit_winners: "the last `years_back` years" — the window's boundary
+#     year advances every 1 January.
+# Their cache key includes today's date so a new day (or, for get_circuit_winners,
+# a new year) forces a refetch instead of serving an answer that was only true
+# yesterday. The other two tools (get_track_info, get_recent_race_results) take an
+# explicit year and are pure functions of their arguments — they need no date
+# component.
+DATE_DEPENDENT_TOOLS = frozenset(
+    {
+        "get_recent_top_finishers",
+        "get_driver_form",
+        "get_circuit_winners",
+    }
+)
+
 _result_cache_lock = threading.Lock()
-_result_cache: dict[tuple[str, tuple], dict] = {}
+_result_cache: dict[tuple, dict] = {}
 
 
 def clear_result_cache() -> None:
@@ -224,7 +247,12 @@ def _invoke_tool(tool: Any, task_name: str, race_info: dict) -> ToolResult:
             )
 
         cacheable = task_name in CACHEABLE_TOOLS
-        cache_key = (task_name, tuple(sorted(args.items())))
+        # The date belongs in the key, not the args: `_build_tool_args` stays a pure
+        # function of race_info, and the three date-dependent tools (see
+        # DATE_DEPENDENT_TOOLS above) get an extra key component that changes once a
+        # day, forcing a refetch instead of serving yesterday's "most recent" race.
+        date_component = date.today().isoformat() if task_name in DATE_DEPENDENT_TOOLS else None
+        cache_key = (task_name, tuple(sorted(args.items())), date_component)
 
         if cacheable:
             with _result_cache_lock:
