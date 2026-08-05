@@ -10,8 +10,8 @@ import { TeamsNavRail } from './teams-nav-rail';
 import { TeamSection } from './team-section';
 import { TeamsComparisonGrid } from './teams-comparison-grid';
 
-const StickyCarViewer = dynamic(
-  () => import('./sticky-car-viewer').then((m) => ({ default: m.StickyCarViewer })),
+const StickyTeamPanel = dynamic(
+  () => import('./sticky-team-panel').then((m) => ({ default: m.StickyTeamPanel })),
   {
     ssr: false,
     loading: () => <div className="h-full w-full animate-pulse bg-zinc-900" />,
@@ -48,18 +48,27 @@ export function TeamsPageClient() {
   return (
     <div className="relative bg-zinc-950">
       {/* Hero */}
-      <TeamsHero />
+      <TeamsHero onSelectTeam={scrollToTeam} />
 
       {/* Mobile nav strip */}
       <div className="sticky top-14 z-20 bg-zinc-950/90 backdrop-blur-sm lg:hidden">
-        <TeamsNavRail activeTeamId={activeTeamId} onSelectTeam={scrollToTeam} mobile />
+        <TeamsNavRail
+          activeTeamId={activeTeamId}
+          onSelectTeam={scrollToTeam}
+          reducedMotion={reducedMotion}
+          mobile
+        />
       </div>
 
       {/* Main body: three-column layout */}
       <div className="flex">
         {/* Desktop left nav rail */}
         <aside className="sticky top-14 hidden h-[calc(100vh-3.5rem)] w-[200px] self-start overflow-y-auto border-r border-zinc-900 lg:block xl:w-[240px]">
-          <TeamsNavRail activeTeamId={activeTeamId} onSelectTeam={scrollToTeam} />
+          <TeamsNavRail
+            activeTeamId={activeTeamId}
+            onSelectTeam={scrollToTeam}
+            reducedMotion={reducedMotion}
+          />
         </aside>
 
         {/* Center: scrollable team sections */}
@@ -83,9 +92,9 @@ export function TeamsPageClient() {
           />
         </div>
 
-        {/* Desktop right sticky 3D viewer */}
+        {/* Desktop right sticky team dossier */}
         <aside className="sticky top-14 hidden h-[calc(100vh-3.5rem)] w-[300px] self-start border-l border-zinc-900 lg:block xl:w-[360px]">
-          <StickyCarViewer activeTeam={TEAM_MAP[activeTeamId]!} onInspect={openInspect} />
+          <StickyTeamPanel activeTeam={TEAM_MAP[activeTeamId]!} onInspect={openInspect} />
         </aside>
       </div>
 

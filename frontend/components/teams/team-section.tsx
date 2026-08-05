@@ -7,59 +7,12 @@ import { Expand } from 'lucide-react';
 import { BlurFade } from '@/components/ui/blur-fade';
 import { TextAnimate } from '@/components/ui/text-animate';
 import { NumberTicker } from '@/components/ui/number-ticker';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { teamColorButtonStyle } from '@/lib/team-utils';
-import { type Team, type Driver } from '@/data/teams-data';
-
-interface DriverCardProps {
-  driver: Driver;
-  teamColor: string;
-  index: number;
-  reducedMotion: boolean;
-}
-
-function DriverCard({ driver, teamColor, index, reducedMotion }: DriverCardProps) {
-  return (
-    <BlurFade delay={reducedMotion ? 0 : 0.1 * index} inView>
-      <Card className="relative overflow-hidden border-zinc-800 bg-zinc-900/60 p-0">
-        {/* Top accent bar */}
-        <div className="h-[3px] w-full" style={{ backgroundColor: teamColor }} />
-
-        <div className="relative p-5">
-          {/* Ghost number */}
-          <span
-            className="pointer-events-none absolute right-3 top-1 select-none text-8xl font-black text-white"
-            style={{ opacity: 0.06, lineHeight: 1 }}
-          >
-            {driver.number}
-          </span>
-
-          {/* Driver info */}
-          <div className="relative z-10 space-y-3">
-            <div>
-              <p className="text-xs uppercase tracking-[0.15em] text-zinc-400">
-                Driver {driver.shortCode}
-              </p>
-              <p className="mt-1 text-xl font-bold text-white">{driver.name}</p>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <Badge variant="outline" className="border-zinc-600 text-xs text-zinc-400">
-                #{driver.number}
-              </Badge>
-              <Badge variant="outline" className="border-zinc-600 text-xs text-zinc-400">
-                {driver.nationality}
-              </Badge>
-            </div>
-          </div>
-        </div>
-      </Card>
-    </BlurFade>
-  );
-}
+import { type Team } from '@/data/teams-data';
+import { DriverPortrait } from './driver-portrait';
+import { TeamMonogramTile, monogram } from './team-monogram-tile';
 
 interface TeamSectionProps {
   team: Team;
@@ -109,9 +62,11 @@ export function TeamSection({
       {/* Top separator */}
       <div className="h-px w-full" style={{ backgroundColor: team.color, opacity: 0.4 }} />
 
-      {/* Ambient glow blob — alternates position for visual variety */}
+      {/* Ambient glow blob — alternates position for visual variety. The only animated
+          property is `opacity`, so that is what `will-change` hints: hinting `transform`
+          promoted eleven 40vw×40vw layers permanently and bought nothing. */}
       <motion.div
-        className="pointer-events-none absolute will-change-transform"
+        className="pointer-events-none absolute will-change-[opacity]"
         style={{
           width: '40vw',
           height: '40vw',
@@ -125,6 +80,18 @@ export function TeamSection({
         transition={reducedMotion ? { duration: 0 } : { duration: 0.6 }}
         initial={{ opacity: 0 }}
       />
+
+      {/* Oversized monogram bleeding off the leading edge. Decorative only. */}
+      <span
+        data-testid="team-watermark"
+        aria-hidden="true"
+        className={cn(
+          'pointer-events-none absolute top-8 select-none text-[14rem] font-black leading-none text-white opacity-[0.035]',
+          blobOnRight ? '-left-10' : '-right-10',
+        )}
+      >
+        {monogram(team.shortName)}
+      </span>
 
       {/* Content grid — fixed layout: left info, right drivers */}
       <div className="relative z-10 flex flex-col gap-8 px-6 py-20 lg:flex-row lg:items-center lg:gap-12 lg:px-12">
@@ -211,25 +178,29 @@ export function TeamSection({
           </BlurFade>
         </div>
 
-        {/* Right: driver cards */}
+        {/* Right: driver portraits */}
         <div className="flex flex-col gap-4 lg:w-[340px] xl:w-[380px]">
-          {team.drivers.map((driver, i) => (
-            <DriverCard
-              key={driver.id}
-              driver={driver}
-              teamColor={team.color}
-              index={i}
-              reducedMotion={reducedMotion}
-            />
-          ))}
+          <div className="flex gap-3">
+            {team.drivers.map((driver, i) => (
+              <BlurFade
+                key={driver.id}
+                delay={reducedMotion ? 0 : 0.1 * i}
+                inView
+                className="min-w-0 flex-1"
+              >
+                <DriverPortrait
+                  driver={driver}
+                  team={team}
+                  priority={index === 0}
+                  className="aspect-[3/4] w-full"
+                />
+              </BlurFade>
+            ))}
+          </div>
 
-          {/* Team color chip */}
           <BlurFade delay={reducedMotion ? 0 : 0.3} inView>
             <div className="flex items-center gap-3 pt-2">
-              <div
-                className="h-3 w-3 flex-shrink-0 rounded-full"
-                style={{ backgroundColor: team.color }}
-              />
+              <TeamMonogramTile team={team} size={20} />
               <span className="text-xs uppercase tracking-[0.15em] text-zinc-500">{team.name}</span>
             </div>
           </BlurFade>

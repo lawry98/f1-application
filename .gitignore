@@ -58,3 +58,6 @@ pnpm-debug.log*
 
 # Local markdown issue tracker (see docs/agents/issue-tracker.md)
 .scratch/
+
+# Superpowers brainstorm/spec session scratch
+.superpowers/
