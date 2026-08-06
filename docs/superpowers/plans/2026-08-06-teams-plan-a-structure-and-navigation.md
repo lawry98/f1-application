@@ -1301,7 +1301,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 
 import { TeamsNavRail } from '@/components/teams/teams-nav-rail';
 import { monogram } from '@/components/teams/team-monogram-tile';
-import { contrastRatio, DARK_BG, MIN_CONTRAST } from '@/lib/team-utils';
+import { contrastRatio, DARK_BG, MIN_CONTRAST, MIN_RING_CONTRAST } from '@/lib/team-utils';
 import { TEAMS } from '@/data/teams-data';
 
 /** jsdom normalises any inline colour to `rgb(r, g, b)`; contrastRatio wants hex. */
@@ -1404,6 +1404,23 @@ describe('TeamsNavRail', () => {
     }
   });
 
+  // Brief item 13 names focus indicators specifically. Tailwind's ring is a box-shadow that
+  // reads --tw-ring-color, so a team-derived ring has to set that property — an outlineColor
+  // would silently do nothing and leave the ring at Tailwind's default translucent blue.
+  it('gives every row a team-derived focus ring that clears non-text contrast', () => {
+    expect(TEAMS).toHaveLength(11);
+    renderRail();
+    for (const team of TEAMS) {
+      const link = screen.getByRole('link', { name: new RegExp(team.shortName, 'i') });
+      const ring = link.style.getPropertyValue('--tw-ring-color');
+      expect(ring, `${team.shortName} has no --tw-ring-color`).not.toBe('');
+      expect(
+        contrastRatio(ring, DARK_BG),
+        `${team.shortName} ring ${ring}`,
+      ).toBeGreaterThanOrEqual(MIN_RING_CONTRAST);
+    }
+  });
+
   it('keeps the active row’s standings line above AA for every team', () => {
     expect(TEAMS).toHaveLength(11);
     for (const team of TEAMS) {
@@ -1497,7 +1514,12 @@ function NavLink({
       )}
       // A team-derived focus ring, held to non-text contrast rather than the text bar so it
       // still reads as the livery instead of a lightened wash of it.
-      style={{ outlineColor: ringOnDark(team.color) }}
+      //
+      // Tailwind's `ring-*` utilities are box-shadow, not outline, and take their colour from
+      // the `--tw-ring-color` custom property. Setting `outlineColor` here would do nothing
+      // and would leave the ring at Tailwind's default translucent blue, because there is no
+      // `ring-<color>` class on this element any more.
+      style={{ '--tw-ring-color': ringOnDark(team.color) } as React.CSSProperties}
     >
       {isActive && (
         <motion.span
@@ -1801,12 +1823,16 @@ export function TeamsChipStrip({
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950',
                 isActive ? 'text-white' : 'text-zinc-500 hover:text-zinc-300',
               )}
-              style={{
-                outlineColor: ringOnDark(team.color),
-                ...(isActive
-                  ? { backgroundColor: `${team.color}33`, border: `1px solid ${team.color}` }
-                  : { border: '1px solid transparent' }),
-              }}
+              // `--tw-ring-color`, not `outlineColor`: Tailwind's ring is a box-shadow and
+              // reads its colour from that custom property.
+              style={
+                {
+                  '--tw-ring-color': ringOnDark(team.color),
+                  ...(isActive
+                    ? { backgroundColor: `${team.color}33`, border: `1px solid ${team.color}` }
+                    : { border: '1px solid transparent' }),
+                } as React.CSSProperties
+              }
             >
               {team.shortName}
               {/* Position only. Points do not fit a chip, and the desktop rail carries them. */}
@@ -2676,7 +2702,8 @@ Change `motion.button` to `motion.a`, add the `href`, and keep everything else �
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950',
                 team.id === activeTeamId ? 'bg-zinc-900/60' : 'hover:bg-zinc-900/30',
               )}
-              style={{ outlineColor: ringOnDark(team.color) }}
+              // `--tw-ring-color`, not `outlineColor` — Tailwind's ring is a box-shadow.
+              style={{ '--tw-ring-color': ringOnDark(team.color) } as React.CSSProperties}
             >
 ```
 
