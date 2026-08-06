@@ -1,15 +1,24 @@
 import { type Team } from '@/data/teams-data';
 
-/** Returns inline style + extra className for a team-color-filled CTA button. */
+/**
+ * Inline style + extra className for a team-colour-filled CTA.
+ *
+ * The fill is the true livery unless it is too bright for a dark UI, in which case it is
+ * damped to a neutral and given a keyline so the button still has an edge. The label colour
+ * is **derived from the fill it actually got**, not read from `team.textOnColor` — a damped
+ * fill is no longer the team's colour, so the authored value would be describing the wrong
+ * surface.
+ */
 export function teamColorButtonStyle(team: Team) {
-  const isWhite = team.color === '#ffffff';
+  const damped = needsDamping(team.color);
+  const fill = damped ? '#27272a' : team.color;
   return {
     style: {
-      backgroundColor: isWhite ? '#27272a' : team.color,
-      color: isWhite ? '#ffffff' : team.textOnColor === 'black' ? '#000000' : '#ffffff',
-      borderColor: isWhite ? '#52525b' : 'transparent',
+      backgroundColor: fill,
+      color: onColor(fill),
+      borderColor: damped ? '#52525b' : 'transparent',
     },
-    className: isWhite ? 'border' : '',
+    className: damped ? 'border' : '',
   };
 }
 
@@ -26,6 +35,24 @@ export const DARK_BG = '#09090b';
 
 /** WCAG 2.1 AA for text below 18.66px bold / 24px regular. Team colour is only ever used at 9–10px. */
 export const MIN_CONTRAST = 4.5;
+
+/**
+ * WCAG 2.1 non-text contrast, for UI boundaries rather than glyphs — focus rings above all.
+ * Deliberately lower than `MIN_CONTRAST`: a ring is not text, and holding it to the text bar
+ * would lighten the darker liveries further than they need to go for no gain.
+ */
+export const MIN_RING_CONTRAST = 3;
+
+/**
+ * Fills above this relative luminance read as blown-out against `zinc-950` and get damped
+ * to a neutral before being used as a surface.
+ *
+ * This replaces a `team.color === '#ffffff'` equality check that only ever covered Haas.
+ * The failure it guards against is aesthetic rather than a contrast one — white text on a
+ * white button is unreadable, but so is a white button in a page this dark, whatever the
+ * label does — so it is expressed as a property of the colour, not a list of hexes.
+ */
+const MAX_FILL_LUMINANCE = 0.75;
 
 function parseHex(hex: string): [number, number, number] {
   const v = parseInt(hex.replace('#', ''), 16);
@@ -111,6 +138,45 @@ export function readableOnDark(hex: string): string {
   }
 
   readableCache.set(hex, result);
+  return result;
+}
+
+/** Whether a livery is too bright to use as a surface in this dark UI. */
+export function needsDamping(hex: string): boolean {
+  return relativeLuminance(hex) > MAX_FILL_LUMINANCE;
+}
+
+/** Black or white, whichever reads better **on top of** `fill`. */
+export function onColor(fill: string): string {
+  return contrastRatio('#000000', fill) >= contrastRatio('#ffffff', fill) ? '#000000' : '#ffffff';
+}
+
+const ringCache = new Map<string, string>();
+
+/**
+ * A team colour lifted just far enough to serve as a focus ring on `zinc-950`.
+ *
+ * Same lightness walk as `readableOnDark`, held to `MIN_RING_CONTRAST` instead of the text
+ * bar, so the ring still reads as the brand colour rather than as a lightened wash of it.
+ */
+export function ringOnDark(hex: string): string {
+  const cached = ringCache.get(hex);
+  if (cached) return cached;
+
+  let result = hex;
+  if (contrastRatio(hex, DARK_BG) < MIN_RING_CONTRAST) {
+    const [h, s, l] = rgbToHsl(parseHex(hex));
+    result = '#ffffff';
+    for (let step = l; step <= 1; step += 0.01) {
+      const candidate = toHex(hslToRgb(h, s, Math.min(step, 1)));
+      if (contrastRatio(candidate, DARK_BG) >= MIN_RING_CONTRAST) {
+        result = candidate;
+        break;
+      }
+    }
+  }
+
+  ringCache.set(hex, result);
   return result;
 }
 

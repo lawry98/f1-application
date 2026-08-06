@@ -8,6 +8,10 @@ import {
   readableOnDark,
   DARK_BG,
   MIN_CONTRAST,
+  MIN_RING_CONTRAST,
+  needsDamping,
+  onColor,
+  ringOnDark,
 } from '@/lib/team-utils';
 import { TEAMS, TEAM_MAP, STANDINGS_AS_OF } from '@/data/teams-data';
 
@@ -125,6 +129,98 @@ describe('duotoneFor', () => {
 describe('teamColorButtonStyle', () => {
   it('still special-cases the white livery', () => {
     expect(teamColorButtonStyle(TEAM_MAP['haas']!).className).toBe('border');
+  });
+});
+
+describe('needsDamping', () => {
+  it('damps a literally white livery', () => {
+    expect(needsDamping('#ffffff')).toBe(true);
+  });
+
+  it('leaves every other livery on the grid undamped', () => {
+    expect(TEAMS).toHaveLength(11);
+    for (const team of TEAMS) {
+      if (team.color === '#ffffff') continue;
+      expect(needsDamping(team.color), `${team.shortName} ${team.color}`).toBe(false);
+    }
+  });
+
+  // The point of the predicate: it is not an equality check against one hex, so a future
+  // near-white livery is caught without anyone remembering to add a special case.
+  it('catches a near-white livery that is not exactly #ffffff', () => {
+    expect(needsDamping('#fafafa')).toBe(true);
+  });
+});
+
+describe('onColor', () => {
+  it('picks black on a light fill and white on a dark one', () => {
+    expect(onColor('#ffffff')).toBe('#000000');
+    expect(onColor('#dc0000')).toBe('#ffffff');
+  });
+
+  // The property that matters: whatever it picks must actually be readable on that fill.
+  // A mid-tone fill where neither black nor white reaches AA would be a real finding.
+  it('clears AA on the fill it was given, for every fill this page uses', () => {
+    expect(TEAMS).toHaveLength(11);
+    for (const team of TEAMS) {
+      const fill = needsDamping(team.color) ? '#27272a' : team.color;
+      expect(
+        contrastRatio(onColor(fill), fill),
+        `${team.shortName} text on ${fill}`,
+      ).toBeGreaterThanOrEqual(MIN_CONTRAST);
+    }
+  });
+});
+
+describe('ringOnDark', () => {
+  it('clears non-text contrast against the page background for every team', () => {
+    expect(TEAMS).toHaveLength(11);
+    for (const team of TEAMS) {
+      expect(
+        contrastRatio(ringOnDark(team.color), DARK_BG),
+        `${team.shortName} ring ${ringOnDark(team.color)}`,
+      ).toBeGreaterThanOrEqual(MIN_RING_CONTRAST);
+    }
+  });
+
+  // A ring is not text. Holding it to 4.5:1 would lighten liveries further than they need
+  // to go and wash the brand out for no accessibility gain.
+  it('is a lower bar than the text variant, so it lifts colours less', () => {
+    expect(MIN_RING_CONTRAST).toBeLessThan(MIN_CONTRAST);
+    const navy = '#2b4562';
+    expect(contrastRatio(ringOnDark(navy), DARK_BG)).toBeLessThan(
+      contrastRatio(readableOnDark(navy), DARK_BG),
+    );
+  });
+
+  it('leaves a colour that already clears the bar untouched', () => {
+    expect(ringOnDark('#ffffff')).toBe('#ffffff');
+  });
+});
+
+describe('teamColorButtonStyle after generalisation', () => {
+  it('still damps Haas and keeps its keyline', () => {
+    const haas = teamColorButtonStyle(TEAM_MAP['haas']!);
+    expect(haas.className).toBe('border');
+    expect(haas.style.backgroundColor).toBe('#27272a');
+  });
+
+  it('fills with the true livery for an undamped team', () => {
+    const ferrari = teamColorButtonStyle(TEAM_MAP['ferrari']!);
+    expect(ferrari.style.backgroundColor).toBe('#dc0000');
+    expect(ferrari.className).toBe('');
+  });
+
+  // Derived from the fill, not read from the hand-authored textOnColor field.
+  it('derives its label colour so every team’s CTA is readable', () => {
+    expect(TEAMS).toHaveLength(11);
+    for (const team of TEAMS) {
+      const { style } = teamColorButtonStyle(team);
+      expect(
+        contrastRatio(style.color, style.backgroundColor),
+        `${team.shortName} CTA label`,
+      ).toBeGreaterThanOrEqual(MIN_CONTRAST);
+    }
   });
 });
 
