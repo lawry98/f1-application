@@ -24,8 +24,8 @@ from tests.conftest import FROZEN_NOW
 # file test_fastf1_tools.py that must stay untouched. Each use as a test parameter below
 # is flagged by ruff as a redefinition (F811), which is a false positive for this pattern.
 from tests.test_fastf1_tools import race_session  # noqa: F401
-from tools.f1_data_tools import get_recent_top_finishers
-from tools.fastf1_tools import get_recent_race_results
+from tools.f1_data_tools import get_circuit_winners, get_recent_top_finishers
+from tools.fastf1_tools import get_driver_form, get_recent_race_results
 from tools.openf1_races import find_race_session
 
 
@@ -366,3 +366,133 @@ def test_find_race_session_tries_the_meeting_arm_before_the_circuit_arm(monkeypa
     session = find_race_session(2026, "Miami Grand Prix")
 
     assert session["session_key"] == 40002
+
+
+# ── get_driver_form ──────────────────────────────────────────────────────────
+
+
+@freeze_time("2024-06-01")
+def test_driver_form_aggregates_completed_races_from_openf1(openf1_season, no_fastf1):
+    result = get_driver_form.invoke({"driver_code": "VER", "year": 2024, "num_races": 5})
+
+    assert result["driver"] == "VER"
+    assert [r["event"] for r in result["recent_results"]] == ["Sakhir", "Miami", "Monte Carlo"]
+    assert result["total_points_last_races"] == 68.0
+    assert result["average_finish"] == pytest.approx(1.333, abs=0.001)
+
+
+@freeze_time("2024-06-01")
+def test_driver_form_costs_one_results_request_for_every_race(openf1_season, no_fastf1):
+    """The headline of the migration. Three races used to be three session loads at
+    ~2.4s each; a range query makes it one request. A regression to per-race looping
+    would restore the latency and put the tool near OpenF1's 3 req/s ceiling.
+    """
+    get_driver_form.invoke({"driver_code": "VER", "year": 2024, "num_races": 5})
+
+    result_calls = [c for c in openf1_season.calls if c["url"].endswith("/session_result")]
+    assert len(result_calls) == 1
+
+
+@freeze_time("2024-06-01")
+def test_driver_form_excludes_sprints_from_race_form(openf1_season, no_fastf1):
+    """Miami's Sprint would otherwise appear as a fourth "race" and drag the average."""
+    result = get_driver_form.invoke({"driver_code": "NOR", "year": 2024, "num_races": 5})
+
+    assert len(result["recent_results"]) == 3
+    assert result["total_points_last_races"] == 61.0
+
+
+@freeze_time("2024-06-01")
+def test_driver_form_honours_num_races(openf1_season, no_fastf1):
+    result = get_driver_form.invoke({"driver_code": "VER", "year": 2024, "num_races": 2})
+
+    assert [r["event"] for r in result["recent_results"]] == ["Miami", "Monte Carlo"]
+
+
+@freeze_time("2024-06-01")
+def test_driver_form_reports_dnfs_and_excludes_them_from_the_average(openf1_season, no_fastf1):
+    result = get_driver_form.invoke({"driver_code": "HAM", "year": 2024, "num_races": 5})
+
+    assert [r["position"] for r in result["recent_results"]] == [3, 3, "DNF"]
+    assert result["average_finish"] == pytest.approx(3.0)
+    assert result["recent_results"][2]["status"] == "DNF"
+
+
+@freeze_time("2024-06-01")
+def test_driver_form_returns_empty_for_an_unknown_driver_code(openf1_season, no_fastf1):
+    result = get_driver_form.invoke({"driver_code": "ZZZ", "year": 2024, "num_races": 5})
+
+    assert result["recent_results"] == []
+    assert result["average_finish"] is None
+
+
+@freeze_time(FROZEN_NOW)
+def test_driver_form_falls_back_to_fastf1_before_2023(
+    monkeypatch,
+    openf1_season,
+    season_2025,
+    race_session,  # noqa: F811
+):
+    from tools import fastf1_tools
+
+    monkeypatch.setattr(fastf1_tools, "get_schedule", lambda year: season_2025)
+
+    result = get_driver_form.invoke({"driver_code": "VER", "year": 2022})
+
+    assert [r["event"] for r in result["recent_results"]] == [
+        "Bahrain Grand Prix",
+        "Miami Grand Prix",
+    ]
+    assert openf1_season.calls == []
+
+
+# ── get_circuit_winners ──────────────────────────────────────────────────────
+
+
+@freeze_time("2025-01-15")
+def test_circuit_winners_come_from_openf1(openf1_season, no_fastf1):
+    """The window from frozen 2025 with years_back=1 is 2024 alone, which the fixture
+    covers. Driver 1 won Monaco there.
+    """
+    result = get_circuit_winners.invoke({"circuit_name": "Monte Carlo", "years_back": 1})
+
+    assert result["circuit"] == "Monte Carlo"
+    assert result["recent_winners"] == [
+        {
+            "year": 2024,
+            "driver": "Max VERSTAPPEN",
+            "driver_code": "VER",
+            "team": "Red Bull Racing",
+            "time": "1:00:00",
+        }
+    ]
+
+
+@freeze_time("2025-01-15")
+def test_circuit_winners_degrade_to_a_note_when_nothing_matches(openf1_season, no_fastf1):
+    result = get_circuit_winners.invoke({"circuit_name": "Nürburgring", "years_back": 1})
+
+    assert result == {
+        "circuit": "Nürburgring",
+        "recent_winners": [{"note": "No recent data available"}],
+    }
+
+
+@freeze_time("2025-01-15")
+def test_circuit_winners_use_fastf1_for_the_years_openf1_cannot_cover(
+    monkeypatch,
+    openf1_season,
+    fake_get_schedule,
+    race_session,  # noqa: F811
+):
+    """A years_back window straddling 2023 must draw from both sources rather than
+    truncating. This is the case that keeps deep circuit history working.
+    """
+    from tools import f1_data_tools
+
+    monkeypatch.setattr(f1_data_tools, "get_schedule", fake_get_schedule)
+
+    result = get_circuit_winners.invoke({"circuit_name": "Monte Carlo", "years_back": 4})
+
+    assert [w["year"] for w in result["recent_winners"]] == [2024]
+    assert openf1_season.calls, "the in-coverage years should still hit OpenF1"

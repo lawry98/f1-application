@@ -8,7 +8,7 @@ from langchain_core.tools import tool
 
 from tools.fastf1_helpers import find_event, format_position, load_race_session
 from tools.openf1_client import OPENF1_FIRST_YEAR, driver_index, session_results
-from tools.openf1_races import completed_races
+from tools.openf1_races import completed_races, find_race_session
 from tools.openf1_shaping import top_finisher_rows
 from tools.schedule_cache import get_schedule
 
@@ -91,7 +91,12 @@ def get_recent_top_finishers(year: int) -> dict[str, Any]:
 
 @tool
 def get_circuit_winners(circuit_name: str, years_back: int = 3) -> dict[str, Any]:
-    """Get recent race winners at a specific circuit using FastF1 historical data.
+    """Get recent race winners at a specific circuit.
+
+    The lookback window is split by source rather than truncated: years from
+    ``OPENF1_FIRST_YEAR`` onwards come from OpenF1 in one request each, earlier years
+    from FastF1. A years_back of 5 therefore still reaches back five years, just more
+    slowly for the older half.
 
     Args:
         circuit_name: Name of the circuit/Grand Prix.
@@ -105,27 +110,22 @@ def get_circuit_winners(circuit_name: str, years_back: int = 3) -> dict[str, Any
         winners = []
 
         for year in range(current_year - years_back, current_year):
-            try:
-                schedule = get_schedule(year)
-                event_data = find_event(schedule, circuit_name)
-
-                if event_data is not None:
-                    session = load_race_session(year, event_data["EventName"])
-                    winner = session.results[session.results["Position"] == 1]
-
-                    if not winner.empty:
-                        winner_data = winner.iloc[0]
-                        winners.append(
-                            {
-                                "year": year,
-                                "driver": winner_data["FullName"],
-                                "driver_code": winner_data["Abbreviation"],
-                                "team": winner_data["TeamName"],
-                                "time": str(winner_data["Time"]),
-                            }
-                        )
-            except Exception:
-                continue
+            winner = None
+            if year >= OPENF1_FIRST_YEAR:
+                try:
+                    winner = _openf1_circuit_winner(circuit_name, year)
+                except Exception as exc:
+                    logger.warning(
+                        "OpenF1 winner lookup for %s %d failed (%s: %s); falling back to FastF1",
+                        circuit_name,
+                        year,
+                        type(exc).__name__,
+                        exc,
+                    )
+            if winner is None:
+                winner = _fastf1_circuit_winner(circuit_name, year)
+            if winner is not None:
+                winners.append(winner)
 
         return {
             "circuit": circuit_name,
@@ -133,3 +133,63 @@ def get_circuit_winners(circuit_name: str, years_back: int = 3) -> dict[str, Any
         }
     except Exception as exc:
         return {"error": f"Failed to get circuit winners: {exc}"}
+
+
+def _openf1_circuit_winner(circuit_name: str, year: int) -> dict[str, Any] | None:
+    """Return the OpenF1 winner row for one circuit-year, or None if unavailable."""
+    session = find_race_session(year, circuit_name)
+    if session is None:
+        return None
+
+    key = session["session_key"]
+    winner = next((row for row in session_results({key}) if row.get("position") == 1), None)
+    if winner is None:
+        return None
+
+    identity = driver_index({key}).get(winner.get("driver_number"), {})
+    return {
+        "year": year,
+        "driver": identity.get("full_name", ""),
+        "driver_code": identity.get("name_acronym", ""),
+        "team": identity.get("team_name", ""),
+        # OpenF1 gives race duration in seconds; the FastF1 path gives an H:MM:SS string,
+        # so format to match rather than handing the LLM two different units.
+        "time": _format_duration(winner.get("duration")),
+    }
+
+
+def _format_duration(seconds: float | None) -> str:
+    """Render a race duration in seconds as H:MM:SS, or '' when absent."""
+    if not seconds:
+        return ""
+    total = int(seconds)
+    return f"{total // 3600}:{(total % 3600) // 60:02d}:{total % 60:02d}"
+
+
+def _fastf1_circuit_winner(circuit_name: str, year: int) -> dict[str, Any] | None:
+    """Return the FastF1 winner row for one circuit-year, or None if unavailable.
+
+    A dead year is skipped rather than fatal — the caller is collecting a window, and one
+    missing season should not cost the others.
+    """
+    try:
+        schedule = get_schedule(year)
+        event_data = find_event(schedule, circuit_name)
+        if event_data is None:
+            return None
+
+        session = load_race_session(year, event_data["EventName"])
+        winner = session.results[session.results["Position"] == 1]
+        if winner.empty:
+            return None
+
+        winner_data = winner.iloc[0]
+        return {
+            "year": year,
+            "driver": winner_data["FullName"],
+            "driver_code": winner_data["Abbreviation"],
+            "team": winner_data["TeamName"],
+            "time": str(winner_data["Time"]),
+        }
+    except Exception:
+        return None
