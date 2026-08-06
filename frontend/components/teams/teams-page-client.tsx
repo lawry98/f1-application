@@ -1,12 +1,16 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { AnimatePresence, useReducedMotion } from 'motion/react';
 
 import { TEAMS, TEAM_MAP } from '@/data/teams-data';
+import { useScrollSpy } from '@/hooks/use-scroll-spy';
+import { useTeamNavigation } from '@/hooks/use-team-navigation';
+import { useMediaQuery } from '@/hooks/use-media-query';
 import { TeamsHero } from './teams-hero';
 import { TeamsNavRail } from './teams-nav-rail';
+import { TeamsChipStrip } from './teams-chip-strip';
 import { TeamSection } from './team-section';
 import { TeamsComparisonGrid } from './teams-comparison-grid';
 
@@ -23,55 +27,72 @@ const InspectModal = dynamic(
   { ssr: false },
 );
 
+/** Matches Tailwind's `xl`. The dossier's own breakpoint, kept in one place. */
+const DOSSIER_QUERY = '(min-width: 1280px)';
+
 export function TeamsPageClient() {
-  const [activeTeamId, setActiveTeamId] = useState<string>(TEAMS[0]!.id);
-  const [inspectOpen, setInspectOpen] = useState(false);
   const reducedMotion = useReducedMotion() ?? false;
+  const [inspectOpen, setInspectOpen] = useState(false);
 
-  const handleActivate = useCallback((id: string) => {
-    setActiveTeamId(id);
-  }, []);
+  const ids = useMemo(() => TEAMS.map((t) => t.id), []);
+  const { activeTeamId, claim } = useTeamsSpy(ids);
 
-  const scrollToTeam = useCallback(
-    (id: string) => {
-      document.getElementById(`team-${id}`)?.scrollIntoView({
-        behavior: reducedMotion ? 'auto' : 'smooth',
-        block: 'start',
-      });
-    },
-    [reducedMotion],
-  );
+  // Mounted, not merely hidden. A dossier inside a `display: none` wrapper still runs its
+  // AnimatePresence swap and instantiates a logo image on every team change, for a column
+  // nobody can see.
+  const showDossier = useMediaQuery(DOSSIER_QUERY);
 
   const openInspect = useCallback(() => setInspectOpen(true), []);
   const closeInspect = useCallback(() => setInspectOpen(false), []);
 
+  /**
+   * Claim *and* navigate, for callers that are not anchors.
+   *
+   * The rail, chip strip and comparison rows are real links, so the browser scrolls for
+   * them and `claim` alone is enough. `TeamsHero`'s livery columns are still buttons — it
+   * is Plan B's file and is not touched here — so they need the fragment set explicitly.
+   * Assigning `location.hash` takes the same path an anchor would: it honours
+   * `scroll-mt-[var(--teams-scroll-offset)]` and `scroll-behavior`, and pushes exactly one
+   * history entry.
+   */
+  const jumpToTeam = useCallback(
+    (id: string) => {
+      claim(id);
+      window.location.hash = `#team-${id}`;
+    },
+    [claim],
+  );
+
   return (
     <div className="relative bg-zinc-950">
-      {/* Hero */}
-      <TeamsHero onSelectTeam={scrollToTeam} />
+      <TeamsHero onSelectTeam={jumpToTeam} />
 
-      {/* Mobile nav strip */}
-      <div className="sticky top-14 z-20 bg-zinc-950/90 backdrop-blur-sm lg:hidden">
-        <TeamsNavRail
+      {/* `TeamsChipStrip` carries no landmark of its own — this wrapper is the one place
+          that names it, so the below-`lg` chip strip and the `lg`-and-up rail read as two
+          distinct navigations rather than one, however many links each holds. */}
+      <nav
+        aria-label="Constructor navigation, compact"
+        className="sticky top-14 z-20 bg-zinc-950/90 backdrop-blur-sm lg:hidden"
+      >
+        <TeamsChipStrip
           activeTeamId={activeTeamId}
-          onSelectTeam={scrollToTeam}
+          onSelectTeam={claim}
           reducedMotion={reducedMotion}
-          mobile
         />
-      </div>
+      </nav>
 
-      {/* Main body: three-column layout */}
       <div className="flex">
-        {/* Desktop left nav rail */}
-        <aside className="sticky top-14 hidden h-[calc(100vh-3.5rem)] w-[200px] self-start overflow-y-auto border-r border-zinc-900 lg:block xl:w-[240px]">
+        <aside
+          aria-label="Constructor navigation"
+          className="sticky top-14 hidden h-[calc(100vh-3.5rem)] w-[200px] self-start overflow-y-auto border-r border-zinc-900 lg:block xl:w-[240px]"
+        >
           <TeamsNavRail
             activeTeamId={activeTeamId}
-            onSelectTeam={scrollToTeam}
+            onSelectTeam={claim}
             reducedMotion={reducedMotion}
           />
         </aside>
 
-        {/* Center: scrollable team sections */}
         <div className="min-w-0 flex-1">
           {TEAMS.map((team, index) => (
             <TeamSection
@@ -79,7 +100,6 @@ export function TeamsPageClient() {
               team={team}
               index={index}
               isActive={activeTeamId === team.id}
-              onActivate={handleActivate}
               onInspect={openInspect}
               reducedMotion={reducedMotion}
             />
@@ -88,20 +108,36 @@ export function TeamsPageClient() {
             teams={TEAMS}
             activeTeamId={activeTeamId}
             reducedMotion={reducedMotion}
-            onScrollToTeam={scrollToTeam}
+            onSelectTeam={claim}
           />
         </div>
 
-        {/* Desktop right sticky team dossier */}
-        <aside className="sticky top-14 hidden h-[calc(100vh-3.5rem)] w-[300px] self-start border-l border-zinc-900 lg:block xl:w-[360px]">
-          <StickyTeamPanel activeTeam={TEAM_MAP[activeTeamId]!} onInspect={openInspect} />
-        </aside>
+        {/* `xl`, not `lg`. Three columns at laptop width squeezed the centre to nothing;
+            the per-section Inspect button covers everything below this. */}
+        {showDossier && (
+          <aside
+            aria-label="Team dossier"
+            className="sticky top-14 hidden h-[calc(100vh-3.5rem)] w-[300px] self-start border-l border-zinc-900 xl:block xl:w-[360px]"
+          >
+            <StickyTeamPanel activeTeam={TEAM_MAP[activeTeamId]!} onInspect={openInspect} />
+          </aside>
+        )}
       </div>
 
-      {/* Inspect modal */}
       <AnimatePresence>
         {inspectOpen && <InspectModal team={TEAM_MAP[activeTeamId]!} onClose={closeInspect} />}
       </AnimatePresence>
     </div>
   );
+}
+
+/**
+ * The spy and the URL, composed. Kept as a named helper so the component body reads as
+ * layout rather than as state plumbing, and so the two hooks' wiring order — the URL layers
+ * over the spy, never the other way round — is stated in one place.
+ */
+function useTeamsSpy(ids: string[]): { activeTeamId: string; claim: (id: string) => void } {
+  const { activeId, claim } = useScrollSpy(ids);
+  useTeamNavigation({ activeId, claim, ids });
+  return { activeTeamId: activeId, claim };
 }
