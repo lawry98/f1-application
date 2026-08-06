@@ -174,7 +174,7 @@ is sized `min(92vw, calc(82vh * 800 / 420))` to respect both viewport constraint
 
 ### Frontend tests
 
-Vitest with jsdom, in `frontend/tests/`. Three things about them are not guessable:
+Vitest with jsdom, in `frontend/tests/`. A few things about them are not guessable:
 
 - **`next lint` only walks the directories listed in `next.config.js`'s `eslint.dirs`.**
   `tests/` is in that list *because* it is not one of Next's defaults — without the entry,
@@ -186,6 +186,10 @@ Vitest with jsdom, in `frontend/tests/`. Three things about them are not guessab
   from the format the backend really serves, which is the one thing they exist to catch.
 - **`tests/setup.ts` stubs `IntersectionObserver`.** jsdom has none, and `BlurFade` wraps most
   page sections, so without it any test that renders one dies inside framer-motion's `useInView`.
+- **`AnimatePresence mode="wait"` makes content untestable.** The incoming child is held back
+  behind the outgoing one's exit animation, which never resolves synchronously under jsdom, so
+  `getByRole` finds nothing. Use it for swaps nobody asserts on; anywhere a test needs the new
+  content, render conditionally instead.
 
 Fake timers are load-bearing in `use-briefing.test.tsx` — the flush interval is a module
 constant, so controlling the clock is the only way to observe a paint mid-stream. Use
