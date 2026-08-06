@@ -299,10 +299,14 @@ OPENF1_DRIVERS = [
     for number, full_name, acronym, team in (
         (1, "Max VERSTAPPEN", "VER", "Red Bull Racing"),
         (4, "Lando NORRIS", "NOR", "McLaren"),
+        # Deliberately adversarial: driver number 5 sorts *ahead* of HAM's 44, and
+        # Williams is listed *before* Ferrari below. Both confounds point the opposite
+        # way from the correct answer, so dropping either tie-break component inverts
+        # the order instead of leaving it unchanged by coincidence — that inversion is
+        # what makes the tie-break tests actually fail on a regression. Do not "tidy"
+        # this back into ascending driver-number / alphabetical-team order.
+        (5, "Tied SECOND", "TIE", "Williams"),
         (44, "Lewis HAMILTON", "HAM", "Ferrari"),
-        # Finishes level with HAM on 30.0 — the tie-break case. Never beats HAM's best
-        # finish, so best_position decides and the order is predictable.
-        (55, "Tied SECOND", "TIE", "Williams"),
         (50, "Zero POINTS", "ZER", "Cadillac"),
     )
 ]
@@ -326,25 +330,29 @@ def _openf1_result(session_key, position, number, points, **flags):
 #
 # Season totals this produces: VER 75, NOR 69, HAM 30, TIE 30, ZER 0.
 #   - Driver 44 (HAM) retires from Monaco — the DNF case.
-#   - Driver 55 (TIE) finishes level with HAM on 30.0 — the tie-break case. HAM's best
-#     finish is P3 and TIE's is P4, so best_position decides and HAM ranks ahead.
+#   - Driver 5 (TIE) finishes level with HAM on 30.0 — the tie-break case. HAM's best
+#     finish is P3 and TIE's is P4, so best_position decides and HAM ranks ahead — even
+#     though TIE's driver number (5) is numerically ahead of HAM's (44), which is what
+#     makes this a real guard rather than a coincidence of ascending driver-number order.
 #   - Driver 50 (ZER) scores nothing all season — the zero-fill case.
 # Constructors: Red Bull 75, McLaren 69, Ferrari 30, Williams 30, Cadillac 0. Ferrari and
-# Williams tie, broken alphabetically, so Cadillac lands at P5.
+# Williams tie, broken alphabetically, so Cadillac lands at P5 — even though Williams is
+# inserted into the roster before Ferrari (see OPENF1_DRIVERS), which is what makes this a
+# real guard rather than a coincidence of dict-insertion order.
 OPENF1_RESULTS = [
     _openf1_result(9500, 1, 1, 25.0),
     _openf1_result(9500, 2, 4, 18.0),
     _openf1_result(9500, 3, 44, 15.0),
-    _openf1_result(9500, 4, 55, 12.0),
+    _openf1_result(9500, 4, 5, 12.0),
     _openf1_result(9510, 1, 4, 8.0),
     _openf1_result(9510, 2, 1, 7.0),
     _openf1_result(9512, 1, 4, 25.0),
     _openf1_result(9512, 2, 1, 18.0),
     _openf1_result(9512, 3, 44, 15.0),
-    _openf1_result(9512, 4, 55, 12.0),
+    _openf1_result(9512, 4, 5, 12.0),
     _openf1_result(9600, 1, 1, 25.0, duration=3600.0),
     _openf1_result(9600, 2, 4, 18.0),
-    _openf1_result(9600, 4, 55, 6.0),
+    _openf1_result(9600, 4, 5, 6.0),
     _openf1_result(9600, 0, 44, 0.0, dnf=True),
     # Qualifying carries no `points` key at all — pinning that OpenF1 quirk in the fixture.
     {"session_key": 9511, "position": 1, "driver_number": 1, "dnf": False},
