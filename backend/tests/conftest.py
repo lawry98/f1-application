@@ -365,14 +365,6 @@ def openf1_season(monkeypatch):
     arms, which is exactly the behaviour these fixtures were written to exercise —
     adding real meeting names is deliberately left to the tests in
     ``test_openf1_tools.py`` that exist to cover the meeting arm.
-
-    ``sessions`` is additionally filtered by the requested ``year`` param here, unlike
-    ``make_openf1_get``'s other routes. The real OpenF1 server enforces ``year`` itself —
-    ``list_sessions`` trusts it and does no client-side re-filtering, the way it does for
-    ``session_name`` — so a generic fake that ignores query params would answer a 2023
-    sessions query with this fixture's 2024 data. That only matters once a test queries
-    more than one year against this fixture, which a get_circuit_winners lookback window
-    does; without the filter it would double-count a single real race as two.
     """
     from tests.factories import make_openf1_get
     from tools import openf1_client
@@ -385,16 +377,5 @@ def openf1_season(monkeypatch):
             "meetings": [],
         }
     )
-
-    def _year_filtered_get(url: str, params: dict | None = None, **kwargs):
-        response = fake(url, params=params, **kwargs)
-        endpoint = url.rstrip("/").rsplit("/", 1)[-1]
-        if endpoint == "sessions" and params and "year" in params:
-            year = str(params["year"])
-            response._payload = [
-                s for s in response._payload if s.get("date_start", "")[:4] == year
-            ]
-        return response
-
-    monkeypatch.setattr(openf1_client.requests, "get", _year_filtered_get)
+    monkeypatch.setattr(openf1_client.requests, "get", fake)
     return fake

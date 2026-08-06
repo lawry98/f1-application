@@ -1,6 +1,8 @@
-"""Tests for the four result tools on their OpenF1 path, and their FastF1 fallbacks.
+"""Tests for the three migrated result tools on their OpenF1 path, and their FastF1
+fallbacks. ``get_circuit_winners`` is the fourth result tool but stays FastF1-only —
+see its docstring in ``f1_data_tools.py`` — so it is not covered here.
 
-The pre-existing ``test_fastf1_tools.py`` covers the same four tools on the FastF1 path
+The pre-existing ``test_fastf1_tools.py`` covers all four tools on the FastF1 path
 and must keep passing untouched — that is the migration's acceptance criterion. It gets
 that path for free because conftest's autouse ``_block_openf1_network`` makes every
 unpatched OpenF1 call a transport failure.
@@ -24,7 +26,7 @@ from tests.conftest import FROZEN_NOW
 # file test_fastf1_tools.py that must stay untouched. Each use as a test parameter below
 # is flagged by ruff as a redefinition (F811), which is a false positive for this pattern.
 from tests.test_fastf1_tools import race_session  # noqa: F401
-from tools.f1_data_tools import get_circuit_winners, get_recent_top_finishers
+from tools.f1_data_tools import get_recent_top_finishers
 from tools.fastf1_tools import get_driver_form, get_recent_race_results
 from tools.openf1_races import find_race_session
 
@@ -444,55 +446,3 @@ def test_driver_form_falls_back_to_fastf1_before_2023(
         "Miami Grand Prix",
     ]
     assert openf1_season.calls == []
-
-
-# ── get_circuit_winners ──────────────────────────────────────────────────────
-
-
-@freeze_time("2025-01-15")
-def test_circuit_winners_come_from_openf1(openf1_season, no_fastf1):
-    """The window from frozen 2025 with years_back=1 is 2024 alone, which the fixture
-    covers. Driver 1 won Monaco there.
-    """
-    result = get_circuit_winners.invoke({"circuit_name": "Monte Carlo", "years_back": 1})
-
-    assert result["circuit"] == "Monte Carlo"
-    assert result["recent_winners"] == [
-        {
-            "year": 2024,
-            "driver": "Max VERSTAPPEN",
-            "driver_code": "VER",
-            "team": "Red Bull Racing",
-            "time": "1:00:00",
-        }
-    ]
-
-
-@freeze_time("2025-01-15")
-def test_circuit_winners_degrade_to_a_note_when_nothing_matches(openf1_season, no_fastf1):
-    result = get_circuit_winners.invoke({"circuit_name": "Nürburgring", "years_back": 1})
-
-    assert result == {
-        "circuit": "Nürburgring",
-        "recent_winners": [{"note": "No recent data available"}],
-    }
-
-
-@freeze_time("2025-01-15")
-def test_circuit_winners_use_fastf1_for_the_years_openf1_cannot_cover(
-    monkeypatch,
-    openf1_season,
-    fake_get_schedule,
-    race_session,  # noqa: F811
-):
-    """A years_back window straddling 2023 must draw from both sources rather than
-    truncating. This is the case that keeps deep circuit history working.
-    """
-    from tools import f1_data_tools
-
-    monkeypatch.setattr(f1_data_tools, "get_schedule", fake_get_schedule)
-
-    result = get_circuit_winners.invoke({"circuit_name": "Monte Carlo", "years_back": 4})
-
-    assert [w["year"] for w in result["recent_winners"]] == [2024]
-    assert openf1_season.calls, "the in-coverage years should still hit OpenF1"
