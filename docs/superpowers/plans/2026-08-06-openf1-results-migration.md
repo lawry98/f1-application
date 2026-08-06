@@ -628,6 +628,7 @@ from tools.openf1_shaping import derive_status, race_result_rows, top_finisher_r
 DRIVERS = {
     1: {"full_name": "Max VERSTAPPEN", "name_acronym": "VER", "team_name": "Red Bull Racing"},
     4: {"full_name": "Lando NORRIS", "name_acronym": "NOR", "team_name": "McLaren"},
+    44: {"full_name": "Lewis HAMILTON", "name_acronym": "HAM", "team_name": "Ferrari"},
 }
 
 
@@ -698,6 +699,27 @@ def test_race_result_rows_sort_by_position():
     assert [row["Position"] for row in race_result_rows(rows, DRIVERS)] == [1, 4]
 
 
+def test_race_result_rows_sort_unclassified_cars_last():
+    """OpenF1 encodes "no finishing position" as 0, so an ascending sort would put every
+    retirement above the winner. FastF1's frame orders DNFs last and these rows must match.
+    """
+    rows = [
+        {"session_key": 1, "position": 0, "driver_number": 44, "points": 0.0, "dnf": True},
+        {"session_key": 1, "position": 1, "driver_number": 1, "points": 25.0},
+    ]
+
+    assert [row["Position"] for row in race_result_rows(rows, DRIVERS)] == [1, "DNF"]
+
+
+def test_top_finisher_rows_sort_unclassified_cars_last():
+    rows = [
+        {"session_key": 1, "position": 0, "driver_number": 44, "points": 0.0, "dnf": True},
+        {"session_key": 1, "position": 1, "driver_number": 1, "points": 25.0},
+    ]
+
+    assert [row["position"] for row in top_finisher_rows(rows, DRIVERS)] == [1, "DNF"]
+
+
 def test_race_result_rows_tolerate_an_unknown_driver_number():
     """A driver in the results but not the roster gets blanks, not a KeyError."""
     rows = [{"session_key": 1, "position": 1, "driver_number": 99, "points": 25.0}]
@@ -755,6 +777,18 @@ from typing import Any
 
 from tools.fastf1_helpers import format_position
 
+# Sorts unclassified cars to the back. OpenF1 encodes "no finishing position" as 0, so a
+# naive ascending sort puts every retirement *above* the winner. FastF1's results frame
+# already orders DNFs last, and these rows have to match it.
+_UNCLASSIFIED_SORT_RANK = 999
+
+
+def _position_sort_key(row: dict[str, Any]) -> int:
+    position = row.get("position")
+    if not isinstance(position, int) or position <= 0:
+        return _UNCLASSIFIED_SORT_RANK
+    return position
+
 
 def derive_status(row: dict[str, Any]) -> str:
     """Collapse OpenF1's three retirement booleans into a FastF1-style Status string.
@@ -790,7 +824,7 @@ def race_result_rows(
     number, and the existing fixtures encode it that way.
     """
     shaped = []
-    for row in sorted(rows, key=lambda r: r.get("position") or 0):
+    for row in sorted(rows, key=_position_sort_key):
         identity = drivers.get(row.get("driver_number"), {})
         shaped.append(
             {
@@ -815,7 +849,7 @@ def top_finisher_rows(
     refactor's clothes.
     """
     shaped = []
-    for row in sorted(rows, key=lambda r: r.get("position") or 0):
+    for row in sorted(rows, key=_position_sort_key):
         identity = drivers.get(row.get("driver_number"), {})
         shaped.append(
             {
@@ -922,6 +956,9 @@ OPENF1_DRIVERS = [
         (1, "Max VERSTAPPEN", "VER", "Red Bull Racing"),
         (4, "Lando NORRIS", "NOR", "McLaren"),
         (44, "Lewis HAMILTON", "HAM", "Ferrari"),
+        # Finishes level with HAM on 30.0 — the tie-break case. Never beats HAM's best
+        # finish, so best_position decides and the order is predictable.
+        (55, "Tied SECOND", "TIE", "Williams"),
         (50, "Zero POINTS", "ZER", "Cadillac"),
     )
 ]
@@ -941,19 +978,29 @@ def _openf1_result(session_key, position, number, points, **flags):
     return row
 
 
-# Race points on the 25/18 scale; the Miami Sprint on the 8/7 scale. Driver 44 retires
-# from Monaco, and driver 50 scores nothing all season — the zero-fill case.
+# Race points on the 25/18 scale; the Miami Sprint on the 8/7 scale.
+#
+# Season totals this produces: VER 75, NOR 69, HAM 30, TIE 30, ZER 0.
+#   - Driver 44 (HAM) retires from Monaco — the DNF case.
+#   - Driver 55 (TIE) finishes level with HAM on 30.0 — the tie-break case. HAM's best
+#     finish is P3 and TIE's is P4, so best_position decides and HAM ranks ahead.
+#   - Driver 50 (ZER) scores nothing all season — the zero-fill case.
+# Constructors: Red Bull 75, McLaren 69, Ferrari 30, Williams 30, Cadillac 0. Ferrari and
+# Williams tie, broken alphabetically, so Cadillac lands at P5.
 OPENF1_RESULTS = [
     _openf1_result(9500, 1, 1, 25.0),
     _openf1_result(9500, 2, 4, 18.0),
     _openf1_result(9500, 3, 44, 15.0),
+    _openf1_result(9500, 4, 55, 12.0),
     _openf1_result(9510, 1, 4, 8.0),
     _openf1_result(9510, 2, 1, 7.0),
     _openf1_result(9512, 1, 4, 25.0),
     _openf1_result(9512, 2, 1, 18.0),
     _openf1_result(9512, 3, 44, 15.0),
-    _openf1_result(9600, 1, 1, 25.0),
+    _openf1_result(9512, 4, 55, 12.0),
+    _openf1_result(9600, 1, 1, 25.0, duration=3600.0),
     _openf1_result(9600, 2, 4, 18.0),
+    _openf1_result(9600, 4, 55, 6.0),
     _openf1_result(9600, 0, 44, 0.0, dnf=True),
     # Qualifying carries no `points` key at all — pinning that OpenF1 quirk in the fixture.
     {"session_key": 9511, "position": 1, "driver_number": 1, "dnf": False},
@@ -1029,7 +1076,8 @@ def test_race_results_come_from_openf1(openf1_season, no_fastf1):
 
     assert result["year"] == 2024
     assert result["event"] == "Monte Carlo"
-    assert [row["Abbreviation"] for row in result["results"]] == ["VER", "NOR", "HAM"]
+    # HAM retired (position 0) and must land last, not first.
+    assert [row["Abbreviation"] for row in result["results"]] == ["VER", "NOR", "TIE", "HAM"]
     assert set(result["results"][0]) == {
         "Position",
         "DriverNumber",
@@ -1100,7 +1148,7 @@ def test_top_finishers_come_from_the_last_completed_openf1_race(openf1_season, n
         "team": "Red Bull Racing",
         "points": 25.0,
     }
-    assert result["top_finishers"][2]["position"] == "DNF"
+    assert result["top_finishers"][-1]["position"] == "DNF"
 
 
 @freeze_time("2024-06-01")
@@ -1122,7 +1170,7 @@ def test_top_finishers_ignore_sprints_and_qualifying(openf1_season, no_fastf1):
     result = get_recent_top_finishers.invoke({"year": 2024})
 
     assert result["last_race"] == "Monte Carlo"
-    assert len(result["top_finishers"]) == 3
+    assert len(result["top_finishers"]) == 4
 
 
 @freeze_time("2024-01-15")
@@ -1799,11 +1847,7 @@ def _fastf1_circuit_winner(circuit_name: str, year: int) -> dict[str, Any] | Non
         return None
 ```
 
-The `duration` in the conftest fixture is absent, so `_format_duration` returns `""`. Update the `OPENF1_RESULTS` fixture entry for session 9600 position 1 to carry `duration=3600.0` so the test's expected `"1:00:00"` holds:
-
-```python
-    _openf1_result(9600, 1, 1, 25.0, duration=3600.0),
-```
+The conftest fixture from Task 3 already gives session 9600's winner `duration=3600.0`, which is what makes the test's expected `"1:00:00"` hold. No fixture change is needed here.
 
 - [ ] **Step 5: Run the new tests**
 
@@ -1866,7 +1910,9 @@ from tools.standings_tools import get_championship_standings
 
 @freeze_time("2024-06-01")
 def test_drivers_table_sums_races_and_sprints(openf1_season):
-    """Driver 4 scores 18 + 8 (sprint) + 18 = 44; driver 1 scores 25 + 7 + 25 = 57."""
+    """VER: 25 (Sakhir) + 7 (Miami sprint) + 18 (Miami) + 25 (Monaco) = 75.
+    NOR: 18 + 8 (sprint) + 25 + 18 = 69.
+    """
     result = get_championship_standings.invoke({"year": 2024})
 
     points = {row["driver_code"]: row["points"] for row in result["drivers"]}
@@ -1894,7 +1940,13 @@ def test_qualifying_is_excluded(openf1_season):
     result = get_championship_standings.invoke({"year": 2024})
 
     assert result["races_completed"] == 3
-    assert {row["driver_code"] for row in result["drivers"]} == {"VER", "NOR", "HAM", "ZER"}
+    assert {row["driver_code"] for row in result["drivers"]} == {
+        "VER",
+        "NOR",
+        "HAM",
+        "TIE",
+        "ZER",
+    }
 
 
 @freeze_time("2024-06-01")
@@ -1905,7 +1957,7 @@ def test_a_scoreless_team_still_appears(openf1_season):
     result = get_championship_standings.invoke({"year": 2024})
 
     cadillac = [row for row in result["constructors"] if row["team"] == "Cadillac"]
-    assert cadillac == [{"position": 4, "team": "Cadillac", "points": 0.0}]
+    assert cadillac == [{"position": 5, "team": "Cadillac", "points": 0.0}]
 
 
 @freeze_time("2024-06-01")
@@ -1920,14 +1972,14 @@ def test_a_scoreless_driver_still_appears(openf1_season):
 def test_positions_are_dense_and_start_at_one(openf1_season):
     result = get_championship_standings.invoke({"year": 2024})
 
-    assert [row["position"] for row in result["drivers"]] == [1, 2, 3, 4]
-    assert [row["position"] for row in result["constructors"]] == [1, 2, 3, 4]
+    assert [row["position"] for row in result["drivers"]] == [1, 2, 3, 4, 5]
+    assert [row["position"] for row in result["constructors"]] == [1, 2, 3, 4, 5]
 
 
 @freeze_time("2024-06-01")
-def test_constructors_sum_both_cars(openf1_season):
-    """Nothing in the fixture pairs two drivers in one team, so this pins the mechanism
-    against a single-car team rather than asserting an arithmetic coincidence.
+def test_constructors_sum_every_car_in_a_team(openf1_season):
+    """Each fixture team fields one driver, so these pin the aggregation mechanism rather
+    than asserting an arithmetic coincidence between two cars.
     """
     result = get_championship_standings.invoke({"year": 2024})
 
@@ -1935,22 +1987,32 @@ def test_constructors_sum_both_cars(openf1_season):
     assert teams["Red Bull Racing"] == 75.0
     assert teams["McLaren"] == 69.0
     assert teams["Ferrari"] == 30.0
+    assert teams["Williams"] == 30.0
 
 
 @freeze_time("2024-06-01")
-def test_ties_break_deterministically(openf1_season, monkeypatch):
-    """Two drivers on equal points must not swap order between runs — an LLM reading a
-    reshuffling table would report a different championship each time.
+def test_a_driver_tie_breaks_on_best_finishing_position(openf1_season):
+    """HAM and TIE both finish the season on 30.0. HAM's best result is a P3 and TIE's a
+    P4, so HAM must rank ahead. Sorting on points alone would leave the pair's order down
+    to dict iteration, and an LLM reading a reshuffling table reports a different
+    championship every time it is asked.
     """
-    first = get_championship_standings.invoke({"year": 2024})
-    from tools import openf1_client
+    result = get_championship_standings.invoke({"year": 2024})
 
-    openf1_client.clear()
-    second = get_championship_standings.invoke({"year": 2024})
+    tied = [row for row in result["drivers"] if row["points"] == 30.0]
+    assert [row["driver_code"] for row in tied] == ["HAM", "TIE"]
+    assert [row["position"] for row in tied] == [3, 4]
 
-    assert [r["driver_code"] for r in first["drivers"]] == [
-        r["driver_code"] for r in second["drivers"]
-    ]
+
+@freeze_time("2024-06-01")
+def test_a_constructor_tie_breaks_alphabetically(openf1_season):
+    """Ferrari and Williams both finish on 30.0. Neither has a driver-level tiebreak to
+    inherit, so the team name decides and the order is stable.
+    """
+    result = get_championship_standings.invoke({"year": 2024})
+
+    tied = [row for row in result["constructors"] if row["points"] == 30.0]
+    assert [row["team"] for row in tied] == ["Ferrari", "Williams"]
 
 
 def test_a_year_before_coverage_is_an_error():
