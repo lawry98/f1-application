@@ -1,7 +1,7 @@
 # Migrate result-reading tools to OpenF1
 
 **Date:** 2026-08-06
-**Status:** Approved, not yet implemented
+**Status:** Implemented
 **Scope:** Backend only. The frontend standings UI ships on a separate branch.
 
 ## Context
@@ -36,6 +36,37 @@ that gap.
 - A new `get_championship_standings` tool and `GET /api/standings/{year}` endpoint expose real
   driver and constructor tables.
 - FastF1 stays for what it is still best at: the schedule, and any season before 2023.
+
+## What changed during implementation
+
+The outcome differs from the plan above in two ways — read this before trusting the rest of
+this document as a description of what shipped.
+
+1. **`get_circuit_winners` was ported to OpenF1, then reverted.** Only three of the four result
+   tools ended up on OpenF1, not all four. `get_circuit_winners` needs one race from each of N
+   different years, and OpenF1's endpoints are all per-year, so the port cost four requests per
+   year — 12 requests, 6.57s for a 5-year window — against FastF1's 4.62s. The migration made
+   the other three tools faster; this one it made slower, so it was reverted and stays on
+   FastF1. Its docstring in `f1_data_tools.py` carries the same numbers.
+2. **A `requests` range-query encoding bug cost four tasks.** `params={"session_key>=": v}`
+   makes `requests` percent-encode the `>=` *inside the key* to `session_key%3E%3D` and then
+   append its own `=`, producing `session_key>==v` and a silent HTTP 404. It went undetected
+   for four tasks because every test fake ignores query params, and every tool's OpenF1 failure
+   absorbs into a silent FastF1 fallback — a total OpenF1 outage looks identical to a healthy,
+   merely slower, run. Fixed by stopping the param key at the comparison character
+   (`{"session_key>": v}`, letting `requests` supply the `=`) and guarded by
+   `test_the_range_query_serialises_to_openf1s_filter_syntax`, which asserts the serialised URL
+   via `requests.models.PreparedRequest` rather than the params dict.
+
+Measured results, live against the API on 2026-08-06:
+
+| Tool | Before | After | Source |
+|---|---|---|---|
+| `get_driver_form` | 9.31s | 1.38s, 3 requests | OpenF1 |
+| `get_recent_race_results` | ~2.4s | ~0.5s | OpenF1 |
+| `get_recent_top_finishers` | ~2.4s | ~0.5s | OpenF1 |
+| `get_circuit_winners` | 4.62s | 4.62s | FastF1 — reverted |
+| `get_championship_standings` | did not exist | 2.9s | OpenF1 (new) |
 
 ## Verified facts
 

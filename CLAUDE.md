@@ -93,11 +93,14 @@ a single unapproved build makes `pnpm typecheck`, `pnpm lint`, and `pnpm build` 
 conditional edge: when `state["current_step"] == "error"` it routes straight to `END`, skipping
 planner, tools, and synthesizer. Anything assuming the synthesizer always runs is wrong.
 
-**`tools/` is not uniform.** Seven `@tool` functions live across four modules
-(`fastf1_tools`, `f1_data_tools`, `search_tools`, `weather_tools`). The other three files are
-plain helpers, **not** LLM-callable: `race_resolver.py` (used by the resolver node),
-`schedule_cache.py` (a FastF1 schedule cache), and `fastf1_helpers.py` (shared FastF1
-lookup/session helpers). Adding a file here does not make it a tool.
+**`tools/` is not uniform.** Eight `@tool` functions live across five modules
+(`fastf1_tools`, `f1_data_tools`, `search_tools`, `weather_tools`, `standings_tools`). The other
+six files are plain helpers, **not** LLM-callable: `race_resolver.py` (used by the resolver
+node), `schedule_cache.py` (a FastF1 schedule cache), `fastf1_helpers.py` (shared FastF1
+lookup/session helpers), `openf1_client.py` (the OpenF1 HTTP client and its range-query
+cache), `openf1_races.py` (shared "which session is this event's race" lookups), and
+`openf1_shaping.py` (converts OpenF1 rows into the tools' existing return shapes). Adding a
+file here does not make it a tool.
 
 **Tools never raise.** Every `@tool` returns `{"error": "..."}` on failure. The agent is built to
 continue on partial data — preserve this or the pipeline loses its degradation behaviour.
@@ -142,10 +145,56 @@ completed tool respectively, discriminated by a `kind` field. That writer no-ops
 **SSE discrimination uses the `event:` line** from the SSE protocol, not field-presence
 heuristics on the payload.
 
-**FastF1 session loads hit the network every time, cache or no cache.** `backend/cache/`
-(gitignored) never gets populated: FastF1 only persists a session that loaded cleanly, and
-these loads never do, so warming it achieves nothing. A briefing takes seconds for that
-reason, not because of cold-cache telemetry downloads.
+**FastF1 session loads hit the network every time, cache or no cache — which is why three
+result tools now read OpenF1 instead.** `backend/cache/` (gitignored) never gets populated:
+FastF1 only persists a session that loaded cleanly, and these loads never do, so warming it
+achieves nothing. `get_recent_race_results`, `get_recent_top_finishers`, and `get_driver_form`
+went from a 2.4s FastF1 session load per race (`get_driver_form` measured at 9.31s for five
+races) to a single OpenF1 range query (`get_driver_form` measured at 1.38s, three requests).
+FastF1 remains the **schedule** source — `get_event_schedule` is 0.16s, works, and reaches
+back to 1950 — and the fallback for seasons before `OPENF1_FIRST_YEAR`.
+
+**`get_circuit_winners` is deliberately still on FastF1 — the migration made it slower, not
+faster, so it was reverted.** It needs one race from each of N different years, and OpenF1's
+endpoints are all per-year, so porting it cost four requests per year (12 requests, 6.57s for a
+5-year window) against FastF1's 4.62s. Don't "finish the migration" by re-porting it; the
+tool's own docstring in `f1_data_tools.py` carries the same numbers.
+
+**OpenF1 coverage starts in 2023, and `OPENF1_FIRST_YEAR` is the only place that number
+lives.** Every ported result tool tries OpenF1 first and falls through to its
+`load_race_session` path for an earlier year or a transport failure. The visible cost of the
+OpenF1 path is `Status` fidelity: FastF1 reports *why* a car stopped ("+1 Lap", "Accident"),
+OpenF1 exposes only `dnf`/`dns`/`dsq`, so `derive_status()` collapses it to
+`Finished`/`DNF`/`DNS`/`DSQ`. A real unclassified row also carries `position: None`, not `0` —
+code that coerces with `position or 0` handles this, but a naive `int(position)` will not.
+
+**The `requests` range-query encoding trap cost four tasks of this migration.** OpenF1's filter
+syntax is `session_key>=11334`. Passing `params={"session_key>=": v}` makes `requests`
+percent-encode the `>=` **inside the key** — `session_key%3E%3D` — and then append its own
+`=`, producing `session_key>==v` on the wire and a plain HTTP 404. The fix is to stop the
+param key at the comparison character and let `requests` supply the `=`:
+`{"session_key>": v}`. It went undetected for four tasks because every test fake ignores query
+params, and every tool absorbs an OpenF1 failure as a silent FastF1 fallback — a total OpenF1
+outage is indistinguishable from a healthy, merely slower, run. The regression guard is
+`test_the_range_query_serialises_to_openf1s_filter_syntax` in `test_openf1_client.py`, which
+asserts the **serialised URL** via `requests.models.PreparedRequest`, not the params dict —
+asserting on the dict would have passed with the bug still in place.
+
+**Standings are derived, not fetched.** OpenF1's `drivers_championship` and
+`teams_championship` endpoints return `{"detail": "No results found."}` without a paid
+subscription, so `get_championship_standings` sums `session_result.points` across Race
+**and Sprint** sessions. Two traps live in that derivation: sprints score on the 8/7/6
+scale and must be included, and the table is seeded from the driver roster rather than
+from the results — otherwise a team on zero points (Cadillac, 2026) vanishes and an
+11-team grid renders as 10.
+
+**`tests/conftest.py` blocks OpenF1 as well as FastF1, and the two differ on purpose.**
+`_block_fastf1_network` raises `AssertionError` because no production path should swallow
+one. `_block_openf1_network` raises `requests.ConnectionError` because the tools *do*
+handle that — it is the FastF1 fallback — and that is what lets `test_fastf1_tools.py`
+keep testing the FastF1 path unedited. The consequence is that the fallback is the
+default under test, so `test_openf1_tools.py` asserts the OpenF1 request is genuinely
+made rather than silently fallen through.
 
 **`gltf.scene.clone()` must stay inside `useMemo`** — without it Three.js re-clones the scene on
 every render.
@@ -171,10 +220,11 @@ one-off `isWhite` special case only covered the second of those. `tests/team-uti
 asserts the thresholds for every team on the grid, so a new team with an unreadable color fails
 CI rather than shipping.
 
-**`Team.championshipPosition` and `Team.points` are deliberately unset.** The page has no
-standings source and inventing a table would be worse than omitting it. Every consumer treats them
-as optional and falls back to all-time stats; populating them in `teams-data.ts` is the only change
-needed to light up the standings UI everywhere.
+**`Team.championshipPosition` and `Team.points` are deliberately unset.** A backend source now
+exists — `GET /api/standings/{year}` — but wiring it into the frontend is a separate branch;
+inventing a table here in the meantime would be worse than omitting it. Every consumer treats
+them as optional and falls back to all-time stats; populating them in `teams-data.ts` is the
+only change needed to light up the standings UI everywhere.
 
 **The teams page's three columns appear at different widths.** Left rail from `lg`, sticky 3D
 viewer from `xl`, mobile chip strip below `lg` — laptop widths get two columns on purpose. The
