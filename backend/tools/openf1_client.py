@@ -102,6 +102,26 @@ def list_sessions(year: int, session_name: str | None = None) -> list[dict[str, 
     return result
 
 
+def list_meetings(year: int) -> list[dict[str, Any]]:
+    """Return the year's meetings (one per Grand Prix weekend).
+
+    Exists because ``meeting_name`` is the only OpenF1 field that speaks FastF1's event
+    vocabulary. ``sessions`` carries ``circuit_short_name`` (a place — "Spa-Francorchamps")
+    and ``country_name`` (a noun — "Belgium"), but FastF1's ``EventName`` is adjectival
+    ("Belgian Grand Prix"). Substring matching cannot bridge "Belgian" to "Belgium" or to
+    "Spa-Francorchamps", so callers needing to resolve an EventName match against
+    ``meeting_name`` instead, then join back to a Race session via ``meeting_key``.
+
+    Args:
+        year: Season to query.
+
+    Returns:
+        Meeting dicts carrying meeting_key, meeting_name, circuit_short_name, and
+        country_name. Empty when OpenF1 has no data.
+    """
+    return _get("meetings", {"year": year})
+
+
 def session_results(keys: set[int]) -> list[dict[str, Any]]:
     """Return classification rows for exactly the given session keys, in one request.
 

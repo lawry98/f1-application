@@ -217,11 +217,15 @@ _US_SESSIONS_2026 = [
 
 @pytest.fixture
 def us_sessions(monkeypatch):
-    """Patch OpenF1's sessions endpoint with three same-country 2026 US races."""
+    """Patch OpenF1's sessions endpoint with three same-country 2026 US races.
+
+    No meetings are served (empty list), so these queries fall straight through pass 1
+    and exercise the circuit/country arms exactly as round 1 intended.
+    """
     from tests.factories import make_openf1_get
     from tools import openf1_client
 
-    fake = make_openf1_get({"sessions": _US_SESSIONS_2026})
+    fake = make_openf1_get({"sessions": _US_SESSIONS_2026, "meetings": []})
     monkeypatch.setattr(openf1_client.requests, "get", fake)
     return fake
 
@@ -248,3 +252,117 @@ def test_find_race_session_matches_via_country_when_unique(us_sessions):
     session = find_race_session(2026, "Mexico Grand Prix")
 
     assert session["session_key"] == 20004
+
+
+# ── find_race_session: meeting-name arm ──────────────────────────────────────
+#
+# Defined locally, same reasoning as the US-sessions fixtures above: these fixtures
+# must not touch conftest's shared OPENF1_SESSIONS_2024.
+
+
+def _openf1_get_with_meetings(monkeypatch, meetings, sessions):
+    from tests.factories import make_openf1_get
+    from tools import openf1_client
+
+    fake = make_openf1_get({"meetings": meetings, "sessions": sessions})
+    monkeypatch.setattr(openf1_client.requests, "get", fake)
+    return fake
+
+
+def test_find_race_session_resolves_an_adjectival_name_via_the_meeting_arm(monkeypatch):
+    """ "Belgian Grand Prix" (FastF1's EventName) matches neither the circuit
+    ("Spa-Francorchamps") nor the country ("Belgium") by substring — only the meeting
+    arm, which speaks FastF1's own vocabulary, can resolve it.
+    """
+    _openf1_get_with_meetings(
+        monkeypatch,
+        meetings=[
+            {"meeting_key": 1290, "meeting_name": "Belgian Grand Prix"},
+        ],
+        sessions=[
+            {
+                "session_key": 11334,
+                "meeting_key": 1290,
+                "session_name": "Race",
+                "circuit_short_name": "Spa-Francorchamps",
+                "country_name": "Belgium",
+                "date_start": "2026-07-19T13:00:00+00:00",
+            },
+        ],
+    )
+
+    session = find_race_session(2026, "Belgian Grand Prix")
+
+    assert session["session_key"] == 11334
+
+
+def test_find_race_session_refuses_two_meetings_sharing_a_name(monkeypatch):
+    """2026 has two meetings named "Bahrain Grand Prix" — Sakhir, and a
+    Malaysia-hosted race branded the same way. Neither the meeting arm nor the
+    country arm (both sessions report country_name="Bahrain") can break the tie, so
+    the overall lookup must decline rather than guess.
+    """
+    _openf1_get_with_meetings(
+        monkeypatch,
+        meetings=[
+            {"meeting_key": 1282, "meeting_name": "Bahrain Grand Prix"},
+            {"meeting_key": 1308, "meeting_name": "Bahrain Grand Prix"},
+        ],
+        sessions=[
+            {
+                "session_key": 30001,
+                "meeting_key": 1282,
+                "session_name": "Race",
+                "circuit_short_name": "Sakhir",
+                "country_name": "Bahrain",
+                "date_start": "2026-03-01T15:00:00+00:00",
+            },
+            {
+                "session_key": 30002,
+                "meeting_key": 1308,
+                "session_name": "Race",
+                "circuit_short_name": "Kuala Lumpur",
+                "country_name": "Bahrain",
+                "date_start": "2026-11-15T15:00:00+00:00",
+            },
+        ],
+    )
+
+    assert find_race_session(2026, "Bahrain Grand Prix") is None
+
+
+def test_find_race_session_tries_the_meeting_arm_before_the_circuit_arm(monkeypatch):
+    """Construct a case where the circuit arm and the meeting arm would disagree, and
+    assert the meeting arm's answer wins — proving pass order matters, not just that
+    the meeting arm can resolve names the circuit arm cannot reach at all.
+    """
+    _openf1_get_with_meetings(
+        monkeypatch,
+        # Only the meeting the query is meant to resolve to needs an entry here.
+        meetings=[{"meeting_key": 5002, "meeting_name": "Miami Grand Prix"}],
+        sessions=[
+            # Circuit arm would match this session first if it ran before the meeting
+            # arm: its circuit_short_name is a bidirectional substring of the query.
+            {
+                "session_key": 40001,
+                "meeting_key": 5001,
+                "session_name": "Race",
+                "circuit_short_name": "Miami",
+                "country_name": "United States",
+                "date_start": "2026-05-03T19:30:00+00:00",
+            },
+            # The session the meeting arm should actually return.
+            {
+                "session_key": 40002,
+                "meeting_key": 5002,
+                "session_name": "Race",
+                "circuit_short_name": "Somewhere Else",
+                "country_name": "Nowhereland",
+                "date_start": "2026-06-01T19:30:00+00:00",
+            },
+        ],
+    )
+
+    session = find_race_session(2026, "Miami Grand Prix")
+
+    assert session["session_key"] == 40002

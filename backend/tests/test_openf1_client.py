@@ -16,9 +16,25 @@ from tools.openf1_client import (
     OPENF1_FIRST_YEAR,
     OpenF1Error,
     driver_index,
+    list_meetings,
     list_sessions,
     session_results,
 )
+
+MEETINGS_2026 = [
+    {
+        "meeting_key": 1290,
+        "meeting_name": "Belgian Grand Prix",
+        "circuit_short_name": "Spa-Francorchamps",
+        "country_name": "Belgium",
+    },
+    {
+        "meeting_key": 1291,
+        "meeting_name": "Hungarian Grand Prix",
+        "circuit_short_name": "Hungaroring",
+        "country_name": "Hungary",
+    },
+]
 
 SESSIONS_2026 = [
     {
@@ -89,6 +105,28 @@ def test_list_sessions_sends_no_session_name_when_none_is_asked_for(monkeypatch)
     list_sessions(2026)
 
     assert "session_name" not in fake.calls[0]["params"]
+
+
+def test_list_meetings_returns_the_years_meetings(monkeypatch):
+    fake = make_openf1_get({"meetings": MEETINGS_2026})
+    monkeypatch.setattr(openf1_client.requests, "get", fake)
+
+    result = list_meetings(2026)
+
+    assert [m["meeting_key"] for m in result] == [1290, 1291]
+
+
+def test_list_meetings_asks_the_meetings_endpoint(monkeypatch):
+    """Guards the request, not just the result — a client that quietly served sessions
+    or a cached year would pass on result shape alone.
+    """
+    fake = make_openf1_get({"meetings": MEETINGS_2026})
+    monkeypatch.setattr(openf1_client.requests, "get", fake)
+
+    list_meetings(2026)
+
+    assert fake.calls[0]["url"].endswith("/meetings")
+    assert fake.calls[0]["params"]["year"] == 2026
 
 
 def test_session_results_issues_one_request_for_many_keys(monkeypatch):

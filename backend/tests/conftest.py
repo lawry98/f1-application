@@ -358,6 +358,13 @@ def openf1_season(monkeypatch):
     Overrides the autouse ``_block_openf1_network`` fixture for tests that want the
     OpenF1 path rather than the FastF1 fallback. Returns the fake so tests can assert
     on its ``.calls``.
+
+    ``meetings`` is served empty rather than omitted: ``find_race_session`` always
+    queries it first now, and an unmodelled endpoint makes ``make_openf1_get`` raise.
+    An empty list means every meeting lookup here falls through to the circuit/country
+    arms, which is exactly the behaviour these fixtures were written to exercise —
+    adding real meeting names is deliberately left to the tests in
+    ``test_openf1_tools.py`` that exist to cover the meeting arm.
     """
     from tests.factories import make_openf1_get
     from tools import openf1_client
@@ -367,6 +374,7 @@ def openf1_season(monkeypatch):
             "sessions": OPENF1_SESSIONS_2024,
             "session_result": OPENF1_RESULTS,
             "drivers": OPENF1_DRIVERS,
+            "meetings": [],
         }
     )
     monkeypatch.setattr(openf1_client.requests, "get", fake)
