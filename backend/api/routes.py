@@ -12,9 +12,16 @@ from sse_starlette.sse import EventSourceResponse
 
 from agent.graph import agent
 from agent.state import AgentState
-from api.errors import FAILED_TOOL_SUMMARY, GENERIC_BRIEFING_ERROR, GENERIC_SCHEDULE_ERROR
+from api.errors import (
+    FAILED_TOOL_SUMMARY,
+    GENERIC_BRIEFING_ERROR,
+    GENERIC_SCHEDULE_ERROR,
+    GENERIC_STANDINGS_ERROR,
+)
 from api.models import BriefingRequest, BriefingResponse, ToolTraceSummary
+from tools.openf1_client import OPENF1_FIRST_YEAR
 from tools.schedule_cache import clear as clear_schedule_cache
+from tools.standings_tools import get_championship_standings
 
 logger = logging.getLogger(__name__)
 
@@ -213,6 +220,26 @@ async def get_races(year: int = Path(ge=1950, le=date.today().year + 1)) -> dict
     except Exception as exc:
         logger.exception("Error loading the %d season schedule: %s", year, exc)
         raise HTTPException(status_code=500, detail=GENERIC_SCHEDULE_ERROR) from exc
+
+
+@router.get("/standings/{year}")
+async def get_standings(
+    year: int = Path(ge=OPENF1_FIRST_YEAR, le=date.today().year),
+) -> dict[str, Any]:
+    """Get the driver and constructor championship tables for a season.
+
+    The lower bound is ``OPENF1_FIRST_YEAR`` rather than a literal, so the route and the
+    tool cannot disagree about where coverage starts.
+    """
+    result = await asyncio.to_thread(get_championship_standings.invoke, {"year": year})
+
+    if "error" in result:
+        # The tool's error text can carry upstream exception detail, which is neither
+        # actionable nor safe to show. Log it, serve the fixed copy.
+        logger.warning("Standings for %d unavailable: %s", year, result["error"])
+        raise HTTPException(status_code=502, detail=GENERIC_STANDINGS_ERROR)
+
+    return result
 
 
 @router.get("/health")
