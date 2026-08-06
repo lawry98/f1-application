@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { useCallback, useState } from 'react';
 import { act, renderHook } from '@testing-library/react';
 
 import { teamIdFromHash, useTeamNavigation } from '@/hooks/use-team-navigation';
@@ -114,5 +115,34 @@ describe('useTeamNavigation', () => {
       window.dispatchEvent(new PopStateEvent('popstate'));
     });
     expect(claim).not.toHaveBeenCalled();
+  });
+
+  // Regression: with a real, state-updating `claim` (as Task 11 wires it), the mount-time
+  // hash read and the activeId-sync effect both run in the same commit. If the sync effect
+  // reads `activeId` before the caller's setState from `claim` has flowed back in, it would
+  // rewrite the just-claimed deep link back to the caller's stale/default team. Asserting
+  // only the final hash would pass even with that bug present, since it self-corrects one
+  // render later — so this asserts no intermediate call ever names the default team.
+  it('never lets the default team overwrite a deep link while claim is still reconciling', () => {
+    const claimed: string[] = [];
+    const allIds = [...IDS, 'cadillac'];
+
+    function useHarness(initialActiveId: string) {
+      const [activeId, setActiveId] = useState(initialActiveId);
+      const claim = useCallback((id: string) => {
+        claimed.push(id);
+        setActiveId(id);
+      }, []);
+      useTeamNavigation({ activeId, claim, ids: allIds });
+      return activeId;
+    }
+
+    window.location.hash = '#team-cadillac';
+    const { result } = renderHook(() => useHarness('mercedes'));
+
+    expect(replaceState).not.toHaveBeenCalledWith(null, '', '#team-mercedes');
+    expect(claimed).toEqual(['cadillac']);
+    expect(result.current).toBe('cadillac');
+    expect(window.location.hash).toBe('#team-cadillac');
   });
 });

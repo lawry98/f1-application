@@ -33,10 +33,18 @@ export function useTeamNavigation({
   const hydratedRef = useRef(false);
   const idsRef = useRef(ids);
   idsRef.current = ids;
+  // Set the moment a mount-time (or popstate) hash claims an id, cleared once `activeId`
+  // has actually caught up to it. While set, the sync effect below must not run: `activeId`
+  // is still the caller's stale/default value and writing it would clobber the very hash
+  // that was just read.
+  const pendingHashRef = useRef<string | null>(null);
 
   const claimFromHash = useCallback(() => {
     const id = teamIdFromHash(window.location.hash);
-    if (id !== null && idsRef.current.includes(id)) claim(id);
+    if (id !== null && idsRef.current.includes(id)) {
+      pendingHashRef.current = id;
+      claim(id);
+    }
   }, [claim]);
 
   // Deep link. Runs after the first commit, so `scroll-margin-top` is in effect and the
@@ -52,9 +60,15 @@ export function useTeamNavigation({
   }, [claimFromHash]);
 
   // Scroll-driven. Never before hydration, or the first paint would rewrite a deep link
-  // to the default team before it had been read.
+  // to the default team before it had been read. Also held back while a claimed hash is
+  // still waiting for `activeId` to reconcile — not merely until the read has *run*, but
+  // until the caller's state has actually caught up to what was claimed.
   useEffect(() => {
     if (!hydratedRef.current) return;
+    if (pendingHashRef.current !== null) {
+      if (activeId !== pendingHashRef.current) return;
+      pendingHashRef.current = null;
+    }
     const next = `#team-${activeId}`;
     if (window.location.hash === next) return;
     window.history.replaceState(null, '', next);
