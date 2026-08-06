@@ -106,7 +106,38 @@ function hslToRgb(h: number, s: number, l: number): [number, number, number] {
   return [(r + m) * 255, (g + m) * 255, (b + m) * 255];
 }
 
-const readableCache = new Map<string, string>();
+const liftCache = new Map<string, string>();
+
+/**
+ * Shared mechanism behind `readableOnDark` and `ringOnDark`: lighten `hex` in HSL, one step of
+ * lightness at a time, until it clears `target` contrast against `DARK_BG`, then return the
+ * first candidate that does. Caches on `` `${target}:${hex}` `` so the two callers, which use
+ * different targets, don't collide.
+ *
+ * Lightness is raised in HSL rather than blended toward white so hue and saturation survive —
+ * the result still reads as the brand colour instead of washing out to grey.
+ */
+function liftUntilContrast(hex: string, target: number): string {
+  const key = `${target}:${hex}`;
+  const cached = liftCache.get(key);
+  if (cached) return cached;
+
+  let result = hex;
+  if (contrastRatio(hex, DARK_BG) < target) {
+    const [h, s, l] = rgbToHsl(parseHex(hex));
+    result = '#ffffff';
+    for (let step = l; step <= 1; step += 0.01) {
+      const candidate = toHex(hslToRgb(h, s, Math.min(step, 1)));
+      if (contrastRatio(candidate, DARK_BG) >= target) {
+        result = candidate;
+        break;
+      }
+    }
+  }
+
+  liftCache.set(key, result);
+  return result;
+}
 
 /**
  * A team colour lightened just far enough to clear WCAG AA as small text on `zinc-950`.
@@ -121,24 +152,7 @@ const readableCache = new Map<string, string>();
  * a livery wall painted in lightened brand colours is no longer a livery wall.
  */
 export function readableOnDark(hex: string): string {
-  const cached = readableCache.get(hex);
-  if (cached) return cached;
-
-  let result = hex;
-  if (contrastRatio(hex, DARK_BG) < MIN_CONTRAST) {
-    const [h, s, l] = rgbToHsl(parseHex(hex));
-    result = '#ffffff';
-    for (let step = l; step <= 1; step += 0.01) {
-      const candidate = toHex(hslToRgb(h, s, Math.min(step, 1)));
-      if (contrastRatio(candidate, DARK_BG) >= MIN_CONTRAST) {
-        result = candidate;
-        break;
-      }
-    }
-  }
-
-  readableCache.set(hex, result);
-  return result;
+  return liftUntilContrast(hex, MIN_CONTRAST);
 }
 
 /** Whether a livery is too bright to use as a surface in this dark UI. */
@@ -151,8 +165,6 @@ export function onColor(fill: string): string {
   return contrastRatio('#000000', fill) >= contrastRatio('#ffffff', fill) ? '#000000' : '#ffffff';
 }
 
-const ringCache = new Map<string, string>();
-
 /**
  * A team colour lifted just far enough to serve as a focus ring on `zinc-950`.
  *
@@ -160,24 +172,7 @@ const ringCache = new Map<string, string>();
  * bar, so the ring still reads as the brand colour rather than as a lightened wash of it.
  */
 export function ringOnDark(hex: string): string {
-  const cached = ringCache.get(hex);
-  if (cached) return cached;
-
-  let result = hex;
-  if (contrastRatio(hex, DARK_BG) < MIN_RING_CONTRAST) {
-    const [h, s, l] = rgbToHsl(parseHex(hex));
-    result = '#ffffff';
-    for (let step = l; step <= 1; step += 0.01) {
-      const candidate = toHex(hslToRgb(h, s, Math.min(step, 1)));
-      if (contrastRatio(candidate, DARK_BG) >= MIN_RING_CONTRAST) {
-        result = candidate;
-        break;
-      }
-    }
-  }
-
-  ringCache.set(hex, result);
-  return result;
+  return liftUntilContrast(hex, MIN_RING_CONTRAST);
 }
 
 /**
