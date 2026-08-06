@@ -13,8 +13,10 @@ import requests
 from tests.factories import make_openf1_get
 from tools import openf1_client
 from tools.openf1_client import (
+    OPENF1_BASE_URL,
     OPENF1_FIRST_YEAR,
     OpenF1Error,
+    _range_params,
     driver_index,
     list_meetings,
     list_sessions,
@@ -150,8 +152,28 @@ def test_session_results_spans_min_to_max_of_the_wanted_keys(monkeypatch):
     session_results({11342, 11334, 11338})
 
     params = fake.calls[0]["params"]
-    assert params["session_key>="] == 11334
-    assert params["session_key<="] == 11342
+    assert params["session_key>"] == 11334
+    assert params["session_key<"] == 11342
+
+
+def test_the_range_query_serialises_to_openf1s_filter_syntax():
+    """Asserts the encoded URL, not the params dict.
+
+    OpenF1 wants `session_key>=11334`. Because requests supplies the `=` separator
+    itself, the param key must stop at `>`; spelling it `session_key>=` encodes to
+    `session_key%3E%3D` and appends a second `=`, which the API answers with a 404 that
+    every tool silently absorbs as a FastF1 fallback. A params-dict assertion cannot see
+    that — only the serialised URL can.
+    """
+    from requests.models import PreparedRequest
+
+    request = PreparedRequest()
+    request.prepare_url(f"{OPENF1_BASE_URL}/session_result", _range_params({11342, 11334}))
+
+    assert "session_key%3E=11334" in request.url
+    assert "session_key%3C=11342" in request.url
+    assert "%3E%3D" not in request.url
+    assert "%3C%3D" not in request.url
 
 
 def test_session_results_discards_keys_outside_the_wanted_set(monkeypatch):

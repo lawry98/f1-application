@@ -76,8 +76,17 @@ def _get(endpoint: str, params: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _range_params(keys: set[int]) -> dict[str, Any]:
-    """Build the one-request span covering every key in the set."""
-    return {"session_key>=": min(keys), "session_key<=": max(keys)}
+    """Build the one-request span covering every key in the set.
+
+    The key names end at the comparison character on purpose. OpenF1's filter syntax is
+    ``session_key>=11334``, and ``requests`` supplies the ``=`` itself as the key/value
+    separator — so ``{"session_key>": 11334}`` serialises to ``session_key%3E=11334``,
+    which is what the API wants. Writing the operator out in full as ``"session_key>="``
+    makes requests encode it to ``session_key%3E%3D`` and append a second ``=``, producing
+    ``session_key>==11334`` and a silent HTTP 404 that every tool then absorbs as a
+    FastF1 fallback. Verified against the live API.
+    """
+    return {"session_key>": min(keys), "session_key<": max(keys)}
 
 
 def list_sessions(year: int, session_name: str | None = None) -> list[dict[str, Any]]:
