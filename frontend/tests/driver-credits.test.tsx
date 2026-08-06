@@ -83,7 +83,7 @@ describe('driver photograph credits', () => {
         teams={TEAMS}
         activeTeamId="ferrari"
         reducedMotion={false}
-        onScrollToTeam={vi.fn()}
+        onSelectTeam={vi.fn()}
       />,
     );
 
@@ -102,7 +102,7 @@ describe('driver photograph credits', () => {
         teams={TEAMS}
         activeTeamId="ferrari"
         reducedMotion={false}
-        onScrollToTeam={vi.fn()}
+        onSelectTeam={vi.fn()}
       />,
     );
     expect(screen.getByText(/CC BY \/ CC BY-SA/)).toBeInTheDocument();

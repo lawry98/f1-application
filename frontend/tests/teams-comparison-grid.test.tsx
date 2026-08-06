@@ -4,21 +4,21 @@ import { render, screen, within, fireEvent } from '@testing-library/react';
 import { TeamsComparisonGrid } from '@/components/teams/teams-comparison-grid';
 import { TEAMS } from '@/data/teams-data';
 
-function renderGrid(onScrollToTeam = vi.fn(), reducedMotion = false) {
+function renderGrid(onSelectTeam = vi.fn(), reducedMotion = false) {
   render(
     <TeamsComparisonGrid
       teams={TEAMS}
       activeTeamId="ferrari"
       reducedMotion={reducedMotion}
-      onScrollToTeam={onScrollToTeam}
+      onSelectTeam={onSelectTeam}
     />,
   );
 }
 
 function rowNames() {
-  return screen.getAllByRole('button', { name: /jump to /i }).map((b) =>
-    b.getAttribute('aria-label'),
-  );
+  return screen
+    .getAllByRole('link', { name: /jump to /i })
+    .map((el) => el.getAttribute('aria-label'));
 }
 
 describe('TeamsComparisonGrid', () => {
@@ -43,17 +43,28 @@ describe('TeamsComparisonGrid', () => {
 
   it('scales each bar against the leader', () => {
     renderGrid();
-    const ferrariRow = screen.getByRole('button', { name: /jump to Ferrari/i });
+    const ferrariRow = screen.getByRole('link', { name: /jump to Ferrari/i });
     const bar = within(ferrariRow).getByTestId('bar-fill');
     // 307 / 379 ≈ 0.81
     expect(bar).toHaveStyle({ transform: 'scaleX(0.81)' });
   });
 
-  it('scrolls to the team whose row is clicked', () => {
-    const onScrollToTeam = vi.fn();
-    renderGrid(onScrollToTeam);
-    fireEvent.click(screen.getByRole('button', { name: /jump to McLaren/i }));
-    expect(onScrollToTeam).toHaveBeenCalledWith('mclaren');
+  it('links each row to its team’s section', () => {
+    renderGrid();
+    expect(screen.getByRole('link', { name: /jump to McLaren/i })).toHaveAttribute(
+      'href',
+      '#team-mclaren',
+    );
+  });
+
+  it('claims the clicked team without preventing navigation', () => {
+    const onSelectTeam = vi.fn();
+    renderGrid(onSelectTeam);
+    const link = screen.getByRole('link', { name: /jump to McLaren/i });
+    const event = new MouseEvent('click', { bubbles: true, cancelable: true });
+    link.dispatchEvent(event);
+    expect(onSelectTeam).toHaveBeenCalledWith('mclaren');
+    expect(event.defaultPrevented).toBe(false);
   });
 
   it('dates its own numbers', () => {
@@ -61,12 +72,12 @@ describe('TeamsComparisonGrid', () => {
     expect(screen.getByText(/Round 11/)).toBeInTheDocument();
   });
 
-  // The button's aria-label overrides all of its inner text, so before this the rank, the bar
-  // and the points were sighted-only: eleven identical "Jump to <team>, button" announcements
+  // The link's aria-label overrides all of its inner text, so before this the rank, the bar
+  // and the points were sighted-only: eleven identical "Jump to <team>, link" announcements
   // in a section whose entire content is the standings.
   it('announces each row’s rank and points, not just the team name', () => {
     renderGrid();
-    const mercedes = screen.getByRole('button', { name: /jump to Mercedes/i });
+    const mercedes = screen.getByRole('link', { name: /jump to Mercedes/i });
     const name = mercedes.getAttribute('aria-label')!;
     expect(name).toMatch(/1 of 11/);
     expect(name).toMatch(/379 points/);
@@ -76,12 +87,12 @@ describe('TeamsComparisonGrid', () => {
     renderGrid();
 
     fireEvent.click(screen.getByRole('button', { name: 'Titles' }));
-    expect(screen.getByRole('button', { name: /jump to Ferrari/i })).toHaveAccessibleName(
+    expect(screen.getByRole('link', { name: /jump to Ferrari/i })).toHaveAccessibleName(
       /16 championships/,
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Since' }));
-    expect(screen.getByRole('button', { name: /jump to Ferrari/i })).toHaveAccessibleName(
+    expect(screen.getByRole('link', { name: /jump to Ferrari/i })).toHaveAccessibleName(
       /first entered 1950/,
     );
   });
@@ -89,11 +100,11 @@ describe('TeamsComparisonGrid', () => {
   it('renumbers the announced rank when the sort changes', () => {
     renderGrid();
     // Ferrari is 2nd on points and 1st on championships.
-    expect(screen.getByRole('button', { name: /jump to Ferrari/i })).toHaveAccessibleName(
+    expect(screen.getByRole('link', { name: /jump to Ferrari/i })).toHaveAccessibleName(
       /2 of 11/,
     );
     fireEvent.click(screen.getByRole('button', { name: 'Titles' }));
-    expect(screen.getByRole('button', { name: /jump to Ferrari/i })).toHaveAccessibleName(
+    expect(screen.getByRole('link', { name: /jump to Ferrari/i })).toHaveAccessibleName(
       /1 of 11/,
     );
   });
@@ -109,8 +120,19 @@ describe('TeamsComparisonGrid', () => {
 
   it('drops the bar-fill transition under reduced motion', () => {
     renderGrid(vi.fn(), true);
-    const ferrariRow = screen.getByRole('button', { name: /jump to Ferrari/i });
+    const ferrariRow = screen.getByRole('link', { name: /jump to Ferrari/i });
     const bar = within(ferrariRow).getByTestId('bar-fill');
     expect(bar.className).not.toMatch(/transition-transform/);
+  });
+
+  // Brief item 2. This numeral is neither the championship position nor the page's running order —
+  // it is the rank under whichever sort is active, and it moves when the tab changes. Saying
+  // so is the difference between a third mystery number and a labelled one.
+  it('labels its leading numeral as the rank of the active sort', () => {
+    renderGrid();
+    expect(screen.getByText(/by points/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Titles' }));
+    expect(screen.getByText(/by titles/i)).toBeInTheDocument();
   });
 });

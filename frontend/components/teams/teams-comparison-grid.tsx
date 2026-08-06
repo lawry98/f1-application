@@ -6,6 +6,7 @@ import { motion } from 'motion/react';
 import { TextAnimate } from '@/components/ui/text-animate';
 import { NumberTicker } from '@/components/ui/number-ticker';
 import { cn } from '@/lib/utils';
+import { ringOnDark } from '@/lib/team-utils';
 import { STANDINGS_AS_OF, type Team } from '@/data/teams-data';
 import { TeamMonogramTile } from './team-monogram-tile';
 
@@ -37,14 +38,14 @@ interface TeamsComparisonGridProps {
   teams: Team[];
   activeTeamId: string;
   reducedMotion: boolean;
-  onScrollToTeam: (id: string) => void;
+  onSelectTeam: (id: string) => void;
 }
 
 export function TeamsComparisonGrid({
   teams,
   activeTeamId,
   reducedMotion,
-  onScrollToTeam,
+  onSelectTeam,
 }: TeamsComparisonGridProps) {
   const [sort, setSort] = useState<SortKey>('points');
 
@@ -102,17 +103,24 @@ export function TeamsComparisonGrid({
         ))}
       </div>
 
+      {/* Names the leading numeral. It is neither the championship position nor the page's
+          running order — it is the rank under the active sort, and it moves with the tab. */}
+      <p className="mb-3 text-[9px] uppercase tracking-[0.18em] text-zinc-600">
+        {`Rank by ${SORTS.find((s) => s.key === sort)!.label.toLowerCase()}`}
+      </p>
+
       <div className="flex flex-col">
         {ranked.map((team, i) => {
           const metric = sort === 'firstEntry' ? team.points : team[sort];
           return (
-            <motion.button
+            <motion.a
               key={team.id}
+              href={`#team-${team.id}`}
               layout={!reducedMotion}
               transition={
                 reducedMotion ? { duration: 0 } : { type: 'spring', duration: 0.3, bounce: 0 }
               }
-              onClick={() => onScrollToTeam(team.id)}
+              onClick={() => onSelectTeam(team.id)}
               // Team name first, so the eleven rows stay quick to tell apart when skimmed by
               // name, then the standing the row actually displays.
               aria-label={`Jump to ${team.shortName}, ${i + 1} of ${ranked.length}, ${metricPhrase(
@@ -120,10 +128,12 @@ export function TeamsComparisonGrid({
                 team,
               )}`}
               className={cn(
-                'flex items-center gap-3 rounded px-2 py-2 text-left transition-colors duration-200 active:scale-[0.96]',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500',
+                'flex items-center gap-3 rounded px-2 py-2 text-left no-underline transition-colors duration-200',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950',
                 team.id === activeTeamId ? 'bg-zinc-900/60' : 'hover:bg-zinc-900/30',
               )}
+              // `--tw-ring-color`, not `outlineColor` — Tailwind's ring is a box-shadow.
+              style={{ '--tw-ring-color': ringOnDark(team.color) } as React.CSSProperties}
             >
               <span className="w-5 flex-shrink-0 font-mono text-[11px] text-zinc-600">
                 {i + 1}
@@ -156,7 +166,7 @@ export function TeamsComparisonGrid({
                   <NumberTicker value={metric} className="text-sm text-white" />
                 )}
               </span>
-            </motion.button>
+            </motion.a>
           );
         })}
       </div>
