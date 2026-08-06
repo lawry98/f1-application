@@ -67,19 +67,15 @@ export function TeamsPageClient() {
     <div className="relative bg-zinc-950">
       <TeamsHero onSelectTeam={jumpToTeam} />
 
-      {/* `TeamsChipStrip` carries no landmark of its own — this wrapper is the one place
-          that names it, so the below-`lg` chip strip and the `lg`-and-up rail read as two
-          distinct navigations rather than one, however many links each holds. */}
-      <nav
-        aria-label="Constructor navigation, compact"
-        className="sticky top-14 z-20 bg-zinc-950/90 backdrop-blur-sm lg:hidden"
-      >
+      {/* `TeamsChipStrip` owns its own `<nav>` landmark, matching `TeamsNavRail` — this
+          wrapper only carries the sticky positioning shared by both breakpoints. */}
+      <div className="sticky top-14 z-20 bg-zinc-950/90 backdrop-blur-sm lg:hidden">
         <TeamsChipStrip
           activeTeamId={activeTeamId}
           onSelectTeam={claim}
           reducedMotion={reducedMotion}
         />
-      </nav>
+      </div>
 
       <div className="flex">
         <aside

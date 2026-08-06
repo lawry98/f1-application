@@ -47,15 +47,19 @@ class FakeObserver implements IntersectionObserver {
     this.observed.push(target);
   }
 
-  /** Report a section as covering `height` px of the activation band. */
-  report(entries: { id: string; height: number }[]): void {
+  /**
+   * Report a section as covering `height` px of the activation band. Omitting `height`
+   * simulates a malformed entry with no `intersectionRect` at all — what the shared jsdom
+   * stub in `tests/setup.ts` produces.
+   */
+  report(entries: { id: string; height?: number }[]): void {
     this.callback(
       entries.map(
         ({ id, height }) =>
           ({
             target: document.getElementById(`team-${id}`)!,
-            intersectionRect: { height } as DOMRectReadOnly,
-            isIntersecting: height > 0,
+            ...(height !== undefined ? { intersectionRect: { height } as DOMRectReadOnly } : {}),
+            isIntersecting: (height ?? 0) > 0,
           }) as unknown as IntersectionObserverEntry,
       ),
       this as IntersectionObserver,
@@ -171,6 +175,16 @@ describe('useScrollSpy', () => {
       FakeObserver.latest!.report([{ id: 'mclaren', height: 0 }]);
     });
     expect(result.current.activeId).toBe('mclaren');
+  });
+
+  // The shared jsdom stub in `tests/setup.ts` never sets `intersectionRect`, and any future
+  // test rendering a `useScrollSpy` consumer without a local override hits this path for real.
+  it('treats an entry with no intersectionRect as covering nothing, without throwing', () => {
+    const { result } = renderHook(() => useScrollSpy(IDS));
+    act(() => {
+      expect(() => FakeObserver.latest!.report([{ id: 'mclaren' }])).not.toThrow();
+    });
+    expect(result.current.activeId).toBe('mercedes');
   });
 
   it('disconnects on unmount', () => {

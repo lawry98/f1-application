@@ -39,7 +39,7 @@ export function TeamsChipStrip({
   }, [activeTeamId, reducedMotion]);
 
   return (
-    <div className="relative">
+    <nav aria-label="Constructor navigation, compact" className="relative">
       <div className="flex gap-2 overflow-x-auto px-4 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {TEAMS.map((team) => {
           const isActive = activeTeamId === team.id;
@@ -88,6 +88,6 @@ export function TeamsChipStrip({
         aria-hidden="true"
         className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-zinc-950 to-transparent"
       />
-    </div>
+    </nav>
   );
 }

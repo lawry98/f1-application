@@ -23,6 +23,15 @@ afterEach(() => {
 });
 
 describe('TeamsChipStrip', () => {
+  // The component owns its landmark now — `teams-page-client.tsx` no longer wraps it in a
+  // `<nav>` of its own, so this is the one place proving the accessible name still exists.
+  it('renders as its own labelled navigation landmark', () => {
+    renderStrip();
+    expect(
+      screen.getByRole('navigation', { name: 'Constructor navigation, compact' }),
+    ).toBeInTheDocument();
+  });
+
   it('renders one anchor per team', () => {
     renderStrip();
     expect(screen.getAllByRole('link')).toHaveLength(TEAMS.length);

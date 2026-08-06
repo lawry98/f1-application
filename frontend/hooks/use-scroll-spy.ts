@@ -92,7 +92,10 @@ export function useScrollSpy(ids: string[]): {
       (entries) => {
         for (const entry of entries) {
           const id = entry.target.id.replace(/^team-/, '');
-          coveredRef.current.set(id, entry.intersectionRect.height);
+          // A malformed or partial entry — notably the shared jsdom stub in `tests/setup.ts`,
+          // which never sets `intersectionRect` — must degrade to "covers none of the band"
+          // rather than throw.
+          coveredRef.current.set(id, entry.intersectionRect?.height ?? 0);
         }
 
         const winner = pickActive(idsRef.current, coveredRef.current);
