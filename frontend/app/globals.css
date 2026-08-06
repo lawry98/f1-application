@@ -61,3 +61,36 @@ body {
     --chart-5: 340 75% 55%;
   }
 }
+
+/*
+ * Where an anchored team section should come to rest.
+ *
+ * `LandingNav` is `fixed` and `h-14`, so a fragment target would otherwise land underneath
+ * it. Below `lg` the teams page adds a sticky chip strip beneath the nav, so the offset has
+ * to grow to clear both. Sections consume this as `scroll-mt-[var(--teams-scroll-offset)]`;
+ * there is deliberately no arithmetic in any scroll handler.
+ */
+:root {
+  --teams-scroll-offset: 6.5rem;
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --teams-scroll-offset: 3.5rem;
+  }
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+/*
+ * Reduced motion has to stop the movement, not shorten it. A smooth-scrolled jump across
+ * eleven full-height sections is exactly the sustained travel `reduce` is asking to be
+ * spared, so the jump becomes instant.
+ */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
