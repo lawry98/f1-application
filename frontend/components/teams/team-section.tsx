@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useEffect } from 'react';
+import { useRef } from 'react';
 import { motion, useInView } from 'motion/react';
 import { Expand } from 'lucide-react';
 
@@ -9,8 +9,8 @@ import { TextAnimate } from '@/components/ui/text-animate';
 import { NumberTicker } from '@/components/ui/number-ticker';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { teamColorButtonStyle } from '@/lib/team-utils';
-import { type Team } from '@/data/teams-data';
+import { teamColorButtonStyle, readableOnDark } from '@/lib/team-utils';
+import { STANDINGS_AS_OF, type Team } from '@/data/teams-data';
 import { DriverPortrait } from './driver-portrait';
 import { TeamMonogramTile, monogram } from './team-monogram-tile';
 
@@ -18,49 +18,42 @@ interface TeamSectionProps {
   team: Team;
   index: number;
   isActive: boolean;
-  onActivate: (id: string) => void;
   onInspect: () => void;
   reducedMotion: boolean;
 }
 
-export function TeamSection({
-  team,
-  index,
-  isActive,
-  onActivate,
-  onInspect,
-  reducedMotion,
-}: TeamSectionProps) {
-  const sectionRef = useRef<HTMLDivElement>(null);
+export function TeamSection({ team, index, isActive, onInspect, reducedMotion }: TeamSectionProps) {
   const contentRef = useRef<HTMLDivElement>(null);
   const isContentInView = useInView(contentRef, { once: true, margin: '-80px 0px' });
-
-  // IntersectionObserver for active team tracking — tuned for content-driven height
-  useEffect(() => {
-    const el = sectionRef.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const entry = entries[0];
-        if (entry?.isIntersecting) onActivate(team.id);
-      },
-      { threshold: 0.25, rootMargin: '-15% 0px -35% 0px' },
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [team.id, onActivate]);
 
   const blobOnRight = index % 2 === 0;
   const ctaStyle = teamColorButtonStyle(team);
 
   return (
     <section
-      ref={sectionRef}
       id={`team-${team.id}`}
-      className="relative overflow-hidden bg-zinc-950"
+      className="relative overflow-hidden bg-zinc-950 scroll-mt-[var(--teams-scroll-offset)]"
     >
-      {/* Top separator */}
-      <div className="h-px w-full" style={{ backgroundColor: team.color, opacity: 0.4 }} />
+      {/*
+        The seam. This used to be a 1px rule in *this* team's colour at this section's top
+        edge — which put it directly beneath the previous team's content, where it read as
+        that team's bottom border rather than this team's opening. A downward wash carrying
+        the incoming constructor's own name cannot be mistaken for the end of something.
+      */}
+      <div
+        data-testid="team-seam"
+        className="relative h-16 w-full"
+        style={{
+          background: `linear-gradient(to bottom, ${team.color}4d, transparent)`,
+        }}
+      >
+        <p
+          className="absolute left-6 top-5 text-[10px] uppercase tracking-[0.24em] lg:left-12"
+          style={{ color: readableOnDark(team.color) }}
+        >
+          {team.name}
+        </p>
+      </div>
 
       {/* Ambient glow blob — alternates position for visual variety. The only animated
           property is `opacity`, so that is what `will-change` hints: hinting `transform`
@@ -129,6 +122,16 @@ export function TeamSection({
             </div>
           </div>
 
+          {/* The dossier is gone below `xl`, so without this the championship standing
+              simply is not on the page at laptop width and below. */}
+          <p
+            data-testid="section-standing"
+            className="font-mono text-xs tracking-wide"
+            style={{ color: readableOnDark(team.color) }}
+          >
+            {`P${team.position} · ${team.points} PTS · ${STANDINGS_AS_OF.toUpperCase()}`}
+          </p>
+
           {/* Tagline */}
           <BlurFade delay={reducedMotion ? 0 : 0.15} inView>
             <p className="max-w-sm text-base leading-relaxed text-zinc-400">{team.tagline}</p>
@@ -165,8 +168,8 @@ export function TeamSection({
             </div>
           </BlurFade>
 
-          {/* Mobile-only inspect button — visible when sticky car viewer is hidden */}
-          <BlurFade delay={reducedMotion ? 0 : 0.25} inView className="lg:hidden">
+          {/* Mobile/laptop-only inspect button — visible when sticky car viewer is hidden */}
+          <BlurFade delay={reducedMotion ? 0 : 0.25} inView className="xl:hidden">
             <Button
               onClick={onInspect}
               className={cn('gap-2 font-medium', ctaStyle.className)}
