@@ -69,6 +69,28 @@ def test_list_sessions_without_a_name_returns_everything(monkeypatch):
     assert len(list_sessions(2026)) == 3
 
 
+def test_list_sessions_asks_openf1_to_filter_server_side(monkeypatch):
+    """Guards the request, not just the result. The client-side filter alone would make
+    the assertion above pass while fetching the whole season on every call — which is the
+    per-request cost this migration exists to remove.
+    """
+    fake = make_openf1_get({"sessions": SESSIONS_2026})
+    monkeypatch.setattr(openf1_client.requests, "get", fake)
+
+    list_sessions(2026, "Race")
+
+    assert fake.calls[0]["params"]["session_name"] == "Race"
+
+
+def test_list_sessions_sends_no_session_name_when_none_is_asked_for(monkeypatch):
+    fake = make_openf1_get({"sessions": SESSIONS_2026})
+    monkeypatch.setattr(openf1_client.requests, "get", fake)
+
+    list_sessions(2026)
+
+    assert "session_name" not in fake.calls[0]["params"]
+
+
 def test_session_results_issues_one_request_for_many_keys(monkeypatch):
     """The whole point of the migration. Five races must cost one request, not five."""
     rows = [

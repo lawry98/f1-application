@@ -86,7 +86,8 @@ def list_sessions(year: int, session_name: str | None = None) -> list[dict[str, 
     Args:
         year: Season to query.
         session_name: Exact OpenF1 name — "Race", "Sprint", "Qualifying", "Practice 1"…
-            Filtering happens server-side when given.
+            Sent to the server to save bandwidth, and filtered again client-side as a guard
+            against a response that ignores the parameter.
 
     Returns:
         Session dicts carrying session_key, meeting_key, session_name,
