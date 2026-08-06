@@ -22,12 +22,31 @@ optional text overlay.
 
 **Props:**
 
-- `teamColor?: string` — body/livery color (default `#dc2626`)
+- `teamColor?: string` — body/livery color (default `#dc2626`). Changing it cross-fades the
+  livery and the warm rim light; it never remounts the scene.
 - `hideOverlay?: boolean` — hide the "F1 Briefing Agent" text overlay
 - `className?: string` — container sizing (defaults to `h-[600px]`)
+- `paused?: boolean` — stop rendering **without unmounting**. Sets `frameloop="never"`, so the
+  WebGL context, the loaded GLB, and the cloned scene survive and resuming costs nothing.
+- `reducedMotion?: boolean` — drop rotation, float, and camera easing, and switch to
+  `frameloop="demand"`
+- `maxDpr?: number` — upper `dpr` bound (default `2`). Also selects the shadow map size: 2048
+  above 2x, 1024 below.
+- `cameraVariant?: number` — changing it eases the camera to a different vantage point
+
+**The frameloop is three-state**, and that is the whole performance story:
+`paused ? 'never' : reducedMotion ? 'demand' : 'always'`. Under `demand`, nothing loops, but the
+livery cross-fade and camera rig call `invalidate()` for the frames they need, so transitions
+still play for users who asked for less motion. The scene also idles itself while the tab is
+hidden.
+
+**Do not pass a live `color` prop to a light you also ease through a ref** — the prop write lands
+after the ease and snaps it. `TeamRimLight` sets its color through the ref only.
 
 **Consumers:** `components/teams/sticky-car-viewer.tsx` and
-`components/teams/inspect-modal.tsx` (both pass `hideOverlay` and a live `teamColor`).
+`components/teams/inspect-modal.tsx` (both pass `hideOverlay` and a live `teamColor`). The sticky
+viewer is `paused` whenever the modal is open, so two canvases are never animating at once, and
+it is only mounted at `xl` and up — `hidden xl:block` alone would still allocate a context.
 
 ### F1CarShowcase (`f1-car-showcase.tsx`, default export)
 
@@ -44,8 +63,10 @@ Not a page-level scene — the building blocks both scenes compose:
 - `RealCar` — loads `/models/f1-car.glb` via `useLoader(GLTFLoader)`, clones the scene
   **once per mount** (the clone stays inside `useMemo`; the GLTF is cached by
   `useLoader`, so body materials are cloned before recoloring and disposed on unmount).
-  Team color changes update the cloned materials in place — no re-clone per color.
-  Props: `teamColor`, `scale`, `position`, `rotationSpeed`, `float?`.
+  Team color changes update the cloned materials in place — no re-clone per color. The first
+  color is applied instantly (nobody should see the GLB's own paint); later ones cross-fade,
+  unless `animateColor` is false.
+  Props: `teamColor`, `scale`, `position`, `rotationSpeed`, `float?`, `animateColor?`.
 - `PrimitiveCar` — the primitive-mesh fallback car, parameterized by `bodyColor`,
   `sidepodColor`, `scale?`, `rotationSpeed`, `float?`, `bodyEnvMapIntensity?`,
   `exhaustEmissiveIntensity`.

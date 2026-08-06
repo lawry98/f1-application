@@ -11,7 +11,7 @@ An AI-powered F1 race weekend briefing generator that provides comprehensive pre
 - **Real-time Streaming**: Server-Sent Events for live updates as the agent works, with the briefing prose filling in as the model writes it
 - **Modern 3D UI**: Three.js F1 car visualization with team liveries
 - **F1 Car Teardown**: Scroll-driven anatomy page — 192 frames reveal the car's internals as you scroll
-- **Team Explorer**: All 11 teams for 2026 with liveries, driver line-ups, and a side-by-side comparison grid
+- **Team Explorer**: All 11 teams for 2026 with liveries, driver line-ups, a live 3D car inspector, and a sortable head-to-head comparison
 
 ## Tech Stack
 
@@ -51,7 +51,7 @@ f1-application/
 │   ├── components/
 │   │   ├── landing/  Landing page sections
 │   │   ├── briefing/ Briefing chat, card, tool trace, race selector
-│   │   ├── teams/    Team explorer — hero, sections, comparison grid
+│   │   ├── teams/    Team explorer — hero, nav rail, sections, 3D viewer, comparison
 │   │   ├── teardown/ Canvas scroll animation
 │   │   ├── 3d/       Three.js car scenes (dynamically imported)
 │   │   └── ui/       shadcn/ui + Magic UI components
@@ -208,7 +208,7 @@ OUTPUT (Race Briefing)
 | `/briefing` | AI race weekend briefing chat |
 | `/teardown` | Scroll-driven F1 car anatomy (192-frame canvas animation) |
 | `/showcase` | Interactive 3D car with all 11 team liveries |
-| `/teams` | 2026 team explorer — liveries, driver line-ups, comparison grid |
+| `/teams` | 2026 team explorer — liveries, driver line-ups, 3D inspector, grid comparison |
 | `/credits` | Credits & attributions |
 
 ### Example: Generate Briefing

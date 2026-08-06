@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, type RefObject } from 'react';
-import { useFrame, useLoader } from '@react-three/fiber';
+import { useFrame, useLoader, useThree } from '@react-three/fiber';
 import { GLTFLoader } from 'three-stdlib';
 import * as THREE from 'three';
 
@@ -21,13 +21,75 @@ function useCarMotion(ref: RefObject<THREE.Group | null>, { rotationSpeed, float
   });
 }
 
+/** Per-second fraction of the remaining distance a livery cross-fade covers. */
+const COLOR_EASE = 0.0015;
+/** Channel distance at which a cross-fade is close enough to snap and stop requesting frames. */
+const COLOR_EPSILON = 0.004;
+
+/**
+ * Cross-fades cloned body materials to a new livery instead of snapping.
+ *
+ * The first color is applied instantly — the GLB's own paint is not a frame anyone should see.
+ * Every later change eases, and each easing frame calls `invalidate()` so the transition still
+ * runs under `frameloop="demand"` (reduced motion), where nothing else is asking for frames.
+ */
+function useLiveryTransition(
+  materials: THREE.MeshStandardMaterial[],
+  teamColor: string,
+  animate: boolean,
+) {
+  const invalidate = useThree((state) => state.invalidate);
+  const target = useMemo(() => new THREE.Color(teamColor), [teamColor]);
+  const easingRef = useRef(false);
+  const appliedRef = useRef(false);
+
+  useEffect(() => {
+    if (!animate || !appliedRef.current) {
+      materials.forEach((material) => material.color.copy(target));
+      appliedRef.current = true;
+      easingRef.current = false;
+    } else {
+      easingRef.current = true;
+    }
+    invalidate();
+  }, [materials, target, animate, invalidate]);
+
+  useFrame((_state, delta) => {
+    if (!easingRef.current) return;
+    const t = 1 - COLOR_EASE ** delta;
+    let settled = true;
+    for (const material of materials) {
+      material.color.lerp(target, t);
+      const distance =
+        Math.abs(material.color.r - target.r) +
+        Math.abs(material.color.g - target.g) +
+        Math.abs(material.color.b - target.b);
+      if (distance > COLOR_EPSILON) settled = false;
+    }
+    if (settled) {
+      materials.forEach((material) => material.color.copy(target));
+      easingRef.current = false;
+    }
+    invalidate();
+  });
+}
+
 interface RealCarProps extends CarMotion {
   teamColor: string;
   scale: number;
   position: [number, number, number];
+  /** Cross-fade livery changes instead of snapping. Off under reduced motion. */
+  animateColor?: boolean;
 }
 
-export function RealCar({ teamColor, scale, position, rotationSpeed, float }: RealCarProps) {
+export function RealCar({
+  teamColor,
+  scale,
+  position,
+  rotationSpeed,
+  float,
+  animateColor = true,
+}: RealCarProps) {
   const groupRef = useRef<THREE.Group>(null);
   const gltf = useLoader(GLTFLoader, '/models/f1-car.glb');
 
@@ -60,9 +122,7 @@ export function RealCar({ teamColor, scale, position, rotationSpeed, float }: Re
     return { clonedScene: scene, bodyMaterials: materials };
   }, [gltf.scene]);
 
-  useEffect(() => {
-    bodyMaterials.forEach((material) => material.color.set(teamColor));
-  }, [bodyMaterials, teamColor]);
+  useLiveryTransition(bodyMaterials, teamColor, animateColor);
 
   useEffect(() => {
     return () => {

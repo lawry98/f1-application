@@ -4,20 +4,38 @@ export interface Driver {
   number: number;
   nationality: string;
   shortCode: string;
+  /**
+   * Optional portrait, served from `public/`. No portraits ship with the repo, so driver cards
+   * render their typographic treatment instead; supply one and the card switches to the image
+   * layout (scrimmed, untinted) with no other change.
+   */
+  image?: string;
 }
 
 export interface Team {
   id: string;
   name: string;
   shortName: string;
+  /**
+   * Raw brand color. Decorative use only — run it through `paletteFor()` in `lib/team-utils`
+   * before putting text, borders, or focus rings in it.
+   */
   color: string;
-  textOnColor: 'white' | 'black';
   drivers: [Driver, Driver];
   base: string;
   powerUnit: string;
   firstEntry: number;
+  /** Constructors' titles won, all-time. */
   championships: number;
   tagline: string;
+  /**
+   * Live constructors' standing. Deliberately unset: this page is a static dataset with no
+   * standings source, and inventing a table would be worse than omitting it. Every consumer
+   * treats these as optional and falls back to all-time stats, so populating them here is the
+   * only change needed to light up the standings UI.
+   */
+  championshipPosition?: number;
+  points?: number;
 }
 
 export const TEAMS: Team[] = [
@@ -26,7 +44,6 @@ export const TEAMS: Team[] = [
     name: 'Mercedes-AMG Petronas F1 Team',
     shortName: 'Mercedes',
     color: '#00d2be',
-    textOnColor: 'black',
     drivers: [
       {
         id: 'george-russell',
@@ -54,7 +71,6 @@ export const TEAMS: Team[] = [
     name: 'Scuderia Ferrari HP',
     shortName: 'Ferrari',
     color: '#dc0000',
-    textOnColor: 'white',
     drivers: [
       {
         id: 'charles-leclerc',
@@ -82,7 +98,6 @@ export const TEAMS: Team[] = [
     name: 'McLaren Formula 1 Team',
     shortName: 'McLaren',
     color: '#ff8700',
-    textOnColor: 'black',
     drivers: [
       {
         id: 'lando-norris',
@@ -110,7 +125,6 @@ export const TEAMS: Team[] = [
     name: 'Oracle Red Bull Racing',
     shortName: 'Red Bull',
     color: '#1e41ff',
-    textOnColor: 'white',
     drivers: [
       {
         id: 'max-verstappen',
@@ -138,7 +152,6 @@ export const TEAMS: Team[] = [
     name: 'MoneyGram Haas F1 Team',
     shortName: 'Haas',
     color: '#ffffff',
-    textOnColor: 'black',
     drivers: [
       {
         id: 'esteban-ocon',
@@ -166,7 +179,6 @@ export const TEAMS: Team[] = [
     name: 'Visa Cash App Racing Bulls F1 Team',
     shortName: 'Racing Bulls',
     color: '#2b4562',
-    textOnColor: 'white',
     drivers: [
       {
         id: 'liam-lawson',
@@ -194,7 +206,6 @@ export const TEAMS: Team[] = [
     name: 'Audi F1 Team',
     shortName: 'Audi',
     color: '#e8002d',
-    textOnColor: 'white',
     drivers: [
       {
         id: 'nico-hulkenberg',
@@ -222,7 +233,6 @@ export const TEAMS: Team[] = [
     name: 'BWT Alpine F1 Team',
     shortName: 'Alpine',
     color: '#0090ff',
-    textOnColor: 'white',
     drivers: [
       {
         id: 'pierre-gasly',
@@ -250,7 +260,6 @@ export const TEAMS: Team[] = [
     name: 'Williams Racing',
     shortName: 'Williams',
     color: '#005aff',
-    textOnColor: 'white',
     drivers: [
       {
         id: 'carlos-sainz',
@@ -278,7 +287,6 @@ export const TEAMS: Team[] = [
     name: 'Cadillac Formula Racing',
     shortName: 'Cadillac',
     color: '#c8102e',
-    textOnColor: 'white',
     drivers: [
       {
         id: 'sergio-perez',
@@ -306,7 +314,6 @@ export const TEAMS: Team[] = [
     name: 'Aston Martin Aramco F1 Team',
     shortName: 'Aston Martin',
     color: '#006f62',
-    textOnColor: 'white',
     drivers: [
       {
         id: 'fernando-alonso',
@@ -332,3 +339,11 @@ export const TEAMS: Team[] = [
 ];
 
 export const TEAM_MAP: Record<string, Team> = Object.fromEntries(TEAMS.map((t) => [t.id, t]));
+
+/** Position of each team in `TEAMS` — the grid-listing order, not a championship standing. */
+export const TEAM_INDEX: Record<string, number> = Object.fromEntries(
+  TEAMS.map((t, i) => [t.id, i]),
+);
+
+/** The season this dataset describes. Rendered wherever the page states its own scope. */
+export const SEASON = 2026;
