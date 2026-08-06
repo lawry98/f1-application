@@ -186,6 +186,9 @@ Vitest with jsdom, in `frontend/tests/`. A few things about them are not guessab
   from the format the backend really serves, which is the one thing they exist to catch.
 - **`tests/setup.ts` stubs `IntersectionObserver`.** jsdom has none, and `BlurFade` wraps most
   page sections, so without it any test that renders one dies inside framer-motion's `useInView`.
+  It also stubs `scrollIntoView`, `scrollTo`, and `matchMedia` for the same reason — the teams
+  page calls all three, and jsdom implements none of them. `matchMedia` reports no match, so
+  components take their narrow branch unless a test overrides it.
 - **`AnimatePresence mode="wait"` makes content untestable.** The incoming child is held back
   behind the outgoing one's exit animation, which never resolves synchronously under jsdom, so
   `getByRole` finds nothing. Use it for swaps nobody asserts on; anywhere a test needs the new
