@@ -28,6 +28,7 @@ os.environ.pop("OPENWEATHER_API_KEY", None)
 from datetime import date
 
 import pytest
+import requests
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -74,6 +75,48 @@ def _clear_schedule_cache():
     schedule_cache.clear()
     yield
     schedule_cache.clear()
+
+
+@pytest.fixture(autouse=True)
+def _block_openf1_network(monkeypatch):
+    """Make an unpatched OpenF1 fetch a deterministic transport failure, not a live call.
+
+    Mirrors ``_block_fastf1_network`` in intent but not in mechanism, and the difference
+    matters. FastF1 gets an ``AssertionError`` because no production path should ever
+    swallow one. OpenF1 gets a ``requests.ConnectionError`` because the tools *do* have a
+    legitimate handler for exactly that — the FastF1 fallback — and that is the behaviour
+    the pre-existing tests in ``test_fastf1_tools.py`` depend on. Raising here means those
+    tests keep exercising the FastF1 path they were written for, offline and unchanged.
+
+    The cost of that choice: the fallback is the default under test, so a broken OpenF1
+    implementation would look healthy to any test that does not opt in. Tests covering the
+    OpenF1 path patch this same seam with ``make_openf1_get``, and
+    ``test_openf1_tools.py`` asserts the OpenF1 path is genuinely taken rather than
+    silently fallen through.
+    """
+    from tools import openf1_client
+
+    def _refuse(*args, **kwargs):
+        raise requests.ConnectionError(
+            "Unpatched OpenF1 network call. Patch tools.openf1_client.requests.get "
+            "with tests.factories.make_openf1_get, or let the FastF1 fallback handle it."
+        )
+
+    monkeypatch.setattr(openf1_client.requests, "get", _refuse)
+
+
+@pytest.fixture(autouse=True)
+def _clear_openf1_cache():
+    """Reset the process-global OpenF1 response cache around every test.
+
+    Same hazard as ``_clear_schedule_cache``: without it, one test's payload satisfies
+    another test's lookup and the suite passes only in the order it was written.
+    """
+    from tools import openf1_client
+
+    openf1_client.clear()
+    yield
+    openf1_client.clear()
 
 
 @pytest.fixture

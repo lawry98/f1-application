@@ -188,3 +188,45 @@ def make_race_info(**overrides: Any) -> dict[str, Any]:
     }
     info.update(overrides)
     return info
+
+
+def make_openf1_get(routes: dict[str, Any], status_code: int = 200):
+    """Build a stand-in for ``requests.get`` against OpenF1.
+
+    Args:
+        routes: Endpoint name (the last path segment, e.g. ``"sessions"``) → JSON payload.
+        status_code: Status every response reports.
+
+    The returned callable records each call as ``{"url": ..., "params": ...}`` on ``.calls``,
+    which is what lets tests assert the request *count* — the range-query pattern's whole
+    value is that five races cost one request, and only a call count can pin that.
+    An endpoint missing from ``routes`` is a test-authoring mistake, so it raises rather
+    than quietly returning an empty list.
+    """
+
+    class _FakeGet:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, Any]] = []
+
+        def __call__(self, url: str, params: dict[str, Any] | None = None, **kwargs: Any):
+            self.calls.append({"url": url, "params": params or {}})
+            endpoint = url.rstrip("/").rsplit("/", 1)[-1]
+            if endpoint not in routes:
+                raise AssertionError(
+                    f"make_openf1_get has no payload for '{endpoint}'. "
+                    f"Known endpoints: {sorted(routes)}"
+                )
+            return _FakeOpenF1Response(routes[endpoint], status_code)
+
+    return _FakeGet()
+
+
+class _FakeOpenF1Response:
+    """Stand-in for a ``requests.Response`` — only status_code and json() are consumed."""
+
+    def __init__(self, payload: Any, status_code: int) -> None:
+        self.status_code = status_code
+        self._payload = payload
+
+    def json(self) -> Any:
+        return self._payload
