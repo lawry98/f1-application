@@ -49,10 +49,10 @@ def get_track_info(circuit_name: str, year: int) -> dict[str, Any]:
 def get_recent_race_results(event_name: str, year: int) -> dict[str, Any]:
     """Get the most recent race results from this circuit.
 
-    Served by OpenF1 for 2023 onwards and by FastF1 before that. The two paths differ in
-    one visible way: ``Status`` is FastF1's own prose ("+1 Lap", "Accident") on the
-    FastF1 path but only "Finished"/"DNF"/"DNS"/"DSQ" on the OpenF1 path, because OpenF1
-    exposes booleans rather than a reason.
+    Served by OpenF1 from OPENF1_FIRST_YEAR onwards and by FastF1 before that. The two
+    paths differ in one visible way: ``Status`` is FastF1's own prose ("+1 Lap",
+    "Accident") on the FastF1 path but only "Finished"/"DNF"/"DNS"/"DSQ" on the OpenF1
+    path, because OpenF1 exposes booleans rather than a reason.
 
     Args:
         event_name: Name of the Grand Prix event.

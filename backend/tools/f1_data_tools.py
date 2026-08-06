@@ -23,7 +23,7 @@ def get_recent_top_finishers(year: int) -> dict[str, Any]:
     standings — use it as a snapshot of current competitive order. For a real table,
     ``get_championship_standings`` exists.
 
-    Served by OpenF1 for 2023 onwards and by FastF1 before that.
+    Served by OpenF1 from OPENF1_FIRST_YEAR onwards and by FastF1 before that.
 
     Args:
         year: Season to query.

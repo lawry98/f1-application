@@ -20,25 +20,50 @@ def _session_date(session: dict[str, Any]) -> date:
     return date.fromisoformat(session["date_start"][:10])
 
 
-def find_race_session(year: int, event_name: str) -> dict[str, Any] | None:
-    """Return the Race session whose circuit or country matches event_name, or None.
+def _bidirectional_match(needle: str, haystack: str) -> bool:
+    return bool(haystack) and (needle in haystack or haystack in needle)
 
-    Matching is a case-insensitive substring test against ``circuit_short_name`` and
-    ``country_name``, mirroring how ``race_resolver._find_event`` searches the FastF1
-    schedule. It is deliberately loose: callers pass FastF1 EventNames like
-    "Belgian Grand Prix" as well as circuit names like "Spa-Francorchamps", and OpenF1
-    indexes neither of those under a single field.
+
+def find_race_session(year: int, event_name: str) -> dict[str, Any] | None:
+    """Return the Race session identified by event_name, or None.
+
+    Two passes, in order:
+
+    1. **Circuit.** Bidirectional case-insensitive substring test against
+       ``circuit_short_name``. Circuit names are effectively unique within a season, so
+       the first match wins.
+    2. **Country, only when unambiguous.** Multiple races can share a ``country_name`` —
+       the United States alone can run three Grands Prix (Miami, Austin, Las Vegas) in
+       one season — so a plain "first match" on country would silently return the wrong
+       race whenever an event_name like "United States Grand Prix" matches more than
+       one of them. This pass therefore collects every country match and returns one
+       only if exactly one session qualifies. Two or more matches means the country arm
+       cannot tell which race is meant, and returning None here — rather than guessing —
+       is what lets the caller fall back to FastF1, which resolves the real EventName
+       correctly. A wrong answer is worse than a miss, because a miss degrades instead
+       of silently building a briefing for the wrong race.
+
+    Matching mirrors how ``race_resolver._find_event`` searches the FastF1 schedule. It
+    is deliberately loose: callers pass FastF1 EventNames like "Belgian Grand Prix" as
+    well as circuit names like "Spa-Francorchamps", and OpenF1 indexes neither of those
+    under a single field.
 
     Returning None rather than raising is what lets the tools decide to fall back.
     """
     needle = event_name.casefold()
-    for session in list_sessions(year, "Race"):
-        haystacks = (
-            session.get("circuit_short_name", "").casefold(),
-            session.get("country_name", "").casefold(),
-        )
-        if any(needle in hay or hay in needle for hay in haystacks if hay):
+    races = list_sessions(year, "Race")
+
+    for session in races:
+        if _bidirectional_match(needle, session.get("circuit_short_name", "").casefold()):
             return session
+
+    country_matches = [
+        session
+        for session in races
+        if _bidirectional_match(needle, session.get("country_name", "").casefold())
+    ]
+    if len(country_matches) == 1:
+        return country_matches[0]
     return None
 
 

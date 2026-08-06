@@ -26,6 +26,7 @@ from tests.conftest import FROZEN_NOW
 from tests.test_fastf1_tools import race_session  # noqa: F401
 from tools.f1_data_tools import get_recent_top_finishers
 from tools.fastf1_tools import get_recent_race_results
+from tools.openf1_races import find_race_session
 
 
 def _boom(*args: Any, **kwargs: Any):
@@ -172,3 +173,78 @@ def test_top_finishers_fall_back_to_fastf1_before_2023(
 
     assert result["last_race"] == "Miami Grand Prix"
     assert openf1_season.calls == []
+
+
+# ── find_race_session: ambiguous-country regression ─────────────────────────
+#
+# Defined locally rather than folded into conftest's OPENF1_SESSIONS_2024: adding
+# Austin and Las Vegas there would change which race is "most recent" for 2024 and
+# break the get_recent_top_finishers tests above.
+
+_US_SESSIONS_2026 = [
+    {
+        "session_key": 20001,
+        "session_name": "Race",
+        "circuit_short_name": "Miami",
+        "country_name": "United States",
+        "date_start": "2026-05-03T19:30:00+00:00",
+    },
+    {
+        "session_key": 20002,
+        "session_name": "Race",
+        "circuit_short_name": "Austin",
+        "country_name": "United States",
+        "date_start": "2026-10-25T19:00:00+00:00",
+    },
+    {
+        "session_key": 20003,
+        "session_name": "Race",
+        "circuit_short_name": "Las Vegas",
+        "country_name": "United States",
+        "date_start": "2026-11-21T06:00:00+00:00",
+    },
+    {
+        "session_key": 20004,
+        "session_name": "Race",
+        # Deliberately not matching "Mexico Grand Prix" by substring in either
+        # direction, so this session can only be found via the country arm.
+        "circuit_short_name": "Autodromo Hermanos Rodriguez",
+        "country_name": "Mexico",
+        "date_start": "2026-11-08T19:00:00+00:00",
+    },
+]
+
+
+@pytest.fixture
+def us_sessions(monkeypatch):
+    """Patch OpenF1's sessions endpoint with three same-country 2026 US races."""
+    from tests.factories import make_openf1_get
+    from tools import openf1_client
+
+    fake = make_openf1_get({"sessions": _US_SESSIONS_2026})
+    monkeypatch.setattr(openf1_client.requests, "get", fake)
+    return fake
+
+
+def test_find_race_session_refuses_an_ambiguous_country(us_sessions):
+    """Three sessions share country_name="United States"; none of their
+    circuit_short_names match, so the country arm alone would have to guess. It must
+    refuse rather than silently return the wrong race.
+    """
+    assert find_race_session(2026, "United States Grand Prix") is None
+
+
+def test_find_race_session_matches_via_circuit_when_unambiguous(us_sessions):
+    """A circuit match short-circuits before the ambiguous country arm ever runs."""
+    session = find_race_session(2026, "Miami Grand Prix")
+
+    assert session["session_key"] == 20001
+
+
+def test_find_race_session_matches_via_country_when_unique(us_sessions):
+    """A country that resolves to exactly one session is still usable — pass 2 is not
+    dead code, it only refuses when the country match is genuinely ambiguous.
+    """
+    session = find_race_session(2026, "Mexico Grand Prix")
+
+    assert session["session_key"] == 20004
