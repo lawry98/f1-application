@@ -619,3 +619,42 @@ def test_chunks_that_carried_no_prose_do_not_count_as_a_truncated_briefing(fake_
 
     with pytest.raises(RuntimeError, match="stream died mid-iteration"):
         run_synthesizer_streamed()
+
+
+def test_standings_is_a_registered_tool():
+    from agent.graph import all_tools
+
+    assert "get_championship_standings" in {tool.name for tool in all_tools}
+
+
+def test_standings_is_in_the_default_tools():
+    """The synthesizer prompt asks for a Championship Context section unconditionally, so
+    the degraded path — a 429'd planner falling back to DEFAULT_TOOLS — needs it too.
+    """
+    from agent.prompts import DEFAULT_TOOLS
+
+    assert "get_championship_standings" in DEFAULT_TOOLS
+
+
+def test_the_planner_prompt_advertises_every_registered_tool():
+    """A tool the planner is never told about is a tool the planner cannot select."""
+    from agent.graph import all_tools
+    from agent.prompts import PLANNER_PROMPT
+
+    for tool in all_tools:
+        assert tool.name in PLANNER_PROMPT
+
+
+def test_standings_is_invoked_with_the_historical_year():
+    """Same year the other historical tools get. Passing race_info["year"] would ask for
+    standings from a season that has not been run yet on an upcoming race.
+    """
+    from agent.graph import _invoke_tool
+    from tests.factories import make_race_info, make_tool
+
+    fake = make_tool("get_championship_standings", {"drivers": []})
+    race_info = make_race_info(year=2026, historical_year=2025)
+
+    _invoke_tool(fake, "get_championship_standings", race_info)
+
+    assert fake.calls == [{"year": 2025}]

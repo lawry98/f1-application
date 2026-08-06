@@ -22,6 +22,7 @@ from tools.f1_data_tools import get_circuit_winners, get_recent_top_finishers
 from tools.fastf1_tools import get_driver_form, get_recent_race_results, get_track_info
 from tools.race_resolver import resolve_next_race
 from tools.search_tools import search_f1_news
+from tools.standings_tools import get_championship_standings
 from tools.weather_tools import get_race_weather
 
 logger = logging.getLogger(__name__)
@@ -29,6 +30,7 @@ logger = logging.getLogger(__name__)
 all_tools = [
     get_track_info,
     get_recent_top_finishers,
+    get_championship_standings,
     get_circuit_winners,
     search_f1_news,
     get_race_weather,
@@ -158,7 +160,7 @@ def _invoke_tool(tool: Any, task_name: str, race_info: dict) -> ToolResult:
             result = tool.invoke(
                 {"circuit_name": race_info["name"], "year": race_info["historical_year"]}
             )
-        elif task_name == "get_recent_top_finishers":
+        elif task_name in ("get_recent_top_finishers", "get_championship_standings"):
             result = tool.invoke({"year": race_info["historical_year"]})
         elif task_name == "get_circuit_winners":
             result = tool.invoke({"circuit_name": race_info["name"], "years_back": 3})
