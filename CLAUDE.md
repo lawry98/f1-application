@@ -153,6 +153,36 @@ every render.
 **The landing page composes, it doesn't contain.** `app/page.tsx` is seven imports from
 `components/landing/`; the hero, features, and footer markup are not inline.
 
+**The teams page has exactly one scroll spy, and it lives in `hooks/use-scroll-spy.ts`.** The
+sections are taller than the viewport and adjacent, so a per-section `IntersectionObserver` firing
+on `isIntersecting` fights itself at every boundary. One observer watches all eleven against a
+narrow band near the top of the viewport and picks the section covering most of it, ties going to
+document order. A click *claims* the active id immediately and suppresses the observer until the
+observer independently agrees or `CLAIM_TIMEOUT_MS` elapses — feedback must not wait for an
+observer, but the observer still owns the state afterwards, and the timeout matters because a
+section shorter than the band may never win. `hooks/use-team-navigation.ts` layers the URL on top:
+the rail, chips and comparison rows are real anchors, so the browser pushes one history entry per
+click by itself, and the hook only handles hash restore, `popstate`, and `replaceState` while
+scrolling. Scroll offsets are `--teams-scroll-offset` in `app/globals.css` consumed as
+`scroll-mt-[…]`, never maths in a handler.
+
+**Team colours are brand assets and must go through `lib/team-utils.ts` before carrying text.**
+`readableOnDark` lifts a livery until it clears WCAG AA as small text on `zinc-950`; `ringOnDark`
+does the same against the lower non-text bar for focus rings; `onColor` picks black or white to
+sit *on* a fill; `needsDamping` says whether a fill is too bright to be a surface at all. That
+last one replaced a `team.color === '#ffffff'` equality check that only ever covered Haas —
+Racing Bulls' navy reads at 2.02:1 and was never caught by it. Decorative use — glows, bars, the
+livery wall, the 3D livery — keeps the true hex. `tests/team-utils.test.ts` asserts every variant
+for all eleven teams, so a new team with an unreadable colour fails CI rather than shipping.
+
+**The teams page's three columns appear at three different widths.** Left rail from `lg`, sticky
+dossier from `xl`, mobile chip strip below `lg` — laptop widths get two columns on purpose. The
+dossier is also *mounted* on a `matchMedia` check, not just `hidden xl:block`: inside a
+`display: none` wrapper it still runs its `AnimatePresence` swap and instantiates a logo image on
+every team change. Moving it to `xl` also means the per-section "Inspect in 3D" button is
+`xl:hidden`, not `lg:hidden` — otherwise 1024–1279px gets no dossier *and* no way to reach the
+inspector.
+
 **The teardown page** (`/teardown`) preloads 192 PNG frames (`public/frames/frame_0000.png` …
 `frame_0191.png`) and maps scroll position to frame index via `requestAnimationFrame`. Its canvas
 is sized `min(92vw, calc(82vh * 800 / 420))` to respect both viewport constraints at once.
