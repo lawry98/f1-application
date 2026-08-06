@@ -1,12 +1,18 @@
 """FastF1-based tools for track info, race results, and driver form."""
 
+import logging
 from datetime import date
 from typing import Any
 
 from langchain_core.tools import tool
 
 from tools.fastf1_helpers import find_event, format_position, load_race_session
+from tools.openf1_client import OPENF1_FIRST_YEAR, driver_index, session_results
+from tools.openf1_races import find_race_session
+from tools.openf1_shaping import race_result_rows
 from tools.schedule_cache import get_schedule
+
+logger = logging.getLogger(__name__)
 
 
 @tool
@@ -43,6 +49,11 @@ def get_track_info(circuit_name: str, year: int) -> dict[str, Any]:
 def get_recent_race_results(event_name: str, year: int) -> dict[str, Any]:
     """Get the most recent race results from this circuit.
 
+    Served by OpenF1 for 2023 onwards and by FastF1 before that. The two paths differ in
+    one visible way: ``Status`` is FastF1's own prose ("+1 Lap", "Accident") on the
+    FastF1 path but only "Finished"/"DNF"/"DNS"/"DSQ" on the OpenF1 path, because OpenF1
+    exposes booleans rather than a reason.
+
     Args:
         event_name: Name of the Grand Prix event.
         year: Year to look up.
@@ -50,6 +61,27 @@ def get_recent_race_results(event_name: str, year: int) -> dict[str, Any]:
     Returns:
         Dictionary with race results or an 'error' key on failure.
     """
+    if year >= OPENF1_FIRST_YEAR:
+        try:
+            session = find_race_session(year, event_name)
+            if session is not None:
+                rows = session_results({session["session_key"]})
+                if rows:
+                    drivers = driver_index({session["session_key"]})
+                    return {
+                        "year": year,
+                        "event": event_name,
+                        "results": race_result_rows(rows, drivers)[:10],
+                    }
+        except Exception as exc:
+            logger.warning(
+                "OpenF1 lookup for %s %d failed (%s: %s); falling back to FastF1",
+                event_name,
+                year,
+                type(exc).__name__,
+                exc,
+            )
+
     try:
         session = load_race_session(year, event_name)
 

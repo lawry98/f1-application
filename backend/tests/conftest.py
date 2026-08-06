@@ -242,3 +242,132 @@ def client():
     app = FastAPI()
     app.include_router(router)
     return TestClient(app)
+
+
+OPENF1_SESSIONS_2024 = [
+    {
+        "session_key": 9500,
+        "meeting_key": 1200,
+        "session_name": "Race",
+        "circuit_short_name": "Sakhir",
+        "country_name": "Bahrain",
+        "date_start": "2024-03-02T15:00:00+00:00",
+    },
+    {
+        "session_key": 9510,
+        "meeting_key": 1201,
+        "session_name": "Sprint",
+        "circuit_short_name": "Miami",
+        "country_name": "United States",
+        "date_start": "2024-04-05T16:00:00+00:00",
+    },
+    {
+        "session_key": 9511,
+        "meeting_key": 1201,
+        "session_name": "Qualifying",
+        "circuit_short_name": "Miami",
+        "country_name": "United States",
+        "date_start": "2024-04-05T20:00:00+00:00",
+    },
+    {
+        "session_key": 9512,
+        "meeting_key": 1201,
+        "session_name": "Race",
+        "circuit_short_name": "Miami",
+        "country_name": "United States",
+        "date_start": "2024-04-06T20:00:00+00:00",
+    },
+    {
+        "session_key": 9600,
+        "meeting_key": 1202,
+        "session_name": "Race",
+        "circuit_short_name": "Monte Carlo",
+        "country_name": "Monaco",
+        "date_start": "2024-05-26T13:00:00+00:00",
+    },
+]
+
+OPENF1_DRIVERS = [
+    {
+        "session_key": key,
+        "driver_number": number,
+        "full_name": full_name,
+        "name_acronym": acronym,
+        "team_name": team,
+    }
+    for key in (9500, 9510, 9512, 9600)
+    for number, full_name, acronym, team in (
+        (1, "Max VERSTAPPEN", "VER", "Red Bull Racing"),
+        (4, "Lando NORRIS", "NOR", "McLaren"),
+        (44, "Lewis HAMILTON", "HAM", "Ferrari"),
+        # Finishes level with HAM on 30.0 — the tie-break case. Never beats HAM's best
+        # finish, so best_position decides and the order is predictable.
+        (55, "Tied SECOND", "TIE", "Williams"),
+        (50, "Zero POINTS", "ZER", "Cadillac"),
+    )
+]
+
+
+def _openf1_result(session_key, position, number, points, **flags):
+    row = {
+        "session_key": session_key,
+        "position": position,
+        "driver_number": number,
+        "points": points,
+        "dnf": False,
+        "dns": False,
+        "dsq": False,
+    }
+    row.update(flags)
+    return row
+
+
+# Race points on the 25/18 scale; the Miami Sprint on the 8/7 scale.
+#
+# Season totals this produces: VER 75, NOR 69, HAM 30, TIE 30, ZER 0.
+#   - Driver 44 (HAM) retires from Monaco — the DNF case.
+#   - Driver 55 (TIE) finishes level with HAM on 30.0 — the tie-break case. HAM's best
+#     finish is P3 and TIE's is P4, so best_position decides and HAM ranks ahead.
+#   - Driver 50 (ZER) scores nothing all season — the zero-fill case.
+# Constructors: Red Bull 75, McLaren 69, Ferrari 30, Williams 30, Cadillac 0. Ferrari and
+# Williams tie, broken alphabetically, so Cadillac lands at P5.
+OPENF1_RESULTS = [
+    _openf1_result(9500, 1, 1, 25.0),
+    _openf1_result(9500, 2, 4, 18.0),
+    _openf1_result(9500, 3, 44, 15.0),
+    _openf1_result(9500, 4, 55, 12.0),
+    _openf1_result(9510, 1, 4, 8.0),
+    _openf1_result(9510, 2, 1, 7.0),
+    _openf1_result(9512, 1, 4, 25.0),
+    _openf1_result(9512, 2, 1, 18.0),
+    _openf1_result(9512, 3, 44, 15.0),
+    _openf1_result(9512, 4, 55, 12.0),
+    _openf1_result(9600, 1, 1, 25.0, duration=3600.0),
+    _openf1_result(9600, 2, 4, 18.0),
+    _openf1_result(9600, 4, 55, 6.0),
+    _openf1_result(9600, 0, 44, 0.0, dnf=True),
+    # Qualifying carries no `points` key at all — pinning that OpenF1 quirk in the fixture.
+    {"session_key": 9511, "position": 1, "driver_number": 1, "dnf": False},
+]
+
+
+@pytest.fixture
+def openf1_season(monkeypatch):
+    """Patch the OpenF1 client's requests.get with a full fake 2024 season.
+
+    Overrides the autouse ``_block_openf1_network`` fixture for tests that want the
+    OpenF1 path rather than the FastF1 fallback. Returns the fake so tests can assert
+    on its ``.calls``.
+    """
+    from tests.factories import make_openf1_get
+    from tools import openf1_client
+
+    fake = make_openf1_get(
+        {
+            "sessions": OPENF1_SESSIONS_2024,
+            "session_result": OPENF1_RESULTS,
+            "drivers": OPENF1_DRIVERS,
+        }
+    )
+    monkeypatch.setattr(openf1_client.requests, "get", fake)
+    return fake

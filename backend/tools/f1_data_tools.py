@@ -1,12 +1,18 @@
 """FastF1-based tools for recent race top finishers and circuit winner history."""
 
+import logging
 from datetime import date
 from typing import Any
 
 from langchain_core.tools import tool
 
 from tools.fastf1_helpers import find_event, format_position, load_race_session
+from tools.openf1_client import OPENF1_FIRST_YEAR, driver_index, session_results
+from tools.openf1_races import completed_races
+from tools.openf1_shaping import top_finisher_rows
 from tools.schedule_cache import get_schedule
+
+logger = logging.getLogger(__name__)
 
 
 @tool
@@ -14,7 +20,10 @@ def get_recent_top_finishers(year: int) -> dict[str, Any]:
     """Get the top-10 finishing order of the season's most recent completed race.
 
     Note: This is a single race's finishing positions, not cumulative championship
-    standings — use it as a snapshot of current competitive order.
+    standings — use it as a snapshot of current competitive order. For a real table,
+    ``get_championship_standings`` exists.
+
+    Served by OpenF1 for 2023 onwards and by FastF1 before that.
 
     Args:
         year: Season to query.
@@ -22,6 +31,32 @@ def get_recent_top_finishers(year: int) -> dict[str, Any]:
     Returns:
         Dictionary with the most recent race's top finishers or an 'error' key on failure.
     """
+    note = "Positions from most recent race (not cumulative season standings)"
+
+    if year >= OPENF1_FIRST_YEAR:
+        try:
+            races = completed_races(year, date.today())
+            if not races:
+                return {"error": f"No completed races found for {year} season yet"}
+
+            last_race = races[-1]
+            rows = session_results({last_race["session_key"]})
+            if rows:
+                drivers = driver_index({last_race["session_key"]})
+                return {
+                    "year": year,
+                    "last_race": last_race["circuit_short_name"],
+                    "top_finishers": top_finisher_rows(rows, drivers)[:10],
+                    "note": note,
+                }
+        except Exception as exc:
+            logger.warning(
+                "OpenF1 top finishers for %d failed (%s: %s); falling back to FastF1",
+                year,
+                type(exc).__name__,
+                exc,
+            )
+
     try:
         schedule = get_schedule(year)
         today = date.today()
@@ -48,7 +83,7 @@ def get_recent_top_finishers(year: int) -> dict[str, Any]:
             "year": year,
             "last_race": last_event["EventName"],
             "top_finishers": top_finishers,
-            "note": "Positions from most recent race (not cumulative season standings)",
+            "note": note,
         }
     except Exception as exc:
         return {"error": f"Failed to get recent top finishers: {exc}"}
