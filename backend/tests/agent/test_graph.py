@@ -662,11 +662,12 @@ def test_standings_is_invoked_with_the_current_year():
 
 
 def test_standings_retries_with_the_historical_year_when_the_season_has_not_started():
-    """Pre-season, `get_championship_standings` reports the year's error verbatim: "No
-    completed races found for {year} season yet". A briefing should still get last
-    year's final classification rather than nothing, so the year - 1 retry must fire.
+    """Pre-season, `get_championship_standings` reports `reason=SEASON_NOT_STARTED`
+    alongside its error. A briefing should still get last year's final classification
+    rather than nothing, so the year - 1 retry must fire on that structural marker.
     """
     from agent.graph import _invoke_tool
+    from tools.standings_tools import SEASON_NOT_STARTED
 
     class _RetryingTool:
         name = "get_championship_standings"
@@ -677,7 +678,10 @@ def test_standings_retries_with_the_historical_year_when_the_season_has_not_star
         def invoke(self, args: dict) -> dict:
             self.calls.append(args)
             if args["year"] == 2026:
-                return {"error": "No completed races found for 2026 season yet"}
+                return {
+                    "error": "No completed races found for 2026 season yet",
+                    "reason": SEASON_NOT_STARTED,
+                }
             return {"year": 2025, "drivers": [{"driver_code": "NOR"}]}
 
     fake = _RetryingTool()
@@ -688,3 +692,31 @@ def test_standings_retries_with_the_historical_year_when_the_season_has_not_star
     assert fake.calls == [{"year": 2026}, {"year": 2025}]
     assert result["success"] is True
     assert result["data"]["year"] == 2025
+
+
+def test_standings_does_not_retry_on_a_transport_failure():
+    """A transient failure (e.g. an HTTP 429) carries no `reason` key, so it must not
+    trigger the historical-year retry — substituting last season's final table for a
+    briefing that asked for current standings is worse than serving the error, which the
+    synthesizer already knows how to omit.
+    """
+    from agent.graph import _invoke_tool
+
+    class _FailingTool:
+        name = "get_championship_standings"
+
+        def __init__(self) -> None:
+            self.calls: list[dict] = []
+
+        def invoke(self, args: dict) -> dict:
+            self.calls.append(args)
+            return {"error": "Failed to get championship standings: HTTP 429"}
+
+    fake = _FailingTool()
+    race_info = make_race_info(year=2026, historical_year=2025)
+
+    result = _invoke_tool(fake, "get_championship_standings", race_info)
+
+    assert fake.calls == [{"year": 2026}]
+    assert result["success"] is False
+    assert result["data"]["error"] == "Failed to get championship standings: HTTP 429"

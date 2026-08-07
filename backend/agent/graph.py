@@ -22,7 +22,7 @@ from tools.f1_data_tools import get_circuit_winners, get_recent_top_finishers
 from tools.fastf1_tools import get_driver_form, get_recent_race_results, get_track_info
 from tools.race_resolver import resolve_next_race
 from tools.search_tools import search_f1_news
-from tools.standings_tools import get_championship_standings
+from tools.standings_tools import SEASON_NOT_STARTED, get_championship_standings
 from tools.weather_tools import get_race_weather
 
 logger = logging.getLogger(__name__)
@@ -167,9 +167,12 @@ def _invoke_tool(tool: Any, task_name: str, race_info: dict) -> ToolResult:
             # 2 onward, "current standings" means this season's table. `historical_year`
             # only applies before round 1, when this season has nothing to report yet —
             # retry with it once so a pre-season briefing still gets last year's final
-            # classification instead of an empty section.
+            # classification instead of an empty section. Only that structural reason
+            # triggers the retry: a transport failure (e.g. an HTTP 429) must not fall
+            # back to last season's table, since serving stale-but-labeled-current
+            # standings is worse than the error, which the synthesizer already omits.
             result = tool.invoke({"year": race_info["year"]})
-            if "error" in result:
+            if result.get("reason") == SEASON_NOT_STARTED:
                 result = tool.invoke({"year": race_info["historical_year"]})
         elif task_name == "get_circuit_winners":
             result = tool.invoke({"circuit_name": race_info["name"], "years_back": 3})

@@ -10,7 +10,7 @@ qualifying must not count, and a team on zero points must still appear.
 import pytest
 from freezegun import freeze_time
 
-from tools.standings_tools import get_championship_standings
+from tools.standings_tools import SEASON_NOT_STARTED, get_championship_standings
 
 # A driver who transfers mid-season: Team A for the early race, Team B for the later
 # one. ``driver_index`` deliberately collapses this to Team B (the latest session wins),
@@ -234,25 +234,38 @@ def test_a_constructor_tie_breaks_alphabetically(openf1_season):
 
 def test_a_year_before_coverage_is_an_error():
     """No FastF1 fallback: FastF1 has no standings source either, which is the whole
-    reason this tool did not exist before.
+    reason this tool did not exist before. Not structurally the "season not started"
+    case, so no `reason` key rides along — agent/graph.py's retry must not fire here.
     """
     result = get_championship_standings.invoke({"year": 2022})
 
     assert result == {"error": "Championship standings are only available from 2023 onwards."}
+    assert "reason" not in result
 
 
 @freeze_time("2024-01-15")
 def test_a_season_with_no_completed_races_is_an_error(openf1_season):
+    """The one error carrying `reason=SEASON_NOT_STARTED` — agent/graph.py's
+    historical-year retry keys off this sibling field, not the error prose.
+    """
     result = get_championship_standings.invoke({"year": 2024})
 
-    assert result == {"error": "No completed races found for 2024 season yet"}
+    assert result == {
+        "error": "No completed races found for 2024 season yet",
+        "reason": SEASON_NOT_STARTED,
+    }
 
 
 def test_a_transport_failure_becomes_an_error_not_a_raise():
-    """conftest's autouse fixture blocks OpenF1, so this is the unpatched default."""
+    """conftest's autouse fixture blocks OpenF1, so this is the unpatched default. A
+    transport failure, not a not-yet-started season, so it must not carry `reason` —
+    that is what stops agent/graph.py's retry from substituting last season's table for
+    what is really just a failed request.
+    """
     result = get_championship_standings.invoke({"year": 2024})
 
     assert "error" in result
+    assert "reason" not in result
 
 
 @freeze_time("2024-06-01")

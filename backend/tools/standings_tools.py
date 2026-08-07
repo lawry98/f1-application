@@ -25,6 +25,10 @@ from tools.openf1_races import scoring_sessions
 
 logger = logging.getLogger(__name__)
 
+# Sibling `reason` value for the pre-season error below. `_invoke_tool` in agent/graph.py
+# keys its historical-year retry off this — do not delete it as unused.
+SEASON_NOT_STARTED = "season_not_started"
+
 
 @tool
 def get_championship_standings(year: int) -> dict[str, Any]:
@@ -53,7 +57,10 @@ def get_championship_standings(year: int) -> dict[str, Any]:
             if date.fromisoformat(session["date_start"][:10]) < today
         ]
         if not sessions:
-            return {"error": f"No completed races found for {year} season yet"}
+            return {
+                "error": f"No completed races found for {year} season yet",
+                "reason": SEASON_NOT_STARTED,
+            }
 
         keys = {session["session_key"] for session in sessions}
         drivers = driver_index(keys)
