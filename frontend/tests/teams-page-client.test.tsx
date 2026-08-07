@@ -103,6 +103,26 @@ describe('TeamsPageClient', () => {
     expect(navs.length).toBeGreaterThanOrEqual(2);
   });
 
+  // The rail's wrapper used to be an `<aside aria-label="Constructor navigation">` around
+  // `<nav aria-label="Constructors">` — two landmarks for one rail, and a name that read as
+  // a near-duplicate of the chip strip's "Constructor navigation, compact". The dossier is
+  // the page's only complementary landmark now.
+  it('gives the rail exactly one landmark', () => {
+    setViewportMatches(false);
+    render(<TeamsPageClient />);
+    expect(
+      screen.queryByRole('complementary', { name: /constructor navigation/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: 'Constructors' })).toBeInTheDocument();
+  });
+
+  it('leaves the dossier as the only complementary landmark', async () => {
+    setViewportMatches(true);
+    render(<TeamsPageClient />);
+    await screen.findByRole('complementary', { name: /dossier/i });
+    expect(screen.getAllByRole('complementary')).toHaveLength(1);
+  });
+
   it('restores the team named in the URL hash', () => {
     setViewportMatches(false);
     window.location.hash = '#team-cadillac';

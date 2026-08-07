@@ -102,16 +102,17 @@ export function TeamsPageClient() {
         Nothing here may move visually: `order-1/2/3` puts the columns back.
       */}
       <div className="flex">
-        <aside
-          aria-label="Constructor navigation"
-          className="sticky top-14 order-1 hidden h-[calc(100vh-3.5rem)] w-[200px] self-start overflow-y-auto border-r border-zinc-900 lg:block xl:w-[240px]"
-        >
+        {/* A plain `div`, like the chip strip's wrapper above: `TeamsNavRail` already owns a
+            `<nav aria-label="Constructors">`, and wrapping it in a labelled `<aside>` put two
+            landmarks around one rail — with an accessible name that collided with the chip
+            strip's "Constructor navigation, compact". This carries positioning only. */}
+        <div className="sticky top-14 order-1 hidden h-[calc(100vh-3.5rem)] w-[200px] self-start overflow-y-auto border-r border-zinc-900 lg:block xl:w-[240px]">
           <TeamsNavRail
             activeTeamId={activeTeamId}
             onSelectTeam={claim}
             reducedMotion={reducedMotion}
           />
-        </aside>
+        </div>
 
         {/* `xl`, not `lg`. Three columns at laptop width squeezed the centre to nothing;
             the per-section Inspect button covers everything below this. */}
