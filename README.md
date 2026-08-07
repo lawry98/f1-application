@@ -11,7 +11,7 @@ An AI-powered F1 race weekend briefing generator that provides comprehensive pre
 - **Real-time Streaming**: Server-Sent Events for live updates as the agent works, with the briefing prose filling in as the model writes it
 - **Modern 3D UI**: Three.js F1 car visualization with team liveries
 - **F1 Car Teardown**: Scroll-driven anatomy page — 192 frames reveal the car's internals as you scroll
-- **Team Explorer**: All 11 teams for 2026 with liveries, driver line-ups, a live 3D car inspector, and a sortable head-to-head comparison
+- **Team Explorer**: All 11 teams for 2026 with liveries, driver line-ups, and a side-by-side comparison grid
 
 ## Tech Stack
 
@@ -51,7 +51,7 @@ f1-application/
 │   ├── components/
 │   │   ├── landing/  Landing page sections
 │   │   ├── briefing/ Briefing chat, card, tool trace, race selector
-│   │   ├── teams/    Team explorer — hero, nav rail, sections, 3D viewer, comparison
+│   │   ├── teams/    Team explorer — hero, sections, comparison grid
 │   │   ├── teardown/ Canvas scroll animation
 │   │   ├── 3d/       Three.js car scenes (dynamically imported)
 │   │   └── ui/       shadcn/ui + Magic UI components
@@ -209,7 +209,7 @@ OUTPUT (Race Briefing)
 | `/briefing` | AI race weekend briefing chat |
 | `/teardown` | Scroll-driven F1 car anatomy (192-frame canvas animation) |
 | `/showcase` | Interactive 3D car with all 11 team liveries |
-| `/teams` | 2026 team explorer — liveries, driver line-ups, 3D inspector, grid comparison |
+| `/teams` | 2026 team explorer — liveries, driver line-ups, comparison grid |
 | `/credits` | Credits & attributions |
 
 ### Example: Generate Briefing
@@ -256,10 +256,21 @@ after any change to the SSE contract.
 
 ## Important Notes
 
-### FastF1 Caching
-- First requests are slow (FastF1 downloads telemetry data)
-- Subsequent requests are fast (data cached in `backend/cache/`)
-- Cache directory is in `.gitignore`
+### Caching
+Two caches exist, and only one of them speeds anything up.
+
+- **`backend/cache/` does nothing.** FastF1 only persists a session that loaded cleanly, and
+  these loads never do, so the directory (gitignored) stays empty of `.ff1pkl` files. Cold and
+  warm measure the same. A briefing is slow because of upstream API latency, not cold-cache
+  telemetry downloads — so there is no point warming it.
+- **The tool result cache is what makes a repeat briefing fast.** The five historical FastF1
+  tools are cached in-process across requests, taking the gathering stage from ~15s to well
+  under a second on a second briefing for the same race. Weather and news are never cached, and
+  the three tools that answer date-relative questions key on the date. See
+  [ADR-0003](docs/adr/0003-cache-tool-results-across-requests.md).
+
+Total request time drops less than you might expect: once gathering is cached, LLM synthesis
+dominates the wall clock.
 
 ### Tool Error Handling
 - All tools return `{"error": "message"}` instead of raising exceptions
@@ -272,6 +283,9 @@ after any change to the SSE contract.
   going — except `briefing_delta`, which the synthesizer emits *during* its own run, one per
   chunk of prose the model produces, and `tool_result`, which `tool_executor_node` emits
   per tool as each one completes inside the node's `as_completed` loop
+- `tool_result` carries `cached`, saying whether that tool's payload came from the result cache
+  or a live fetch. Nothing in the UI renders it yet — the field exists so the transport stays
+  honest about provenance
 - Frontend consumes the typed `AsyncGenerator<StreamEvent>` from `lib/api.ts`, buffering deltas
   and repainting on an 80ms timer rather than once per delta
 - A synthesis that dies partway still delivers the prose it wrote, marked as unfinished — see
@@ -290,14 +304,17 @@ reading the code. Setup and orientation stay here; agent-facing rules live there
 
 **`"Failed to fetch races"`**
 - Ensure the backend is running on port 8000
-- FastF1 may be downloading data on first request (can take 30–60 seconds)
+- The season schedule is fetched from the F1 API on demand; a slow or unreachable upstream
+  surfaces here
 
 **`"No event found for circuit"`**
 - Try the official Grand Prix name (e.g., "Monaco Grand Prix" not "Monte Carlo")
 - Check `backend/tools/race_resolver.py` for the circuit name resolution logic
 
 **Slow first requests**
-- FastF1 downloads telemetry on first use; cache is populated after the first run
+- Expected: the tools fetch from the F1 API, and that latency is the cost. Warming
+  `backend/cache/` will not help — see [Caching](#caching). A second briefing for the *same*
+  race is much faster, because the tool results are cached in process.
 
 ## Credits
 

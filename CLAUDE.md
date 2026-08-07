@@ -202,35 +202,6 @@ every render.
 **The landing page composes, it doesn't contain.** `app/page.tsx` is seven imports from
 `components/landing/`; the hero, features, and footer markup are not inline.
 
-**The teams page has exactly one scroll spy, and it lives in `hooks/use-scroll-spy.ts`.** The
-sections are taller than the viewport and adjacent, so a per-section `IntersectionObserver` firing
-on `isIntersecting` fights itself at every boundary. One observer watches all eleven against a
-narrow band near the top of the viewport and picks the section covering most of it, ties going to
-document order. A click *claims* the active id immediately and suppresses the observer until the
-scroll it triggered settles — feedback must not wait for an observer, but the observer still owns
-the state afterwards. `hooks/use-team-navigation.ts` layers the URL on top: `pushState` on an
-explicit click, `replaceState` while scrolling, so eleven teams do not become eleven history
-entries. Scroll offsets are `scroll-margin-top` on the sections, never maths in the handler.
-
-**Team colors are brand assets and must go through `lib/team-utils.ts` before carrying text.**
-`paletteFor(color)` returns `base` (untouched, decorative only — glows, 3D livery, bars) plus
-`text`/`display`/`ring`/`on` variants shifted in lightness until they clear WCAG AA against
-`bg-zinc-950`. Racing Bulls navy reads at 1.9:1 raw and Haas is literally `#ffffff`; the old
-one-off `isWhite` special case only covered the second of those. `tests/team-utils.test.ts`
-asserts the thresholds for every team on the grid, so a new team with an unreadable color fails
-CI rather than shipping.
-
-**`Team.championshipPosition` and `Team.points` are deliberately unset.** A backend source now
-exists — `GET /api/standings/{year}` — but wiring it into the frontend is a separate branch;
-inventing a table here in the meantime would be worse than omitting it. Every consumer treats
-them as optional and falls back to all-time stats; populating them in `teams-data.ts` is the
-only change needed to light up the standings UI everywhere.
-
-**The teams page's three columns appear at different widths.** Left rail from `lg`, sticky 3D
-viewer from `xl`, mobile chip strip below `lg` — laptop widths get two columns on purpose. The
-viewer is also *mounted* on a `matchMedia` check, not just `hidden xl:block`: a canvas inside a
-`display: none` wrapper still allocates a WebGL context and runs its loop.
-
 **The teardown page** (`/teardown`) preloads 192 PNG frames (`public/frames/frame_0000.png` …
 `frame_0191.png`) and maps scroll position to frame index via `requestAnimationFrame`. Its canvas
 is sized `min(92vw, calc(82vh * 800 / 420))` to respect both viewport constraints at once.
@@ -252,7 +223,7 @@ is sized `min(92vw, calc(82vh * 800 / 420))` to respect both viewport constraint
 
 ### Frontend tests
 
-Vitest with jsdom, in `frontend/tests/`. A few things about them are not guessable:
+Vitest with jsdom, in `frontend/tests/`. Three things about them are not guessable:
 
 - **`next lint` only walks the directories listed in `next.config.js`'s `eslint.dirs`.**
   `tests/` is in that list *because* it is not one of Next's defaults — without the entry,
@@ -264,12 +235,6 @@ Vitest with jsdom, in `frontend/tests/`. A few things about them are not guessab
   from the format the backend really serves, which is the one thing they exist to catch.
 - **`tests/setup.ts` stubs `IntersectionObserver`.** jsdom has none, and `BlurFade` wraps most
   page sections, so without it any test that renders one dies inside framer-motion's `useInView`.
-  It also stubs `scrollIntoView`, `scrollTo`, and `matchMedia` for the same reason — the teams
-  page calls all three, and jsdom implements none of them.
-- **`AnimatePresence mode="wait"` makes content untestable.** The incoming child is held back
-  behind the outgoing one's exit animation, which never resolves synchronously under jsdom, so
-  `getByRole` finds nothing. Use it for swaps nobody asserts on; anywhere a test needs the new
-  content, render conditionally instead.
 
 Fake timers are load-bearing in `use-briefing.test.tsx` — the flush interval is a module
 constant, so controlling the clock is the only way to observe a paint mid-stream. Use

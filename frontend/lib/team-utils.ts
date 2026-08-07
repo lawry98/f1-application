@@ -1,187 +1,133 @@
 import { type Team } from '@/data/teams-data';
 
-/**
- * Contrast-safe helpers for the runtime team colors.
- *
- * Team colors are brand assets, not UI tokens: `#2b4562` (Racing Bulls) reads at 1.9:1 on the
- * page background and `#ffffff` (Haas) reads at 1:1 against white button text. Every consumer
- * used to special-case white by hand; these helpers derive the safe variant instead, while
- * `palette.base` keeps the untouched brand color for decorative use (glows, 3D livery, bars).
- */
-
-/** The page background every team color is judged against (`bg-zinc-950`). */
-export const PAGE_BG = '#09090b';
-
-/** WCAG AA for body text. */
-const AA_TEXT = 4.5;
-/** WCAG AA for large (>=24px, or >=18.66px bold) text and UI boundaries. */
-const AA_LARGE = 3;
-
-type Rgb = [number, number, number];
-
-function parseHex(hex: string): Rgb {
-  const raw = hex.replace('#', '');
-  const full =
-    raw.length === 3
-      ? raw
-          .split('')
-          .map((c) => c + c)
-          .join('')
-      : raw;
-  return [
-    parseInt(full.slice(0, 2), 16),
-    parseInt(full.slice(2, 4), 16),
-    parseInt(full.slice(4, 6), 16),
-  ];
+/** Returns inline style + extra className for a team-color-filled CTA button. */
+export function teamColorButtonStyle(team: Team) {
+  const isWhite = team.color === '#ffffff';
+  return {
+    style: {
+      backgroundColor: isWhite ? '#27272a' : team.color,
+      color: isWhite ? '#ffffff' : team.textOnColor === 'black' ? '#000000' : '#ffffff',
+      borderColor: isWhite ? '#52525b' : 'transparent',
+    },
+    className: isWhite ? 'border' : '',
+  };
 }
 
-function toHex([r, g, b]: Rgb): string {
-  const part = (v: number) =>
-    Math.round(Math.min(255, Math.max(0, v)))
-      .toString(16)
-      .padStart(2, '0');
-  return `#${part(r)}${part(g)}${part(b)}`;
+/** The season the page describes. Used to derive elapsed seasons from a debut year. */
+const CURRENT_SEASON = 2026;
+
+/** Seasons elapsed since a constructor's debut, for the rail's derived stat cell. */
+export function seasonsSince(firstEntry: number): number {
+  return CURRENT_SEASON - firstEntry;
 }
 
-/** WCAG relative luminance, 0 (black) to 1 (white). */
+/** The page background every small text colour on it is judged against — Tailwind `zinc-950`. */
+export const DARK_BG = '#09090b';
+
+/** WCAG 2.1 AA for text below 18.66px bold / 24px regular. Team colour is only ever used at 9–10px. */
+export const MIN_CONTRAST = 4.5;
+
+function parseHex(hex: string): [number, number, number] {
+  const v = parseInt(hex.replace('#', ''), 16);
+  return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+}
+
+function toHex(rgb: [number, number, number]): string {
+  return `#${rgb.map((c) => Math.round(c).toString(16).padStart(2, '0')).join('')}`;
+}
+
 function relativeLuminance(hex: string): number {
-  const [r, g, b] = parseHex(hex).map((v) => {
-    const c = v / 255;
+  const [r, g, b] = parseHex(hex).map((c8) => {
+    const c = c8 / 255;
     return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-  }) as Rgb;
+  }) as [number, number, number];
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
-/** WCAG contrast ratio between two opaque colors, 1 to 21. */
+/** WCAG 2.1 contrast ratio between two opaque hex colours. 1 (identical) to 21 (black on white). */
 export function contrastRatio(a: string, b: string): number {
   const la = relativeLuminance(a);
   const lb = relativeLuminance(b);
-  const [hi, lo] = la > lb ? [la, lb] : [lb, la];
-  return (hi + 0.05) / (lo + 0.05);
+  const [lighter, darker] = la >= lb ? [la, lb] : [lb, la];
+  return (lighter + 0.05) / (darker + 0.05);
 }
 
-/** `#rrggbb` plus an alpha channel, as an `rgb()` string usable in any inline style. */
-export function withAlpha(hex: string, alpha: number): string {
-  const [r, g, b] = parseHex(hex);
-  return `rgb(${r} ${g} ${b} / ${alpha})`;
-}
-
-function rgbToHsl([r, g, b]: Rgb): [number, number, number] {
-  const rn = r / 255;
-  const gn = g / 255;
-  const bn = b / 255;
-  const max = Math.max(rn, gn, bn);
-  const min = Math.min(rn, gn, bn);
+function rgbToHsl([r8, g8, b8]: [number, number, number]): [number, number, number] {
+  const [r, g, b] = [r8 / 255, g8 / 255, b8 / 255];
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
   const l = (max + min) / 2;
-  if (max === min) return [0, 0, l];
-
   const d = max - min;
+  if (d === 0) return [0, 0, l];
   const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-  let h: number;
-  if (max === rn) h = ((gn - bn) / d + (gn < bn ? 6 : 0)) / 6;
-  else if (max === gn) h = ((bn - rn) / d + 2) / 6;
-  else h = ((rn - gn) / d + 4) / 6;
-  return [h, s, l];
+  const h = max === r ? ((g - b) / d + (g < b ? 6 : 0)) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [h * 60, s, l];
 }
 
-function hslToRgb([h, s, l]: [number, number, number]): Rgb {
-  if (s === 0) {
-    const v = l * 255;
-    return [v, v, v];
+function hslToRgb(h: number, s: number, l: number): [number, number, number] {
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const hp = ((h % 360) + 360) % 360 / 60;
+  const x = c * (1 - Math.abs((hp % 2) - 1));
+  const m = l - c / 2;
+  const [r, g, b] =
+    hp < 1 ? [c, x, 0]
+    : hp < 2 ? [x, c, 0]
+    : hp < 3 ? [0, c, x]
+    : hp < 4 ? [0, x, c]
+    : hp < 5 ? [x, 0, c]
+    : [c, 0, x];
+  return [(r + m) * 255, (g + m) * 255, (b + m) * 255];
+}
+
+const readableCache = new Map<string, string>();
+
+/**
+ * A team colour lightened just far enough to clear WCAG AA as small text on `zinc-950`.
+ *
+ * Seven of the eleven 2026 liveries fail 4.5:1 against the page background — Racing Bulls'
+ * `#2b4562` sits at 2.02:1, effectively invisible at 10px. Lightness is raised in HSL, so hue
+ * and saturation survive and the result still reads as the brand colour; blending toward white
+ * instead would wash the hue out.
+ *
+ * This is for **small text only**. Bars, accent rules, keylines wider than a hairline and glow
+ * blobs are large or decorative, exempt from the AA text rule, and must keep the true colour —
+ * a livery wall painted in lightened brand colours is no longer a livery wall.
+ */
+export function readableOnDark(hex: string): string {
+  const cached = readableCache.get(hex);
+  if (cached) return cached;
+
+  let result = hex;
+  if (contrastRatio(hex, DARK_BG) < MIN_CONTRAST) {
+    const [h, s, l] = rgbToHsl(parseHex(hex));
+    result = '#ffffff';
+    for (let step = l; step <= 1; step += 0.01) {
+      const candidate = toHex(hslToRgb(h, s, Math.min(step, 1)));
+      if (contrastRatio(candidate, DARK_BG) >= MIN_CONTRAST) {
+        result = candidate;
+        break;
+      }
+    }
   }
-  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-  const p = 2 * l - q;
-  const channel = (t: number) => {
-    let tt = t;
-    if (tt < 0) tt += 1;
-    if (tt > 1) tt -= 1;
-    if (tt < 1 / 6) return p + (q - p) * 6 * tt;
-    if (tt < 1 / 2) return q;
-    if (tt < 2 / 3) return p + (q - p) * (2 / 3 - tt) * 6;
-    return p;
-  };
-  return [channel(h + 1 / 3) * 255, channel(h) * 255, channel(h - 1 / 3) * 255];
+
+  readableCache.set(hex, result);
+  return result;
 }
 
 /**
- * The nearest lightness-shifted variant of `color` that clears `minRatio` against `bg`.
+ * Wash colour for a driver portrait. Mirrors the `#ffffff` special-case that
+ * `teamColorButtonStyle` already establishes: a white wash over zinc-950 erases the
+ * portrait entirely, so Haas gets a neutral tint and leans on a white keyline instead.
  *
- * Hue and saturation are preserved, so the result still reads as the team's color — Ferrari red
- * stays red, it just stops being unreadable. Shifts away from the background (lighter on a dark
- * page, darker on a light one) and falls back to plain white/black if even the extreme fails.
+ * `keyline` is the *text* variant — it labels the 10px nationality line, so it is run through
+ * `readableOnDark`. The wash (`color`) keeps the true livery: it is a large blended fill, not
+ * text, and lightening it would drain the portrait's tint.
  */
-export function readableOn(
-  color: string,
-  bg: string = PAGE_BG,
-  minRatio: number = AA_TEXT,
-): string {
-  if (contrastRatio(color, bg) >= minRatio) return color;
-
-  const [h, s, l] = rgbToHsl(parseHex(color));
-  const towardsLight = relativeLuminance(bg) < 0.5;
-  const step = towardsLight ? 0.02 : -0.02;
-
-  for (let next = l + step; next >= 0 && next <= 1; next += step) {
-    const candidate = toHex(hslToRgb([h, s, next]));
-    if (contrastRatio(candidate, bg) >= minRatio) return candidate;
-  }
-  return towardsLight ? '#ffffff' : '#000000';
-}
-
-/** Black or white — whichever is more readable on top of a solid `color` fill. */
-export function bestTextOn(color: string): '#000000' | '#ffffff' {
-  return contrastRatio(color, '#000000') >= contrastRatio(color, '#ffffff') ? '#000000' : '#ffffff';
-}
-
-export interface TeamPalette {
-  /** The untouched brand color. Decorative use only: glows, 3D livery, bars, chart fills. */
-  base: string;
-  /** Brand hue shifted to clear 4.5:1 on the page background. Safe for labels and small text. */
-  text: string;
-  /** Brand hue shifted to clear 3:1. Safe for large/bold display text, borders, focus rings. */
-  display: string;
-  /** Black or white, for text sitting on a solid `base` fill. */
-  on: string;
-  /** Solid-enough border that survives against the page background. */
-  border: string;
-  /** Tinted surface for chips and panels. */
-  surface: string;
-  /** Stronger tint for hover and active surfaces. */
-  surfaceStrong: string;
-  /** Focus ring color — same as `display`, so it clears 3:1 for every team. */
-  ring: string;
-}
-
-const paletteCache = new Map<string, TeamPalette>();
-
-/** Memoized contrast-safe palette derived from a raw team color. */
-export function paletteFor(color: string): TeamPalette {
-  const cached = paletteCache.get(color);
-  if (cached) return cached;
-
-  const display = readableOn(color, PAGE_BG, AA_LARGE);
-  const palette: TeamPalette = {
-    base: color,
-    text: readableOn(color, PAGE_BG, AA_TEXT),
-    display,
-    on: bestTextOn(color),
-    border: withAlpha(display, 0.55),
-    surface: withAlpha(color, 0.12),
-    surfaceStrong: withAlpha(color, 0.22),
-    ring: display,
-  };
-  paletteCache.set(color, palette);
-  return palette;
-}
-
-/** Inline style for a CTA filled with the team color, with a guaranteed-readable label. */
-export function teamColorButtonStyle(team: Team) {
-  const palette = paletteFor(team.color);
+export function duotoneFor(team: Team): { color: string; opacity: number; keyline: string } {
+  const isWhite = team.color === '#ffffff';
   return {
-    style: {
-      backgroundColor: palette.base,
-      color: palette.on,
-      borderColor: 'transparent',
-    },
+    color: isWhite ? '#52525b' : team.color,
+    opacity: isWhite ? 0.35 : 0.45,
+    keyline: isWhite ? '#ffffff' : readableOnDark(team.color),
   };
 }

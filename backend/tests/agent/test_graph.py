@@ -5,6 +5,7 @@ monkeypatches ``agent.graph.llm``. No test here makes a network call.
 """
 
 import logging
+from datetime import date
 
 import pytest
 from langgraph.graph import END, StateGraph
@@ -366,6 +367,231 @@ def test_an_unhandled_task_name_reports_a_missing_handler():
     assert result["data"] == {"error": "No handler for tool: brand_new_tool"}
 
 
+# ── Tool result cache ────────────────────────────────────────────────────────
+
+
+def test_a_cacheable_tool_is_invoked_once_across_repeat_calls():
+    """The feature: the second briefing for the same race skips the fetch."""
+    tool = make_tool("get_track_info", {"length_km": 3.3})
+
+    first = _invoke_tool(tool, "get_track_info", make_race_info())
+    second = _invoke_tool(tool, "get_track_info", make_race_info())
+
+    assert len(tool.calls) == 1
+    assert first["cached"] is False
+    assert second["cached"] is True
+    assert second["success"] is True
+    assert second["data"] == {"length_km": 3.3}
+
+
+@pytest.mark.parametrize(
+    "task_name",
+    [
+        "get_track_info",
+        "get_recent_top_finishers",
+        "get_circuit_winners",
+        "get_driver_form",
+        "get_recent_race_results",
+    ],
+)
+def test_every_historical_tool_is_cacheable(task_name):
+    tool = make_tool(task_name, {"ok": True})
+    _invoke_tool(tool, task_name, make_race_info())
+    _invoke_tool(tool, task_name, make_race_info())
+    assert len(tool.calls) == 1
+
+
+@pytest.mark.parametrize("task_name", ["get_race_weather", "search_f1_news"])
+def test_weather_and_news_are_never_cached(task_name):
+    """A cache that serves yesterday's forecast is worse than no cache; news exists
+    to be current. Neither tool ever reads or writes the cache."""
+    tool = make_tool(task_name, {"ok": True})
+
+    first = _invoke_tool(tool, task_name, make_race_info())
+    second = _invoke_tool(tool, task_name, make_race_info())
+
+    assert len(tool.calls) == 2
+    assert first["cached"] is False
+    assert second["cached"] is False
+
+
+def test_an_error_result_is_not_cached():
+    """Caching an error would turn one transient upstream failure into a
+    persistently degraded briefing. Only successes are stored."""
+    tool = make_tool("get_track_info", {"error": "FastF1 timeout"})
+
+    _invoke_tool(tool, "get_track_info", make_race_info())
+    second = _invoke_tool(tool, "get_track_info", make_race_info())
+
+    assert len(tool.calls) == 2
+    assert second["cached"] is False
+
+
+def test_a_raising_tool_is_not_cached():
+    """The exception path must not poison the cache either."""
+    tool = make_tool("get_track_info", raises=ValueError("kaboom"))
+    _invoke_tool(tool, "get_track_info", make_race_info())
+    _invoke_tool(tool, "get_track_info", make_race_info())
+    assert len(tool.calls) == 2
+
+
+def test_a_failure_then_success_serves_the_success_from_cache():
+    """The recovery story the error-not-cached rule exists for."""
+    failing = make_tool("get_track_info", {"error": "down"})
+    working = make_tool("get_track_info", {"length_km": 3.3})
+
+    _invoke_tool(failing, "get_track_info", make_race_info())
+    _invoke_tool(working, "get_track_info", make_race_info())
+    third = _invoke_tool(make_tool("get_track_info"), "get_track_info", make_race_info())
+
+    assert third["cached"] is True
+    assert third["data"] == {"length_km": 3.3}
+
+
+def test_cache_keys_distinguish_different_races():
+    """Different args must not collide: Monaco's winners are not Silverstone's."""
+    tool = make_tool("get_recent_race_results", {"ok": True})
+
+    _invoke_tool(tool, "get_recent_race_results", make_race_info())
+    _invoke_tool(
+        tool,
+        "get_recent_race_results",
+        make_race_info(name="British Grand Prix"),
+    )
+
+    assert len(tool.calls) == 2
+
+
+def test_cache_keys_distinguish_different_years():
+    tool = make_tool("get_recent_top_finishers", {"ok": True})
+    _invoke_tool(tool, "get_recent_top_finishers", make_race_info(historical_year=2024))
+    _invoke_tool(tool, "get_recent_top_finishers", make_race_info(historical_year=2023))
+    assert len(tool.calls) == 2
+
+
+def test_clear_result_cache_forces_a_refetch():
+    tool = make_tool("get_track_info", {"ok": True})
+    _invoke_tool(tool, "get_track_info", make_race_info())
+    graph_module.clear_result_cache()
+    _invoke_tool(tool, "get_track_info", make_race_info())
+    assert len(tool.calls) == 2
+
+
+def test_a_fresh_result_is_marked_not_cached():
+    result = _invoke_tool(make_tool("get_track_info"), "get_track_info", make_race_info())
+    assert result["cached"] is False
+
+
+def test_mutating_a_cache_hits_data_does_not_corrupt_later_hits():
+    """The cache is cross-request and process-lifetime; a consumer that mutates
+    ToolResult["data"] in place must not poison every later request."""
+    tool = make_tool("get_track_info", {"length_km": 3.3, "corners": [1, 2, 3]})
+
+    _invoke_tool(tool, "get_track_info", make_race_info())  # miss, populates the cache
+
+    second_hit = _invoke_tool(tool, "get_track_info", make_race_info())
+    assert second_hit["cached"] is True
+    second_hit["data"]["length_km"] = 999
+    second_hit["data"]["corners"].append(4)
+
+    third_hit = _invoke_tool(tool, "get_track_info", make_race_info())
+    assert third_hit["cached"] is True
+    assert third_hit["data"] == {"length_km": 3.3, "corners": [1, 2, 3]}
+
+
+def test_mutating_a_cache_miss_result_does_not_corrupt_later_hits():
+    """Same defect, other side: the caller that populates the cache must not be able
+    to corrupt it either by mutating the fresh result it was handed back."""
+    tool = make_tool("get_track_info", {"length_km": 3.3, "corners": [1, 2, 3]})
+
+    first_miss = _invoke_tool(tool, "get_track_info", make_race_info())
+    assert first_miss["cached"] is False
+    first_miss["data"]["length_km"] = 999
+    first_miss["data"]["corners"].append(4)
+
+    hit = _invoke_tool(tool, "get_track_info", make_race_info())
+    assert hit["cached"] is True
+    assert hit["data"] == {"length_km": 3.3, "corners": [1, 2, 3]}
+
+
+def _make_fake_date(initial: date):
+    """Build a stand-in for the ``datetime.date`` class with a controllable ``.today()``.
+
+    A fresh class per test avoids the classvar leaking state between tests — unlike
+    monkeypatching a shared instance, nothing here survives past the test that made it.
+
+    Note the parameter is not named ``today``: a class body treats any name it assigns
+    anywhere (here, the ``today`` classmethod below) as local to the class's own
+    namespace throughout, so a same-named reference to the enclosing function's
+    parameter would raise ``NameError`` instead of finding it by closure.
+    """
+
+    class _FakeDate:
+        _today = initial
+
+        @classmethod
+        def today(cls):
+            return cls._today
+
+    return _FakeDate
+
+
+@pytest.mark.parametrize(
+    "task_name", ["get_recent_top_finishers", "get_driver_form", "get_circuit_winners"]
+)
+def test_a_date_dependent_tool_is_refetched_when_the_date_advances(monkeypatch, task_name):
+    """The key IS the expiry: a new day forces a refetch with no TTL machinery involved.
+
+    Verified against the `date` seam graph.py imports, not a real clock — this must not
+    sleep or depend on when the suite happens to run.
+    """
+    fake_date = _make_fake_date(date(2026, 8, 4))
+    monkeypatch.setattr(graph_module, "date", fake_date)
+    tool = make_tool(task_name, {"ok": True})
+
+    _invoke_tool(tool, task_name, make_race_info())
+    fake_date._today = date(2026, 8, 5)
+    _invoke_tool(tool, task_name, make_race_info())
+
+    assert len(tool.calls) == 2
+
+
+@pytest.mark.parametrize(
+    "task_name", ["get_recent_top_finishers", "get_driver_form", "get_circuit_winners"]
+)
+def test_a_date_dependent_tool_still_hits_the_cache_within_the_same_day(monkeypatch, task_name):
+    monkeypatch.setattr(graph_module, "date", _make_fake_date(date(2026, 8, 4)))
+    tool = make_tool(task_name, {"ok": True})
+
+    _invoke_tool(tool, task_name, make_race_info())
+    _invoke_tool(tool, task_name, make_race_info())
+
+    assert len(tool.calls) == 1
+
+
+def test_an_argument_pure_tool_still_hits_the_cache_across_a_date_change(monkeypatch):
+    """Proves the date component is scoped to the three date-dependent tools, not global —
+    ``get_track_info`` takes an explicit year and must not refetch just because the
+    calendar moved on."""
+    fake_date = _make_fake_date(date(2026, 8, 4))
+    monkeypatch.setattr(graph_module, "date", fake_date)
+    tool = make_tool("get_track_info", {"ok": True})
+
+    _invoke_tool(tool, "get_track_info", make_race_info())
+    fake_date._today = date(2026, 8, 5)
+    _invoke_tool(tool, "get_track_info", make_race_info())
+
+    assert len(tool.calls) == 1
+
+
+def test_cacheable_tool_names_all_exist_among_the_real_tools():
+    """A tool rename must break this test rather than silently disable its caching."""
+    real_tool_names = {t.name for t in graph_module.all_tools}
+    assert real_tool_names >= graph_module.CACHEABLE_TOOLS
+    assert real_tool_names >= graph_module.DATE_DEPENDENT_TOOLS
+    assert graph_module.CACHEABLE_TOOLS >= graph_module.DATE_DEPENDENT_TOOLS
+
+
 # ── Tool executor node ───────────────────────────────────────────────────────
 
 
@@ -470,7 +696,9 @@ def test_tool_executor_writes_a_failing_tool_as_unsuccessful(monkeypatch):
         make_state(race_info=make_race_info(), tasks=["search_f1_news"])
     )
 
-    assert written == [{"kind": "tool_result", "tool": "search_f1_news", "success": False}]
+    assert written == [
+        {"kind": "tool_result", "tool": "search_f1_news", "success": False, "cached": False}
+    ]
 
 
 def test_tool_executor_writes_an_unknown_tool_it_never_ran(monkeypatch):
@@ -481,7 +709,9 @@ def test_tool_executor_writes_an_unknown_tool_it_never_ran(monkeypatch):
         make_state(race_info=make_race_info(), tasks=["get_tyre_compounds"])
     )
 
-    assert written == [{"kind": "tool_result", "tool": "get_tyre_compounds", "success": False}]
+    assert written == [
+        {"kind": "tool_result", "tool": "get_tyre_compounds", "success": False, "cached": False}
+    ]
     assert result["tool_results"][0]["success"] is False
 
 
@@ -492,6 +722,25 @@ def test_tool_executor_with_no_tasks_writes_nothing(monkeypatch):
 
     assert written == []
     assert result["tool_results"] == []
+
+
+def test_tool_executor_writes_a_cache_hit_as_cached(monkeypatch):
+    """The wire must distinguish a served-from-cache chip from a live fetch —
+    that honesty is the whole reason the field exists (spec decision 5)."""
+    tool = make_tool("get_track_info", {"length_km": 3.3})
+    monkeypatch.setattr(graph_module, "all_tools", [tool])
+    state = make_state(race_info=make_race_info(), tasks=["get_track_info"])
+
+    first_written, _ = run_tool_executor_streamed(state)
+    second_written, _ = run_tool_executor_streamed(state)
+
+    assert len(tool.calls) == 1
+    assert first_written == [
+        {"kind": "tool_result", "tool": "get_track_info", "success": True, "cached": False}
+    ]
+    assert second_written == [
+        {"kind": "tool_result", "tool": "get_track_info", "success": True, "cached": True}
+    ]
 
 
 # ── Synthesizer node ─────────────────────────────────────────────────────────

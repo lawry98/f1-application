@@ -119,6 +119,21 @@ def _clear_openf1_cache():
     openf1_client.clear()
 
 
+@pytest.fixture(autouse=True)
+def _clear_result_cache():
+    """Reset the module-level tool result cache around every test.
+
+    Same reasoning as ``_clear_schedule_cache`` above: process-global state, and the
+    cache is deliberately cross-request in production (ADR-0003) — which is exactly
+    the property that would let one test's tool result satisfy another's.
+    """
+    from agent.graph import clear_result_cache
+
+    clear_result_cache()
+    yield
+    clear_result_cache()
+
+
 @pytest.fixture
 def season_2025():
     """A 2025 schedule straddling FROZEN_TODAY: Bahrain past, Monaco and Silverstone ahead."""

@@ -38,25 +38,3 @@ class ImmediatelyInView implements IntersectionObserver {
 }
 
 globalThis.IntersectionObserver = ImmediatelyInView;
-
-/**
- * jsdom implements neither of these. The teams page calls `scrollIntoView` for anchor navigation
- * and `scrollTo` to centre the mobile chip strip; without stubs they throw "not implemented".
- */
-Element.prototype.scrollIntoView ??= function scrollIntoView() {};
-Element.prototype.scrollTo ??= function scrollTo() {};
-
-/**
- * jsdom has no `matchMedia`. Reporting "no match" mirrors what `useMediaQuery` returns before it
- * has measured anything, so components that gate on a breakpoint render their narrow layout.
- */
-window.matchMedia ??= ((query: string) => ({
-  matches: false,
-  media: query,
-  onchange: null,
-  addEventListener: () => {},
-  removeEventListener: () => {},
-  addListener: () => {},
-  removeListener: () => {},
-  dispatchEvent: () => false,
-})) as typeof window.matchMedia;

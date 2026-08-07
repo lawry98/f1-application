@@ -72,6 +72,7 @@ class FakeAgent:
                             "kind": "tool_result",
                             "tool": tr["tool_name"],
                             "success": tr["success"],
+                            "cached": tr["cached"],
                         },
                     )
             if "synthesizer" in step:
@@ -129,8 +130,18 @@ def successful_steps() -> list[dict[str, Any]]:
         {
             "tool_executor": {
                 "tool_results": [
-                    {"tool_name": "get_track_info", "success": True, "data": {"length_km": 3.3}},
-                    {"tool_name": "search_f1_news", "success": False, "data": {"error": "no key"}},
+                    {
+                        "tool_name": "get_track_info",
+                        "success": True,
+                        "data": {"length_km": 3.3},
+                        "cached": False,
+                    },
+                    {
+                        "tool_name": "search_f1_news",
+                        "success": False,
+                        "data": {"error": "no key"},
+                        "cached": False,
+                    },
                 ],
                 "current_step": "synthesizing",
             }
@@ -183,8 +194,18 @@ def test_briefing_returns_race_briefing_and_trace(client, install_agent):
             "briefing": "## Monaco\n\nTight.",
             "current_step": "complete",
             "tool_results": [
-                {"tool_name": "get_track_info", "success": True, "data": {"length_km": 3.3}},
-                {"tool_name": "search_f1_news", "success": False, "data": {"error": "no key"}},
+                {
+                    "tool_name": "get_track_info",
+                    "success": True,
+                    "data": {"length_km": 3.3},
+                    "cached": False,
+                },
+                {
+                    "tool_name": "search_f1_news",
+                    "success": False,
+                    "data": {"error": "no key"},
+                    "cached": False,
+                },
             ],
         }
     )
@@ -251,7 +272,12 @@ def test_briefing_truncates_long_tool_payloads_in_the_trace(client, install_agen
             "briefing": "x",
             "current_step": "complete",
             "tool_results": [
-                {"tool_name": "search_f1_news", "success": True, "data": {"body": "y" * 500}}
+                {
+                    "tool_name": "search_f1_news",
+                    "success": True,
+                    "data": {"body": "y" * 500},
+                    "cached": False,
+                }
             ],
         }
     )
@@ -269,7 +295,14 @@ def test_briefing_leaves_short_tool_payloads_intact(client, install_agent):
             "race_info": make_race_info(),
             "briefing": "x",
             "current_step": "complete",
-            "tool_results": [{"tool_name": "get_track_info", "success": True, "data": {"a": 1}}],
+            "tool_results": [
+                {
+                    "tool_name": "get_track_info",
+                    "success": True,
+                    "data": {"a": 1},
+                    "cached": False,
+                }
+            ],
         }
     )
     summary = client.post("/api/briefing", json={"query": "monaco"}).json()["tool_trace"][0][
@@ -298,6 +331,7 @@ def test_briefing_replaces_a_failed_tools_payload_in_the_trace(client, install_a
                         "error": "HTTPSConnectionPool(host='api.openweathermap.org', "
                         "port=443): Read timed out"
                     },
+                    "cached": False,
                 }
             ],
         }
@@ -543,15 +577,29 @@ def test_stream_sends_the_resolved_race_info(client, install_agent):
     assert race_info["historical_year"] == 2024
 
 
-def test_stream_reports_each_tool_with_its_success_flag_and_nothing_else(client, install_agent):
-    """Only tool name and success cross the wire — payloads stay server-side."""
+def test_stream_reports_each_tool_with_its_success_and_cached_flags_and_nothing_else(
+    client, install_agent
+):
+    """Only tool name, success, and cache provenance cross the wire — payloads stay
+    server-side."""
     install_agent(steps=successful_steps())
     events = parse_sse(client.post("/api/briefing/stream", json={"query": "monaco"}).text)
     tool_results = [data for event_type, data in events if event_type == "tool_result"]
     assert tool_results == [
-        {"tool": "get_track_info", "success": True},
-        {"tool": "search_f1_news", "success": False},
+        {"tool": "get_track_info", "success": True, "cached": False},
+        {"tool": "search_f1_news", "success": False, "cached": False},
     ]
+
+
+def test_stream_forwards_a_cached_result_as_cached(client, install_agent):
+    steps = successful_steps()
+    steps[2]["tool_executor"]["tool_results"][0]["cached"] = True
+    install_agent(steps=steps)
+
+    events = parse_sse(client.post("/api/briefing/stream", json={"query": "monaco"}).text)
+
+    tool_results = [data for event_type, data in events if event_type == "tool_result"]
+    assert tool_results[0] == {"tool": "get_track_info", "success": True, "cached": True}
 
 
 def test_the_planner_step_announces_the_planned_tools(client, install_agent):
