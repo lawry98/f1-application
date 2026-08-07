@@ -137,4 +137,25 @@ describe('TeamsPageClient', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Jump to Ferrari' }));
     expect(window.location.hash).toBe('#team-ferrari');
   });
+
+  // Regression. Assigning `location.hash` is a specified no-op when the fragment is
+  // unchanged — the setter returns early — whereas activating a real anchor re-scrolls.
+  // Because `useTeamNavigation` replaceStates the hash as the user scrolls, the hash
+  // routinely already names the team the hero is about to be clicked for: scroll to
+  // Ferrari, scroll back up to the hero, click the Ferrari column, nothing moves.
+  // `claim` no-ops too, for the same reason. The test above passes only because it
+  // starts from an empty hash.
+  it('re-scrolls when the hash already names the team the hero picks', () => {
+    setViewportMatches(false);
+    window.location.hash = '#team-ferrari';
+    render(<TeamsPageClient />);
+
+    const section = document.getElementById('team-ferrari')!;
+    const scrollIntoView = vi.spyOn(section, 'scrollIntoView');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Jump to Ferrari' }));
+
+    expect(scrollIntoView).toHaveBeenCalled();
+    expect(window.location.hash).toBe('#team-ferrari');
+  });
 });

@@ -54,11 +54,28 @@ export function TeamsPageClient() {
    * Assigning `location.hash` takes the same path an anchor would: it honours
    * `scroll-mt-[var(--teams-scroll-offset)]` and `scroll-behavior`, and pushes exactly one
    * history entry.
+   *
+   * Except when the fragment is already the current one. `location.hash`'s setter is
+   * specified to return early in that case, so the assignment scrolls nowhere — while
+   * activating a real anchor with the same fragment still does. `useTeamNavigation`
+   * `replaceState`s the hash as the user scrolls, so "already the current fragment" is the
+   * *common* case here: scroll down to a team, scroll back to the hero, click that team.
+   * `claim` is no help either — the id it is handed is already active. Scrolling the
+   * section into view directly is what an anchor would have done.
+   *
+   * No explicit `behavior`: `scrollIntoView()` defers to the computed `scroll-behavior`,
+   * which `app/globals.css` already gates on `prefers-reduced-motion`. Passing one here
+   * would override that gate and reintroduce travel the CSS just removed.
    */
   const jumpToTeam = useCallback(
     (id: string) => {
       claim(id);
-      window.location.hash = `#team-${id}`;
+      const fragment = `#team-${id}`;
+      if (window.location.hash === fragment) {
+        document.getElementById(`team-${id}`)?.scrollIntoView();
+        return;
+      }
+      window.location.hash = fragment;
     },
     [claim],
   );
