@@ -11,7 +11,8 @@ from typing import Any
 
 from tools.fastf1_helpers import format_position
 
-# Sorts unclassified cars to the back. OpenF1 encodes "no finishing position" as 0, so a
+# Sorts unclassified cars to the back. OpenF1 sends `None` for "no finishing position"
+# (0 is tolerated defensively below, but not what the live API actually returns), so a
 # naive ascending sort puts every retirement *above* the winner. FastF1's results frame
 # already orders DNFs last, and these rows have to match it.
 _UNCLASSIFIED_SORT_RANK = 999
