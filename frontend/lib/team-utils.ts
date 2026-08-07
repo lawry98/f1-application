@@ -227,19 +227,23 @@ export function ringOnDark(hex: string): string {
 }
 
 /**
- * Wash colour for a driver portrait. Mirrors the `#ffffff` special-case that
- * `teamColorButtonStyle` already establishes: a white wash over zinc-950 erases the
- * portrait entirely, so Haas gets a neutral tint and leans on a white keyline instead.
+ * Wash colour for a driver portrait, damped on the same test `teamColorButtonStyle` uses.
+ *
+ * A livery bright enough to be a bad surface is a bad *wash* for the same reason: laid over
+ * zinc-950 it erases the portrait rather than tinting it. That is `needsDamping`, so this
+ * asks `needsDamping` — it used to be a `team.color === '#ffffff'` equality check, which
+ * covered Haas and nothing else, including a near-white livery a hex away from it.
  *
  * `keyline` is the *text* variant — it labels the 10px nationality line, so it is run through
- * `readableOnDark`. The wash (`color`) keeps the true livery: it is a large blended fill, not
- * text, and lightening it would drain the portrait's tint.
+ * `readableOnDark`, which already returns `#ffffff` untouched and so needs no branch of its
+ * own. The wash (`color`) keeps the true livery: it is a large blended fill, not text, and
+ * lightening it would drain the portrait's tint.
  */
 export function duotoneFor(team: Team): { color: string; opacity: number; keyline: string } {
-  const isWhite = team.color === '#ffffff';
+  const damped = needsDamping(team.color);
   return {
-    color: isWhite ? '#52525b' : team.color,
-    opacity: isWhite ? 0.35 : 0.45,
-    keyline: isWhite ? '#ffffff' : readableOnDark(team.color),
+    color: damped ? '#52525b' : team.color,
+    opacity: damped ? 0.35 : 0.45,
+    keyline: readableOnDark(team.color),
   };
 }

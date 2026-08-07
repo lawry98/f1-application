@@ -129,6 +129,27 @@ describe('duotoneFor', () => {
     expect(racingBulls.color).toBe('#2b4562');
     expect(duotoneFor(racingBulls).keyline).not.toBe('#2b4562');
   });
+
+  // The damping test is `needsDamping`, the same predicate `teamColorButtonStyle` uses —
+  // not the `#ffffff` equality check it used to be, which covered Haas and nothing else.
+  // Output for the current grid is unchanged; what this adds is the near-white livery.
+  it('damps any livery too bright to wash with, not just #ffffff', () => {
+    const nearWhite = { ...TEAM_MAP['haas']!, color: '#fafafa' };
+    expect(nearWhite.color).not.toBe('#ffffff');
+    expect(needsDamping(nearWhite.color)).toBe(true);
+    expect(duotoneFor(nearWhite).color).toBe('#52525b');
+    expect(duotoneFor(nearWhite).opacity).toBe(0.35);
+  });
+
+  it('still gives Haas its neutral tint and leaves every other wash the true livery', () => {
+    expect(duotoneFor(TEAM_MAP['haas']!).color).toBe('#52525b');
+    expect(duotoneFor(TEAM_MAP['haas']!).opacity).toBe(0.35);
+    for (const team of TEAMS) {
+      if (needsDamping(team.color)) continue;
+      expect(duotoneFor(team).color, `${team.shortName} wash`).toBe(team.color);
+      expect(duotoneFor(team).opacity).toBe(0.45);
+    }
+  });
 });
 
 describe('teamColorButtonStyle', () => {
