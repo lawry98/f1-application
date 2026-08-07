@@ -15,7 +15,12 @@ from typing import Any
 
 from langchain_core.tools import tool
 
-from tools.openf1_client import OPENF1_FIRST_YEAR, driver_index, session_results
+from tools.openf1_client import (
+    OPENF1_FIRST_YEAR,
+    driver_index,
+    driver_teams_by_session,
+    session_results,
+)
 from tools.openf1_races import scoring_sessions
 
 logger = logging.getLogger(__name__)
@@ -52,6 +57,7 @@ def get_championship_standings(year: int) -> dict[str, Any]:
 
         keys = {session["session_key"] for session in sessions}
         drivers = driver_index(keys)
+        driver_teams = driver_teams_by_session(keys)
         rows = session_results(keys)
 
         # Seeded from the roster rather than from the results, so a driver — and
@@ -60,14 +66,30 @@ def get_championship_standings(year: int) -> dict[str, Any]:
         points: dict[int, float] = dict.fromkeys(drivers, 0.0)
         best_position: dict[int, int] = {}
 
+        # Seeded from every team a driver has raced for this season (not just their
+        # *current* one from `drivers`), so a scoreless team still appears and a
+        # mid-season transfer doesn't quietly drop the driver's former team from the
+        # table before any points are added to it.
+        team_points: dict[str, float] = dict.fromkeys(driver_teams.values(), 0.0)
+
         for row in rows:
             number = row.get("driver_number")
             if number not in points:
                 continue
-            points[number] += float(row.get("points") or 0.0)
+            row_points = float(row.get("points") or 0.0)
+            points[number] += row_points
+
             position = row.get("position")
             if isinstance(position, int) and position > 0:
                 best_position[number] = min(best_position.get(number, position), position)
+
+            # The team the driver was actually racing for *in this session* — not
+            # `drivers[number]["team_name"]`, which is collapsed to their latest team and
+            # would credit an entire season's points to whichever side of a transfer a
+            # driver ended up on.
+            session_key = row.get("session_key")
+            team = driver_teams.get((session_key, number)) or drivers[number]["team_name"]
+            team_points[team] = team_points.get(team, 0.0) + row_points
 
         # Ties break on best finishing position, then on driver number. Points alone
         # would let two equal drivers swap places between runs, and an LLM reading a
@@ -85,11 +107,6 @@ def get_championship_standings(year: int) -> dict[str, Any]:
             }
             for rank, number in enumerate(sorted(points, key=_driver_sort_key), start=1)
         ]
-
-        team_points: dict[str, float] = {}
-        for number, identity in drivers.items():
-            team = identity["team_name"]
-            team_points[team] = team_points.get(team, 0.0) + points[number]
 
         constructor_table = [
             {"position": rank, "team": team, "points": team_points[team]}

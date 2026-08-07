@@ -7,9 +7,87 @@ wrong and each has a test below: sprints score on a different scale but still co
 qualifying must not count, and a team on zero points must still appear.
 """
 
+import pytest
 from freezegun import freeze_time
 
 from tools.standings_tools import get_championship_standings
+
+# A driver who transfers mid-season: Team A for the early race, Team B for the later
+# one. ``driver_index`` deliberately collapses this to Team B (the latest session wins),
+# which is correct for "who does this driver race for now" and wrong for attributing a
+# constructor's season points — the regression this fixture guards against.
+_TRANSFER_SESSIONS = [
+    {
+        "session_key": 9700,
+        "meeting_key": 1300,
+        "session_name": "Race",
+        "circuit_short_name": "Sakhir",
+        "country_name": "Bahrain",
+        "date_start": "2024-03-02T15:00:00+00:00",
+    },
+    {
+        "session_key": 9701,
+        "meeting_key": 1301,
+        "session_name": "Race",
+        "circuit_short_name": "Miami",
+        "country_name": "United States",
+        "date_start": "2024-04-06T20:00:00+00:00",
+    },
+]
+
+_TRANSFER_DRIVERS = [
+    {
+        "session_key": 9700,
+        "driver_number": 99,
+        "full_name": "Trans Fer",
+        "name_acronym": "TRA",
+        "team_name": "Team A",
+    },
+    {
+        "session_key": 9701,
+        "driver_number": 99,
+        "full_name": "Trans Fer",
+        "name_acronym": "TRA",
+        "team_name": "Team B",
+    },
+]
+
+_TRANSFER_RESULTS = [
+    {
+        "session_key": 9700,
+        "position": 1,
+        "driver_number": 99,
+        "points": 25.0,
+        "dnf": False,
+        "dns": False,
+        "dsq": False,
+    },
+    {
+        "session_key": 9701,
+        "position": 2,
+        "driver_number": 99,
+        "points": 18.0,
+        "dnf": False,
+        "dns": False,
+        "dsq": False,
+    },
+]
+
+
+@pytest.fixture
+def openf1_mid_season_transfer(monkeypatch):
+    from tests.factories import make_openf1_get
+    from tools import openf1_client
+
+    fake = make_openf1_get(
+        {
+            "sessions": _TRANSFER_SESSIONS,
+            "session_result": _TRANSFER_RESULTS,
+            "drivers": _TRANSFER_DRIVERS,
+        }
+    )
+    monkeypatch.setattr(openf1_client.requests, "get", fake)
+    return fake
 
 
 @freeze_time("2024-06-01")
@@ -92,6 +170,29 @@ def test_constructors_sum_every_car_in_a_team(openf1_season):
     assert teams["McLaren"] == 69.0
     assert teams["Ferrari"] == 30.0
     assert teams["Williams"] == 30.0
+
+
+@freeze_time("2024-06-01")
+def test_a_mid_season_transfer_splits_points_across_both_constructors(
+    openf1_mid_season_transfer,
+):
+    """Driver 99 scores 25 for Team A, then transfers and scores 18 for Team B.
+
+    ``driver_index`` collapses the driver to Team B (their latest team), which is right
+    for the driver table's "who they race for now" but would be wrong here: crediting
+    the whole 43 to Team B is exactly the bug this test guards against.
+    """
+    result = get_championship_standings.invoke({"year": 2024})
+
+    teams = {row["team"]: row["points"] for row in result["constructors"]}
+    assert teams["Team A"] == 25.0
+    assert teams["Team B"] == 18.0
+    assert sum(teams.values()) == 43.0
+
+    # The driver table still reports the driver's current team, unaffected by the split.
+    driver = next(row for row in result["drivers"] if row["driver_code"] == "TRA")
+    assert driver["team"] == "Team B"
+    assert driver["points"] == 43.0
 
 
 @freeze_time("2024-06-01")

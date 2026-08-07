@@ -247,3 +247,36 @@ def driver_index(keys: set[int]) -> dict[int, dict[str, str]]:
             "team_name": row.get("team_name", ""),
         }
     return index
+
+
+def driver_teams_by_session(keys: set[int]) -> dict[tuple[int, int], str]:
+    """Map (session_key, driver_number) to the team driven for in that specific session.
+
+    ``driver_index`` deliberately collapses each driver to their *latest* session's team
+    — correct for reporting who a driver races for now, wrong for attributing historical
+    points. A mid-season transfer (Tsunoda, RB -> Red Bull, 2025) must split a driver's
+    points across both constructors, not credit the whole season to whichever team they
+    ended up on. This is the per-session join that makes that possible.
+
+    Reads the same ``drivers`` endpoint as ``driver_index`` and the same range query, so
+    calling both for the same ``keys`` costs one request between them, not two — the
+    second call is a cache hit.
+
+    Args:
+        keys: Session keys to draw the roster from.
+
+    Returns:
+        (session_key, driver_number) → team_name.
+    """
+    if not keys:
+        return {}
+    rows = [row for row in _get("drivers", _range_params(keys)) if row.get("session_key") in keys]
+
+    teams: dict[tuple[int, int], str] = {}
+    for row in rows:
+        session_key = row.get("session_key")
+        number = row.get("driver_number")
+        if session_key is None or number is None:
+            continue
+        teams[(session_key, number)] = row.get("team_name", "")
+    return teams
