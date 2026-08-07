@@ -145,4 +145,38 @@ describe('useTeamNavigation', () => {
     expect(result.current).toBe('cadillac');
     expect(window.location.hash).toBe('#team-cadillac');
   });
+
+  // Regression, and the direct sibling of the case above. `claimFromHash` used to set the
+  // pending flag unconditionally, then call `claim`. When the hash names the team that is
+  // *already* active, the caller's `setActiveId` bails, the sync effect never re-runs, and
+  // the flag is never cleared — so every later activeId change hits the pending guard and
+  // the URL stops tracking scroll for the rest of the session.
+  //
+  // The route in: click Ferrari, scroll back to McLaren (hash replaced), click Ferrari
+  // again, press Back. The popstate target is the already-active McLaren.
+  it('keeps the hash tracking scroll after a hash claim that names the active team', () => {
+    function useHarness(initialActiveId: string) {
+      const [activeId, setActiveId] = useState(initialActiveId);
+      const claim = useCallback((id: string) => setActiveId(id), []);
+      useTeamNavigation({ activeId, claim, ids: IDS });
+      return { activeId, claim };
+    }
+
+    window.location.hash = '#team-mclaren';
+    const { result } = renderHook(() => useHarness('mclaren'));
+
+    // Back lands on the team that is already active — a no-op claim.
+    act(() => {
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+    replaceState.mockClear();
+
+    // The user now scrolls on. The hash must follow.
+    act(() => {
+      result.current.claim('ferrari');
+    });
+
+    expect(replaceState).toHaveBeenCalledWith(null, '', '#team-ferrari');
+    expect(window.location.hash).toBe('#team-ferrari');
+  });
 });

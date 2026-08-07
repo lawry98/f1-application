@@ -33,6 +33,9 @@ export function useTeamNavigation({
   const hydratedRef = useRef(false);
   const idsRef = useRef(ids);
   idsRef.current = ids;
+  // The caller's current value, readable from a callback that is not re-created per render.
+  const activeIdRef = useRef(activeId);
+  activeIdRef.current = activeId;
   // Set the moment a mount-time (or popstate) hash claims an id, cleared once `activeId`
   // has actually caught up to it. While set, the sync effect below must not run: `activeId`
   // is still the caller's stale/default value and writing it would clobber the very hash
@@ -42,7 +45,12 @@ export function useTeamNavigation({
   const claimFromHash = useCallback(() => {
     const id = teamIdFromHash(window.location.hash);
     if (id !== null && idsRef.current.includes(id)) {
-      pendingHashRef.current = id;
+      // Only arm the flag when there is genuinely something to wait for. Claiming the team
+      // that is *already* active is a no-op in the caller — `setActiveId` bails, the sync
+      // effect below never re-runs, and an unconditionally-armed flag would never be
+      // cleared, permanently freezing the hash. That is not hypothetical: pressing Back
+      // onto the team the user has already scrolled to takes exactly this path.
+      if (id !== activeIdRef.current) pendingHashRef.current = id;
       claim(id);
     }
   }, [claim]);
