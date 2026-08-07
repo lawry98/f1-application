@@ -149,6 +149,18 @@ def test_top_finishers_ignore_sprints_and_qualifying(openf1_season, no_fastf1):
     """
     result = get_recent_top_finishers.invoke({"year": 2024})
 
+    # Guards the *request*, not just the result: this fixture's races happen to sort
+    # correctly by date even without the session_name filter, so a `completed_races`
+    # that fetched every session and never asked OpenF1 to narrow to "Race" would still
+    # land on "Monte Carlo" here by coincidence. Pinning the actual request is what
+    # catches that.
+    session_name_requests = {
+        call["params"]["session_name"]
+        for call in openf1_season.calls
+        if call["url"].endswith("/sessions") and "session_name" in call["params"]
+    }
+    assert session_name_requests == {"Race"}
+
     assert result["last_race"] == "Monte Carlo"
     assert len(result["top_finishers"]) == 4
 

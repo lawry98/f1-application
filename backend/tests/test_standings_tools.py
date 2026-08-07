@@ -121,6 +121,18 @@ def test_qualifying_is_excluded(openf1_season):
     """
     result = get_championship_standings.invoke({"year": 2024})
 
+    # Guards the *request*, not just the result: this fixture happens to put Qualifying
+    # last by date with a zero-point row, so an implementation that fetched every
+    # session_name and never filtered at all would still land on the right answer here
+    # by coincidence. Pinning that scoring_sessions asks OpenF1 for exactly Race and
+    # Sprint is what catches that.
+    session_name_requests = {
+        call["params"]["session_name"]
+        for call in openf1_season.calls
+        if call["url"].endswith("/sessions") and "session_name" in call["params"]
+    }
+    assert session_name_requests == {"Race", "Sprint"}
+
     assert result["races_completed"] == 3
     assert {row["driver_code"] for row in result["drivers"]} == {
         "VER",
