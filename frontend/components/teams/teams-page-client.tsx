@@ -94,10 +94,17 @@ export function TeamsPageClient() {
         />
       </div>
 
+      {/*
+        DOM order is rail → dossier → centre; the visual order is restored with `order-*`.
+        Reading order and tab order follow the DOM, and the dossier's "Inspect in 3D" button
+        used to sit *after* all eleven sections and the comparison grid — roughly 38 tab
+        stops in, the last thing on the page, for a control that is permanently on screen.
+        Nothing here may move visually: `order-1/2/3` puts the columns back.
+      */}
       <div className="flex">
         <aside
           aria-label="Constructor navigation"
-          className="sticky top-14 hidden h-[calc(100vh-3.5rem)] w-[200px] self-start overflow-y-auto border-r border-zinc-900 lg:block xl:w-[240px]"
+          className="sticky top-14 order-1 hidden h-[calc(100vh-3.5rem)] w-[200px] self-start overflow-y-auto border-r border-zinc-900 lg:block xl:w-[240px]"
         >
           <TeamsNavRail
             activeTeamId={activeTeamId}
@@ -106,7 +113,18 @@ export function TeamsPageClient() {
           />
         </aside>
 
-        <div className="min-w-0 flex-1">
+        {/* `xl`, not `lg`. Three columns at laptop width squeezed the centre to nothing;
+            the per-section Inspect button covers everything below this. */}
+        {showDossier && (
+          <aside
+            aria-label="Team dossier"
+            className="sticky top-14 order-3 hidden h-[calc(100vh-3.5rem)] w-[300px] self-start border-l border-zinc-900 xl:block xl:w-[360px]"
+          >
+            <StickyTeamPanel activeTeam={TEAM_MAP[activeTeamId]!} onInspect={openInspect} />
+          </aside>
+        )}
+
+        <div className="order-2 min-w-0 flex-1">
           {TEAMS.map((team, index) => (
             <TeamSection
               key={team.id}
@@ -124,17 +142,6 @@ export function TeamsPageClient() {
             onSelectTeam={claim}
           />
         </div>
-
-        {/* `xl`, not `lg`. Three columns at laptop width squeezed the centre to nothing;
-            the per-section Inspect button covers everything below this. */}
-        {showDossier && (
-          <aside
-            aria-label="Team dossier"
-            className="sticky top-14 hidden h-[calc(100vh-3.5rem)] w-[300px] self-start border-l border-zinc-900 xl:block xl:w-[360px]"
-          >
-            <StickyTeamPanel activeTeam={TEAM_MAP[activeTeamId]!} onInspect={openInspect} />
-          </aside>
-        )}
       </div>
 
       <AnimatePresence>

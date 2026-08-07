@@ -158,4 +158,48 @@ describe('TeamsPageClient', () => {
     expect(scrollIntoView).toHaveBeenCalled();
     expect(window.location.hash).toBe('#team-ferrari');
   });
+
+  /** True when `a` comes before `b` in document order. */
+  function precedes(a: Element, b: Element): boolean {
+    return Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+  }
+
+  // The dossier's "Inspect in 3D" is permanently on screen at xl, but it used to be the
+  // *last* tab stop on the page — after all eleven sections and the comparison grid,
+  // roughly 38 stops in. Tab order follows the DOM, so the DOM is what moved.
+  it('puts the dossier ahead of the sections in tab order, with the rail still first', async () => {
+    setViewportMatches(true);
+    render(<TeamsPageClient />);
+
+    const rail = screen.getByRole('navigation', { name: 'Constructors' });
+    const dossier = await screen.findByRole('complementary', { name: /dossier/i });
+    const firstSection = document.getElementById(`team-${TEAMS[0]!.id}`)!;
+    const lastSection = document.getElementById(`team-${TEAMS[TEAMS.length - 1]!.id}`)!;
+
+    expect(precedes(rail, dossier)).toBe(true);
+    expect(precedes(dossier, firstSection)).toBe(true);
+    expect(precedes(firstSection, lastSection)).toBe(true);
+  });
+
+  // …and the screen must not notice. `order-*` puts the columns back where they were:
+  // rail left, centre middle, dossier right.
+  it('keeps the visual column order with order utilities', async () => {
+    setViewportMatches(true);
+    render(<TeamsPageClient />);
+
+    const dossier = await screen.findByRole('complementary', { name: /dossier/i });
+    const railColumn = screen.getByRole('navigation', { name: 'Constructors' }).parentElement!;
+    const centreColumn = document.getElementById(`team-${TEAMS[0]!.id}`)!.parentElement!;
+
+    expect(railColumn.className).toMatch(/(^|\s)order-1(\s|$)/);
+    expect(centreColumn.className).toMatch(/(^|\s)order-2(\s|$)/);
+    expect(dossier.className).toMatch(/(^|\s)order-3(\s|$)/);
+
+    // `order` only applies between flex items of the same container, so the three columns
+    // being siblings of one flex row is what makes those classes mean anything.
+    const row = railColumn.parentElement!;
+    expect(row.className).toMatch(/(^|\s)flex(\s|$)/);
+    expect(centreColumn.parentElement).toBe(row);
+    expect(dossier.parentElement).toBe(row);
+  });
 });
