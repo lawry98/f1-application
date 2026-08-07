@@ -160,8 +160,17 @@ def _invoke_tool(tool: Any, task_name: str, race_info: dict) -> ToolResult:
             result = tool.invoke(
                 {"circuit_name": race_info["name"], "year": race_info["historical_year"]}
             )
-        elif task_name in ("get_recent_top_finishers", "get_championship_standings"):
+        elif task_name == "get_recent_top_finishers":
             result = tool.invoke({"year": race_info["historical_year"]})
+        elif task_name == "get_championship_standings":
+            # The season currently underway, not `historical_year` (year - 1): from round
+            # 2 onward, "current standings" means this season's table. `historical_year`
+            # only applies before round 1, when this season has nothing to report yet —
+            # retry with it once so a pre-season briefing still gets last year's final
+            # classification instead of an empty section.
+            result = tool.invoke({"year": race_info["year"]})
+            if "error" in result:
+                result = tool.invoke({"year": race_info["historical_year"]})
         elif task_name == "get_circuit_winners":
             result = tool.invoke({"circuit_name": race_info["name"], "years_back": 3})
         elif task_name == "search_f1_news":

@@ -645,9 +645,10 @@ def test_the_planner_prompt_advertises_every_registered_tool():
         assert tool.name in PLANNER_PROMPT
 
 
-def test_standings_is_invoked_with_the_historical_year():
-    """Same year the other historical tools get. Passing race_info["year"] would ask for
-    standings from a season that has not been run yet on an upcoming race.
+def test_standings_is_invoked_with_the_current_year():
+    """From round 2 of a season onward, "current standings" means the season under way,
+    not `historical_year` (year - 1). Only before round 1 has run does the current
+    season have nothing to report — see the retry test below for that case.
     """
     from agent.graph import _invoke_tool
     from tests.factories import make_race_info, make_tool
@@ -657,4 +658,33 @@ def test_standings_is_invoked_with_the_historical_year():
 
     _invoke_tool(fake, "get_championship_standings", race_info)
 
-    assert fake.calls == [{"year": 2025}]
+    assert fake.calls == [{"year": 2026}]
+
+
+def test_standings_retries_with_the_historical_year_when_the_season_has_not_started():
+    """Pre-season, `get_championship_standings` reports the year's error verbatim: "No
+    completed races found for {year} season yet". A briefing should still get last
+    year's final classification rather than nothing, so the year - 1 retry must fire.
+    """
+    from agent.graph import _invoke_tool
+
+    class _RetryingTool:
+        name = "get_championship_standings"
+
+        def __init__(self) -> None:
+            self.calls: list[dict] = []
+
+        def invoke(self, args: dict) -> dict:
+            self.calls.append(args)
+            if args["year"] == 2026:
+                return {"error": "No completed races found for 2026 season yet"}
+            return {"year": 2025, "drivers": [{"driver_code": "NOR"}]}
+
+    fake = _RetryingTool()
+    race_info = make_race_info(year=2026, historical_year=2025)
+
+    result = _invoke_tool(fake, "get_championship_standings", race_info)
+
+    assert fake.calls == [{"year": 2026}, {"year": 2025}]
+    assert result["success"] is True
+    assert result["data"]["year"] == 2025
