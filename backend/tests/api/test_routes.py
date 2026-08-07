@@ -383,6 +383,20 @@ def test_briefing_clears_the_schedule_cache_even_when_it_fails(client, install_a
     assert schedule_cache._cache == {}
 
 
+def test_briefing_clears_the_openf1_cache_even_when_it_fails(client, install_agent):
+    """A range query cached before a race's results are published must not survive past
+    this request — otherwise the next briefing serves a stale championship table.
+    """
+    from tools import openf1_client
+
+    install_agent(raises=RuntimeError("boom"))
+    openf1_client._cache[("session_result", frozenset({("year", 2026)}))] = ["sentinel"]
+
+    client.post("/api/briefing", json={"query": "monaco"})
+
+    assert openf1_client._cache == {}
+
+
 # ── POST /api/briefing/stream ────────────────────────────────────────────────
 
 
@@ -713,6 +727,17 @@ def test_stream_clears_the_schedule_cache(client, install_agent):
     assert schedule_cache._cache == {}
 
 
+def test_stream_clears_the_openf1_cache(client, install_agent):
+    from tools import openf1_client
+
+    install_agent(steps=successful_steps())
+    openf1_client._cache[("session_result", frozenset({("year", 2026)}))] = ["sentinel"]
+
+    client.post("/api/briefing/stream", json={"query": "monaco"})
+
+    assert openf1_client._cache == {}
+
+
 # ── GET /api/races/{year} ────────────────────────────────────────────────────
 
 
@@ -811,6 +836,24 @@ def test_standings_rejects_a_year_before_coverage(client):
     response = client.get("/api/standings/2022")
 
     assert response.status_code == 422
+
+
+def test_standings_clears_the_openf1_cache(client, monkeypatch):
+    """A standings request must never serve a table cached before results were published,
+    on the very next request — including a fresh call to this same route.
+    """
+    from tools import openf1_client
+
+    monkeypatch.setattr(
+        routes_module,
+        "get_championship_standings",
+        make_tool("get_championship_standings", result={"year": 2026, "drivers": []}),
+    )
+    openf1_client._cache[("session_result", frozenset({("year", 2026)}))] = ["sentinel"]
+
+    client.get("/api/standings/2026")
+
+    assert openf1_client._cache == {}
 
 
 def test_standings_replaces_a_tool_error_with_a_generic_502(client, monkeypatch):
