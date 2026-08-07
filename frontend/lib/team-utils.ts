@@ -106,29 +106,42 @@ function hslToRgb(h: number, s: number, l: number): [number, number, number] {
   return [(r + m) * 255, (g + m) * 255, (b + m) * 255];
 }
 
+/**
+ * `hex` laid over `bg` at `alpha`, flattened to the opaque colour the eye actually receives.
+ *
+ * Contrast is only ever defined between two opaque colours, so anything that sits on a
+ * translucent wash has to be judged against the *result* of that wash, not against whatever
+ * is underneath it.
+ */
+export function blendOver(hex: string, alpha: number, bg: string): string {
+  const fg = parseHex(hex);
+  const back = parseHex(bg);
+  return toHex(fg.map((c, i) => alpha * c + (1 - alpha) * back[i]!) as [number, number, number]);
+}
+
 const liftCache = new Map<string, string>();
 
 /**
- * Shared mechanism behind `readableOnDark` and `ringOnDark`: lighten `hex` in HSL, one step of
- * lightness at a time, until it clears `target` contrast against `DARK_BG`, then return the
- * first candidate that does. Caches on `` `${target}:${hex}` `` so the two callers, which use
- * different targets, don't collide.
+ * Shared mechanism behind `readableOnDark`, `ringOnDark` and `seamLabelColor`: lighten `hex`
+ * in HSL, one step of lightness at a time, until it clears `target` contrast against `bg`,
+ * then return the first candidate that does. Caches on `` `${bg}:${target}:${hex}` `` so
+ * callers using different targets or different backgrounds don't collide.
  *
  * Lightness is raised in HSL rather than blended toward white so hue and saturation survive —
  * the result still reads as the brand colour instead of washing out to grey.
  */
-function liftUntilContrast(hex: string, target: number): string {
-  const key = `${target}:${hex}`;
+function liftUntilContrast(hex: string, target: number, bg: string): string {
+  const key = `${bg}:${target}:${hex}`;
   const cached = liftCache.get(key);
   if (cached) return cached;
 
   let result = hex;
-  if (contrastRatio(hex, DARK_BG) < target) {
+  if (contrastRatio(hex, bg) < target) {
     const [h, s, l] = rgbToHsl(parseHex(hex));
     result = '#ffffff';
     for (let step = l; step <= 1; step += 0.01) {
       const candidate = toHex(hslToRgb(h, s, Math.min(step, 1)));
-      if (contrastRatio(candidate, DARK_BG) >= target) {
+      if (contrastRatio(candidate, bg) >= target) {
         result = candidate;
         break;
       }
@@ -152,7 +165,45 @@ function liftUntilContrast(hex: string, target: number): string {
  * a livery wall painted in lightened brand colours is no longer a livery wall.
  */
 export function readableOnDark(hex: string): string {
-  return liftUntilContrast(hex, MIN_CONTRAST);
+  return liftUntilContrast(hex, MIN_CONTRAST, DARK_BG);
+}
+
+/**
+ * Opacity of the seam wash where it is strongest — the gradient's first stop, at the top of
+ * the band. Authored as the `4d` suffix so the gradient string and the contrast maths cannot
+ * drift apart; change it in one place and both follow.
+ */
+export const SEAM_WASH_ALPHA_HEX = '4d';
+export const SEAM_WASH_ALPHA = parseInt(SEAM_WASH_ALPHA_HEX, 16) / 255;
+
+/** The seam gradient's opening stop: the true livery at `SEAM_WASH_ALPHA`. */
+export function seamWash(hex: string): string {
+  return `${hex}${SEAM_WASH_ALPHA_HEX}`;
+}
+
+/**
+ * The opaque colour behind the seam label. The label sits *inside* the wash, so `zinc-950`
+ * is not what is behind it — the wash over `zinc-950` is.
+ *
+ * Sampled at full `SEAM_WASH_ALPHA` rather than at the label's own y-position. The wash only
+ * fades going down, so judging against its strongest point holds the label readable anywhere
+ * in the band, and spares this from depending on the label's exact offset and font size.
+ */
+export function seamLabelBackdrop(hex: string): string {
+  return blendOver(hex, SEAM_WASH_ALPHA, DARK_BG);
+}
+
+/**
+ * A team colour lifted far enough to clear WCAG AA as the seam's small caps label.
+ *
+ * `readableOnDark` is the wrong tool here and measurably so: judged against the background
+ * the label really has, it leaves seven of the eleven liveries between 3.58 and 4.03 —
+ * Audi at 3.58, Williams 3.60, Aston Martin 3.63, Cadillac 3.70, Ferrari 3.75, Red Bull
+ * 3.80, Racing Bulls 3.98. The wash is what the seam exists for, so the wash keeps its
+ * authored strength and the *label* moves instead.
+ */
+export function seamLabelColor(hex: string): string {
+  return liftUntilContrast(hex, MIN_CONTRAST, seamLabelBackdrop(hex));
 }
 
 /** Whether a livery is too bright to use as a surface in this dark UI. */
@@ -172,7 +223,7 @@ export function onColor(fill: string): string {
  * bar, so the ring still reads as the brand colour rather than as a lightened wash of it.
  */
 export function ringOnDark(hex: string): string {
-  return liftUntilContrast(hex, MIN_RING_CONTRAST);
+  return liftUntilContrast(hex, MIN_RING_CONTRAST, DARK_BG);
 }
 
 /**

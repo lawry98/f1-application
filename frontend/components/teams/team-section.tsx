@@ -9,7 +9,7 @@ import { TextAnimate } from '@/components/ui/text-animate';
 import { NumberTicker } from '@/components/ui/number-ticker';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { teamColorButtonStyle, readableOnDark } from '@/lib/team-utils';
+import { teamColorButtonStyle, readableOnDark, seamWash, seamLabelColor } from '@/lib/team-utils';
 import { STANDINGS_AS_OF, type Team } from '@/data/teams-data';
 import { DriverPortrait } from './driver-portrait';
 import { TeamMonogramTile, monogram } from './team-monogram-tile';
@@ -44,12 +44,19 @@ export function TeamSection({ team, index, isActive, onInspect, reducedMotion }:
         data-testid="team-seam"
         className="relative h-16 w-full"
         style={{
-          background: `linear-gradient(to bottom, ${team.color}4d, transparent)`,
+          background: `linear-gradient(to bottom, ${seamWash(team.color)}, transparent)`,
         }}
       >
+        {/*
+          `seamLabelColor`, not `readableOnDark`. This label is the one piece of team-coloured
+          text on the page that does *not* sit on bare `zinc-950` — it sits on the wash two
+          lines up. Judged against that composite, `readableOnDark` leaves seven of the eleven
+          liveries short of AA. See `seamLabelColor`.
+        */}
         <p
+          data-testid="team-seam-label"
           className="absolute left-6 top-5 text-[10px] uppercase tracking-[0.24em] lg:left-12"
-          style={{ color: readableOnDark(team.color) }}
+          style={{ color: seamLabelColor(team.color) }}
         >
           {team.name}
         </p>

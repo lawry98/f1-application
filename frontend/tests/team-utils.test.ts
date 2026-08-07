@@ -12,6 +12,11 @@ import {
   needsDamping,
   onColor,
   ringOnDark,
+  blendOver,
+  seamWash,
+  seamLabelColor,
+  seamLabelBackdrop,
+  SEAM_WASH_ALPHA,
 } from '@/lib/team-utils';
 import { TEAMS, TEAM_MAP, STANDINGS_AS_OF } from '@/data/teams-data';
 
@@ -129,6 +134,84 @@ describe('duotoneFor', () => {
 describe('teamColorButtonStyle', () => {
   it('still special-cases the white livery', () => {
     expect(teamColorButtonStyle(TEAM_MAP['haas']!).className).toBe('border');
+  });
+});
+
+describe('the seam label', () => {
+  /**
+   * Flattens `#rrggbbaa` over `bg` — deliberately re-derived here rather than imported, so
+   * these assertions model "what is actually behind the glyphs" independently of the code
+   * that decides the label colour. The alpha is read out of the wash string the component
+   * really renders, so retuning the gradient moves this too.
+   */
+  function flatten(wash: string, bg: string): string {
+    const alpha = parseInt(wash.slice(7, 9), 16) / 255;
+    const channels = [1, 3, 5].map((i) => {
+      const fg = parseInt(wash.slice(i, i + 2), 16);
+      const back = parseInt(bg.slice(i, i + 2), 16);
+      return Math.round(alpha * fg + (1 - alpha) * back);
+    });
+    return `#${channels.map((c) => c.toString(16).padStart(2, '0')).join('')}`;
+  }
+
+  it('carries the livery and the authored alpha into the wash', () => {
+    expect(seamWash('#dc0000')).toBe('#dc00004d');
+    expect(SEAM_WASH_ALPHA).toBeCloseTo(0x4d / 255, 5);
+  });
+
+  // The finding this closes. The label sits *on the wash*, not on bare zinc-950, so the
+  // background it must be read against is the wash composited over the page — and judged
+  // there, `readableOnDark` leaves seven of eleven liveries short of AA.
+  it('clears WCAG AA against the composited wash for every team', () => {
+    expect(TEAMS).toHaveLength(11);
+    for (const team of TEAMS) {
+      const behind = flatten(seamWash(team.color), DARK_BG);
+      const label = seamLabelColor(team.color);
+      expect(
+        contrastRatio(label, behind),
+        `${team.shortName} seam label ${label} on ${behind}`,
+      ).toBeGreaterThanOrEqual(MIN_CONTRAST);
+    }
+  });
+
+  // Without this, the test above could be satisfied by `readableOnDark` and the fix would
+  // look unnecessary. It is not: this pins the failure the seam actually had.
+  it('is a real lift over readableOnDark, which fails on that same background', () => {
+    const failing = ['audi', 'williams', 'aston-martin', 'cadillac', 'ferrari', 'red-bull'];
+    for (const id of failing) {
+      const team = TEAM_MAP[id]!;
+      const behind = flatten(seamWash(team.color), DARK_BG);
+      expect(
+        contrastRatio(readableOnDark(team.color), behind),
+        `${team.shortName} would have passed untreated`,
+      ).toBeLessThan(MIN_CONTRAST);
+    }
+  });
+
+  // The seam exists to announce the incoming team, so the fix had to move the label rather
+  // than flatten the wash. Guard the wash's visibility explicitly.
+  it('leaves the wash strong enough to still read as a wash', () => {
+    expect(SEAM_WASH_ALPHA).toBeGreaterThan(0.25);
+    for (const team of TEAMS) {
+      const behind = flatten(seamWash(team.color), DARK_BG);
+      expect(behind, `${team.shortName} wash vanished`).not.toBe(DARK_BG);
+    }
+  });
+
+  // Lifted in HSL, so the label still reads as the brand rather than defaulting to white.
+  it('keeps the brand hue rather than falling back to white', () => {
+    for (const team of TEAMS) {
+      if (team.color === '#ffffff') continue;
+      expect(seamLabelColor(team.color), `${team.shortName}`).not.toBe('#ffffff');
+    }
+  });
+
+  it('agrees with blendOver on what sits behind the label', () => {
+    for (const team of TEAMS) {
+      expect(seamLabelBackdrop(team.color)).toBe(
+        blendOver(team.color, SEAM_WASH_ALPHA, DARK_BG),
+      );
+    }
   });
 });
 

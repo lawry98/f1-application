@@ -4,8 +4,12 @@ import { render, screen } from '@testing-library/react';
 import { TeamSection } from '@/components/teams/team-section';
 import { monogram } from '@/components/teams/team-monogram-tile';
 import { TEAM_MAP } from '@/data/teams-data';
+import { seamWash, seamLabelColor, readableOnDark, SEAM_WASH_ALPHA } from '@/lib/team-utils';
 
 const mclaren = TEAM_MAP['mclaren']!;
+// McLaren's #ff8700 already clears AA everywhere, so it cannot show the seam fix. Ferrari
+// is one of the seven that failed on the wash.
+const ferrari = TEAM_MAP['ferrari']!;
 
 function renderSection(overrides: Partial<Parameters<typeof TeamSection>[0]> = {}) {
   return render(
@@ -127,5 +131,40 @@ describe('TeamSection', () => {
     renderSection();
     const seam = screen.getByTestId('team-seam');
     expect(seam).toHaveTextContent(mclaren.name);
+  });
+
+  // The contrast maths lives in team-utils and is asserted over all eleven teams there.
+  // What that cannot see is the component quietly authoring its own gradient or its own
+  // label colour again — which is exactly how the seam failed AA in the first place. These
+  // two pin the rendered DOM to the helpers, so the wash alpha and the label can only be
+  // retuned together.
+  // jsdom normalises the `#rrggbbaa` stop the component writes into `rgba(r, g, b, a)`, so
+  // this compares the channels rather than the serialised text — which also keeps it from
+  // breaking on a jsdom that serialises differently.
+  it('paints the wash from the shared helper, at the authored alpha', () => {
+    const { container } = render(
+      <TeamSection team={ferrari} index={0} isActive onInspect={vi.fn()} reducedMotion={false} />,
+    );
+    const seam = container.querySelector<HTMLElement>('[data-testid="team-seam"]')!;
+
+    const rendered = /rgba\(\s*(\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\s*\)/.exec(
+      seam.getAttribute('style') ?? '',
+    );
+    expect(rendered, 'seam wash is not a translucent colour stop').not.toBeNull();
+
+    const wash = seamWash(ferrari.color);
+    const expected = [1, 3, 5].map((i) => parseInt(wash.slice(i, i + 2), 16));
+    expect([1, 2, 3].map((i) => Number(rendered![i]))).toEqual(expected);
+    expect(Number(rendered![4])).toBeCloseTo(SEAM_WASH_ALPHA, 2);
+  });
+
+  it('colours the seam label against the wash, not against the page background', () => {
+    render(
+      <TeamSection team={ferrari} index={0} isActive onInspect={vi.fn()} reducedMotion={false} />,
+    );
+    const label = screen.getByTestId('team-seam-label');
+    expect(label).toHaveStyle({ color: seamLabelColor(ferrari.color) });
+    // The bug: this is the colour it used to get, and it fails AA on the wash.
+    expect(seamLabelColor(ferrari.color)).not.toBe(readableOnDark(ferrari.color));
   });
 });
