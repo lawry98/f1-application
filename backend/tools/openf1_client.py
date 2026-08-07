@@ -3,14 +3,23 @@
 Same category as ``fastf1_helpers.py`` and ``schedule_cache.py``: adding a file to
 ``tools/`` does not make it a tool.
 
-Two design points carry the migration.
+Three design points carry the migration.
 
 **The range-query pattern.** OpenF1 supports comparison filters on any non-array
 attribute, so N sessions cost one request spanning ``min(keys)..max(keys)``, with
 unwanted rows dropped in Python. This is what turns ``get_driver_form``'s five
-sequential 2.4s FastF1 session loads into a single sub-second call. It also keeps the
-tool fan-out under OpenF1's unauthenticated 3 req/s, 30 req/min ceiling — a
-request-per-race loop is the one shape that would breach it.
+sequential 2.4s FastF1 session loads into a single sub-second call. It does *not*, on
+its own, keep the tool fan-out under OpenF1's unauthenticated 3 req/s, 30 req/min
+ceiling — measured live, four OpenF1-backed tools running through the executor pool
+issued 12 requests in one briefing, 5 of them exact duplicates of the same
+endpoint+params. The range pattern only removes the per-race loop; it says nothing
+about two different tools independently missing the same cache key at the same time.
+
+**Single-flight fetching.** ``_get`` coalesces concurrent misses for the same key so
+that duplicate case above costs one request, not four. Four tools fanning out still
+bursts several distinct requests against a 3 req/s ceiling — the range pattern and
+single-flight both help, but a 429 is still a real, expected outcome, and the FastF1
+fallback each tool carries is what absorbs it, not this module.
 
 **This module raises.** The never-raise contract belongs at the ``@tool`` boundary,
 where a failure has to become ``{"error": ...}``. A client that swallowed transport
@@ -37,42 +46,100 @@ OPENF1_FIRST_YEAR = 2023
 _lock = threading.Lock()
 _cache: dict[tuple[str, frozenset], list[dict[str, Any]]] = {}
 
+# Single-flight bookkeeping, guarded by `_lock` like `_cache`. A key present in
+# `_in_flight` has an in-progress fetch; whoever put it there is the "fetcher" and
+# everyone else is a "waiter" blocking on that key's Event. `_in_flight_errors` is how a
+# fetcher hands its exception to every waiter — it outlives the fetch itself (cleared only
+# when a later attempt for the same key becomes the new fetcher) so a waiter that reads it
+# after the Event fires never races the fetcher's own cleanup.
+_in_flight: dict[tuple[str, frozenset], threading.Event] = {}
+_in_flight_errors: dict[tuple[str, frozenset], BaseException] = {}
+
 
 class OpenF1Error(RuntimeError):
     """A non-200 from OpenF1. Transport failures surface as requests exceptions."""
 
 
 def clear() -> None:
-    """Clear the cached responses. Used by tests; harmless in production."""
+    """Clear the cached responses. Used by tests; harmless in production.
+
+    Also clears single-flight bookkeeping so a stale recorded error from one test can
+    never leak into the next; in production there is nothing in-flight by the time a
+    request handler's ``finally`` block gets here.
+    """
     with _lock:
         _cache.clear()
+        _in_flight.clear()
+        _in_flight_errors.clear()
 
 
 def _get(endpoint: str, params: dict[str, Any]) -> list[dict[str, Any]]:
-    """Fetch and cache one endpoint+params combination.
+    """Fetch and cache one endpoint+params combination, coalescing concurrent misses.
 
     The lock is released during the request, exactly as in ``schedule_cache.py``:
-    concurrent misses must not serialise network I/O, and a duplicate fetch of the same
-    key is acceptable (last write wins). Failures are deliberately not cached — one blip
-    would otherwise poison the process for its lifetime.
+    concurrent misses for *different* keys must not serialise network I/O. Concurrent
+    misses for the *same* key single-flight instead — one thread fetches, the rest wait
+    on that fetch's ``Event`` and share its outcome — because a duplicate fetch of the
+    same key is not the harmless "last write wins" it would be for the schedule cache:
+    OpenF1's unauthenticated ceiling is 3 req/s, and this module is asked for the same
+    key from every tool in one fan-out.
+
+    Failures are deliberately not cached — one blip would otherwise poison the process
+    for its lifetime — but they are recorded long enough for every waiter on that fetch
+    to see and re-raise them, so one thread's failure never leaves another hanging.
     """
     key = (endpoint, frozenset(params.items()))
+
     with _lock:
         if key in _cache:
             return _cache[key]
+        event = _in_flight.get(key)
+        if event is None:
+            event = threading.Event()
+            _in_flight[key] = event
+            _in_flight_errors.pop(key, None)
+            is_fetcher = True
+        else:
+            is_fetcher = False
 
-    response = requests.get(f"{OPENF1_BASE_URL}/{endpoint}", params=params, timeout=OPENF1_TIMEOUT)
-    if response.status_code != 200:
-        raise OpenF1Error(f"OpenF1 {endpoint} returned HTTP {response.status_code}")
+    if not is_fetcher:
+        logger.debug("Waiting on an in-flight OpenF1 fetch for %s", endpoint)
+        event.wait()
+        with _lock:
+            if key in _cache:
+                return _cache[key]
+            error = _in_flight_errors.get(key)
+        if error is not None:
+            raise error
+        # The fetcher's Event fired with neither a cached result nor a recorded error —
+        # not reachable given the try/except/finally below, but recursing rather than
+        # asserting means a future change here fails safe (a retry) instead of wedging
+        # every waiter.
+        return _get(endpoint, params)
 
-    payload = response.json()
-    # A miss is `{"detail": "No results found."}`, not an empty array. Normalising it to
-    # [] here is what lets every caller treat "no data" as a falsy list.
-    rows = payload if isinstance(payload, list) else []
+    try:
+        response = requests.get(
+            f"{OPENF1_BASE_URL}/{endpoint}", params=params, timeout=OPENF1_TIMEOUT
+        )
+        if response.status_code != 200:
+            raise OpenF1Error(f"OpenF1 {endpoint} returned HTTP {response.status_code}")
 
-    with _lock:
-        _cache[key] = rows
-    return rows
+        payload = response.json()
+        # A miss is `{"detail": "No results found."}`, not an empty array. Normalising it
+        # to [] here is what lets every caller treat "no data" as a falsy list.
+        rows = payload if isinstance(payload, list) else []
+
+        with _lock:
+            _cache[key] = rows
+        return rows
+    except Exception as exc:
+        with _lock:
+            _in_flight_errors[key] = exc
+        raise
+    finally:
+        with _lock:
+            _in_flight.pop(key, None)
+        event.set()
 
 
 def _range_params(keys: set[int]) -> dict[str, Any]:

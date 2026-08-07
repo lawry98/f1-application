@@ -7,6 +7,9 @@ one request per race is both slow and the only realistic way to breach OpenF1's
 is process-global and therefore reset by an autouse fixture in conftest.
 """
 
+import threading
+import time
+
 import pytest
 import requests
 
@@ -301,3 +304,126 @@ def test_a_failure_is_not_cached(monkeypatch):
             list_sessions(2026)
 
     assert len(calls) == 2
+
+
+# ── Single-flight: concurrent misses for the same key must coalesce ─────────────────
+
+
+class _BlockingResponse:
+    """Stand-in for a ``requests.Response``, paired with ``_BlockingGet`` below."""
+
+    def __init__(self, rows: list) -> None:
+        self.status_code = 200
+        self._rows = rows
+
+    def json(self):
+        return self._rows
+
+
+class _BlockingGet:
+    """A ``requests.get`` stand-in that sleeps before answering, so overlapping callers
+    genuinely overlap rather than happening to run one after the other on a fast fake.
+
+    ``.calls`` is appended to under a lock because these tests call it from real threads,
+    unlike ``make_openf1_get``'s fake, which only ever sees one thread at a time elsewhere
+    in the suite.
+    """
+
+    def __init__(self, rows: list | None = None, delay: float = 0.05, raises=None) -> None:
+        self.rows = rows if rows is not None else []
+        self.delay = delay
+        self.raises = raises
+        self._calls_lock = threading.Lock()
+        self.calls: list[dict] = []
+
+    def __call__(self, url: str, params: dict | None = None, **kwargs):
+        with self._calls_lock:
+            self.calls.append({"url": url, "params": params or {}})
+        time.sleep(self.delay)
+        if self.raises is not None:
+            raise self.raises
+        return _BlockingResponse(self.rows)
+
+
+def _run_concurrently(target, count: int) -> list[threading.Thread]:
+    barrier = threading.Barrier(count)
+
+    def _synced():
+        barrier.wait(timeout=5)
+        target()
+
+    threads = [threading.Thread(target=_synced) for _ in range(count)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=5)
+    return threads
+
+
+def test_concurrent_misses_for_the_same_key_issue_exactly_one_request(monkeypatch):
+    fake = _BlockingGet(rows=[{"meeting_key": 1}], delay=0.05)
+    monkeypatch.setattr(openf1_client.requests, "get", fake)
+
+    results: list[list] = []
+    results_lock = threading.Lock()
+
+    def _call():
+        result = list_meetings(2026)
+        with results_lock:
+            results.append(result)
+
+    _run_concurrently(_call, 5)
+
+    assert len(fake.calls) == 1
+    assert results == [[{"meeting_key": 1}]] * 5
+
+
+def test_concurrent_misses_for_different_keys_still_overlap(monkeypatch):
+    """A single-flight implementation that holds the global lock for the whole fetch
+    would serialise every key behind every other one — exactly the regression the range
+    query was supposed to fix. Two different-key fetches must run concurrently.
+    """
+    fake = _BlockingGet(rows=[{"meeting_key": 1}], delay=0.2)
+    monkeypatch.setattr(openf1_client.requests, "get", fake)
+
+    started = time.monotonic()
+    threads = [
+        threading.Thread(target=list_meetings, args=(2025,)),
+        threading.Thread(target=list_meetings, args=(2026,)),
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=5)
+    elapsed = time.monotonic() - started
+
+    assert len(fake.calls) == 2
+    # Serialised, this would take >= 2 * delay (0.4s); overlapped, close to 1 * delay.
+    assert elapsed < 0.35
+
+
+def test_a_failed_in_flight_fetch_propagates_to_every_waiter_and_is_not_cached(monkeypatch):
+    fake = _BlockingGet(delay=0.05, raises=requests.ConnectionError("openf1 unreachable"))
+    monkeypatch.setattr(openf1_client.requests, "get", fake)
+
+    errors: list[Exception] = []
+    errors_lock = threading.Lock()
+
+    def _call():
+        try:
+            list_meetings(2026)
+        except requests.RequestException as exc:
+            with errors_lock:
+                errors.append(exc)
+
+    _run_concurrently(_call, 4)
+
+    assert len(errors) == 4
+    assert len(fake.calls) == 1
+
+    # Not cached: a later call retries rather than replaying the stale failure forever.
+    fake.raises = None
+    fake.rows = [{"meeting_key": 2}]
+
+    assert list_meetings(2026) == [{"meeting_key": 2}]
+    assert len(fake.calls) == 2
