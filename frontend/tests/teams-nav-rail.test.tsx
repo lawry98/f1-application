@@ -3,7 +3,16 @@ import { render, screen } from '@testing-library/react';
 
 import { TeamsNavRail } from '@/components/teams/teams-nav-rail';
 import { monogram } from '@/components/teams/team-monogram-tile';
-import { contrastRatio, DARK_BG, MIN_CONTRAST, MIN_RING_CONTRAST } from '@/lib/team-utils';
+import {
+  contrastRatio,
+  DARK_BG,
+  MIN_CONTRAST,
+  MIN_RING_CONTRAST,
+  RAIL_ACTIVE_ALPHA,
+  RAIL_ACTIVE_FILL,
+  railStandingBackdrop,
+  railStandingColor,
+} from '@/lib/team-utils';
 import { TEAMS } from '@/data/teams-data';
 
 /** jsdom normalises any inline colour to `rgb(r, g, b)`; contrastRatio wants hex. */
@@ -14,6 +23,33 @@ function rgbToHex(value: string): string {
     .slice(0, 3)
     .map((n) => Number(n).toString(16).padStart(2, '0'))
     .join('')}`;
+}
+
+/**
+ * Tailwind's zinc ramp as hex. jsdom applies no stylesheet, so a class name is all a test can
+ * see — mapping it back to the colour Tailwind would paint is what lets the assertions below
+ * measure a *ratio* instead of pinning a string. Swap `text-zinc-400` for `text-zinc-500` and
+ * they fail on 4.12 being under 4.5, which is the thing that actually matters.
+ */
+const ZINC: Record<string, string> = {
+  '200': '#e4e4e7',
+  '300': '#d4d4d8',
+  '400': '#a1a1aa',
+  '500': '#71717a',
+  '600': '#52525b',
+  '700': '#3f3f46',
+};
+
+/** Every `text-zinc-N` on `el` that applies at rest — `hover:`/`focus:` variants are states. */
+function restingZinc(el: Element): string[] {
+  return Array.from(el.classList)
+    .filter((c) => /^text-zinc-\d+$/.test(c))
+    .map((c) => {
+      const shade = c.replace('text-zinc-', '');
+      const hex = ZINC[shade];
+      if (!hex) throw new Error(`add zinc-${shade} to the ZINC map`);
+      return hex;
+    });
 }
 
 function renderRail({
@@ -123,16 +159,69 @@ describe('TeamsNavRail', () => {
     }
   });
 
-  it('keeps the active row’s standings line above AA for every team', () => {
+  // This assertion used to read `contrastRatio(..., DARK_BG)` and passed for all eleven teams
+  // while the rendered page failed — the active row is the one place in the rail that is *not*
+  // on the page background. It sits on the `bg-zinc-800/60` highlight, and a browser measured
+  // Ferrari's line at 4.02:1 there against the 4.66:1 this test certified. The background is
+  // the only thing that was wrong with it.
+  it('keeps the active row’s standings line above AA against its own highlight', () => {
     expect(TEAMS).toHaveLength(11);
     for (const team of TEAMS) {
       const { unmount } = renderRail({ activeTeamId: team.id });
       const line = screen.getByText(`P${team.position} · ${team.points} PTS`);
       expect(
-        contrastRatio(rgbToHex(line.style.color), DARK_BG),
+        contrastRatio(rgbToHex(line.style.color), railStandingBackdrop()),
         `${team.shortName} standings ${line.style.color}`,
       ).toBeGreaterThanOrEqual(MIN_CONTRAST);
       unmount();
+    }
+  });
+
+  it('colours the active row’s standings line for the highlight, not for the page', () => {
+    const { unmount } = renderRail({ activeTeamId: 'ferrari' });
+    const line = screen.getByText('P2 · 307 PTS');
+    expect(rgbToHex(line.style.color)).toBe(railStandingColor('#dc0000'));
+    unmount();
+  });
+
+  // The maths above is only right while the highlight really is zinc-800 at 60%. Tailwind class
+  // names cannot be built from a runtime constant — the JIT scans source text — so the component
+  // keeps the literal and this pins the two together, the same way the seam's wash is pinned.
+  it('paints the highlight at the opacity the contrast maths assumes', () => {
+    const { container } = renderRail({ activeTeamId: 'ferrari' });
+    const highlight = container.querySelector('.bg-zinc-800\\/60');
+    expect(highlight, 'active highlight is no longer bg-zinc-800/60').not.toBeNull();
+    expect(RAIL_ACTIVE_FILL).toBe('#27272a'); // Tailwind zinc-800
+    expect(RAIL_ACTIVE_ALPHA).toBe(0.6);
+  });
+
+  // The rail's own neutrals. Both header lines and every inactive row label are judged here,
+  // so the 2.57:1 subheader this branch introduced and the inherited 4.12:1 rows are one test.
+  it('holds every resting neutral in the rail above AA on the page background', () => {
+    const { container } = renderRail();
+    const measured: string[] = [];
+    for (const el of Array.from(container.querySelectorAll('*'))) {
+      for (const hex of restingZinc(el)) {
+        measured.push(hex);
+        expect(
+          contrastRatio(hex, DARK_BG),
+          `${hex} on ${el.textContent?.slice(0, 24)}`,
+        ).toBeGreaterThanOrEqual(MIN_CONTRAST);
+      }
+    }
+    // Guards the guard: if the classes move to inline styles this test would silently pass.
+    expect(measured.length).toBeGreaterThan(0);
+  });
+
+  it('holds the inactive rows’ standings lines above AA', () => {
+    renderRail({ activeTeamId: 'ferrari' });
+    for (const team of TEAMS) {
+      if (team.id === 'ferrari') continue;
+      const line = screen.getByText(`P${team.position} · ${team.points} PTS`);
+      expect(
+        contrastRatio(rgbToHex(line.style.color), DARK_BG),
+        `${team.shortName} inactive standings ${line.style.color}`,
+      ).toBeGreaterThanOrEqual(MIN_CONTRAST);
     }
   });
 

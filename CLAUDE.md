@@ -185,6 +185,35 @@ Racing Bulls' navy reads at 2.02:1 and was never caught by it. Decorative use �
 livery wall, the 3D livery — keeps the true hex. `tests/team-utils.test.ts` asserts every variant
 for all eleven teams, so a new team with an unreadable colour fails CI rather than shipping.
 
+**`readableOnDark` is only correct on bare `zinc-950`, and it has zero headroom by
+construction** — it stops at the first lightness step clearing 4.5:1, so *any* translucent layer
+between the glyphs and the page pushes it under. Three call sites sit on something lighter and
+each needs its own backdrop variant, all built from `blendOver` + `liftUntilContrast`:
+`seamLabelColor` for the seam wash, `railStandingColor` for the active rail row's
+`bg-zinc-800/60` highlight (`readableOnDark` measured 4.02:1 there), and `sectionStandingColor`
+for the section glow. The mistake looks identical every time and the tests reproduced it twice:
+an assertion that measures the right *colour* against the wrong *background* passes while the
+rendered page fails. If you add team-coloured text, ask what is behind it first.
+
+**The section glow's peak opacity is a contrast constraint, not a taste one.** A `40vw` blob with
+a 120px blur is wider than the margin of an 840px-wide section, so its core lands on the content
+column. At the peak of 1 it originally animated to, the composite behind the standing line is the
+livery at ~0.78 alpha and Alpine's `#0184e9` admits **no** readable text at all — pure white tops
+out at 3.83:1 — so no colour helper could have fixed that line. `GLOW_PEAK_OPACITY` caps it, and
+the same constant is the alpha the composite is judged at (measured effective alpha is 0.92 of
+peak, so the peak is the conservative side). Raising it back breaks
+`holds the glow weak enough that a readable colour exists at all`.
+
+**Neither `pnpm test` nor axe can see these.** jsdom lays nothing out, and axe returns
+*incomplete* — "background could not be determined" — for text over a blurred, absolutely
+positioned sibling, which is every one of these call sites. What works is hiding only the glyphs
+(`visibility: hidden`), screenshotting, and reading the pixel behind them; `agent-browser
+screenshot` plus `sips -s format bmp` gives a trivially parseable 24-bit BMP. Two traps in that
+method: an element that carries its own `background-color` disappears along with its text, so a
+monogram tile reads as page background (axe catches those — the two tools are complementary), and
+`TextAnimate` renders an `sr-only` copy beside the painted `aria-hidden` spans, so hiding the
+accessible copy measures the visible glyphs and reports 1:1.
+
 **The teams page's three columns appear at three different widths.** Left rail from `lg`, sticky
 dossier from `xl`, mobile chip strip below `lg` — laptop widths get two columns on purpose. The
 dossier is also *mounted* on a `matchMedia` check, not just `hidden xl:block`: inside a

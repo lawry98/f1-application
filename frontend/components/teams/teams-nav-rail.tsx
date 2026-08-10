@@ -4,7 +4,7 @@ import { motion } from 'motion/react';
 
 import { TEAMS, STANDINGS_AS_OF, type Team } from '@/data/teams-data';
 import { cn } from '@/lib/utils';
-import { readableOnDark, ringOnDark } from '@/lib/team-utils';
+import { railStandingColor, ringOnDark } from '@/lib/team-utils';
 import { TeamMonogramTile } from './team-monogram-tile';
 
 interface TeamsNavRailProps {
@@ -36,7 +36,10 @@ function NavLink({
       className={cn(
         'relative flex w-full items-center gap-2.5 rounded-r-md px-4 py-2.5 text-left text-sm no-underline transition-colors duration-200',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950',
-        isActive ? 'text-white' : 'text-zinc-500 hover:text-zinc-300',
+        // `zinc-400`, not `zinc-500`: the 500 rung is 4.12:1 on this page background, so every
+        // inactive row was under AA. There is no rung between it and 400's 7.44:1, which is why
+        // the row's own hierarchy is carried by size and weight rather than by a dimmer tone.
+        isActive ? 'text-white' : 'text-zinc-400 hover:text-zinc-200',
       )}
       // A team-derived focus ring, held to non-text contrast rather than the text bar so it
       // still reads as the livery instead of a lightened wash of it.
@@ -69,8 +72,11 @@ function NavLink({
         <span className="block truncate text-sm font-medium">{team.shortName}</span>
         <span
           className="block truncate font-mono text-[9px] tracking-wide"
-          // 9px text, so the livery colour has to clear AA — seven of eleven do not raw.
-          style={{ color: isActive ? readableOnDark(team.color) : '#71717a' }}
+          // 9px text, so the livery colour has to clear AA — and on the active row it has to
+          // clear it against the `bg-zinc-800/60` highlight it renders on, not against the page.
+          // `readableOnDark` measured 4.02:1 in a browser for Ferrari here; `railStandingColor`
+          // judges the composite. Inactive rows are on the page itself, at `zinc-400`.
+          style={{ color: isActive ? railStandingColor(team.color) : '#a1a1aa' }}
         >
           {`P${team.position} · ${team.points} PTS`}
         </span>
@@ -92,9 +98,14 @@ export function TeamsNavRail({ activeTeamId, onSelectTeam, reducedMotion }: Team
         it read as a standings list that was wrong. The sequence numeral is gone and what
         remains is labelled.
       */}
+      {/*
+        Both lines are stepped above AA rather than dimmed for hierarchy: `zinc-600` measured
+        2.57:1 and `zinc-500` 4.12:1 on this background, so the step runs 300 → 400 and the
+        11px/9px size difference does the rest.
+      */}
       <div className="mb-4 px-4">
-        <p className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">Constructors</p>
-        <p className="mt-0.5 text-[9px] uppercase tracking-[0.14em] text-zinc-600">
+        <p className="text-[11px] uppercase tracking-[0.2em] text-zinc-300">Constructors</p>
+        <p className="mt-0.5 text-[9px] uppercase tracking-[0.14em] text-zinc-400">
           {`Championship · ${STANDINGS_AS_OF}`}
         </p>
       </div>

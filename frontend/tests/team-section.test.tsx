@@ -1,10 +1,20 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 
 import { TeamSection } from '@/components/teams/team-section';
 import { monogram } from '@/components/teams/team-monogram-tile';
 import { TEAM_MAP } from '@/data/teams-data';
-import { seamWash, seamLabelColor, readableOnDark, SEAM_WASH_ALPHA } from '@/lib/team-utils';
+import {
+  seamWash,
+  seamLabelColor,
+  readableOnDark,
+  SEAM_WASH_ALPHA,
+  sectionStandingColor,
+  sectionStandingBackdrop,
+  contrastRatio,
+  MIN_CONTRAST,
+  GLOW_PEAK_OPACITY,
+} from '@/lib/team-utils';
 
 const mclaren = TEAM_MAP['mclaren']!;
 // McLaren's #ff8700 already clears AA everywhere, so it cannot show the seam fix. Ferrari
@@ -112,6 +122,38 @@ describe('TeamSection', () => {
     renderSection();
     expect(screen.getByTestId('section-standing')).toHaveTextContent('P3');
     expect(screen.getByTestId('section-standing')).toHaveTextContent('220 PTS');
+  });
+
+  // This line sits inside the glow blob, not beside it: the blob is 40vw wide with a 120px blur
+  // in an 840px-wide section, so at 1440x900 its core covers the content column. Measured in a
+  // browser with the glyphs hidden, the pixel behind them was the livery at ~0.78 alpha, where
+  // Ferrari's `readableOnDark` red reads 1.40:1 and Alpine admits no readable colour at all.
+  it('colours the standing line against the glow, not against the page background', () => {
+    render(
+      <TeamSection team={ferrari} index={1} isActive onInspect={vi.fn()} reducedMotion={false} />,
+    );
+    const standing = screen.getByTestId('section-standing');
+    expect(standing).toHaveStyle({ color: sectionStandingColor(ferrari.color) });
+    // The colour it used to get, which fails on the glow.
+    expect(sectionStandingColor(ferrari.color)).not.toBe(readableOnDark(ferrari.color));
+    expect(
+      contrastRatio(sectionStandingColor(ferrari.color), sectionStandingBackdrop(ferrari.color)),
+    ).toBeGreaterThanOrEqual(MIN_CONTRAST);
+  });
+
+  // The glow keeps the true livery — it is a large decorative fill, and a lightened one stops
+  // reading as the livery. What came down is its *strength*: at the peak of 1 it shipped with,
+  // no text colour on the column cleared AA, white included.
+  // `initial={{ opacity: 0 }}` is what motion writes during render, so the animated target is
+  // only observable once it has run a frame — hence `waitFor` rather than a bare assertion.
+  it('paints the glow in the true livery at the damped peak the contrast maths assumes', async () => {
+    const { container } = render(
+      <TeamSection team={ferrari} index={1} isActive onInspect={vi.fn()} reducedMotion />,
+    );
+    const glow = container.querySelector<HTMLElement>('[style*="blur(120px)"]');
+    expect(glow, 'no glow blob found').not.toBeNull();
+    expect(glow!.style.backgroundColor).toBe('rgb(220, 0, 0)');
+    await waitFor(() => expect(Number(glow!.style.opacity)).toBeCloseTo(GLOW_PEAK_OPACITY, 5));
   });
 
   // Brief item 3's trap. The dossier moves to xl, so the button that reaches the 3D

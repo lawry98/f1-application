@@ -206,6 +206,75 @@ export function seamLabelColor(hex: string): string {
   return liftUntilContrast(hex, MIN_CONTRAST, seamLabelBackdrop(hex));
 }
 
+/**
+ * Tailwind `zinc-800`, and the opacity the nav rail's active-row highlight is authored at —
+ * `bg-zinc-800/60`. Authored here so the contrast maths and the class cannot drift apart; a
+ * Tailwind class name cannot be built from a runtime value, so the component keeps the literal
+ * and `teams-nav-rail.test.tsx` pins the two together.
+ */
+export const RAIL_ACTIVE_FILL = '#27272a';
+export const RAIL_ACTIVE_ALPHA = 0.6;
+
+/**
+ * The opaque colour behind the active rail row's standings line. The row is the one place in
+ * the rail that is not on bare `zinc-950`: the highlight is a translucent `zinc-800` wash over
+ * it, and a browser reading the pixel behind those glyphs returns `#1b1b1d` — a unit of blue
+ * off what this composite predicts, which is Chrome rounding the blend.
+ */
+export function railStandingBackdrop(): string {
+  return blendOver(RAIL_ACTIVE_FILL, RAIL_ACTIVE_ALPHA, DARK_BG);
+}
+
+/**
+ * A team colour lifted far enough to clear AA as the active rail row's standings line.
+ *
+ * `readableOnDark` is the wrong tool for the same reason it was wrong for the seam: judged
+ * against the highlight rather than the page, it leaves seven of the eleven liveries short —
+ * Cadillac at 3.93, Audi 3.94, Racing Bulls 3.95, Aston Martin 3.97, Williams 3.99, Red Bull
+ * 4.04, Ferrari 4.02. The highlight is what marks the row as current, so the highlight keeps
+ * its authored strength and the *text* moves.
+ */
+export function railStandingColor(hex: string): string {
+  return liftUntilContrast(hex, MIN_CONTRAST, railStandingBackdrop());
+}
+
+/**
+ * Peak opacity of a section's glow blob, and — deliberately the same number — the alpha its
+ * composite is judged at.
+ *
+ * This is a ceiling the contrast layer imposes on a decorative element, which no other constant
+ * here does, so it is worth being explicit about why. The blob is `40vw` square with a 120px
+ * blur, and at 1440x900 a team section is 840px wide, so the blob's *core* lands on the content
+ * column rather than in the margin. At the peak of 1 it originally animated to, the pixel behind
+ * the standing line is the livery at ~0.78 alpha, and on Alpine's `#0184e9` pure white reaches
+ * only 3.83:1 — no text colour clears AA, so no amount of lifting could fix the line while the
+ * glow stayed that strong. The value itself is a judgement made by eye against a browser: 0.3
+ * still read as too heavy a flood, 0.18 as a wash. Measured across the sweep, the composite
+ * under the glyphs is the livery at 0.92 of whatever the peak is — the blur is flat where the
+ * text sits — so using the peak itself as the alpha is the conservative side of the real number
+ * by about 8%, and keeps this to one constant instead of two that can drift.
+ *
+ * The livery *hex* is untouched — this is the wash's strength, not its colour.
+ */
+export const GLOW_PEAK_OPACITY = 0.18;
+
+/** The opaque colour the glow leaves behind the section's standing line. */
+export function sectionStandingBackdrop(hex: string): string {
+  return blendOver(hex, GLOW_PEAK_OPACITY, DARK_BG);
+}
+
+/**
+ * A team colour lifted far enough to clear AA as the section's standing line, which sits inside
+ * the glow rather than beside it.
+ *
+ * Damping the glow is necessary but not sufficient: `readableOnDark` clears 4.5:1 on bare
+ * `zinc-950` *by construction*, so it has no headroom for any tint at all, and eight of the
+ * eleven liveries still fail on the damped composite. Both halves are needed.
+ */
+export function sectionStandingColor(hex: string): string {
+  return liftUntilContrast(hex, MIN_CONTRAST, sectionStandingBackdrop(hex));
+}
+
 /** Whether a livery is too bright to use as a surface in this dark UI. */
 export function needsDamping(hex: string): boolean {
   return relativeLuminance(hex) > MAX_FILL_LUMINANCE;

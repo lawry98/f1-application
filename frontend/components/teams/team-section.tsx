@@ -9,7 +9,13 @@ import { TextAnimate } from '@/components/ui/text-animate';
 import { NumberTicker } from '@/components/ui/number-ticker';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { teamColorButtonStyle, readableOnDark, seamWash, seamLabelColor } from '@/lib/team-utils';
+import {
+  teamColorButtonStyle,
+  seamWash,
+  seamLabelColor,
+  sectionStandingColor,
+  GLOW_PEAK_OPACITY,
+} from '@/lib/team-utils';
 import { STANDINGS_AS_OF, type Team } from '@/data/teams-data';
 import { DriverPortrait } from './driver-portrait';
 import { TeamMonogramTile, monogram } from './team-monogram-tile';
@@ -64,7 +70,12 @@ export function TeamSection({ team, index, isActive, onInspect, reducedMotion }:
 
       {/* Ambient glow blob — alternates position for visual variety. The only animated
           property is `opacity`, so that is what `will-change` hints: hinting `transform`
-          promoted eleven 40vw×40vw layers permanently and bought nothing. */}
+          promoted eleven 40vw×40vw layers permanently and bought nothing.
+
+          It peaks at `GLOW_PEAK_OPACITY`, not at 1. A 40vw blob with a 120px blur is wider than
+          the margin of an 840px section, so its core lands on the content column — and at full
+          strength nothing written there clears AA, white included. The livery hex is untouched;
+          see `GLOW_PEAK_OPACITY`. */}
       <motion.div
         className="pointer-events-none absolute will-change-[opacity]"
         style={{
@@ -76,7 +87,7 @@ export function TeamSection({ team, index, isActive, onInspect, reducedMotion }:
           top: '10%',
           ...(blobOnRight ? { right: '-20%' } : { left: '-20%' }),
         }}
-        animate={{ opacity: isActive ? 1 : 0 }}
+        animate={{ opacity: isActive ? GLOW_PEAK_OPACITY : 0 }}
         transition={reducedMotion ? { duration: 0 } : { duration: 0.6 }}
         initial={{ opacity: 0 }}
       />
@@ -130,11 +141,16 @@ export function TeamSection({ team, index, isActive, onInspect, reducedMotion }:
           </div>
 
           {/* The dossier is gone below `xl`, so without this the championship standing
-              simply is not on the page at laptop width and below. */}
+              simply is not on the page at laptop width and below.
+
+              `sectionStandingColor`, not `readableOnDark`: this line renders *inside* the glow
+              blob above, not on bare `zinc-950`, and judged against that composite the plain
+              livery leaves eight of the eleven teams short of AA. Same mistake the seam label
+              made, third call site. */}
           <p
             data-testid="section-standing"
             className="font-mono text-xs tracking-wide"
-            style={{ color: readableOnDark(team.color) }}
+            style={{ color: sectionStandingColor(team.color) }}
           >
             {`P${team.position} · ${team.points} PTS · ${STANDINGS_AS_OF.toUpperCase()}`}
           </p>
