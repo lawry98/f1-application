@@ -1,11 +1,10 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
 import { TeamsPageClient } from '@/components/teams/teams-page-client';
 import { TEAMS } from '@/data/teams-data';
 
 const originalMatchMedia = window.matchMedia;
-const originalIntersectionObserver = globalThis.IntersectionObserver;
 
 /** Force every media query to a fixed answer, so the mount decision is testable. */
 function setViewportMatches(matches: boolean) {
@@ -22,49 +21,19 @@ function setViewportMatches(matches: boolean) {
     }) as MediaQueryList) as typeof window.matchMedia;
 }
 
-/**
- * The global stub in `tests/setup.ts` reports entries with `isIntersecting` only — enough
- * for framer-motion's `useInView`, but `useScrollSpy` also reads `entry.intersectionRect.height`
- * to decide which section covers the activation band, and the global stub never sets it,
- * which throws the moment this page mounts. Every id is reported as covering the band
- * equally here, so `pickActive`'s document-order tiebreak (already covered by
- * `use-scroll-spy.test.ts`) is what decides the default winner in these tests, not this stub.
+/*
+ * There is no local `IntersectionObserver` stub here any more. One used to be needed
+ * because `useScrollSpy` read `entry.intersectionRect.height`, which the global stub in
+ * `tests/setup.ts` never sets — it threw the moment this page mounted. The spy measures
+ * rects now and constructs no observer at all, so the global stub, which exists for
+ * framer-motion's `useInView`, is the only one this page needs.
+ *
+ * jsdom lays nothing out, so every rect is zero, nothing covers the activation band, and
+ * the spy holds its initial id: the first team in document order.
  */
-class StubIntersectionObserver implements IntersectionObserver {
-  readonly root = null;
-  readonly rootMargin = '';
-  readonly thresholds: ReadonlyArray<number> = [];
-
-  constructor(private readonly callback: IntersectionObserverCallback) {}
-
-  observe(target: Element): void {
-    this.callback(
-      [
-        {
-          isIntersecting: true,
-          target,
-          intersectionRect: { height: 1 } as DOMRectReadOnly,
-        } as unknown as IntersectionObserverEntry,
-      ],
-      this as IntersectionObserver,
-    );
-  }
-
-  unobserve(): void {}
-  disconnect(): void {}
-  takeRecords(): IntersectionObserverEntry[] {
-    return [];
-  }
-}
-
-beforeEach(() => {
-  globalThis.IntersectionObserver =
-    StubIntersectionObserver as unknown as typeof IntersectionObserver;
-});
 
 afterEach(() => {
   window.matchMedia = originalMatchMedia;
-  globalThis.IntersectionObserver = originalIntersectionObserver;
   window.location.hash = '';
   vi.restoreAllMocks();
 });

@@ -153,14 +153,24 @@ every render.
 **The landing page composes, it doesn't contain.** `app/page.tsx` is seven imports from
 `components/landing/`; the hero, features, and footer markup are not inline.
 
-**The teams page has exactly one scroll spy, and it lives in `hooks/use-scroll-spy.ts`.** The
-sections are taller than the viewport and adjacent, so a per-section `IntersectionObserver` firing
-on `isIntersecting` fights itself at every boundary. One observer watches all eleven against a
-narrow band near the top of the viewport and picks the section covering most of it, ties going to
-document order. A click *claims* the active id immediately and suppresses the observer until the
-observer independently agrees or `CLAIM_TIMEOUT_MS` elapses — feedback must not wait for an
-observer, but the observer still owns the state afterwards, and the timeout matters because a
-section shorter than the band may never win. `hooks/use-team-navigation.ts` layers the URL on top:
+**The teams page's scroll spy measures rects on a frame; `IntersectionObserver` cannot do this
+job.** `hooks/use-scroll-spy.ts` picks the section covering most of a narrow band near the top of
+the viewport, ties going to document order. The observer version of exactly that — one observer,
+the root shrunk to the band by `rootMargin`, thresholds `[0, 0.01, 0.5, 1]` — shipped and did not
+track scroll at all, through thirteen task reviews and a whole-branch review, because none of them
+ran a browser. `intersectionRatio` is a fraction of the **target's** area, not of the band, so a
+~560px section against a 270px band peaks at 0.48 and 0.5 is unreachable: only the entry and exit
+crossings fire (25 callbacks across 6288px of scrolling), and between them the coverage map is a
+snapshot from the last boundary. 8 of 31 sampled scroll positions named the wrong section. No
+threshold list fixes this. So `scroll` and `resize` schedule one `getBoundingClientRect` pass per
+animation frame — eleven rects in an uninterrupted read pass, 0.2ms, one layout flush — plus one
+pass on mount, because arriving part-way down the page produces no scroll event. A click *claims*
+the active id immediately and suppresses the measurement until it independently agrees or
+`CLAIM_TIMEOUT_MS` elapses; the timeout matters because a section shorter than the band may never
+win. Because jsdom lays nothing out, a test that feeds a fake observer its numbers proves nothing
+here — `tests/use-scroll-spy.test.ts` models the layout, drives real scroll events and frames, and
+derives the expected winner from the model rather than from the hook.
+`hooks/use-team-navigation.ts` layers the URL on top:
 the rail, chips and comparison rows are real anchors, so the browser pushes one history entry per
 click by itself, and the hook only handles hash restore, `popstate`, and `replaceState` while
 scrolling. Scroll offsets are `--teams-scroll-offset` in `app/globals.css` consumed as

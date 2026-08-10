@@ -43,18 +43,27 @@ export function pickActive(ids: string[], covered: Map<string, number>): string 
 }
 
 /**
- * Tracks which of `ids` is the active section, using **one** observer for all of them.
+ * Tracks which of `ids` is the active section: the one covering most of a narrow activation
+ * band near the top of the viewport.
  *
- * Eleven per-section observers firing on `isIntersecting` fight at every boundary, because
- * the sections are taller than the viewport and adjacent: two of them are always
- * intersecting, and whichever fired last wins. Instead the root is shrunk to a narrow band
- * near the top of the viewport via `rootMargin`, and the winner is whichever section covers
- * most of that band.
+ * **This measures. It does not observe, and `IntersectionObserver` cannot do this job.**
+ * The obvious implementation — one observer, the root shrunk to the band by `rootMargin`,
+ * thresholds at `[0, 0.01, 0.5, 1]` — shipped and did not track scroll at all.
+ * `intersectionRatio` is a fraction of the *target's* area, not of the band, so a ~560px
+ * section against a 270px band peaks at 0.48 and never reaches 0.5. Only the entry and exit
+ * crossings ever fire — 25 callbacks across 6288px of scrolling, measured — and between them
+ * the coverage map holds numbers from the last boundary. 8 of 31 sampled scroll positions
+ * named the wrong section, each one matching what the stale map said rather than the page.
+ * Widening the threshold list does not help: no threshold above 0.48 is reachable.
  *
- * `claim(id)` sets the active id at once and suppresses the observer, because click feedback
- * must not wait for a scroll to happen. The suppression is a lease: it lifts the moment the
- * observer's own winner agrees, or after `CLAIM_TIMEOUT_MS`, whichever comes first. The
- * observer still owns the state.
+ * So the rects are read directly, throttled to one pass per animation frame, on `scroll`
+ * and `resize` and once on mount. Reading eleven rects in an uninterrupted pass is a single
+ * layout flush; a frame that scrolled is a frame that already relayed out.
+ *
+ * `claim(id)` sets the active id at once and suppresses the measurement, because click
+ * feedback must not wait for a scroll to happen. The suppression is a lease: it lifts the
+ * moment the measured winner agrees, or after `CLAIM_TIMEOUT_MS`, whichever comes first.
+ * The measurement still owns the state.
  */
 export function useScrollSpy(ids: string[]): {
   activeId: string;
@@ -88,42 +97,60 @@ export function useScrollSpy(ids: string[]): {
   );
 
   useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          const id = entry.target.id.replace(/^team-/, '');
-          // A malformed or partial entry — notably the shared jsdom stub in `tests/setup.ts`,
-          // which never sets `intersectionRect` — must degrade to "covers none of the band"
-          // rather than throw.
-          coveredRef.current.set(id, entry.intersectionRect?.height ?? 0);
+    let frame: number | null = null;
+
+    const measure = () => {
+      frame = null;
+
+      const bandTop = window.innerHeight * BAND_TOP;
+      const bandBottom = window.innerHeight * BAND_BOTTOM;
+
+      // One uninterrupted read pass. Eleven `getBoundingClientRect` calls with no writes
+      // between them cost a single layout flush, not eleven.
+      for (const id of idsRef.current) {
+        const el = document.getElementById(`team-${id}`);
+        if (el === null) {
+          coveredRef.current.delete(id);
+          continue;
         }
+        const rect = el.getBoundingClientRect();
+        coveredRef.current.set(
+          id,
+          Math.max(0, Math.min(rect.bottom, bandBottom) - Math.max(rect.top, bandTop)),
+        );
+      }
 
-        const winner = pickActive(idsRef.current, coveredRef.current);
-        // Nothing covers the band — between sections, or mid-hero. Keep the last answer
-        // rather than blanking, which would clear the rail's highlight for a frame.
-        if (winner === null) return;
+      const winner = pickActive(idsRef.current, coveredRef.current);
+      // Nothing covers the band — between sections, or mid-hero. Keep the last answer
+      // rather than blanking, which would clear the rail's highlight for a frame.
+      if (winner === null) return;
 
-        if (claimedRef.current !== null) {
-          if (winner === claimedRef.current) releaseClaim();
-          return;
-        }
+      if (claimedRef.current !== null) {
+        if (winner === claimedRef.current) releaseClaim();
+        return;
+      }
 
-        setActiveId(winner);
-      },
-      {
-        rootMargin: `-${BAND_TOP * 100}% 0px -${(1 - BAND_BOTTOM) * 100}% 0px`,
-        // Every crossing of the band edge must be reported, not just full entry, or a
-        // section taller than the band would never fire at all.
-        threshold: [0, 0.01, 0.5, 1],
-      },
-    );
+      setActiveId(winner);
+    };
 
-    for (const id of ids) {
-      const el = document.getElementById(`team-${id}`);
-      if (el) observer.observe(el);
-    }
+    // At most one measurement per frame, however many scroll events the browser delivers.
+    const schedule = () => {
+      if (frame !== null) return;
+      frame = window.requestAnimationFrame(measure);
+    };
 
-    return () => observer.disconnect();
+    // Once up front: the page can already be scrolled on arrival — a deep link, a reload
+    // part-way down, a Back — and the first paint must name the right section.
+    measure();
+
+    window.addEventListener('scroll', schedule, { passive: true });
+    window.addEventListener('resize', schedule);
+
+    return () => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      window.removeEventListener('scroll', schedule);
+      window.removeEventListener('resize', schedule);
+    };
     // `ids` is a stable module-level array in practice, so its identity is a valid dep.
   }, [ids, releaseClaim]);
 
