@@ -202,13 +202,14 @@ for all eleven teams, so a new team with an unreadable colour fails CI rather th
 
 **`readableOnDark` is only correct on bare `zinc-950`, and it has zero headroom by
 construction** — it stops at the first lightness step clearing 4.5:1, so *any* translucent layer
-between the glyphs and the page pushes it under. Three call sites sit on something lighter and
-each needs its own backdrop variant, all built from `blendOver` + `liftUntilContrast`:
-`seamLabelColor` for the seam wash, `railStandingColor` for the active rail row's
-`bg-zinc-800/60` highlight (`readableOnDark` measured 4.02:1 there), and `sectionStandingColor`
-for the section glow. The mistake looks identical every time and the tests reproduced it twice:
-an assertion that measures the right *colour* against the wrong *background* passes while the
-rendered page fails. If you add team-coloured text, ask what is behind it first.
+between the glyphs and the page pushes it under. Six call sites sit on something lighter and each
+needs its own backdrop variant, all built from `blendOver` + `liftUntilContrast`: `seamLabelColor`
+for the seam wash, `railStandingColor` for the active rail row's `bg-zinc-800/60` highlight
+(`readableOnDark` measured 4.02:1 there), `sectionStandingColor` for the section glow,
+`portraitCaptionColor` for the caption scrim over a photograph, and `trayValueColor` for the compare
+tray's `bg-zinc-900/60` card (4.23:1 there). The mistake looks identical every time and the tests
+reproduced it twice: an assertion that measures the right *colour* against the wrong *background*
+passes while the rendered page fails. If you add team-coloured text, ask what is behind it first.
 
 **The section glow's peak opacity is a contrast constraint, not a taste one.** A `40vw` blob with
 a 120px blur is wider than the margin of an 840px-wide section, so its core lands on the content

@@ -334,6 +334,71 @@ export function portraitCaptionColor(hex: string): string {
   return liftUntilContrast(hex, MIN_CONTRAST, portraitCaptionBackdrop());
 }
 
+/**
+ * Tailwind `zinc-900`, and the opacity the compare tray is authored at — `bg-zinc-900/60`.
+ *
+ * Same arrangement as `RAIL_ACTIVE_FILL` / `RAIL_ACTIVE_ALPHA` above, and for the same reason: a
+ * Tailwind class cannot be built from a runtime value, so the component keeps the literal and the
+ * tests pin the two together from both sides.
+ */
+export const TRAY_FILL = '#18181b';
+export const TRAY_ALPHA = 0.6;
+
+/**
+ * The opaque colour behind a value in the compare tray. The tray is a card, not the page: a
+ * `zinc-900` wash at `TRAY_ALPHA` over `zinc-950` flattens to `#121215`, which is *lighter* than
+ * `zinc-950` and therefore a harder background to read on, not an easier one.
+ */
+export function trayValueBackdrop(): string {
+  return blendOver(TRAY_FILL, TRAY_ALPHA, DARK_BG);
+}
+
+/**
+ * A team colour lifted far enough to clear AA as the tray's leading value.
+ *
+ * Sixth call site of the same lesson. `readableOnDark` clears 4.5:1 on bare `zinc-950` *by
+ * construction* — it returns the first lightness step that clears, so there is no headroom above
+ * the bar — and a colour sitting at exactly 4.5:1 on `#09090b` measures ~4.23:1 on `#121215`.
+ * Every livery that needed lifting at all fails here; the ones already above the bar (Haas's
+ * white) pass through untouched.
+ */
+export function trayValueColor(hex: string): string {
+  return liftUntilContrast(hex, MIN_CONTRAST, trayValueBackdrop());
+}
+
+/**
+ * Strength of the portrait's bottom-edge dissolve, at its darkest.
+ *
+ * This used to be a Tailwind `from-zinc-950 via-zinc-950/40` gradient reaching **full** `zinc-950`
+ * at the bottom edge — authored before the caption had a scrim of its own. The scrim landed on
+ * 2026-08-11 anchored to that same edge, so the two now stack: 0.9 over 1.0 is opaque, and the
+ * bottom third of every headshot went black.
+ *
+ * The number is bounded rather than chosen freely: the scrim is what backs the caption and carries
+ * the AA guarantee, so the dissolve must stay the *weaker* of the two, or it becomes a second
+ * uncontrolled contributor to a composite `portraitCaptionBackdrop` already claims to describe.
+ * Anything under `PORTRAIT_SCRIM_ALPHA` is safe for contrast — a darker composite only ever raises
+ * the real ratio above the asserted worst case — so this is a visual judgement inside a hard
+ * ceiling.
+ */
+export const PORTRAIT_DISSOLVE_ALPHA = 0.6;
+
+/**
+ * The portrait's bottom-edge dissolve: strongest at the bottom, gone by the top.
+ *
+ * Written with explicit `rgba()` stops rather than Tailwind's `from-`/`via-`/`to-` for the same
+ * reason `portraitScrim` is: the alpha has to be one number shared with the contrast maths, and a
+ * Tailwind opacity suffix cannot be built from a runtime value. No `calc()` — jsdom's CSS parser
+ * silently discards a whole gradient declaration that contains one.
+ */
+export function portraitDissolve(): string {
+  const [r, g, b] = parseHex(DARK_BG);
+  const rgba = (a: number) => `rgba(${r}, ${g}, ${b}, ${a})`;
+  return `linear-gradient(to top, ${rgba(PORTRAIT_DISSOLVE_ALPHA)} 0%, ${rgba(
+    PORTRAIT_DISSOLVE_ALPHA * 0.4,
+  )} 45%, ${rgba(0)} 100%)`;
+}
+
 /** Whether a livery is too bright to use as a surface in this dark UI. */
 export function needsDamping(hex: string): boolean {
   return relativeLuminance(hex) > MAX_FILL_LUMINANCE;
