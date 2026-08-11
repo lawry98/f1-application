@@ -169,7 +169,7 @@ browser gate and is **not optional**.
 ### Task 1: Give the compare tray and the portrait dissolve their own entries in the colour layer
 
 The tray is a **new surface**. Its leading value is team-coloured text sitting on `bg-zinc-900/60`,
-not on bare `zinc-950`, so `readableOnDark` is the wrong tool there for the sixth time. This task adds
+not on bare `zinc-950`, so `readableOnDark` is the wrong tool there for the fifth time. This task adds
 the pair before anything renders on it, so the tray cannot be built the wrong way round.
 
 It also adds the constant Task 5 needs, because both are one-file changes to the same module and a
@@ -377,7 +377,7 @@ passes while the rendered page fails. If you add team-coloured text, ask what is
 ```
 
 Check the surrounding lines after editing — the paragraph's opening sentence must still read
-correctly, and the count in it must be six.
+correctly, and the count in it must be five.
 
 - [ ] **Step 7: Commit**
 
@@ -387,7 +387,7 @@ git commit -m "Give the compare tray its own backdrop before anything renders on
 
 The tray is a card, not the page: zinc-900 at 0.6 over zinc-950 flattens to
 #121215, which is lighter than the page, and a colour sitting at exactly
-4.5:1 on #09090b measures 4.23:1 there. Sixth call site of the same lesson,
+4.5:1 on #09090b measures 4.23:1 there. Fifth call site of the same lesson,
 so the pair lands before the component that would otherwise be built with
 readableOnDark and look fine in jsdom.
 
