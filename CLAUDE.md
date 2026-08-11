@@ -153,6 +153,21 @@ every render.
 **The landing page composes, it doesn't contain.** `app/page.tsx` is seven imports from
 `components/landing/`; the hero, features, and footer markup are not inline.
 
+**The credit tables are matched by their header row, never by a filename scan.** `lib/credits.ts`
+parses `public/drivers/CREDITS.md` and `public/logos/CREDITS.md` at build time for `/credits`, and
+`logos/CREDITS.md` carries a *second* table — `| File | What it is | What it is missing |` — whose
+rows also lead with a backticked filename. A naive `` `*.svg` `` scan over that file finds **14
+rows for 10 files**. `tests/credits-data.test.ts` asserts ten, which is the guard.
+
+**`lib/credits.ts` throws on a malformed row, on purpose.** A short row, a missing header, an
+empty author or a source cell that is not a markdown link fails `pnpm build`. The "tools never
+raise" convention is about keeping a degrading LLM pipeline alive and does not extend to a
+build-time read of a file we ship: silently rendering an empty author is an undischarged licence
+obligation on a public page. Two source-data quirks are deliberately *not* treated as errors —
+the driver rows say `CC0` where the licence-terms table says `CC0 1.0`, so that one licence
+renders unlinked, and Commons source URLs carry literal parentheses, which is why the link
+pattern is greedy rather than `[^)]+`.
+
 **The teams page's scroll spy measures rects on a frame; `IntersectionObserver` cannot do this
 job.** `hooks/use-scroll-spy.ts` picks the section covering most of a narrow band near the top of
 the viewport, ties going to document order. The observer version of exactly that — one observer,
