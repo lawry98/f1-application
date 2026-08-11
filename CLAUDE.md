@@ -202,7 +202,7 @@ for all eleven teams, so a new team with an unreadable colour fails CI rather th
 
 **`readableOnDark` is only correct on bare `zinc-950`, and it has zero headroom by
 construction** — it stops at the first lightness step clearing 4.5:1, so *any* translucent layer
-between the glyphs and the page pushes it under. Six call sites sit on something lighter and each
+between the glyphs and the page pushes it under. Five call sites sit on something lighter and each
 needs its own backdrop variant, all built from `blendOver` + `liftUntilContrast`: `seamLabelColor`
 for the seam wash, `railStandingColor` for the active rail row's `bg-zinc-800/60` highlight
 (`readableOnDark` measured 4.02:1 there), `sectionStandingColor` for the section glow,

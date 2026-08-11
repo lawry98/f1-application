@@ -299,7 +299,7 @@ export function trayValueBackdrop(): string {
 /**
  * A team colour lifted far enough to clear AA as the tray's leading value.
  *
- * Sixth call site of the same lesson. `readableOnDark` clears 4.5:1 on bare `zinc-950` *by
+ * Fifth call site of the same lesson. `readableOnDark` clears 4.5:1 on bare `zinc-950` *by
  * construction* — it returns the first lightness step that clears, so there is no headroom above
  * the bar — and a colour sitting at exactly 4.5:1 on `#09090b` measures ~4.23:1 on `#121215`.
  * Every livery that needed lifting at all fails here; the ones already above the bar (Haas's
@@ -366,7 +366,7 @@ sentence and its list with:
 
 ```markdown
 construction** — it stops at the first lightness step clearing 4.5:1, so *any* translucent layer
-between the glyphs and the page pushes it under. Six call sites sit on something lighter and each
+between the glyphs and the page pushes it under. Five call sites sit on something lighter and each
 needs its own backdrop variant, all built from `blendOver` + `liftUntilContrast`: `seamLabelColor`
 for the seam wash, `railStandingColor` for the active rail row's `bg-zinc-800/60` highlight
 (`readableOnDark` measured 4.02:1 there), `sectionStandingColor` for the section glow,
