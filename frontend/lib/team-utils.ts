@@ -275,6 +275,65 @@ export function sectionStandingColor(hex: string): string {
   return liftUntilContrast(hex, MIN_CONTRAST, sectionStandingBackdrop(hex));
 }
 
+/**
+ * Strength of the scrim under a driver portrait's caption, and the alpha its contrast is judged
+ * at.
+ *
+ * This is the one call site where the background is not a colour at all — it is a photograph, and
+ * headshots get swapped, so no measurement of today's images would stay true. The bound that does
+ * stay true is the brightest pixel a photo could ever hold: white. Judged there, `0.9` is what
+ * carries all three lines of the caption, and the reason it has to be a scrim rather than a
+ * heavier lift is that only one of those lines goes through this module at all — the driver's name
+ * is plain white (measured at 1.13:1 over a pale headshot) and the short code is a neutral.
+ *
+ * A real photo is darker than white, so every ratio on screen beats the one asserted in tests.
+ */
+export const PORTRAIT_SCRIM_ALPHA = 0.9;
+
+/**
+ * Height of the scrim's fade, and the padding that keeps the caption's text below it.
+ *
+ * The AA guarantee only holds where the scrim is at full strength, so the gradient's soft top
+ * edge — which is there so the scrim does not read as a hard band across the portrait — must sit
+ * entirely above the first line of text. Expressed in px rather than a percentage so it cannot
+ * drift with the block's height, and both values live here so the gradient and the padding cannot
+ * be changed apart.
+ */
+export const PORTRAIT_SCRIM_FADE_PX = 24;
+export const PORTRAIT_SCRIM_TEXT_INSET = PORTRAIT_SCRIM_FADE_PX + 8;
+
+/**
+ * The caption scrim: fading in over its top `PORTRAIT_SCRIM_FADE_PX`, then flat at full strength
+ * for the rest of the block, which is where the text sits.
+ *
+ * Written downwards from the top edge rather than upwards with `calc(100% - …)` for a reason worth
+ * keeping: jsdom's CSS parser cannot read a gradient containing `calc()` and silently rewrites the
+ * whole declaration to `background-image: none`, so the `calc` version was unobservable in a test
+ * — it looked like the component had simply not set it. `to bottom` from `0px` says the same thing
+ * with arithmetic the parser can follow.
+ */
+export function portraitScrim(): string {
+  const [r, g, b] = parseHex(DARK_BG);
+  const solid = `rgba(${r}, ${g}, ${b}, ${PORTRAIT_SCRIM_ALPHA})`;
+  return `linear-gradient(to bottom, rgba(${r}, ${g}, ${b}, 0) 0px, ${solid} ${PORTRAIT_SCRIM_FADE_PX}px, ${solid} 100%)`;
+}
+
+/** The worst opaque colour the caption can sit on: the scrim over a pure white photo. */
+export function portraitCaptionBackdrop(): string {
+  return blendOver(DARK_BG, PORTRAIT_SCRIM_ALPHA, '#ffffff');
+}
+
+/**
+ * A team colour lifted far enough to clear AA as the portrait's nationality line.
+ *
+ * Seven of the eleven fail on the scrimmed worst case with `readableOnDark`, for the usual
+ * reason: that helper leaves no headroom above 4.5:1 on bare `zinc-950`, and this backdrop is
+ * lighter than `zinc-950`.
+ */
+export function portraitCaptionColor(hex: string): string {
+  return liftUntilContrast(hex, MIN_CONTRAST, portraitCaptionBackdrop());
+}
+
 /** Whether a livery is too bright to use as a surface in this dark UI. */
 export function needsDamping(hex: string): boolean {
   return relativeLuminance(hex) > MAX_FILL_LUMINANCE;
@@ -303,16 +362,18 @@ export function ringOnDark(hex: string): string {
  * asks `needsDamping` — it used to be a `team.color === '#ffffff'` equality check, which
  * covered Haas and nothing else, including a near-white livery a hex away from it.
  *
- * `keyline` is the *text* variant — it labels the 10px nationality line, so it is run through
- * `readableOnDark`, which already returns `#ffffff` untouched and so needs no branch of its
- * own. The wash (`color`) keeps the true livery: it is a large blended fill, not text, and
- * lightening it would drain the portrait's tint.
+ * `keyline` is the *text* variant — it labels the 10px nationality line, so it goes through
+ * `portraitCaptionColor`, which judges it against the caption scrim over the brightest photo a
+ * headshot could be. It used to use `readableOnDark`, i.e. the page background, which is not
+ * behind it at all: over a pale race suit that line measured 1.89:1. The wash (`color`) keeps the
+ * true livery: it is a large blended fill, not text, and lightening it would drain the portrait's
+ * tint.
  */
 export function duotoneFor(team: Team): { color: string; opacity: number; keyline: string } {
   const damped = needsDamping(team.color);
   return {
     color: damped ? '#52525b' : team.color,
     opacity: damped ? 0.35 : 0.45,
-    keyline: readableOnDark(team.color),
+    keyline: portraitCaptionColor(team.color),
   };
 }

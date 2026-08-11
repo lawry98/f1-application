@@ -24,6 +24,12 @@ import {
   sectionStandingBackdrop,
   sectionStandingColor,
   GLOW_PEAK_OPACITY,
+  portraitCaptionBackdrop,
+  portraitCaptionColor,
+  portraitScrim,
+  PORTRAIT_SCRIM_ALPHA,
+  PORTRAIT_SCRIM_FADE_PX,
+  PORTRAIT_SCRIM_TEXT_INSET,
 } from '@/lib/team-utils';
 import { TEAMS, TEAM_MAP, STANDINGS_AS_OF } from '@/data/teams-data';
 
@@ -118,16 +124,24 @@ describe('readableOnDark', () => {
 });
 
 describe('duotoneFor', () => {
-  // The keyline labels the 10px nationality line, so it is text and must clear AA. The wash
-  // is a large blended fill and keeps the true livery — lightening it drains the portrait.
-  it('returns an AA-passing keyline while the wash keeps the true livery', () => {
+  // This asserted the keyline against `DARK_BG`, which is not what is behind it: the keyline
+  // labels the nationality line *inside the portrait*, over a photograph. Third test on this
+  // branch to measure the right colour against the wrong background — judged over the portrait
+  // it was as low as 1.89:1. The wash is a large blended fill and still keeps the true livery.
+  it('returns a keyline that clears AA over the portrait, while the wash keeps the true livery', () => {
     for (const team of TEAMS) {
       const { color, keyline } = duotoneFor(team);
       expect(
-        contrastRatio(keyline, DARK_BG),
+        contrastRatio(keyline, portraitCaptionBackdrop()),
         `${team.shortName} keyline ${keyline}`,
       ).toBeGreaterThanOrEqual(MIN_CONTRAST);
       if (team.color !== '#ffffff') expect(color).toBe(team.color);
+    }
+  });
+
+  it('takes the keyline from the portrait caption helper, not from the page-background one', () => {
+    for (const team of TEAMS) {
+      expect(duotoneFor(team).keyline, `${team.shortName}`).toBe(portraitCaptionColor(team.color));
     }
   });
 
@@ -354,6 +368,77 @@ describe('the section standing line', () => {
       if (team.color === '#ffffff') continue;
       expect(sectionStandingColor(team.color), `${team.shortName}`).not.toBe('#ffffff');
     }
+  });
+});
+
+describe('the portrait caption', () => {
+  // Fifth and last instance of the class, and the only one where the background is not a colour
+  // at all: the caption sits on a photograph. A photo's pixels are unknowable — headshots get
+  // swapped — so the only honest bound is the brightest pixel one could ever hold, which is
+  // white. Everything here is judged against the scrim over pure white, so a real photo can only
+  // do better. Measured before the scrim: 1.89:1 at worst, over a driver's pale race suit.
+  it('judges the caption against the scrim over the brightest photo possible', () => {
+    expect(portraitCaptionBackdrop()).toBe(blendOver(DARK_BG, PORTRAIT_SCRIM_ALPHA, '#ffffff'));
+  });
+
+  it('clears WCAG AA in that worst case for every team', () => {
+    expect(TEAMS).toHaveLength(11);
+    for (const team of TEAMS) {
+      const text = portraitCaptionColor(team.color);
+      expect(
+        contrastRatio(text, portraitCaptionBackdrop()),
+        `${team.shortName} (${team.color} -> ${text})`,
+      ).toBeGreaterThanOrEqual(MIN_CONTRAST);
+    }
+  });
+
+  // The other two lines in the same block ride on the same scrim, and they are the reason the
+  // scrim exists rather than a heavier lift: the driver's name is plain white and was measured at
+  // 1.13:1 over a pale headshot. No colour helper touches those, so the scrim has to carry them.
+  it('carries the white name and the neutral short code too', () => {
+    expect(contrastRatio('#ffffff', portraitCaptionBackdrop())).toBeGreaterThanOrEqual(
+      MIN_CONTRAST,
+    );
+    expect(contrastRatio('#a1a1aa', portraitCaptionBackdrop())).toBeGreaterThanOrEqual(
+      MIN_CONTRAST,
+    );
+  });
+
+  it('is a real lift over readableOnDark, which fails on that same backdrop', () => {
+    const failing = TEAMS.filter(
+      (team) =>
+        contrastRatio(readableOnDark(team.color), portraitCaptionBackdrop()) < MIN_CONTRAST,
+    );
+    expect(failing.map((team) => team.id)).toContain('ferrari');
+    expect(failing.length).toBeGreaterThan(4);
+    for (const team of failing) {
+      expect(portraitCaptionColor(team.color), `${team.shortName}`).not.toBe(
+        readableOnDark(team.color),
+      );
+    }
+  });
+
+  it('keeps the brand hue rather than falling back to white', () => {
+    for (const team of TEAMS) {
+      if (team.color === '#ffffff') continue;
+      expect(portraitCaptionColor(team.color), `${team.shortName}`).not.toBe('#ffffff');
+    }
+  });
+
+  // The guarantee above only holds where the scrim is at full strength, so the gradient's fade
+  // has to sit entirely above the text. This is the arithmetic that keeps it there.
+  it('keeps the fade clear of the text it is protecting', () => {
+    expect(PORTRAIT_SCRIM_TEXT_INSET).toBeGreaterThan(PORTRAIT_SCRIM_FADE_PX);
+  });
+
+  it('builds the gradient from the same alpha the maths uses', () => {
+    const scrim = portraitScrim();
+    // One transparent stop at the top edge, then two at full strength — the flat zone the
+    // guarantee depends on. A single full-strength stop would be a fade all the way down.
+    expect(scrim.match(new RegExp(`rgba\\(9, 9, 11, ${PORTRAIT_SCRIM_ALPHA}\\)`, 'g')) ?? [])
+      .toHaveLength(2);
+    expect(scrim).toContain(`${PORTRAIT_SCRIM_FADE_PX}px`);
+    expect(scrim).toContain('rgba(9, 9, 11, 0) 0px');
   });
 });
 
