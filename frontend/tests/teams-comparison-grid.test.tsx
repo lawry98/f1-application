@@ -3,9 +3,11 @@ import { render, screen, within, fireEvent } from '@testing-library/react';
 
 import { TeamsComparisonGrid } from '@/components/teams/teams-comparison-grid';
 import { TEAMS } from '@/data/teams-data';
+import { contrastRatio, DARK_BG, MIN_CONTRAST } from '@/lib/team-utils';
+import { restingTextNeutrals } from './zinc';
 
 function renderGrid(onSelectTeam = vi.fn(), reducedMotion = false) {
-  render(
+  return render(
     <TeamsComparisonGrid
       teams={TEAMS}
       activeTeamId="ferrari"
@@ -134,5 +136,18 @@ describe('TeamsComparisonGrid', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Titles' }));
     expect(screen.getByText(/by titles/i)).toBeInTheDocument();
+  });
+
+  // The grid carried both failing rungs: `zinc-500` section labels at 4.12:1 and `zinc-600`
+  // rank numerals at 2.57:1 — the same 2.57 the nav rail's subheader measured.
+  it('holds every resting neutral above AA on the page background', () => {
+    const { container } = renderGrid();
+    const neutrals = restingTextNeutrals(container);
+    expect(neutrals.length).toBeGreaterThan(0);
+    for (const { hex, text } of neutrals) {
+      expect(contrastRatio(hex, DARK_BG), `${hex} on "${text}"`).toBeGreaterThanOrEqual(
+        MIN_CONTRAST,
+      );
+    }
   });
 });

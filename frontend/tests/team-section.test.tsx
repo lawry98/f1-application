@@ -4,6 +4,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { TeamSection } from '@/components/teams/team-section';
 import { monogram } from '@/components/teams/team-monogram-tile';
 import { TEAM_MAP } from '@/data/teams-data';
+import { restingTextNeutrals } from './zinc';
 import {
   seamWash,
   seamLabelColor,
@@ -14,6 +15,7 @@ import {
   contrastRatio,
   MIN_CONTRAST,
   GLOW_PEAK_OPACITY,
+  DARK_BG,
 } from '@/lib/team-utils';
 
 const mclaren = TEAM_MAP['mclaren']!;
@@ -154,6 +156,20 @@ describe('TeamSection', () => {
     expect(glow, 'no glow blob found').not.toBeNull();
     expect(glow!.style.backgroundColor).toBe('rgb(220, 0, 0)');
     await waitFor(() => expect(Number(glow!.style.opacity)).toBeCloseTo(GLOW_PEAK_OPACITY, 5));
+  });
+
+  // The section's meta labels — Constructor, Base, Power Unit, First Entry, Championships —
+  // were `zinc-500`, which is 4.12:1 on the page background and worse over the glow. Judged on
+  // the page alone, since that is the floor: anything failing here fails everywhere.
+  it('holds every resting neutral label above AA on the page background', () => {
+    const { container } = renderSection();
+    const neutrals = restingTextNeutrals(container);
+    expect(neutrals.length).toBeGreaterThan(0);
+    for (const { hex, text } of neutrals) {
+      expect(contrastRatio(hex, DARK_BG), `${hex} on "${text}"`).toBeGreaterThanOrEqual(
+        MIN_CONTRAST,
+      );
+    }
   });
 
   // Brief item 3's trap. The dossier moves to xl, so the button that reaches the 3D

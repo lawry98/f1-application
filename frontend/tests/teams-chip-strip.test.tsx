@@ -3,6 +3,8 @@ import { render, screen } from '@testing-library/react';
 
 import { TeamsChipStrip } from '@/components/teams/teams-chip-strip';
 import { TEAMS } from '@/data/teams-data';
+import { contrastRatio, DARK_BG, MIN_CONTRAST } from '@/lib/team-utils';
+import { restingTextNeutrals } from './zinc';
 
 function renderStrip({
   activeTeamId = 'ferrari',
@@ -105,5 +107,18 @@ describe('TeamsChipStrip', () => {
     link.dispatchEvent(event);
     expect(onSelectTeam).toHaveBeenCalledWith('mclaren');
     expect(event.defaultPrevented).toBe(false);
+  });
+
+  // The strip is the below-`lg` navigation, so a 1440px sweep never sees it — and it carried the
+  // same `zinc-500` inactive label as the rail did, at 4.12:1.
+  it('holds every resting neutral chip above AA on the page background', () => {
+    const { container } = renderStrip();
+    const neutrals = restingTextNeutrals(container);
+    expect(neutrals.length).toBeGreaterThan(0);
+    for (const { hex, text } of neutrals) {
+      expect(contrastRatio(hex, DARK_BG), `${hex} on "${text}"`).toBeGreaterThanOrEqual(
+        MIN_CONTRAST,
+      );
+    }
   });
 });

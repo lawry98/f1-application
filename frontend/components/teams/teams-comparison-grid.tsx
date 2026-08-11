@@ -67,7 +67,7 @@ export function TeamsComparisonGrid({
     <section className="bg-zinc-950 px-6 py-20 lg:px-12">
       <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="mb-3 text-xs uppercase tracking-[0.3em] text-zinc-500">Overview</p>
+          <p className="mb-3 text-xs uppercase tracking-[0.3em] text-zinc-400">Overview</p>
           <TextAnimate
             as="h2"
             animation={reducedMotion ? 'fadeIn' : 'slideUp'}
@@ -79,7 +79,7 @@ export function TeamsComparisonGrid({
             Constructors&apos; Championship
           </TextAnimate>
         </div>
-        <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-500">
+        <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-400">
           {STANDINGS_AS_OF}
         </p>
       </div>
@@ -95,7 +95,7 @@ export function TeamsComparisonGrid({
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500',
               sort === key
                 ? 'bg-zinc-800 text-white'
-                : 'border border-zinc-800 text-zinc-500 hover:text-zinc-300',
+                : 'border border-zinc-800 text-zinc-400 hover:text-zinc-200',
             )}
           >
             {label}
@@ -105,7 +105,7 @@ export function TeamsComparisonGrid({
 
       {/* Names the leading numeral. It is neither the championship position nor the page's
           running order — it is the rank under the active sort, and it moves with the tab. */}
-      <p className="mb-3 text-[9px] uppercase tracking-[0.18em] text-zinc-600">
+      <p className="mb-3 text-[9px] uppercase tracking-[0.18em] text-zinc-400">
         {`Rank by ${SORTS.find((s) => s.key === sort)!.label.toLowerCase()}`}
       </p>
 
@@ -135,7 +135,7 @@ export function TeamsComparisonGrid({
               // `--tw-ring-color`, not `outlineColor` — Tailwind's ring is a box-shadow.
               style={{ '--tw-ring-color': ringOnDark(team.color) } as React.CSSProperties}
             >
-              <span className="w-5 flex-shrink-0 font-mono text-[11px] text-zinc-600">
+              <span className="w-5 flex-shrink-0 font-mono text-[11px] text-zinc-400">
                 {i + 1}
               </span>
               <TeamMonogramTile team={team} size={22} />
@@ -179,7 +179,7 @@ export function TeamsComparisonGrid({
           reasonable manner based on the medium". This is the last section of /teams, so the
           link lives here: small, but genuinely visible and keyboard reachable. */}
       <footer className="mt-14 border-t border-zinc-900 pt-6">
-        <p className="max-w-2xl text-[11px] leading-relaxed text-zinc-500">
+        <p className="max-w-2xl text-[11px] leading-relaxed text-zinc-400">
           Driver photographs sourced from Wikimedia Commons and used under CC BY / CC BY-SA;
           resized and transcoded from the originals.{' '}
           <a

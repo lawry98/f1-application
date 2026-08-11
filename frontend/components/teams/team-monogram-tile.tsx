@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils';
+import { onColor } from '@/lib/team-utils';
 import { type Team } from '@/data/teams-data';
 
 /** First three alphabetic characters of a team's short name, uppercased. */
@@ -56,7 +57,14 @@ export function TeamMonogramTile({ team, size = 22, className }: TeamMonogramTil
         width: size,
         height: size,
         backgroundColor: team.color,
-        color: team.textOnColor === 'black' ? '#000000' : '#ffffff',
+        // Derived from the fill, never authored. This read a per-team `textOnColor` field that
+        // said `white` for Alpine's `#0090ff` — 3.26:1 under 8px bold glyphs, where black gets
+        // 6.77:1. The field is gone: this tile was its only reader, and a hand-authored answer to
+        // a question the fill can answer itself is exactly the trap `needsDamping` removed.
+        //
+        // axe caught this one and a pixel probe structurally could not: the tile *is* its own
+        // background, so hiding the glyphs to sample what is behind them hides the fill too.
+        color: onColor(team.color),
         fontSize: Math.round(size * GLYPH_RATIO),
       }}
     >

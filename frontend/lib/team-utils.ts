@@ -5,7 +5,7 @@ import { type Team } from '@/data/teams-data';
  *
  * The fill is the true livery unless it is too bright for a dark UI, in which case it is
  * damped to a neutral and given a keyline so the button still has an edge. The label colour
- * is **derived from the fill it actually got**, not read from `team.textOnColor` — a damped
+ * is **derived from the fill it actually got**, not from a hand-authored per-team value — a damped
  * fill is no longer the team's colour, so the authored value would be describing the wrong
  * surface.
  */

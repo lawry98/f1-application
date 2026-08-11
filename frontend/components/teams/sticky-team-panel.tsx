@@ -31,7 +31,7 @@ const LOGO_MAX_WIDTH = 200;
 function MetaCell({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="text-[9px] uppercase tracking-[0.18em] text-zinc-500">{label}</p>
+      <p className="text-[9px] uppercase tracking-[0.18em] text-zinc-400">{label}</p>
       <p className="mt-0.5 text-xs text-zinc-200">{value}</p>
     </div>
   );
@@ -63,7 +63,7 @@ export function StickyTeamPanel({ activeTeam, onInspect }: StickyTeamPanelProps)
             "Constructor 05 / 11" for a team standing P7, since TEAMS order is not
             standings order.
           */}
-          <p className="px-4 pt-4 text-[10px] uppercase tracking-[0.22em] text-zinc-500">
+          <p className="px-4 pt-4 text-[10px] uppercase tracking-[0.22em] text-zinc-400">
             {`Team ${index + 1} of ${TEAMS.length}`}
           </p>
 
@@ -87,7 +87,7 @@ export function StickyTeamPanel({ activeTeam, onInspect }: StickyTeamPanelProps)
           {/* Championship standing — brief item 10. The dossier carried none of this before,
               which left the one always-visible panel silent about the season it describes. */}
           <div className="flex min-h-0 flex-1 flex-col justify-center border-t border-zinc-800/60 px-4 py-4">
-            <p className="text-[9px] uppercase tracking-[0.18em] text-zinc-500">
+            <p className="text-[9px] uppercase tracking-[0.18em] text-zinc-400">
               {`Championship · ${STANDINGS_AS_OF}`}
             </p>
             <div className="mt-1 flex items-baseline gap-2">
@@ -117,7 +117,7 @@ export function StickyTeamPanel({ activeTeam, onInspect }: StickyTeamPanelProps)
 
           {/* Broadcast stat block */}
           <div className="flex-shrink-0 border-t border-zinc-800/60 px-4 py-3">
-            <p className="text-[9px] uppercase tracking-[0.18em] text-zinc-500">
+            <p className="text-[9px] uppercase tracking-[0.18em] text-zinc-400">
               All-time
             </p>
             <div className="mt-1 flex items-center gap-2">

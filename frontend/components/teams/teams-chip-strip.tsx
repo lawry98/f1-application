@@ -53,7 +53,9 @@ export function TeamsChipStrip({
               className={cn(
                 'relative flex-shrink-0 rounded-full px-3 py-1.5 text-xs font-medium uppercase tracking-widest no-underline transition-colors duration-200',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950',
-                isActive ? 'text-white' : 'text-zinc-500 hover:text-zinc-300',
+                // `zinc-400`, matching the rail: `zinc-500` is 4.12:1 on this background, and
+                // this strip is the only navigation below `lg`, so it is the one a phone gets.
+                isActive ? 'text-white' : 'text-zinc-400 hover:text-zinc-200',
               )}
               // `--tw-ring-color`, not `outlineColor`: Tailwind's ring is a box-shadow and
               // reads its colour from that custom property. Cast through `unknown` first —

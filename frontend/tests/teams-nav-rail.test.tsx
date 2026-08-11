@@ -14,6 +14,7 @@ import {
   railStandingColor,
 } from '@/lib/team-utils';
 import { TEAMS } from '@/data/teams-data';
+import { restingTextNeutrals } from './zinc';
 
 /** jsdom normalises any inline colour to `rgb(r, g, b)`; contrastRatio wants hex. */
 function rgbToHex(value: string): string {
@@ -25,32 +26,6 @@ function rgbToHex(value: string): string {
     .join('')}`;
 }
 
-/**
- * Tailwind's zinc ramp as hex. jsdom applies no stylesheet, so a class name is all a test can
- * see — mapping it back to the colour Tailwind would paint is what lets the assertions below
- * measure a *ratio* instead of pinning a string. Swap `text-zinc-400` for `text-zinc-500` and
- * they fail on 4.12 being under 4.5, which is the thing that actually matters.
- */
-const ZINC: Record<string, string> = {
-  '200': '#e4e4e7',
-  '300': '#d4d4d8',
-  '400': '#a1a1aa',
-  '500': '#71717a',
-  '600': '#52525b',
-  '700': '#3f3f46',
-};
-
-/** Every `text-zinc-N` on `el` that applies at rest — `hover:`/`focus:` variants are states. */
-function restingZinc(el: Element): string[] {
-  return Array.from(el.classList)
-    .filter((c) => /^text-zinc-\d+$/.test(c))
-    .map((c) => {
-      const shade = c.replace('text-zinc-', '');
-      const hex = ZINC[shade];
-      if (!hex) throw new Error(`add zinc-${shade} to the ZINC map`);
-      return hex;
-    });
-}
 
 function renderRail({
   activeTeamId = 'ferrari',
@@ -199,18 +174,14 @@ describe('TeamsNavRail', () => {
   // so the 2.57:1 subheader this branch introduced and the inherited 4.12:1 rows are one test.
   it('holds every resting neutral in the rail above AA on the page background', () => {
     const { container } = renderRail();
-    const measured: string[] = [];
-    for (const el of Array.from(container.querySelectorAll('*'))) {
-      for (const hex of restingZinc(el)) {
-        measured.push(hex);
-        expect(
-          contrastRatio(hex, DARK_BG),
-          `${hex} on ${el.textContent?.slice(0, 24)}`,
-        ).toBeGreaterThanOrEqual(MIN_CONTRAST);
-      }
-    }
+    const neutrals = restingTextNeutrals(container);
     // Guards the guard: if the classes move to inline styles this test would silently pass.
-    expect(measured.length).toBeGreaterThan(0);
+    expect(neutrals.length).toBeGreaterThan(0);
+    for (const { hex, text } of neutrals) {
+      expect(contrastRatio(hex, DARK_BG), `${hex} on "${text}"`).toBeGreaterThanOrEqual(
+        MIN_CONTRAST,
+      );
+    }
   });
 
   it('holds the inactive rows’ standings lines above AA', () => {

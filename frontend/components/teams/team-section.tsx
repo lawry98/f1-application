@@ -125,7 +125,7 @@ export function TeamSection({ team, index, isActive, onInspect, reducedMotion }:
             />
 
             <div className="min-w-0 flex-1">
-              <p className="mb-2 text-xs uppercase tracking-[0.2em] text-zinc-500">Constructor</p>
+              <p className="mb-2 text-xs uppercase tracking-[0.2em] text-zinc-400">Constructor</p>
               <TextAnimate
                 as="h2"
                 animation={reducedMotion ? 'fadeIn' : 'slideUp'}
@@ -164,19 +164,19 @@ export function TeamSection({ team, index, isActive, onInspect, reducedMotion }:
           <BlurFade delay={reducedMotion ? 0 : 0.2} inView>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <p className="text-xs uppercase tracking-[0.15em] text-zinc-500">Base</p>
+                <p className="text-xs uppercase tracking-[0.15em] text-zinc-400">Base</p>
                 <p className="mt-1 text-sm text-zinc-200">{team.base}</p>
               </div>
               <div>
-                <p className="text-xs uppercase tracking-[0.15em] text-zinc-500">Power Unit</p>
+                <p className="text-xs uppercase tracking-[0.15em] text-zinc-400">Power Unit</p>
                 <p className="mt-1 text-sm text-zinc-200">{team.powerUnit}</p>
               </div>
               <div>
-                <p className="text-xs uppercase tracking-[0.15em] text-zinc-500">First Entry</p>
+                <p className="text-xs uppercase tracking-[0.15em] text-zinc-400">First Entry</p>
                 <p className="mt-1 text-sm text-zinc-200">{team.firstEntry}</p>
               </div>
               <div>
-                <p className="text-xs uppercase tracking-[0.15em] text-zinc-500">Championships</p>
+                <p className="text-xs uppercase tracking-[0.15em] text-zinc-400">Championships</p>
                 <p className="mt-1 text-sm text-zinc-200">
                   {team.championships > 0 ? (
                     <>
@@ -227,7 +227,7 @@ export function TeamSection({ team, index, isActive, onInspect, reducedMotion }:
           <BlurFade delay={reducedMotion ? 0 : 0.3} inView>
             <div className="flex items-center gap-3 pt-2">
               <TeamMonogramTile team={team} size={20} />
-              <span className="text-xs uppercase tracking-[0.15em] text-zinc-500">{team.name}</span>
+              <span className="text-xs uppercase tracking-[0.15em] text-zinc-400">{team.name}</span>
             </div>
           </BlurFade>
         </div>

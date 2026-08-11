@@ -4,6 +4,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { StickyTeamPanel } from '@/components/teams/sticky-team-panel';
 import { TEAM_MAP, TEAMS } from '@/data/teams-data';
 import { contrastRatio, DARK_BG, MIN_CONTRAST } from '@/lib/team-utils';
+import { restingTextNeutrals } from './zinc';
 
 const ferrari = TEAM_MAP['ferrari']!;
 
@@ -94,5 +95,18 @@ describe('StickyTeamPanel', () => {
     render(<StickyTeamPanel activeTeam={cadillac} onInspect={vi.fn()} />);
     expect(screen.getByTestId('standings-position')).toHaveTextContent('P11');
     expect(screen.getByText(/0 PTS/)).toBeInTheDocument();
+  });
+
+  // The dossier's own labels — "Team N of 11", the standing caption, the meta cells — were all
+  // `zinc-500` at 4.12:1. Same class as the rail's inherited rows, same fix.
+  it('holds every resting neutral label above AA on the page background', () => {
+    const { container } = render(<StickyTeamPanel activeTeam={ferrari} onInspect={vi.fn()} />);
+    const neutrals = restingTextNeutrals(container);
+    expect(neutrals.length).toBeGreaterThan(0);
+    for (const { hex, text } of neutrals) {
+      expect(contrastRatio(hex, DARK_BG), `${hex} on "${text}"`).toBeGreaterThanOrEqual(
+        MIN_CONTRAST,
+      );
+    }
   });
 });

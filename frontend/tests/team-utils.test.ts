@@ -436,7 +436,7 @@ describe('teamColorButtonStyle after generalisation', () => {
     expect(ferrari.className).toBe('');
   });
 
-  // Derived from the fill, not read from the hand-authored textOnColor field.
+  // Derived from the fill, not from a hand-authored per-team value.
   it('derives its label colour so every team’s CTA is readable', () => {
     expect(TEAMS).toHaveLength(11);
     for (const team of TEAMS) {

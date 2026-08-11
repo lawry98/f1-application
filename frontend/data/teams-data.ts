@@ -13,7 +13,6 @@ export interface Team {
   name: string;
   shortName: string;
   color: string;
-  textOnColor: 'white' | 'black';
   drivers: [Driver, Driver];
   base: string;
   powerUnit: string;
@@ -41,7 +40,6 @@ export const TEAMS: Team[] = [
     name: 'Mercedes-AMG Petronas F1 Team',
     shortName: 'Mercedes',
     color: '#00d2be',
-    textOnColor: 'black',
     drivers: [
       {
         id: 'george-russell',
@@ -74,7 +72,6 @@ export const TEAMS: Team[] = [
     name: 'Scuderia Ferrari HP',
     shortName: 'Ferrari',
     color: '#dc0000',
-    textOnColor: 'white',
     drivers: [
       {
         id: 'charles-leclerc',
@@ -107,7 +104,6 @@ export const TEAMS: Team[] = [
     name: 'McLaren Formula 1 Team',
     shortName: 'McLaren',
     color: '#ff8700',
-    textOnColor: 'black',
     drivers: [
       {
         id: 'lando-norris',
@@ -140,7 +136,6 @@ export const TEAMS: Team[] = [
     name: 'Oracle Red Bull Racing',
     shortName: 'Red Bull',
     color: '#1e41ff',
-    textOnColor: 'white',
     drivers: [
       {
         id: 'max-verstappen',
@@ -173,7 +168,6 @@ export const TEAMS: Team[] = [
     name: 'MoneyGram Haas F1 Team',
     shortName: 'Haas',
     color: '#ffffff',
-    textOnColor: 'black',
     drivers: [
       {
         id: 'esteban-ocon',
@@ -206,7 +200,6 @@ export const TEAMS: Team[] = [
     name: 'Visa Cash App Racing Bulls F1 Team',
     shortName: 'Racing Bulls',
     color: '#2b4562',
-    textOnColor: 'white',
     drivers: [
       {
         id: 'liam-lawson',
@@ -239,7 +232,6 @@ export const TEAMS: Team[] = [
     name: 'Audi F1 Team',
     shortName: 'Audi',
     color: '#e8002d',
-    textOnColor: 'white',
     drivers: [
       {
         id: 'nico-hulkenberg',
@@ -272,7 +264,6 @@ export const TEAMS: Team[] = [
     name: 'BWT Alpine F1 Team',
     shortName: 'Alpine',
     color: '#0090ff',
-    textOnColor: 'white',
     drivers: [
       {
         id: 'pierre-gasly',
@@ -305,7 +296,6 @@ export const TEAMS: Team[] = [
     name: 'Williams Racing',
     shortName: 'Williams',
     color: '#005aff',
-    textOnColor: 'white',
     drivers: [
       {
         id: 'carlos-sainz',
@@ -338,7 +328,6 @@ export const TEAMS: Team[] = [
     name: 'Cadillac Formula Racing',
     shortName: 'Cadillac',
     color: '#c8102e',
-    textOnColor: 'white',
     drivers: [
       {
         id: 'sergio-perez',
@@ -371,7 +360,6 @@ export const TEAMS: Team[] = [
     name: 'Aston Martin Aramco F1 Team',
     shortName: 'Aston Martin',
     color: '#006f62',
-    textOnColor: 'white',
     drivers: [
       {
         id: 'fernando-alonso',
