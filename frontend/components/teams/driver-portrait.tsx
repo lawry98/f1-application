@@ -4,7 +4,12 @@ import { useState } from 'react';
 import Image from 'next/image';
 
 import { cn } from '@/lib/utils';
-import { duotoneFor, portraitScrim, PORTRAIT_SCRIM_TEXT_INSET } from '@/lib/team-utils';
+import {
+  duotoneFor,
+  portraitDissolve,
+  portraitScrim,
+  PORTRAIT_SCRIM_TEXT_INSET,
+} from '@/lib/team-utils';
 import { type Driver, type Team } from '@/data/teams-data';
 
 interface DriverPortraitProps {
@@ -61,10 +66,19 @@ export function DriverPortrait({ driver, team, priority, className }: DriverPort
         </>
       )}
 
-      {/* Dissolve into the page so the portrait has no hard bottom edge. */}
+      {/*
+        Dissolve into the page so the portrait has no hard bottom edge — and nothing more than
+        that. It used to reach full `zinc-950` at the bottom, which was right while it was the only
+        thing there; the caption scrim now covers that same edge at 0.9, and the two composited to
+        opaque over the bottom third of every headshot. Its strength is bounded below the scrim's
+        in `PORTRAIT_DISSOLVE_ALPHA` so the scrim stays the thing that backs the caption, which is
+        what `portraitCaptionBackdrop` claims to describe.
+      */}
       <div
+        data-testid="portrait-dissolve"
         aria-hidden="true"
-        className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/40 to-transparent"
+        className="absolute inset-0"
+        style={{ background: portraitDissolve() }}
       />
 
       {/* Ghost number — the fallback card's signature element, kept in both states. */}
