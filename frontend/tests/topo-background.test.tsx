@@ -88,7 +88,7 @@ describe('TopoBackground', () => {
   it('lets a className override the default opacity', () => {
     // Quieter inside ticket cards than behind a hero, so opacity has to be overridable rather
     // than baked in. `cn` has to drop the default, not merely append to it.
-    const { container } = render(<TopoBackground className="opacity-[0.04] text-ink" />);
+    const { container } = render(<TopoBackground className="text-ink opacity-[0.04]" />);
     const svg = container.querySelector('svg')!;
 
     expect(svg.classList.contains('opacity-[0.04]')).toBe(true);
