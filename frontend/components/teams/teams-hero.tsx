@@ -32,7 +32,9 @@ export const HERO_TIMING = {
   subtitleDuration: 0.5,
   cta: 0.5,
   cue: 0.9,
+  cueDuration: 0.4,
   wallStep: 0.04,
+  wallDuration: 0.5,
 } as const;
 
 interface TeamsHeroProps {
@@ -76,7 +78,12 @@ export function TeamsHero({ onSelectTeam }: TeamsHeroProps) {
             transition={
               reducedMotion
                 ? { duration: 0 }
-                : { type: 'spring', duration: 0.5, bounce: 0, delay: i * HERO_TIMING.wallStep }
+                : {
+                    type: 'spring',
+                    duration: HERO_TIMING.wallDuration,
+                    bounce: 0,
+                    delay: i * HERO_TIMING.wallStep,
+                  }
             }
             style={{
               background: `linear-gradient(to top, ${team.color}22, transparent 65%)`,
@@ -222,7 +229,7 @@ export function TeamsHero({ onSelectTeam }: TeamsHeroProps) {
           className="absolute bottom-10 left-1/2 -translate-x-1/2 text-zinc-500"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ delay: HERO_TIMING.cue, duration: 0.4 }}
+          transition={{ delay: HERO_TIMING.cue, duration: HERO_TIMING.cueDuration }}
         >
           <motion.div
             animate={{ y: [0, 8, 0] }}

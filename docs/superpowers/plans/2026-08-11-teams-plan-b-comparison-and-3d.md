@@ -1266,7 +1266,9 @@ export const HERO_TIMING = {
   subtitleDuration: 0.5,
   cta: 0.5,
   cue: 0.9,
+  cueDuration: 0.4,
   wallStep: 0.04,
+  wallDuration: 0.5,
 } as const;
 ```
 
@@ -1275,14 +1277,18 @@ Then thread it through, changing only these values:
 | Where | From | To |
 |---|---|---|
 | Livery wall `transition.delay` | `i * 0.06` | `i * HERO_TIMING.wallStep` |
-| Livery wall `transition.duration` | `0.6` | `0.5` |
+| Livery wall `transition.duration` | `0.6` | `HERO_TIMING.wallDuration` |
 | Badge `BlurFade delay` | `0.1` | `HERO_TIMING.badge` |
 | `THE GRID` `TextAnimate duration` | `0.8` | `HERO_TIMING.titleDuration` |
 | Subtitle `TextAnimate delay` | `0.4` | `HERO_TIMING.subtitleDelay` |
 | Subtitle `TextAnimate duration` | `0.6` | `HERO_TIMING.subtitleDuration` |
 | CTA `BlurFade delay` | `reducedMotion ? 0 : 0.8` | `reducedMotion ? 0 : HERO_TIMING.cta` |
 | Scroll cue `transition.delay` | `1.4` | `HERO_TIMING.cue` |
-| Scroll cue `transition.duration` | `0.6` | `0.4` |
+| Scroll cue `transition.duration` | `0.6` | `HERO_TIMING.cueDuration` |
+
+Rows 2 and 9 were originally specified as literal→literal (`0.5` and `0.4`), which left those two
+of the nine "tightened" values untestable — a later review corrected this; both now route through
+`HERO_TIMING` like the rest.
 
 And change the CTA's label from the literal to the derived one:
 
