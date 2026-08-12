@@ -16,7 +16,7 @@ import pytest
 from api import routes as routes_module
 from api.errors import FAILED_TOOL_SUMMARY, GENERIC_BRIEFING_ERROR, GENERIC_SCHEDULE_ERROR
 from api.models import BriefingRequest
-from tests.factories import make_race_info, make_schedule
+from tests.factories import make_race_info, make_schedule, make_tool
 
 
 class FakeAgent:
@@ -417,6 +417,20 @@ def test_briefing_clears_the_schedule_cache_even_when_it_fails(client, install_a
     assert schedule_cache._cache == {}
 
 
+def test_briefing_clears_the_openf1_cache_even_when_it_fails(client, install_agent):
+    """A range query cached before a race's results are published must not survive past
+    this request — otherwise the next briefing serves a stale championship table.
+    """
+    from tools import openf1_client
+
+    install_agent(raises=RuntimeError("boom"))
+    openf1_client._cache[("session_result", frozenset({("year", 2026)}))] = ["sentinel"]
+
+    client.post("/api/briefing", json={"query": "monaco"})
+
+    assert openf1_client._cache == {}
+
+
 # ── POST /api/briefing/stream ────────────────────────────────────────────────
 
 
@@ -761,6 +775,17 @@ def test_stream_clears_the_schedule_cache(client, install_agent):
     assert schedule_cache._cache == {}
 
 
+def test_stream_clears_the_openf1_cache(client, install_agent):
+    from tools import openf1_client
+
+    install_agent(steps=successful_steps())
+    openf1_client._cache[("session_result", frozenset({("year", 2026)}))] = ["sentinel"]
+
+    client.post("/api/briefing/stream", json={"query": "monaco"})
+
+    assert openf1_client._cache == {}
+
+
 # ── GET /api/races/{year} ────────────────────────────────────────────────────
 
 
@@ -823,3 +848,79 @@ def test_races_rejects_an_out_of_range_year_before_touching_fastf1(client, year)
     conftest network guard would fail this loudly otherwise.
     """
     assert client.get(f"/api/races/{year}").status_code == 422
+
+
+def test_standings_returns_the_tool_payload(client, monkeypatch):
+    # get_championship_standings is a langchain @tool (a pydantic BaseModel instance),
+    # which rejects setattr on an undeclared field like "invoke" — so the module-level
+    # binding is swapped for a fake tool instead, the same pattern test_graph.py uses
+    # for `all_tools` via tests.factories.make_tool.
+    from api import routes
+
+    payload = {
+        "year": 2026,
+        "races_completed": 13,
+        "drivers": [
+            {"position": 1, "driver": "A B", "driver_code": "ABC", "team": "T", "points": 219.0}
+        ],
+        "constructors": [{"position": 1, "team": "T", "points": 379.0}],
+    }
+    monkeypatch.setattr(
+        routes,
+        "get_championship_standings",
+        make_tool("get_championship_standings", result=payload),
+    )
+
+    response = client.get("/api/standings/2026")
+
+    assert response.status_code == 200
+    assert response.json() == payload
+
+
+def test_standings_rejects_a_year_before_coverage(client):
+    """422 from the Path bound, before any handler code runs — the year is user input
+    and the boundary is the cheapest place to reject it.
+    """
+    response = client.get("/api/standings/2022")
+
+    assert response.status_code == 422
+
+
+def test_standings_clears_the_openf1_cache(client, monkeypatch):
+    """A standings request must never serve a table cached before results were published,
+    on the very next request — including a fresh call to this same route.
+    """
+    from tools import openf1_client
+
+    monkeypatch.setattr(
+        routes_module,
+        "get_championship_standings",
+        make_tool("get_championship_standings", result={"year": 2026, "drivers": []}),
+    )
+    openf1_client._cache[("session_result", frozenset({("year", 2026)}))] = ["sentinel"]
+
+    client.get("/api/standings/2026")
+
+    assert openf1_client._cache == {}
+
+
+def test_standings_replaces_a_tool_error_with_a_generic_502(client, monkeypatch):
+    """A tool-level {"error": ...} may carry upstream exception text. It is logged, not
+    served — the same rule api/errors.py exists to enforce for every other route.
+    """
+    from api import routes
+
+    monkeypatch.setattr(
+        routes,
+        "get_championship_standings",
+        make_tool(
+            "get_championship_standings",
+            result={"error": "OpenF1 session_result returned HTTP 503"},
+        ),
+    )
+
+    response = client.get("/api/standings/2026")
+
+    assert response.status_code == 502
+    assert "503" not in response.text
+    assert response.json()["detail"] == routes.GENERIC_STANDINGS_ERROR

@@ -868,3 +868,104 @@ def test_chunks_that_carried_no_prose_do_not_count_as_a_truncated_briefing(fake_
 
     with pytest.raises(RuntimeError, match="stream died mid-iteration"):
         run_synthesizer_streamed()
+
+
+def test_standings_is_a_registered_tool():
+    from agent.graph import all_tools
+
+    assert "get_championship_standings" in {tool.name for tool in all_tools}
+
+
+def test_standings_is_in_the_default_tools():
+    """The synthesizer prompt asks for a Championship Context section unconditionally, so
+    the degraded path — a 429'd planner falling back to DEFAULT_TOOLS — needs it too.
+    """
+    from agent.prompts import DEFAULT_TOOLS
+
+    assert "get_championship_standings" in DEFAULT_TOOLS
+
+
+def test_the_planner_prompt_advertises_every_registered_tool():
+    """A tool the planner is never told about is a tool the planner cannot select."""
+    from agent.graph import all_tools
+    from agent.prompts import PLANNER_PROMPT
+
+    for tool in all_tools:
+        assert tool.name in PLANNER_PROMPT
+
+
+def test_standings_is_invoked_with_the_current_year():
+    """From round 2 of a season onward, "current standings" means the season under way,
+    not `historical_year` (year - 1). Only before round 1 has run does the current
+    season have nothing to report — see the retry test below for that case.
+    """
+    from agent.graph import _invoke_tool
+    from tests.factories import make_race_info, make_tool
+
+    fake = make_tool("get_championship_standings", {"drivers": []})
+    race_info = make_race_info(year=2026, historical_year=2025)
+
+    _invoke_tool(fake, "get_championship_standings", race_info)
+
+    assert fake.calls == [{"year": 2026}]
+
+
+def test_standings_retries_with_the_historical_year_when_the_season_has_not_started():
+    """Pre-season, `get_championship_standings` reports `reason=SEASON_NOT_STARTED`
+    alongside its error. A briefing should still get last year's final classification
+    rather than nothing, so the year - 1 retry must fire on that structural marker.
+    """
+    from agent.graph import _invoke_tool
+    from tools.standings_tools import SEASON_NOT_STARTED
+
+    class _RetryingTool:
+        name = "get_championship_standings"
+
+        def __init__(self) -> None:
+            self.calls: list[dict] = []
+
+        def invoke(self, args: dict) -> dict:
+            self.calls.append(args)
+            if args["year"] == 2026:
+                return {
+                    "error": "No completed races found for 2026 season yet",
+                    "reason": SEASON_NOT_STARTED,
+                }
+            return {"year": 2025, "drivers": [{"driver_code": "NOR"}]}
+
+    fake = _RetryingTool()
+    race_info = make_race_info(year=2026, historical_year=2025)
+
+    result = _invoke_tool(fake, "get_championship_standings", race_info)
+
+    assert fake.calls == [{"year": 2026}, {"year": 2025}]
+    assert result["success"] is True
+    assert result["data"]["year"] == 2025
+
+
+def test_standings_does_not_retry_on_a_transport_failure():
+    """A transient failure (e.g. an HTTP 429) carries no `reason` key, so it must not
+    trigger the historical-year retry — substituting last season's final table for a
+    briefing that asked for current standings is worse than serving the error, which the
+    synthesizer already knows how to omit.
+    """
+    from agent.graph import _invoke_tool
+
+    class _FailingTool:
+        name = "get_championship_standings"
+
+        def __init__(self) -> None:
+            self.calls: list[dict] = []
+
+        def invoke(self, args: dict) -> dict:
+            self.calls.append(args)
+            return {"error": "Failed to get championship standings: HTTP 429"}
+
+    fake = _FailingTool()
+    race_info = make_race_info(year=2026, historical_year=2025)
+
+    result = _invoke_tool(fake, "get_championship_standings", race_info)
+
+    assert fake.calls == [{"year": 2026}]
+    assert result["success"] is False
+    assert result["data"]["error"] == "Failed to get championship standings: HTTP 429"

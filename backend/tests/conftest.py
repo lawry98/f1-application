@@ -28,6 +28,7 @@ os.environ.pop("OPENWEATHER_API_KEY", None)
 from datetime import date
 
 import pytest
+import requests
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -74,6 +75,48 @@ def _clear_schedule_cache():
     schedule_cache.clear()
     yield
     schedule_cache.clear()
+
+
+@pytest.fixture(autouse=True)
+def _block_openf1_network(monkeypatch):
+    """Make an unpatched OpenF1 fetch a deterministic transport failure, not a live call.
+
+    Mirrors ``_block_fastf1_network`` in intent but not in mechanism, and the difference
+    matters. FastF1 gets an ``AssertionError`` because no production path should ever
+    swallow one. OpenF1 gets a ``requests.ConnectionError`` because the tools *do* have a
+    legitimate handler for exactly that — the FastF1 fallback — and that is the behaviour
+    the pre-existing tests in ``test_fastf1_tools.py`` depend on. Raising here means those
+    tests keep exercising the FastF1 path they were written for, offline and unchanged.
+
+    The cost of that choice: the fallback is the default under test, so a broken OpenF1
+    implementation would look healthy to any test that does not opt in. Tests covering the
+    OpenF1 path patch this same seam with ``make_openf1_get``, and
+    ``test_openf1_tools.py`` asserts the OpenF1 path is genuinely taken rather than
+    silently fallen through.
+    """
+    from tools import openf1_client
+
+    def _refuse(*args, **kwargs):
+        raise requests.ConnectionError(
+            "Unpatched OpenF1 network call. Patch tools.openf1_client.requests.get "
+            "with tests.factories.make_openf1_get, or let the FastF1 fallback handle it."
+        )
+
+    monkeypatch.setattr(openf1_client.requests, "get", _refuse)
+
+
+@pytest.fixture(autouse=True)
+def _clear_openf1_cache():
+    """Reset the process-global OpenF1 response cache around every test.
+
+    Same hazard as ``_clear_schedule_cache``: without it, one test's payload satisfies
+    another test's lookup and the suite passes only in the order it was written.
+    """
+    from tools import openf1_client
+
+    openf1_client.clear()
+    yield
+    openf1_client.clear()
 
 
 @pytest.fixture(autouse=True)
@@ -214,3 +257,148 @@ def client():
     app = FastAPI()
     app.include_router(router)
     return TestClient(app)
+
+
+OPENF1_SESSIONS_2024 = [
+    {
+        "session_key": 9500,
+        "meeting_key": 1200,
+        "session_name": "Race",
+        "circuit_short_name": "Sakhir",
+        "country_name": "Bahrain",
+        "date_start": "2024-03-02T15:00:00+00:00",
+    },
+    {
+        "session_key": 9510,
+        "meeting_key": 1201,
+        "session_name": "Sprint",
+        "circuit_short_name": "Miami",
+        "country_name": "United States",
+        "date_start": "2024-04-05T16:00:00+00:00",
+    },
+    {
+        "session_key": 9511,
+        "meeting_key": 1201,
+        "session_name": "Qualifying",
+        "circuit_short_name": "Miami",
+        "country_name": "United States",
+        "date_start": "2024-04-05T20:00:00+00:00",
+    },
+    {
+        "session_key": 9512,
+        "meeting_key": 1201,
+        "session_name": "Race",
+        "circuit_short_name": "Miami",
+        "country_name": "United States",
+        "date_start": "2024-04-06T20:00:00+00:00",
+    },
+    {
+        "session_key": 9600,
+        "meeting_key": 1202,
+        "session_name": "Race",
+        "circuit_short_name": "Monte Carlo",
+        "country_name": "Monaco",
+        "date_start": "2024-05-26T13:00:00+00:00",
+    },
+]
+
+OPENF1_DRIVERS = [
+    {
+        "session_key": key,
+        "driver_number": number,
+        "full_name": full_name,
+        "name_acronym": acronym,
+        "team_name": team,
+    }
+    for key in (9500, 9510, 9512, 9600)
+    for number, full_name, acronym, team in (
+        (1, "Max VERSTAPPEN", "VER", "Red Bull Racing"),
+        (4, "Lando NORRIS", "NOR", "McLaren"),
+        # Deliberately adversarial: driver number 5 sorts *ahead* of HAM's 44, and
+        # Williams is listed *before* Ferrari below. Both confounds point the opposite
+        # way from the correct answer, so dropping either tie-break component inverts
+        # the order instead of leaving it unchanged by coincidence — that inversion is
+        # what makes the tie-break tests actually fail on a regression. Do not "tidy"
+        # this back into ascending driver-number / alphabetical-team order.
+        (5, "Tied SECOND", "TIE", "Williams"),
+        (44, "Lewis HAMILTON", "HAM", "Ferrari"),
+        (50, "Zero POINTS", "ZER", "Cadillac"),
+    )
+]
+
+
+def _openf1_result(session_key, position, number, points, **flags):
+    row = {
+        "session_key": session_key,
+        "position": position,
+        "driver_number": number,
+        "points": points,
+        "dnf": False,
+        "dns": False,
+        "dsq": False,
+    }
+    row.update(flags)
+    return row
+
+
+# Race points on the 25/18 scale; the Miami Sprint on the 8/7 scale.
+#
+# Season totals this produces: VER 75, NOR 69, HAM 30, TIE 30, ZER 0.
+#   - Driver 44 (HAM) retires from Monaco — the DNF case.
+#   - Driver 5 (TIE) finishes level with HAM on 30.0 — the tie-break case. HAM's best
+#     finish is P3 and TIE's is P4, so best_position decides and HAM ranks ahead — even
+#     though TIE's driver number (5) is numerically ahead of HAM's (44), which is what
+#     makes this a real guard rather than a coincidence of ascending driver-number order.
+#   - Driver 50 (ZER) scores nothing all season — the zero-fill case.
+# Constructors: Red Bull 75, McLaren 69, Ferrari 30, Williams 30, Cadillac 0. Ferrari and
+# Williams tie, broken alphabetically, so Cadillac lands at P5 — even though Williams is
+# inserted into the roster before Ferrari (see OPENF1_DRIVERS), which is what makes this a
+# real guard rather than a coincidence of dict-insertion order.
+OPENF1_RESULTS = [
+    _openf1_result(9500, 1, 1, 25.0),
+    _openf1_result(9500, 2, 4, 18.0),
+    _openf1_result(9500, 3, 44, 15.0),
+    _openf1_result(9500, 4, 5, 12.0),
+    _openf1_result(9510, 1, 4, 8.0),
+    _openf1_result(9510, 2, 1, 7.0),
+    _openf1_result(9512, 1, 4, 25.0),
+    _openf1_result(9512, 2, 1, 18.0),
+    _openf1_result(9512, 3, 44, 15.0),
+    _openf1_result(9512, 4, 5, 12.0),
+    _openf1_result(9600, 1, 1, 25.0, duration=3600.0),
+    _openf1_result(9600, 2, 4, 18.0),
+    _openf1_result(9600, 4, 5, 6.0),
+    _openf1_result(9600, 0, 44, 0.0, dnf=True),
+    # Qualifying carries no `points` key at all — pinning that OpenF1 quirk in the fixture.
+    {"session_key": 9511, "position": 1, "driver_number": 1, "dnf": False},
+]
+
+
+@pytest.fixture
+def openf1_season(monkeypatch):
+    """Patch the OpenF1 client's requests.get with a full fake 2024 season.
+
+    Overrides the autouse ``_block_openf1_network`` fixture for tests that want the
+    OpenF1 path rather than the FastF1 fallback. Returns the fake so tests can assert
+    on its ``.calls``.
+
+    ``meetings`` is served empty rather than omitted: ``find_race_session`` always
+    queries it first now, and an unmodelled endpoint makes ``make_openf1_get`` raise.
+    An empty list means every meeting lookup here falls through to the circuit/country
+    arms, which is exactly the behaviour these fixtures were written to exercise —
+    adding real meeting names is deliberately left to the tests in
+    ``test_openf1_tools.py`` that exist to cover the meeting arm.
+    """
+    from tests.factories import make_openf1_get
+    from tools import openf1_client
+
+    fake = make_openf1_get(
+        {
+            "sessions": OPENF1_SESSIONS_2024,
+            "session_result": OPENF1_RESULTS,
+            "drivers": OPENF1_DRIVERS,
+            "meetings": [],
+        }
+    )
+    monkeypatch.setattr(openf1_client.requests, "get", fake)
+    return fake

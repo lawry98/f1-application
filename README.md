@@ -198,6 +198,7 @@ OUTPUT (Race Briefing)
 | `/api/briefing` | POST | Synchronous briefing generation |
 | `/api/briefing/stream` | POST | SSE streaming briefing (used by frontend) |
 | `/api/races/{year}` | GET | F1 calendar from FastF1 |
+| `/api/standings/{year}` | GET | Driver and constructor championship tables, derived from OpenF1 (2023 onwards) |
 | `/api/health` | GET | Health check |
 
 ### Frontend Routes
