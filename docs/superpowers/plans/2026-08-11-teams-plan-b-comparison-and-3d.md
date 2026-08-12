@@ -1755,7 +1755,7 @@ ab() { npx --yes agent-browser "$@"; }
 
 ab set viewport 1440 900
 ab open http://localhost:3000/teams
-ab find role button "Inspect in 3D" click
+ab find role button click --name "Inspect in 3D"
 ab wait 3000
 ab screenshot /tmp/f1-plan-b/modal-normal.png
 ab errors
@@ -1769,7 +1769,7 @@ Then the reduced-motion path, which is the one that can go black:
 ```bash
 ab set media reduced-motion
 ab reload
-ab find role button "Inspect in 3D" click
+ab find role button click --name "Inspect in 3D"
 ab wait 3000
 ab screenshot /tmp/f1-plan-b/modal-reduced.png
 ab errors
@@ -2258,8 +2258,8 @@ call sites is exactly that case, so read the `incomplete` array too and measure 
 ```bash
 ab set viewport 1440 900
 ab open http://localhost:3000/teams
-ab find role button "Compare Mercedes" click
-ab find role button "Compare Ferrari" click
+ab find role button click --name "Compare Mercedes"
+ab find role button click --name "Compare Ferrari"
 ab scrollintoview '[data-testid="compare-tray"]'
 ab screenshot /tmp/f1-plan-b/tray-1440.png
 ab a11y --selector '[data-testid="compare-tray"]' --json > /tmp/f1-plan-b/axe-tray.json
@@ -2274,8 +2274,8 @@ Then the tie case, which is the one that silently highlights the wrong thing:
 
 ```bash
 ab open http://localhost:3000/teams
-ab find role button "Compare Cadillac" click
-ab find role button "Compare Audi" click
+ab find role button click --name "Compare Cadillac"
+ab find role button click --name "Compare Audi"
 ab scrollintoview '[data-testid="compare-tray"]'
 ab screenshot /tmp/f1-plan-b/tray-tie.png
 ```
@@ -2308,7 +2308,7 @@ but both apply elsewhere on this page.
 
 ```bash
 ab open http://localhost:3000/teams
-ab find role button "Inspect in 3D" click
+ab find role button click --name "Inspect in 3D"
 ab wait 3000
 ab screenshot /tmp/f1-plan-b/modal-1440.png
 ab a11y --json > /tmp/f1-plan-b/axe-modal.json
