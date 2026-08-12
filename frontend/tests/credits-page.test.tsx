@@ -1,0 +1,85 @@
+import { describe, it, expect } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import { readdirSync } from 'node:fs';
+import { join } from 'node:path';
+
+import CreditsPage from '@/app/credits/page';
+import { contrastRatio, DARK_BG, MIN_CONTRAST } from '@/lib/team-utils';
+import { restingTextNeutrals } from './zinc';
+
+function count(dir: string, ext: string): number {
+  return readdirSync(join(process.cwd(), 'public', dir)).filter((f) => f.endsWith(ext)).length;
+}
+
+/**
+ * `CreditsPage` is a server component, but a **synchronous** one — it reads the credit files with
+ * `readFileSync` rather than awaiting anything — so RTL can render it. An async server component
+ * could not be rendered here at all, which is why the parser and the table are separate units.
+ */
+describe('/credits', () => {
+  it('carries the fragment the /teams footer links to', () => {
+    const { container } = render(<CreditsPage />);
+    expect(container.querySelector('#driver-photographs')).not.toBeNull();
+    expect(container.querySelector('#team-logos')).not.toBeNull();
+  });
+
+  it('shows a thumbnail for every committed photograph and logo', () => {
+    const { container } = render(<CreditsPage />);
+    expect(container.querySelectorAll('img')).toHaveLength(
+      count('drivers', '.png') + count('logos', '.svg'),
+    );
+  });
+
+  it('names what each marque mark is missing', () => {
+    render(<CreditsPage />);
+    expect(screen.getByText('the Ferrari wordmark')).toBeInTheDocument();
+    expect(screen.getByText('the prancing-horse shield')).toBeInTheDocument();
+  });
+
+  it('summarises the two prose notes rather than rendering the markdown', () => {
+    render(<CreditsPage />);
+    expect(screen.getByText(/no freely licensed vector/i)).toBeInTheDocument();
+    expect(screen.getByText(/repainted for a dark background/i)).toBeInTheDocument();
+  });
+
+  it('still links both raw source files', () => {
+    const { container } = render(<CreditsPage />);
+    const hrefs = Array.from(container.querySelectorAll('a')).map((a) => a.getAttribute('href'));
+    expect(hrefs).toContain('/drivers/CREDITS.md');
+    expect(hrefs).toContain('/logos/CREDITS.md');
+  });
+
+  it('credits the 3D model with its author and licence', () => {
+    render(<CreditsPage />);
+    expect(screen.getByRole('link', { name: 'Nimaxo' })).toBeInTheDocument();
+    // getAllByRole, not getByRole: the photograph table links its own CC BY 4.0 rows to the same
+    // terms URL, so this name is not unique on the page — and every one of them must agree.
+    const licences = screen.getAllByRole('link', { name: 'CC BY 4.0' });
+    expect(licences.length).toBeGreaterThan(0);
+    for (const link of licences) {
+      expect(link).toHaveAttribute('href', 'https://creativecommons.org/licenses/by/4.0/');
+    }
+  });
+
+  // f1-red is 4.12:1 on zinc-950: it clears only the 3:1 large-text bar, so every use of it has
+  // to be inside something set at text-2xl or larger.
+  it('uses f1-red only on large headings', () => {
+    const { container } = render(<CreditsPage />);
+    const reds = Array.from(container.querySelectorAll('[class*="text-f1-red"]'));
+    expect(reds.length).toBeGreaterThan(0);
+    for (const el of reds) {
+      expect(el.closest('.text-2xl, .text-4xl'), el.textContent ?? '').not.toBeNull();
+    }
+  });
+
+  it('keeps every neutral text run above the AA contrast bar', () => {
+    const { container } = render(<CreditsPage />);
+    const neutrals = restingTextNeutrals(container);
+    expect(neutrals.length).toBeGreaterThan(0);
+    for (const { hex, text } of neutrals) {
+      expect(contrastRatio(hex, DARK_BG), `${hex} behind "${text}"`).toBeGreaterThanOrEqual(
+        MIN_CONTRAST,
+      );
+    }
+  });
+});
