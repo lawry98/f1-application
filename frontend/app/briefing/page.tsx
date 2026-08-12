@@ -35,7 +35,7 @@ export default function BriefingPage() {
         what this page is producing.
       */}
       <div className="relative flex-1 overflow-hidden">
-        <TopoBackground className="text-zinc-300 opacity-[0.09]" />
+        <TopoBackground className="text-zinc-300" />
         <div className="container relative mx-auto max-w-7xl px-4 py-10">
           <BriefingChat />
         </div>

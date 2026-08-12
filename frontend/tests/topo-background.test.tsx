@@ -3,6 +3,36 @@ import { describe, expect, it } from 'vitest';
 import { TopoBackground } from '@/components/candy/topo-background';
 
 describe('TopoBackground', () => {
+  /*
+   * The contours must not change size when their container does.
+   *
+   * The first version set a `viewBox` and `preserveAspectRatio="xMidYMid slice"`, which makes
+   * the scale `max(containerW / fieldW, containerH / fieldH)` — a function of the container.
+   * Measured on /briefing: the empty state was 1440×702 and scaled 1.5, but a fully streamed
+   * briefing was 1440×3171 and scaled 6.61, showing 218 of 960 field units. The texture visibly
+   * zoomed on every streamed chunk and ended up as a few enormous strokes.
+   *
+   * Both assertions below pin the fix rather than the symptom: without a `viewBox` one user
+   * unit is one CSS pixel, and a `userSpaceOnUse` pattern tiles at a fixed pixel size, so a
+   * taller container reveals more tiles instead of magnifying the same ones.
+   */
+  it('does not scale its contours with the container', () => {
+    const { container } = render(<TopoBackground />);
+    const svg = container.querySelector('svg')!;
+
+    expect(svg.hasAttribute('viewBox')).toBe(false);
+    expect(svg.hasAttribute('preserveAspectRatio')).toBe(false);
+  });
+
+  it('tiles the contours at a fixed pixel size', () => {
+    const { container } = render(<TopoBackground />);
+    const pattern = container.querySelector('pattern')!;
+
+    expect(pattern).toHaveAttribute('patternUnits', 'userSpaceOnUse');
+    // A filled rect is what makes the tile repeat across whatever area the container has.
+    expect(container.querySelector('rect')?.getAttribute('fill')).toMatch(/^url\(#/);
+  });
+
   it('draws several closed contour rings', () => {
     const { container } = render(<TopoBackground />);
     const paths = container.querySelectorAll('path');
@@ -33,10 +63,24 @@ describe('TopoBackground', () => {
   });
 
   it('defaults to a visible opacity', () => {
-    // 8%, not the brief's 5%: a 1px stroke at 5% over #09090B was invisible on a real screen.
+    // 6%, not the brief's 5%: a 1px stroke at 5% over #09090B was invisible on a real screen.
     const { container } = render(<TopoBackground />);
 
-    expect(container.querySelector('svg')!.classList.contains('opacity-[0.08]')).toBe(true);
+    expect(container.querySelector('svg')!.classList.contains('opacity-[0.06]')).toBe(true);
+  });
+
+  it('keeps every contour inside the tile so the seams do not show', () => {
+    // A pattern tile clips its contents, so a ring crossing an edge is sliced flat and the
+    // tiling shows up as a grid of straight cuts. The wobble reaches 1.26x a ring's nominal
+    // radius, which is easy to under-budget for by eye — hence an assertion.
+    const { container } = render(<TopoBackground />);
+    const tile = Number(container.querySelector('pattern')!.getAttribute('width'));
+
+    for (const path of Array.from(container.querySelectorAll('pattern path'))) {
+      const numbers = (path.getAttribute('d')!.match(/-?\d+(\.\d+)?/g) ?? []).map(Number);
+      expect(Math.min(...numbers)).toBeGreaterThanOrEqual(0);
+      expect(Math.max(...numbers)).toBeLessThanOrEqual(tile);
+    }
   });
 
   it('lets a className override the default opacity', () => {
@@ -46,15 +90,21 @@ describe('TopoBackground', () => {
     const svg = container.querySelector('svg')!;
 
     expect(svg.classList.contains('opacity-[0.04]')).toBe(true);
-    expect(svg.classList.contains('opacity-[0.08]')).toBe(false);
+    expect(svg.classList.contains('opacity-[0.06]')).toBe(false);
   });
 
-  it('renders identical markup every time', () => {
+  it('renders identical geometry every time', () => {
     // The contour wobble is a sum of sines, not Math.random, precisely so the server and the
     // client agree. If this ever fails, every page carrying the texture has a hydration
     // mismatch.
-    const first = render(<TopoBackground />).container.innerHTML;
-    const second = render(<TopoBackground />).container.innerHTML;
+    //
+    // The pattern id is excluded: `useId` hands each instance its own, which is the point of
+    // using it, and React derives it from the position in the tree so it matches across the
+    // server/client boundary. Geometry is what has to be deterministic.
+    const strokeIds = (html: string) => html.replace(/topo-:[^"')]+/g, 'topo-id');
+
+    const first = strokeIds(render(<TopoBackground />).container.innerHTML);
+    const second = strokeIds(render(<TopoBackground />).container.innerHTML);
 
     expect(first).toBe(second);
   });

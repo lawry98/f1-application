@@ -1,38 +1,52 @@
+'use client';
+
+import { useId } from 'react';
 import { catmullRomPath, type Point } from '@/lib/svg-path';
 import { cn } from '@/lib/utils';
 
 /**
- * A 2:1 field, not a square one. The texture is `slice`-cropped to cover its container, and
- * containers here are section-shaped — a square viewBox scaled into a 1440×380 band showed a
- * horizontal sliver of the design, which read as three big arcs rather than as contour lines.
+ * Tile edge, in CSS pixels.
+ *
+ * The SVG deliberately carries **no `viewBox`**, so one user unit is one CSS pixel and the
+ * contours are drawn at a fixed size no matter how large their container gets. This is the
+ * whole point of the component's shape — see the note on `TopoBackground` below.
+ *
+ * 900 is chosen so the repeat is not legible. At 560 a 1440px page showed the tile two and a
+ * half times over and the eye immediately picked out one motif on a grid; at 900 it repeats
+ * 1.6 times across and reads as terrain.
  */
-const FIELD_W = 960;
-const FIELD_H = 480;
+const TILE = 900;
 const SAMPLES_PER_RING = 26;
 
 /**
- * Three peaks of nested contour rings, spread across the field.
+ * Five peaks per tile, positioned and sized to stay **entirely inside** the tile.
  *
- * One peak is not enough at section width: whichever part of it survives the crop is a couple
- * of near-parallel curves. Three peaks at different scales keep contour *lines* on screen at
- * any crop, and a small container lands on a fragment of the map — which is what a map crop
- * looks like anyway.
+ * Containment is not cosmetic: a pattern tile clips its contents, so any ring crossing an edge
+ * would be sliced flat and the seams would show up as a grid of straight cuts. The wobble can
+ * reach 1.26× a ring's nominal radius (the three sine amplitudes sum to 0.26), so the margins
+ * here are sized against that worst case, and a test asserts every coordinate lands in
+ * [0, TILE].
  *
- * The wobble is a sum of three sines rather than randomness so the markup is byte-identical on
- * the server and the client; a `Math.random()` here would be a hydration mismatch on every
- * page carrying the texture. Each ring takes its own phase, so rings drift out of step the way
- * real contours do instead of nesting as concentric blobs.
+ * Coordinates and radii are fractions of the tile so the geometry survives a change to TILE.
  */
 const PEAKS = [
-  { cx: 0.17, cy: 0.34, rings: 7, base: 0.05, step: 0.037, stretch: 1.3 },
-  { cx: 0.58, cy: 0.72, rings: 8, base: 0.04, step: 0.032, stretch: 1.15 },
-  { cx: 0.87, cy: 0.22, rings: 6, base: 0.045, step: 0.041, stretch: 1.45 },
+  { cx: 0.18, cy: 0.22, rings: 6, base: 0.016, step: 0.013, stretch: 1.25 },
+  { cx: 0.52, cy: 0.62, rings: 7, base: 0.014, step: 0.011, stretch: 1.15 },
+  { cx: 0.82, cy: 0.16, rings: 5, base: 0.013, step: 0.012, stretch: 1.4 },
+  { cx: 0.3, cy: 0.84, rings: 4, base: 0.012, step: 0.01, stretch: 1.3 },
+  { cx: 0.88, cy: 0.74, rings: 5, base: 0.011, step: 0.011, stretch: 1.2 },
 ];
 
+/**
+ * The wobble is a sum of three sines rather than randomness, so the markup is byte-identical on
+ * the server and the client; a `Math.random()` here would be a hydration mismatch on every page
+ * carrying the texture. Each ring takes its own phase, so rings drift out of step the way real
+ * contours do instead of nesting as concentric blobs.
+ */
 function buildRings(): { id: string; d: string }[] {
   return PEAKS.flatMap((peak, p) =>
     Array.from({ length: peak.rings }, (_, ring) => {
-      const radius = FIELD_H * (peak.base + ring * peak.step);
+      const radius = TILE * (peak.base + ring * peak.step);
       const phase = p * 0.9 + ring * 1.37;
 
       const points: Point[] = Array.from({ length: SAMPLES_PER_RING }, (_, i) => {
@@ -43,10 +57,10 @@ function buildRings(): { id: string; d: string }[] {
           0.08 * Math.sin(5 * t - phase * 1.6) +
           0.05 * Math.sin(7 * t + phase * 0.4);
         const r = radius * wobble;
-        // Rings drift as they widen, so each peak's centre is off-centre from its outer rings.
+        // Rings drift as they widen, so a peak's centre sits off-centre from its outer rings.
         return [
-          peak.cx * FIELD_W + Math.cos(t) * r * peak.stretch + ring * 4,
-          peak.cy * FIELD_H + Math.sin(t) * r + ring * 3,
+          peak.cx * TILE + Math.cos(t) * r * peak.stretch + ring * 3,
+          peak.cy * TILE + Math.sin(t) * r + ring * 2,
         ];
       });
 
@@ -62,32 +76,44 @@ interface TopoBackgroundProps {
 }
 
 /**
- * Topographic contour texture. Server component — it renders the same markup every time and
- * has no interactivity, so there is no reason to ship it to the client.
+ * Topographic contour texture.
  *
- * Absolutely positioned and `pointer-events-none`, so dropping it into a container never
- * moves anything. Strokes are `currentColor`; set the colour and the opacity from the call
- * site (`className="text-ink opacity-[0.04]"`) rather than from a prop, so it composes like
- * any other element.
+ * **Tiled at a fixed pixel size, never scaled to fit.** An earlier version set a `viewBox` with
+ * `preserveAspectRatio="xMidYMid slice"`, which makes the scale `max(containerW / fieldW,
+ * containerH / fieldH)` — a function of the container's size. On `/briefing` that was measured
+ * as 1.5 for the 1440×702 empty state but 6.61 once a streamed briefing made it 1440×3171,
+ * leaving 218 of 960 field units on screen. The texture magnified on every streamed chunk and
+ * finished as a handful of huge strokes. Repeating a fixed tile instead means a taller container
+ * reveals more contours rather than bigger ones, so nothing moves while content streams in.
  *
- * The default is 8%, not the 5% the design brief specified: a 1px stroke at 5% over #09090B
- * was invisible on a real screen. Cards that want it quieter pass their own opacity.
+ * `useId` follows `components/ui/dot-pattern.tsx`: several of these can sit on one page, and a
+ * hard-coded pattern id would make every instance resolve to the first one's definition.
+ *
+ * Absolutely positioned and `pointer-events-none`, so dropping it into a container never moves
+ * anything. Strokes are `currentColor`; set colour and opacity from the call site
+ * (`className="text-ink opacity-[0.04]"`) rather than through props, so it composes like any
+ * other element. The default is 6% — the brief asked for 5%, and a 1px stroke at 5% over
+ * #09090B does not survive contact with a real display.
  */
 export function TopoBackground({ className }: TopoBackgroundProps) {
+  const id = useId();
+  const patternId = `topo-${id}`;
+
   return (
     <svg
       aria-hidden="true"
-      viewBox={`0 0 ${FIELD_W} ${FIELD_H}`}
-      // `slice` keeps the contours circular instead of stretching them to the container's
-      // aspect ratio, which is the difference between a texture and a smear.
-      preserveAspectRatio="xMidYMid slice"
-      className={cn('pointer-events-none absolute inset-0 h-full w-full opacity-[0.08]', className)}
+      className={cn('pointer-events-none absolute inset-0 h-full w-full opacity-[0.06]', className)}
     >
-      <g fill="none" stroke="currentColor" strokeWidth={1}>
-        {RINGS.map(({ id, d }) => (
-          <path key={id} d={d} />
-        ))}
-      </g>
+      <defs>
+        <pattern id={patternId} patternUnits="userSpaceOnUse" width={TILE} height={TILE}>
+          <g fill="none" stroke="currentColor" strokeWidth={1}>
+            {RINGS.map(({ id: ringId, d }) => (
+              <path key={ringId} d={d} />
+            ))}
+          </g>
+        </pattern>
+      </defs>
+      <rect width="100%" height="100%" fill={`url(#${patternId})`} />
     </svg>
   );
 }
