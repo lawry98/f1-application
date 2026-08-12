@@ -16,72 +16,148 @@ import { cn } from '@/lib/utils';
  * 1.6 times across and reads as terrain.
  */
 const TILE = 900;
-const SAMPLES_PER_RING = 26;
 
 /**
- * Five peaks per tile, positioned and sized to stay **entirely inside** the tile.
+ * Stylised circuit outlines, as closed loops.
  *
- * Containment is not cosmetic: a pattern tile clips its contents, so any ring crossing an edge
- * would be sliced flat and the seams would show up as a grid of straight cuts. The wobble can
- * reach 1.26× a ring's nominal radius (the three sine amplitudes sum to 0.26), so the margins
- * here are sized against that worst case, and a test asserts every coordinate lands in
- * [0, TILE].
+ * These replace the concentric wobbly circles this component started with. Nesting a sine-
+ * wobbled circle inside itself reads unavoidably as a flower — the rings stay convex and
+ * evenly spaced, which is the one thing a racetrack never is. A circuit has long straights,
+ * a hairpin, and a chicane, so its outline has segments of very different curvature, and
+ * *that* is what makes an offset outline read as a track rather than a petal.
  *
- * Coordinates and radii are fractions of the tile so the geometry survives a change to TILE.
+ * Coordinates are arbitrary; `normalise` re-centres each one on its centroid and scales it so
+ * its furthest point sits at radius 0.5. A placement's `size` is therefore exactly the shape's
+ * diameter, which makes containment inside the tile something you can check by arithmetic
+ * instead of by eye.
  */
-const PEAKS = [
-  { cx: 0.18, cy: 0.22, rings: 6, base: 0.016, step: 0.013, stretch: 1.25 },
-  { cx: 0.52, cy: 0.62, rings: 7, base: 0.014, step: 0.011, stretch: 1.15 },
-  { cx: 0.82, cy: 0.16, rings: 5, base: 0.013, step: 0.012, stretch: 1.4 },
-  { cx: 0.3, cy: 0.84, rings: 4, base: 0.012, step: 0.01, stretch: 1.3 },
-  { cx: 0.88, cy: 0.74, rings: 5, base: 0.011, step: 0.011, stretch: 1.2 },
+const TRACKS: Point[][] = [
+  // Long main straight into a fast right, then a lobe of medium corners. Monza-ish.
+  [
+    [0.05, 0.55],
+    [0.1, 0.25],
+    [0.2, 0.12],
+    [0.38, 0.1],
+    [0.5, 0.18],
+    [0.55, 0.32],
+    [0.68, 0.36],
+    [0.8, 0.3],
+    [0.92, 0.36],
+    [0.95, 0.52],
+    [0.86, 0.62],
+    [0.7, 0.6],
+    [0.55, 0.66],
+    [0.42, 0.8],
+    [0.26, 0.86],
+    [0.12, 0.78],
+  ],
+  // Tight, kinked, doubling back on itself. Street-circuit character.
+  [
+    [0.08, 0.3],
+    [0.22, 0.14],
+    [0.4, 0.12],
+    [0.52, 0.22],
+    [0.48, 0.38],
+    [0.6, 0.46],
+    [0.78, 0.4],
+    [0.9, 0.5],
+    [0.84, 0.66],
+    [0.66, 0.7],
+    [0.52, 0.62],
+    [0.38, 0.68],
+    [0.3, 0.82],
+    [0.14, 0.76],
+    [0.06, 0.56],
+  ],
+  // Flowing, with one hairpin pinching the top right.
+  [
+    [0.1, 0.46],
+    [0.16, 0.22],
+    [0.34, 0.1],
+    [0.56, 0.14],
+    [0.62, 0.3],
+    [0.74, 0.22],
+    [0.9, 0.32],
+    [0.88, 0.54],
+    [0.72, 0.64],
+    [0.58, 0.56],
+    [0.44, 0.62],
+    [0.34, 0.78],
+    [0.18, 0.72],
+  ],
 ];
 
 /**
- * The wobble is a sum of three sines rather than randomness, so the markup is byte-identical on
- * the server and the client; a `Math.random()` here would be a hydration mismatch on every page
- * carrying the texture. Each ring takes its own phase, so rings drift out of step the way real
- * contours do instead of nesting as concentric blobs.
+ * Where each circuit sits in the tile, how big, how turned, and how many nested outlines.
+ *
+ * Every entry satisfies `size / 2 <= cx, cy <= TILE - size / 2`, which is what keeps the
+ * geometry off the tile edges. Rotation costs nothing here because `normalise` works in polar
+ * terms — turning a shape cannot push it outside its own bounding circle.
  */
-function buildRings(): { id: string; d: string }[] {
-  return PEAKS.flatMap((peak, p) =>
-    Array.from({ length: peak.rings }, (_, ring) => {
-      const radius = TILE * (peak.base + ring * peak.step);
-      const phase = p * 0.9 + ring * 1.37;
+const PLACEMENTS = [
+  { track: 0, cx: 215, cy: 215, size: 360, rotate: 0.2, rings: 4 },
+  { track: 1, cx: 625, cy: 635, size: 330, rotate: -0.4, rings: 4 },
+  { track: 2, cx: 730, cy: 190, size: 300, rotate: 1.1, rings: 3 },
+  { track: 0, cx: 300, cy: 770, size: 230, rotate: 2.4, rings: 3 },
+  { track: 1, cx: 140, cy: 545, size: 220, rotate: -1.2, rings: 3 },
+];
 
-      const points: Point[] = Array.from({ length: SAMPLES_PER_RING }, (_, i) => {
-        const t = (i / SAMPLES_PER_RING) * Math.PI * 2;
-        const wobble =
-          1 +
-          0.13 * Math.sin(3 * t + phase) +
-          0.08 * Math.sin(5 * t - phase * 1.6) +
-          0.05 * Math.sin(7 * t + phase * 0.4);
-        const r = radius * wobble;
-        // Rings drift as they widen, so a peak's centre sits off-centre from its outer rings.
-        return [
-          peak.cx * TILE + Math.cos(t) * r * peak.stretch + ring * 3,
-          peak.cy * TILE + Math.sin(t) * r + ring * 2,
-        ];
-      });
+/** Successive outlines step inwards by this much, as a fraction of the outermost. */
+const RING_STEP = 0.19;
 
-      return { id: `peak-${p}-ring-${ring}`, d: catmullRomPath(points, true) };
-    }),
-  );
+/** Re-centre on the centroid and scale so the furthest point sits at radius 0.5. */
+function normalise(track: Point[]): Point[] {
+  const cx = track.reduce((sum, [x]) => sum + x, 0) / track.length;
+  const cy = track.reduce((sum, [, y]) => sum + y, 0) / track.length;
+  const centred = track.map(([x, y]): Point => [x - cx, y - cy]);
+  const reach = Math.max(...centred.map(([x, y]) => Math.hypot(x, y)));
+  return centred.map(([x, y]): Point => [(x / reach) * 0.5, (y / reach) * 0.5]);
 }
 
-const RINGS = buildRings();
+const NORMALISED = TRACKS.map(normalise);
+
+/**
+ * Nested circuit outlines, deterministic so the markup is byte-identical on the server and the
+ * client — anything random here would be a hydration mismatch on every page carrying the
+ * texture.
+ */
+function buildContours(): { id: string; d: string }[] {
+  return PLACEMENTS.flatMap((place, p) => {
+    const shape = NORMALISED[place.track]!;
+    const cos = Math.cos(place.rotate);
+    const sin = Math.sin(place.rotate);
+
+    return Array.from({ length: place.rings }, (_, ring) => {
+      const scale = place.size * (1 - ring * RING_STEP);
+      // Inner outlines drift slightly off-centre, the way contours do on a real slope, so the
+      // nest does not read as a set of perfectly coaxial copies.
+      const driftX = ring * 4;
+      const driftY = ring * 3;
+
+      const points = shape.map(([x, y]): Point => {
+        const rx = x * cos - y * sin;
+        const ry = x * sin + y * cos;
+        return [place.cx + rx * scale + driftX, place.cy + ry * scale + driftY];
+      });
+
+      return { id: `circuit-${p}-ring-${ring}`, d: catmullRomPath(points, true) };
+    });
+  });
+}
+
+const CONTOURS = buildContours();
 
 interface TopoBackgroundProps {
   className?: string;
 }
 
 /**
- * Topographic contour texture.
+ * Contour texture built from stylised circuit outlines.
  *
  * **Tiled at a fixed pixel size, never scaled to fit.** An earlier version set a `viewBox` with
  * `preserveAspectRatio="xMidYMid slice"`, which makes the scale `max(containerW / fieldW,
  * containerH / fieldH)` — a function of the container's size. On `/briefing` that was measured
- * as 1.5 for the 1440×702 empty state but 6.61 once a streamed briefing made it 1440×3171,
+ * as 1.5 for the 1440×702 empty state but 6.61 once a streamed briefing made it 1440×3251,
  * leaving 218 of 960 field units on screen. The texture magnified on every streamed chunk and
  * finished as a handful of huge strokes. Repeating a fixed tile instead means a taller container
  * reveals more contours rather than bigger ones, so nothing moves while content streams in.
@@ -107,7 +183,7 @@ export function TopoBackground({ className }: TopoBackgroundProps) {
       <defs>
         <pattern id={patternId} patternUnits="userSpaceOnUse" width={TILE} height={TILE}>
           <g fill="none" stroke="currentColor" strokeWidth={1}>
-            {RINGS.map(({ id: ringId, d }) => (
+            {CONTOURS.map(({ id: ringId, d }) => (
               <path key={ringId} d={d} />
             ))}
           </g>
