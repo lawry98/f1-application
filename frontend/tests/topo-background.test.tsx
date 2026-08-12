@@ -32,14 +32,21 @@ describe('TopoBackground', () => {
     expect(group).toHaveAttribute('fill', 'none');
   });
 
+  it('defaults to a visible opacity', () => {
+    // 8%, not the brief's 5%: a 1px stroke at 5% over #09090B was invisible on a real screen.
+    const { container } = render(<TopoBackground />);
+
+    expect(container.querySelector('svg')!.classList.contains('opacity-[0.08]')).toBe(true);
+  });
+
   it('lets a className override the default opacity', () => {
-    // Used at 5% in heroes and footers but 4% inside ticket cards, so the opacity has to be
-    // overridable rather than baked in.
+    // Quieter inside ticket cards than behind a hero, so opacity has to be overridable rather
+    // than baked in. `cn` has to drop the default, not merely append to it.
     const { container } = render(<TopoBackground className="opacity-[0.04] text-ink" />);
     const svg = container.querySelector('svg')!;
 
     expect(svg.classList.contains('opacity-[0.04]')).toBe(true);
-    expect(svg.classList.contains('opacity-[0.05]')).toBe(false);
+    expect(svg.classList.contains('opacity-[0.08]')).toBe(false);
   });
 
   it('renders identical markup every time', () => {

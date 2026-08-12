@@ -67,8 +67,11 @@ interface TopoBackgroundProps {
  *
  * Absolutely positioned and `pointer-events-none`, so dropping it into a container never
  * moves anything. Strokes are `currentColor`; set the colour and the opacity from the call
- * site (`className="text-ink/20 opacity-[0.05]"`) rather than from a prop, so it composes
- * like any other element.
+ * site (`className="text-ink opacity-[0.04]"`) rather than from a prop, so it composes like
+ * any other element.
+ *
+ * The default is 8%, not the 5% the design brief specified: a 1px stroke at 5% over #09090B
+ * was invisible on a real screen. Cards that want it quieter pass their own opacity.
  */
 export function TopoBackground({ className }: TopoBackgroundProps) {
   return (
@@ -78,7 +81,7 @@ export function TopoBackground({ className }: TopoBackgroundProps) {
       // `slice` keeps the contours circular instead of stretching them to the container's
       // aspect ratio, which is the difference between a texture and a smear.
       preserveAspectRatio="xMidYMid slice"
-      className={cn('pointer-events-none absolute inset-0 h-full w-full opacity-[0.05]', className)}
+      className={cn('pointer-events-none absolute inset-0 h-full w-full opacity-[0.08]', className)}
     >
       <g fill="none" stroke="currentColor" strokeWidth={1}>
         {RINGS.map(({ id, d }) => (

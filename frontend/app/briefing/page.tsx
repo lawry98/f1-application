@@ -11,7 +11,10 @@ export const metadata: Metadata = {
 
 export default function BriefingPage() {
   return (
-    <div className="min-h-screen bg-zinc-950">
+    // Column layout so the textured section below can claim the leftover viewport height.
+    // Without it the texture ends where the content ends, which on the empty state left the
+    // bottom half of the screen flat black.
+    <div className="flex min-h-screen flex-col bg-zinc-950">
       <LandingNav />
 
       <div className="border-b border-zinc-800/60 bg-zinc-950 pt-14">
@@ -31,8 +34,8 @@ export default function BriefingPage() {
         background of a tool that is not finished — where contour lines read as a map, which is
         what this page is producing.
       */}
-      <div className="relative overflow-hidden">
-        <TopoBackground className="text-zinc-500" />
+      <div className="relative flex-1 overflow-hidden">
+        <TopoBackground className="text-zinc-300 opacity-[0.09]" />
         <div className="container relative mx-auto max-w-7xl px-4 py-10">
           <BriefingChat />
         </div>
