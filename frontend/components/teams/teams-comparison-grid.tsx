@@ -6,6 +6,7 @@ import { motion } from 'motion/react';
 import { TextAnimate } from '@/components/ui/text-animate';
 import { NumberTicker } from '@/components/ui/number-ticker';
 import { cn } from '@/lib/utils';
+import { ringOnDark } from '@/lib/team-utils';
 import { STANDINGS_AS_OF, type Team } from '@/data/teams-data';
 import { TeamMonogramTile } from './team-monogram-tile';
 
@@ -37,14 +38,14 @@ interface TeamsComparisonGridProps {
   teams: Team[];
   activeTeamId: string;
   reducedMotion: boolean;
-  onScrollToTeam: (id: string) => void;
+  onSelectTeam: (id: string) => void;
 }
 
 export function TeamsComparisonGrid({
   teams,
   activeTeamId,
   reducedMotion,
-  onScrollToTeam,
+  onSelectTeam,
 }: TeamsComparisonGridProps) {
   const [sort, setSort] = useState<SortKey>('points');
 
@@ -66,7 +67,7 @@ export function TeamsComparisonGrid({
     <section className="bg-zinc-950 px-6 py-20 lg:px-12">
       <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="mb-3 text-xs uppercase tracking-[0.3em] text-zinc-500">Overview</p>
+          <p className="mb-3 text-xs uppercase tracking-[0.3em] text-zinc-400">Overview</p>
           <TextAnimate
             as="h2"
             animation={reducedMotion ? 'fadeIn' : 'slideUp'}
@@ -78,7 +79,7 @@ export function TeamsComparisonGrid({
             Constructors&apos; Championship
           </TextAnimate>
         </div>
-        <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-500">
+        <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-400">
           {STANDINGS_AS_OF}
         </p>
       </div>
@@ -94,7 +95,7 @@ export function TeamsComparisonGrid({
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500',
               sort === key
                 ? 'bg-zinc-800 text-white'
-                : 'border border-zinc-800 text-zinc-500 hover:text-zinc-300',
+                : 'border border-zinc-800 text-zinc-400 hover:text-zinc-200',
             )}
           >
             {label}
@@ -102,17 +103,24 @@ export function TeamsComparisonGrid({
         ))}
       </div>
 
+      {/* Names the leading numeral. It is neither the championship position nor the page's
+          running order — it is the rank under the active sort, and it moves with the tab. */}
+      <p className="mb-3 text-[9px] uppercase tracking-[0.18em] text-zinc-400">
+        {`Rank by ${SORTS.find((s) => s.key === sort)!.label.toLowerCase()}`}
+      </p>
+
       <div className="flex flex-col">
         {ranked.map((team, i) => {
           const metric = sort === 'firstEntry' ? team.points : team[sort];
           return (
-            <motion.button
+            <motion.a
               key={team.id}
+              href={`#team-${team.id}`}
               layout={!reducedMotion}
               transition={
                 reducedMotion ? { duration: 0 } : { type: 'spring', duration: 0.3, bounce: 0 }
               }
-              onClick={() => onScrollToTeam(team.id)}
+              onClick={() => onSelectTeam(team.id)}
               // Team name first, so the eleven rows stay quick to tell apart when skimmed by
               // name, then the standing the row actually displays.
               aria-label={`Jump to ${team.shortName}, ${i + 1} of ${ranked.length}, ${metricPhrase(
@@ -120,12 +128,14 @@ export function TeamsComparisonGrid({
                 team,
               )}`}
               className={cn(
-                'flex items-center gap-3 rounded px-2 py-2 text-left transition-colors duration-200 active:scale-[0.96]',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500',
+                'flex items-center gap-3 rounded px-2 py-2 text-left no-underline transition-colors duration-200',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950',
                 team.id === activeTeamId ? 'bg-zinc-900/60' : 'hover:bg-zinc-900/30',
               )}
+              // `--tw-ring-color`, not `outlineColor` — Tailwind's ring is a box-shadow.
+              style={{ '--tw-ring-color': ringOnDark(team.color) } as React.CSSProperties}
             >
-              <span className="w-5 flex-shrink-0 font-mono text-[11px] text-zinc-600">
+              <span className="w-5 flex-shrink-0 font-mono text-[11px] text-zinc-400">
                 {i + 1}
               </span>
               <TeamMonogramTile team={team} size={22} />
@@ -156,7 +166,7 @@ export function TeamsComparisonGrid({
                   <NumberTicker value={metric} className="text-sm text-white" />
                 )}
               </span>
-            </motion.button>
+            </motion.a>
           );
         })}
       </div>
@@ -164,16 +174,18 @@ export function TeamsComparisonGrid({
       {/* Photograph credits. The page publicly displays 22 driver headshots, 20 of which are
           CC BY or CC BY-SA and so oblige attribution — and because the committed PNGs are
           downscaled and transcoded from the Commons originals, BY-SA's share-alike attaches
-          too. `public/drivers/CREDITS.md` carries the per-file author and licence, but a file
-          reachable only by guessing its URL does not discharge "provide attribution in any
-          reasonable manner based on the medium". This is the last section of /teams, so the
-          link lives here: small, but genuinely visible and keyboard reachable. */}
+          too. `/credits` renders `public/drivers/CREDITS.md` as a real table, thumbnail by
+          thumbnail; the raw file stays canonical and is linked from there. A link straight to
+          the `.md` did not discharge "provide attribution in any reasonable manner based on the
+          medium" — the browser renders it as unstyled text or downloads it. This is the last
+          section of /teams, so the link lives here: small, but genuinely visible and keyboard
+          reachable. */}
       <footer className="mt-14 border-t border-zinc-900 pt-6">
-        <p className="max-w-2xl text-[11px] leading-relaxed text-zinc-500">
+        <p className="max-w-2xl text-[11px] leading-relaxed text-zinc-400">
           Driver photographs sourced from Wikimedia Commons and used under CC BY / CC BY-SA;
           resized and transcoded from the originals.{' '}
           <a
-            href="/drivers/CREDITS.md"
+            href="/credits#driver-photographs"
             className="rounded text-zinc-300 underline decoration-zinc-700 underline-offset-2 transition-colors duration-200 hover:text-white hover:decoration-zinc-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500"
           >
             Full attribution and licence details

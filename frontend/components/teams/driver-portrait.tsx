@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Image from 'next/image';
 
 import { cn } from '@/lib/utils';
-import { duotoneFor } from '@/lib/team-utils';
+import { duotoneFor, portraitScrim, PORTRAIT_SCRIM_TEXT_INSET } from '@/lib/team-utils';
 import { type Driver, type Team } from '@/data/teams-data';
 
 interface DriverPortraitProps {
@@ -76,7 +76,22 @@ export function DriverPortrait({ driver, team, priority, className }: DriverPort
         {driver.number}
       </span>
 
-      <div className="absolute bottom-0 left-0 right-0 p-3">
+      {/*
+        The caption's own scrim, and the one thing here that is not a colour decision: these three
+        lines sit on a photograph, so what is behind them cannot be known — and two of them, the
+        white name and the neutral short code, never pass through the colour layer at all. Over a
+        pale race suit the name measured 1.13:1 and the nationality 1.89:1.
+
+        The dissolve gradient above is not this: it reaches `zinc-950` only at the very bottom edge
+        and is ~0.4 where the first line of text sits, because its job is to blend the portrait
+        into the page rather than to back the text. `portraitScrim` is flat at full strength behind
+        the text and fades out above it, and `PORTRAIT_SCRIM_TEXT_INSET` is what keeps the text out
+        of that fade, where the guarantee stops holding.
+      */}
+      <div
+        className="absolute bottom-0 left-0 right-0 px-3 pb-3"
+        style={{ background: portraitScrim(), paddingTop: PORTRAIT_SCRIM_TEXT_INSET }}
+      >
         <p
           className="text-[10px] uppercase tracking-[0.2em]"
           style={{ color: duotone.keyline }}

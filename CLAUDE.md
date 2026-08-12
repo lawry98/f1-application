@@ -153,6 +153,90 @@ every render.
 **The landing page composes, it doesn't contain.** `app/page.tsx` is seven imports from
 `components/landing/`; the hero, features, and footer markup are not inline.
 
+**The credit tables are matched by their header row, never by a filename scan.** `lib/credits.ts`
+parses `public/drivers/CREDITS.md` and `public/logos/CREDITS.md` at build time for `/credits`, and
+`logos/CREDITS.md` carries a *second* table — `| File | What it is | What it is missing |` — whose
+rows also lead with a backticked filename. A naive `` `*.svg` `` scan over that file finds **14
+rows for 10 files**. `tests/credits-data.test.ts` asserts ten, which is the guard.
+
+**`lib/credits.ts` throws on a malformed row, on purpose.** A short row, a missing header, an
+empty author or a source cell that is not a markdown link fails `pnpm build`. The "tools never
+raise" convention is about keeping a degrading LLM pipeline alive and does not extend to a
+build-time read of a file we ship: silently rendering an empty author is an undischarged licence
+obligation on a public page. Two source-data quirks are deliberately *not* treated as errors —
+the driver rows say `CC0` where the licence-terms table says `CC0 1.0`, so that one licence
+renders unlinked, and Commons source URLs carry literal parentheses, which is why the link
+pattern is greedy rather than `[^)]+`.
+
+**The teams page's scroll spy measures rects on a frame; `IntersectionObserver` cannot do this
+job.** `hooks/use-scroll-spy.ts` picks the section covering most of a narrow band near the top of
+the viewport, ties going to document order. The observer version of exactly that — one observer,
+the root shrunk to the band by `rootMargin`, thresholds `[0, 0.01, 0.5, 1]` — shipped and did not
+track scroll at all, through thirteen task reviews and a whole-branch review, because none of them
+ran a browser. `intersectionRatio` is a fraction of the **target's** area, not of the band, so a
+~560px section against a 270px band peaks at 0.48 and 0.5 is unreachable: only the entry and exit
+crossings fire (25 callbacks across 6288px of scrolling), and between them the coverage map is a
+snapshot from the last boundary. 8 of 31 sampled scroll positions named the wrong section. No
+threshold list fixes this. So `scroll` and `resize` schedule one `getBoundingClientRect` pass per
+animation frame — eleven rects in an uninterrupted read pass, 0.2ms, one layout flush — plus one
+pass on mount, because arriving part-way down the page produces no scroll event. A click *claims*
+the active id immediately and suppresses the measurement until it independently agrees or
+`CLAIM_TIMEOUT_MS` elapses; the timeout matters because a section shorter than the band may never
+win. Because jsdom lays nothing out, a test that feeds a fake observer its numbers proves nothing
+here — `tests/use-scroll-spy.test.ts` models the layout, drives real scroll events and frames, and
+derives the expected winner from the model rather than from the hook.
+`hooks/use-team-navigation.ts` layers the URL on top:
+the rail, chips and comparison rows are real anchors, so the browser pushes one history entry per
+click by itself, and the hook only handles hash restore, `popstate`, and `replaceState` while
+scrolling. Scroll offsets are `--teams-scroll-offset` in `app/globals.css` consumed as
+`scroll-mt-[…]`, never maths in a handler.
+
+**Team colours are brand assets and must go through `lib/team-utils.ts` before carrying text.**
+`readableOnDark` lifts a livery until it clears WCAG AA as small text on `zinc-950`; `ringOnDark`
+does the same against the lower non-text bar for focus rings; `onColor` picks black or white to
+sit *on* a fill; `needsDamping` says whether a fill is too bright to be a surface at all. That
+last one replaced a `team.color === '#ffffff'` equality check that only ever covered Haas —
+Racing Bulls' navy reads at 2.02:1 and was never caught by it. Decorative use — glows, bars, the
+livery wall, the 3D livery — keeps the true hex. `tests/team-utils.test.ts` asserts every variant
+for all eleven teams, so a new team with an unreadable colour fails CI rather than shipping.
+
+**`readableOnDark` is only correct on bare `zinc-950`, and it has zero headroom by
+construction** — it stops at the first lightness step clearing 4.5:1, so *any* translucent layer
+between the glyphs and the page pushes it under. Three call sites sit on something lighter and
+each needs its own backdrop variant, all built from `blendOver` + `liftUntilContrast`:
+`seamLabelColor` for the seam wash, `railStandingColor` for the active rail row's
+`bg-zinc-800/60` highlight (`readableOnDark` measured 4.02:1 there), and `sectionStandingColor`
+for the section glow. The mistake looks identical every time and the tests reproduced it twice:
+an assertion that measures the right *colour* against the wrong *background* passes while the
+rendered page fails. If you add team-coloured text, ask what is behind it first.
+
+**The section glow's peak opacity is a contrast constraint, not a taste one.** A `40vw` blob with
+a 120px blur is wider than the margin of an 840px-wide section, so its core lands on the content
+column. At the peak of 1 it originally animated to, the composite behind the standing line is the
+livery at ~0.78 alpha and Alpine's `#0184e9` admits **no** readable text at all — pure white tops
+out at 3.83:1 — so no colour helper could have fixed that line. `GLOW_PEAK_OPACITY` caps it, and
+the same constant is the alpha the composite is judged at (measured effective alpha is 0.92 of
+peak, so the peak is the conservative side). Raising it back breaks
+`holds the glow weak enough that a readable colour exists at all`.
+
+**Neither `pnpm test` nor axe can see these.** jsdom lays nothing out, and axe returns
+*incomplete* — "background could not be determined" — for text over a blurred, absolutely
+positioned sibling, which is every one of these call sites. What works is hiding only the glyphs
+(`visibility: hidden`), screenshotting, and reading the pixel behind them; `agent-browser
+screenshot` plus `sips -s format bmp` gives a trivially parseable 24-bit BMP. Two traps in that
+method: an element that carries its own `background-color` disappears along with its text, so a
+monogram tile reads as page background (axe catches those — the two tools are complementary), and
+`TextAnimate` renders an `sr-only` copy beside the painted `aria-hidden` spans, so hiding the
+accessible copy measures the visible glyphs and reports 1:1.
+
+**The teams page's three columns appear at three different widths.** Left rail from `lg`, sticky
+dossier from `xl`, mobile chip strip below `lg` — laptop widths get two columns on purpose. The
+dossier is also *mounted* on a `matchMedia` check, not just `hidden xl:block`: inside a
+`display: none` wrapper it still runs its `AnimatePresence` swap and instantiates a logo image on
+every team change. Moving it to `xl` also means the per-section "Inspect in 3D" button is
+`xl:hidden`, not `lg:hidden` — otherwise 1024–1279px gets no dossier *and* no way to reach the
+inspector.
+
 **The teardown page** (`/teardown`) preloads 192 PNG frames (`public/frames/frame_0000.png` …
 `frame_0191.png`) and maps scroll position to frame index via `requestAnimationFrame`. Its canvas
 is sized `min(92vw, calc(82vh * 800 / 420))` to respect both viewport constraints at once.
@@ -174,7 +258,7 @@ is sized `min(92vw, calc(82vh * 800 / 420))` to respect both viewport constraint
 
 ### Frontend tests
 
-Vitest with jsdom, in `frontend/tests/`. Three things about them are not guessable:
+Vitest with jsdom, in `frontend/tests/`. A few things about them are not guessable:
 
 - **`next lint` only walks the directories listed in `next.config.js`'s `eslint.dirs`.**
   `tests/` is in that list *because* it is not one of Next's defaults — without the entry,
@@ -186,6 +270,21 @@ Vitest with jsdom, in `frontend/tests/`. Three things about them are not guessab
   from the format the backend really serves, which is the one thing they exist to catch.
 - **`tests/setup.ts` stubs `IntersectionObserver`.** jsdom has none, and `BlurFade` wraps most
   page sections, so without it any test that renders one dies inside framer-motion's `useInView`.
+  It also stubs `scrollIntoView`, `scrollTo`, and `matchMedia` for the same reason — the teams
+  page calls all three, and jsdom implements none of them. `matchMedia` reports no match, so
+  components take their narrow branch unless a test overrides it.
+- **`next/image` renders two different `src` shapes, and a test that assumes one fails on the
+  other.** Next's default loader refuses to proxy an SVG without `dangerouslyAllowSVG`, so
+  `/logos/alpine.svg` stays literal while `/drivers/x.png` becomes
+  `/_next/image?url=%2Fdrivers%2Fx.png&w=64&q=75`. `tests/attribution-table.test.tsx` normalises
+  both before comparing. `/credits`' page component is *synchronous* despite being a server
+  component doing file I/O, which is the only reason RTL can render it at all — an `async` server
+  component cannot be rendered by RTL, and that is why the data, the table and the page are three
+  units.
+- **`AnimatePresence mode="wait"` makes content untestable.** The incoming child is held back
+  behind the outgoing one's exit animation, which never resolves synchronously under jsdom, so
+  `getByRole` finds nothing. Use it for swaps nobody asserts on; anywhere a test needs the new
+  content, render conditionally instead.
 
 Fake timers are load-bearing in `use-briefing.test.tsx` — the flush interval is a module
 constant, so controlling the clock is the only way to observe a paint mid-stream. Use

@@ -2,7 +2,15 @@ import { describe, it, expect } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
 import { DriverPortrait } from '@/components/teams/driver-portrait';
-import { contrastRatio, DARK_BG, MIN_CONTRAST } from '@/lib/team-utils';
+import {
+  contrastRatio,
+  MIN_CONTRAST,
+  portraitCaptionBackdrop,
+  portraitCaptionColor,
+  portraitScrim,
+  PORTRAIT_SCRIM_FADE_PX,
+  PORTRAIT_SCRIM_TEXT_INSET,
+} from '@/lib/team-utils';
 import { TEAMS, TEAM_MAP } from '@/data/teams-data';
 
 const ferrari = TEAM_MAP['ferrari']!;
@@ -57,23 +65,39 @@ describe('DriverPortrait', () => {
     expect(screen.getByAltText('Lewis Hamilton')).toBeInTheDocument();
   });
 
-  // The nationality line is 10px, so the team colour it is painted in has to clear AA against
-  // the page. Seven of the eleven liveries do not raw; Racing Bulls' #2b4562 sat at 2.02:1
-  // and was effectively invisible. Rendered rather than unit-tested on team-utils alone, so
-  // the component cannot quietly go back to `team.color`.
-  it('paints the nationality line in a colour that clears AA for every team', () => {
+  // This measured the nationality line against the *page* background, which is nowhere near it:
+  // the line sits inside the portrait, over a photograph, where it was as low as 1.89:1. The
+  // colour it checked was right and the background was wrong — the same way the nav rail's
+  // active row and the section standing line both passed while failing on screen.
+  it('paints the nationality line to clear AA over the portrait, for every team', () => {
     expect(TEAMS).toHaveLength(11);
     for (const team of TEAMS) {
       const driver = team.drivers[0]!;
       const { unmount } = render(<DriverPortrait driver={driver} team={team} />);
       const colour = screen.getByText(driver.nationality).style.color;
       expect(colour, `${team.shortName} nationality colour`).not.toBe('');
+      expect(rgbToHex(colour), `${team.shortName}`).toBe(portraitCaptionColor(team.color));
       expect(
-        contrastRatio(rgbToHex(colour), DARK_BG),
+        contrastRatio(rgbToHex(colour), portraitCaptionBackdrop()),
         `${team.shortName} nationality ${colour}`,
       ).toBeGreaterThanOrEqual(MIN_CONTRAST);
       unmount();
     }
+  });
+
+  // A colour alone cannot fix this line: the name beside it is plain white and the short code is
+  // a neutral, and neither goes through the colour layer. What makes all three readable over an
+  // arbitrary headshot is the scrim, so the scrim is what gets pinned here — including the inset
+  // that keeps the text out of the gradient's fade, where the guarantee does not hold.
+  it('lays a scrim behind the caption and keeps the text out of its fade', () => {
+    render(<DriverPortrait driver={leclerc} team={ferrari} />);
+    const caption = screen.getByText('Monégasque').parentElement!;
+    // jsdom drops the redundant `to bottom` keyword — it is the default direction — so allow for
+    // exactly that one normalisation and pin everything else to the helper.
+    expect(caption.style.background).toBe(portraitScrim().replace('to bottom, ', ''));
+    expect(caption.style.background).toContain(`${PORTRAIT_SCRIM_FADE_PX}px`);
+    expect(parseFloat(caption.style.paddingTop)).toBe(PORTRAIT_SCRIM_TEXT_INSET);
+    expect(PORTRAIT_SCRIM_TEXT_INSET).toBeGreaterThan(PORTRAIT_SCRIM_FADE_PX);
   });
 
   it('keeps the fallback latched when the same failed driver is re-rendered', () => {

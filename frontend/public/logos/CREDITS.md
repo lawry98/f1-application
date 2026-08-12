@@ -47,6 +47,19 @@ the full Formula 1 team lockup, for which no free vector exists:
 | `cadillac.svg` | the Cadillac marque crest and wordmark | any Formula 1 lockup |
 | `aston-martin.svg` | the Aston Martin wordmark | the winged badge |
 
+## Modified from source
+
+`alpine.svg` — one attribute changed: the `<g>` wrapping the mark and the wordmark was
+`fill="#02192b"`, near-black navy, because Commons hosts the variant drawn for *light*
+backgrounds. On this page's `zinc-950` panel that left **0.1%** of the logo's area above 3:1
+against the background, measured by reading the painted pixels; every other logo here scores
+between 13.6% and 47.2%. It is now `fill="#fafafa"`, which is the ink seven of the other ten
+assets already use, and the blue and red accents are untouched.
+
+This is a monochrome variant for a dark surface, not a redrawing — the shapes, proportions and
+accent colours are the source file's. If the light-background variant is ever needed as well,
+take it from Commons again rather than reverting this one.
+
 ## Sponsor names baked into the artwork
 
 `haas.svg` reads *TGR Haas F1 Team*, `audi.svg` reads *Audi Revolut F1 Team* and

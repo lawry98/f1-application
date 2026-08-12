@@ -104,7 +104,7 @@ export function InspectModal({ team, onClose }: InspectModalProps) {
               style={{ backgroundColor: team.color }}
             />
             <div>
-              <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">Inspecting</p>
+              <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-400">Inspecting</p>
               <p className="text-sm font-bold uppercase tracking-wider text-white">{team.name}</p>
             </div>
           </div>
@@ -133,7 +133,7 @@ export function InspectModal({ team, onClose }: InspectModalProps) {
           <div className="flex gap-4">
             {team.drivers.map((driver) => (
               <div key={driver.id}>
-                <p className="text-[10px] uppercase tracking-[0.15em] text-zinc-500">
+                <p className="text-[10px] uppercase tracking-[0.15em] text-zinc-400">
                   {driver.shortCode}
                 </p>
                 <p className="text-sm font-medium text-zinc-200">{driver.name}</p>
@@ -144,7 +144,7 @@ export function InspectModal({ team, onClose }: InspectModalProps) {
             variant="ghost"
             size="sm"
             onClick={onClose}
-            className="text-xs text-zinc-500 hover:text-zinc-300"
+            className="text-xs text-zinc-400 hover:text-zinc-200"
           >
             Close
           </Button>

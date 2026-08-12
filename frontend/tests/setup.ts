@@ -38,3 +38,30 @@ class ImmediatelyInView implements IntersectionObserver {
 }
 
 globalThis.IntersectionObserver = ImmediatelyInView;
+
+/**
+ * jsdom implements no scrolling and no media queries. The teams page calls all three of
+ * these — `scrollIntoView` to centre the active mobile chip, `scrollTo` via anchor
+ * navigation, and `matchMedia` to decide whether to mount the sticky dossier at all.
+ *
+ * `matchMedia` reports **no match**, so components take their narrow-viewport branch
+ * unless a test says otherwise. That is the safer default: the dossier stays unmounted
+ * and tests assert what a phone actually renders. A test that wants the wide layout
+ * overrides `window.matchMedia` itself.
+ */
+Element.prototype.scrollIntoView = function scrollIntoView(): void {};
+
+window.scrollTo = function scrollTo(): void {};
+
+window.matchMedia = function matchMedia(query: string): MediaQueryList {
+  return {
+    matches: false,
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  } as MediaQueryList;
+};
