@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { catmullRomPath, type Point } from '@/lib/svg-path';
+import { catmullRomPath, polylinePath, type Point } from '@/lib/svg-path';
 
 /** Every coordinate pair in a path string, in order, as numbers. */
 function coords(path: string): number[] {
@@ -88,5 +88,54 @@ describe('catmullRomPath', () => {
 
     expect(path).not.toMatch(/\.\d*0(\D|$)/);
     expect(path).toContain('0.333');
+  });
+});
+
+describe('polylinePath', () => {
+  it('returns an empty path for fewer than two points', () => {
+    expect(polylinePath([])).toBe('');
+    expect(polylinePath([[1, 2]])).toBe('');
+  });
+
+  it('joins the points with straight segments', () => {
+    expect(
+      polylinePath([
+        [0, 0],
+        [10, 0],
+        [10, 10],
+      ]),
+    ).toBe('M 0 0 L 10 0 L 10 10');
+  });
+
+  it('closes the loop with Z rather than a repeated point', () => {
+    const path = polylinePath(
+      [
+        [0, 0],
+        [10, 0],
+        [10, 10],
+      ],
+      true,
+    );
+
+    expect(path.endsWith('Z')).toBe(true);
+    expect(path.match(/L/g)).toHaveLength(2);
+  });
+
+  it('introduces no curves at all', () => {
+    // The reason for choosing this over catmullRomPath for a schematic circuit: smoothing a
+    // sparse point set rounds a hairpin and a fast sweep to the same radius, and the outline
+    // stops reading as a track.
+    const path = polylinePath(
+      [
+        [0, 0],
+        [10, 1],
+        [3, 9],
+        [0, 4],
+      ],
+      true,
+    );
+
+    expect(path).not.toContain('C');
+    expect(path).not.toContain('Q');
   });
 });

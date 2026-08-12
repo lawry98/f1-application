@@ -1,7 +1,7 @@
 'use client';
 
 import { useId } from 'react';
-import { catmullRomPath, type Point } from '@/lib/svg-path';
+import { polylinePath, type Point } from '@/lib/svg-path';
 import { cn } from '@/lib/utils';
 
 /**
@@ -18,13 +18,31 @@ import { cn } from '@/lib/utils';
 const TILE = 900;
 
 /**
- * Stylised circuit outlines, as closed loops.
+ * Circuit outlines, as closed loops.
  *
- * These replace the concentric wobbly circles this component started with. Nesting a sine-
- * wobbled circle inside itself reads unavoidably as a flower — the rings stay convex and
- * evenly spaced, which is the one thing a racetrack never is. A circuit has long straights,
- * a hairpin, and a chicane, so its outline has segments of very different curvature, and
- * *that* is what makes an offset outline read as a track rather than a petal.
+ * **These are stylised, not surveyed.** `backend/scripts/dump_circuit_geometry.py` exists to
+ * pull real geometry out of FastF1 telemetry, but FastF1's live-timing source and its mirror
+ * are both unreachable from here — `session.load()` reports car data, position data *and*
+ * session info all unavailable, which is the same unreachability `CLAUDE.md` records for the
+ * result tools. When that source is reachable these get replaced by the script's output; the
+ * shape of this array is deliberately the same as the JSON it will emit.
+ *
+ * What makes a closed loop read as a racetrack rather than a blob is having segments of very
+ * different curvature, so each one carries three things on purpose:
+ *
+ *   - a **start/finish straight** long enough to dominate the shape
+ *   - a **hairpin**: two points close together around a sharp reversal
+ *   - a **chicane**: a short zigzag between two faster sections
+ *
+ * They are drawn with `polylinePath` and `stroke-linejoin="round"`, **not** `catmullRomPath`.
+ * Smoothing was tried first and is what made the second version read as blobs: interpolating a
+ * sparse point set rounds every direction change into a wide arc, so a hairpin and a fast sweep
+ * came out the same radius. Straight segments keep a straight straight and a hairpin tight, and
+ * the round joins supply a corner radius of about the stroke width — a printed track map.
+ *
+ * The first version had none of this and nested sine-wobbled circles instead, which is why it
+ * read as a field of flowers: the rings stayed convex and evenly spaced, the one thing a circuit
+ * never is.
  *
  * Coordinates are arbitrary; `normalise` re-centres each one on its centroid and scales it so
  * its furthest point sits at radius 0.5. A placement's `size` is therefore exactly the shape's
@@ -32,78 +50,121 @@ const TILE = 900;
  * instead of by eye.
  */
 const TRACKS: Point[][] = [
-  // Long main straight into a fast right, then a lobe of medium corners. Monza-ish.
+  // Power circuit: one very long main straight, a chicane, and a tight hairpin at the top.
   [
-    [0.05, 0.55],
-    [0.1, 0.25],
-    [0.2, 0.12],
-    [0.38, 0.1],
-    [0.5, 0.18],
-    [0.55, 0.32],
-    [0.68, 0.36],
-    [0.8, 0.3],
-    [0.92, 0.36],
-    [0.95, 0.52],
-    [0.86, 0.62],
-    [0.7, 0.6],
-    [0.55, 0.66],
-    [0.42, 0.8],
-    [0.26, 0.86],
-    [0.12, 0.78],
-  ],
-  // Tight, kinked, doubling back on itself. Street-circuit character.
-  [
-    [0.08, 0.3],
-    [0.22, 0.14],
-    [0.4, 0.12],
-    [0.52, 0.22],
-    [0.48, 0.38],
-    [0.6, 0.46],
-    [0.78, 0.4],
-    [0.9, 0.5],
-    [0.84, 0.66],
-    [0.66, 0.7],
-    [0.52, 0.62],
-    [0.38, 0.68],
-    [0.3, 0.82],
+    [0.08, 0.9],
+    [0.62, 0.9],
+    [0.72, 0.84],
+    [0.78, 0.74],
+    [0.7, 0.68],
+    [0.74, 0.6],
+    [0.86, 0.54],
+    [0.9, 0.42],
+    [0.82, 0.34],
+    [0.68, 0.34],
+    [0.64, 0.42],
+    [0.52, 0.4],
+    [0.46, 0.28],
+    [0.34, 0.24],
+    [0.22, 0.28],
+    [0.16, 0.38],
+    [0.2, 0.5],
+    [0.3, 0.58],
+    [0.26, 0.7],
     [0.14, 0.76],
-    [0.06, 0.56],
   ],
-  // Flowing, with one hairpin pinching the top right.
+  // Street circuit: a long straight up one side, then tight kinks that double back twice.
   [
-    [0.1, 0.46],
-    [0.16, 0.22],
-    [0.34, 0.1],
-    [0.56, 0.14],
-    [0.62, 0.3],
-    [0.74, 0.22],
-    [0.9, 0.32],
-    [0.88, 0.54],
-    [0.72, 0.64],
-    [0.58, 0.56],
-    [0.44, 0.62],
-    [0.34, 0.78],
-    [0.18, 0.72],
+    [0.1, 0.86],
+    [0.1, 0.44],
+    [0.16, 0.32],
+    [0.28, 0.26],
+    [0.4, 0.28],
+    [0.44, 0.38],
+    [0.36, 0.44],
+    [0.4, 0.52],
+    [0.54, 0.5],
+    [0.62, 0.4],
+    [0.76, 0.36],
+    [0.86, 0.44],
+    [0.88, 0.56],
+    [0.78, 0.62],
+    [0.66, 0.6],
+    [0.6, 0.68],
+    [0.66, 0.78],
+    [0.56, 0.86],
+    [0.36, 0.88],
+    [0.2, 0.9],
+  ],
+  // Triangle: three long straights joined by corner complexes.
+  [
+    [0.12, 0.84],
+    [0.52, 0.88],
+    [0.64, 0.8],
+    [0.68, 0.68],
+    [0.86, 0.5],
+    [0.9, 0.38],
+    [0.8, 0.28],
+    [0.66, 0.26],
+    [0.44, 0.18],
+    [0.3, 0.2],
+    [0.2, 0.3],
+    [0.24, 0.42],
+    [0.34, 0.5],
+    [0.28, 0.64],
+    [0.16, 0.72],
+  ],
+  // Technical: short straights, many corners, a double hairpin on the return leg.
+  [
+    [0.22, 0.28],
+    [0.46, 0.24],
+    [0.56, 0.32],
+    [0.52, 0.44],
+    [0.6, 0.52],
+    [0.72, 0.48],
+    [0.82, 0.54],
+    [0.8, 0.66],
+    [0.68, 0.72],
+    [0.56, 0.68],
+    [0.46, 0.74],
+    [0.48, 0.86],
+    [0.34, 0.88],
+    [0.24, 0.8],
+    [0.16, 0.64],
+    [0.14, 0.44],
   ],
 ];
 
 /**
- * Where each circuit sits in the tile, how big, how turned, and how many nested outlines.
+ * Where each circuit sits in the tile, how big, and how turned.
+ *
+ * One stroke per placement, not a nest of concentric offsets. Offsetting a track shape inwards
+ * pinches its hairpins shut and closes up its chicanes, so a nest of them stops reading as a
+ * circuit — the recognisable thing is the single line.
+ *
+ * Sizes are deliberately small relative to the tile. A first pass used 290–380px shapes, and at
+ * that scale a 1440×700 viewport only ever holds *fragments* of each loop, which read as smooth
+ * blobs. A circuit is only recognisable when you can see the whole lap at once, so these are
+ * 90–200px and there are twelve of them.
  *
  * Every entry satisfies `size / 2 <= cx, cy <= TILE - size / 2`, which is what keeps the
  * geometry off the tile edges. Rotation costs nothing here because `normalise` works in polar
  * terms — turning a shape cannot push it outside its own bounding circle.
  */
 const PLACEMENTS = [
-  { track: 0, cx: 215, cy: 215, size: 360, rotate: 0.2, rings: 4 },
-  { track: 1, cx: 625, cy: 635, size: 330, rotate: -0.4, rings: 4 },
-  { track: 2, cx: 730, cy: 190, size: 300, rotate: 1.1, rings: 3 },
-  { track: 0, cx: 300, cy: 770, size: 230, rotate: 2.4, rings: 3 },
-  { track: 1, cx: 140, cy: 545, size: 220, rotate: -1.2, rings: 3 },
+  { track: 0, cx: 150, cy: 150, size: 200, rotate: 0.18 },
+  { track: 1, cx: 420, cy: 130, size: 170, rotate: -0.42 },
+  { track: 2, cx: 690, cy: 160, size: 190, rotate: 1.15 },
+  { track: 3, cx: 830, cy: 380, size: 130, rotate: 2.4 },
+  { track: 0, cx: 600, cy: 390, size: 160, rotate: -1.25 },
+  { track: 1, cx: 300, cy: 380, size: 150, rotate: 0.7 },
+  { track: 2, cx: 120, cy: 420, size: 120, rotate: -2.1 },
+  { track: 3, cx: 180, cy: 660, size: 180, rotate: 0.95 },
+  { track: 0, cx: 450, cy: 690, size: 200, rotate: -0.75 },
+  { track: 1, cx: 720, cy: 650, size: 170, rotate: 1.9 },
+  { track: 2, cx: 390, cy: 840, size: 110, rotate: -1.55 },
+  { track: 3, cx: 850, cy: 850, size: 90, rotate: 0.35 },
 ];
-
-/** Successive outlines step inwards by this much, as a fraction of the outermost. */
-const RING_STEP = 0.19;
 
 /** Re-centre on the centroid and scale so the furthest point sits at radius 0.5. */
 function normalise(track: Point[]): Point[] {
@@ -117,31 +178,23 @@ function normalise(track: Point[]): Point[] {
 const NORMALISED = TRACKS.map(normalise);
 
 /**
- * Nested circuit outlines, deterministic so the markup is byte-identical on the server and the
+ * Placed circuit outlines, deterministic so the markup is byte-identical on the server and the
  * client — anything random here would be a hydration mismatch on every page carrying the
  * texture.
  */
 function buildContours(): { id: string; d: string }[] {
-  return PLACEMENTS.flatMap((place, p) => {
+  return PLACEMENTS.map((place, p) => {
     const shape = NORMALISED[place.track]!;
     const cos = Math.cos(place.rotate);
     const sin = Math.sin(place.rotate);
 
-    return Array.from({ length: place.rings }, (_, ring) => {
-      const scale = place.size * (1 - ring * RING_STEP);
-      // Inner outlines drift slightly off-centre, the way contours do on a real slope, so the
-      // nest does not read as a set of perfectly coaxial copies.
-      const driftX = ring * 4;
-      const driftY = ring * 3;
-
-      const points = shape.map(([x, y]): Point => {
-        const rx = x * cos - y * sin;
-        const ry = x * sin + y * cos;
-        return [place.cx + rx * scale + driftX, place.cy + ry * scale + driftY];
-      });
-
-      return { id: `circuit-${p}-ring-${ring}`, d: catmullRomPath(points, true) };
+    const points = shape.map(([x, y]): Point => {
+      const rx = x * cos - y * sin;
+      const ry = x * sin + y * cos;
+      return [place.cx + rx * place.size, place.cy + ry * place.size];
     });
+
+    return { id: `circuit-${p}`, d: polylinePath(points, true) };
   });
 }
 
@@ -168,8 +221,9 @@ interface TopoBackgroundProps {
  * Absolutely positioned and `pointer-events-none`, so dropping it into a container never moves
  * anything. Strokes are `currentColor`; set colour and opacity from the call site
  * (`className="text-ink opacity-[0.04]"`) rather than through props, so it composes like any
- * other element. The default is 6% — the brief asked for 5%, and a 1px stroke at 5% over
- * #09090B does not survive contact with a real display.
+ * other element. The default is 12%. The brief asked for 5%, but a 1px stroke at 5% over
+ * #09090B is invisible on a real display, and at 6% the outlines were legible only if you knew
+ * to look for them — which defeats a texture whose job is to say "map".
  */
 export function TopoBackground({ className }: TopoBackgroundProps) {
   const id = useId();
@@ -178,11 +232,11 @@ export function TopoBackground({ className }: TopoBackgroundProps) {
   return (
     <svg
       aria-hidden="true"
-      className={cn('pointer-events-none absolute inset-0 h-full w-full opacity-[0.06]', className)}
+      className={cn('pointer-events-none absolute inset-0 h-full w-full opacity-[0.12]', className)}
     >
       <defs>
         <pattern id={patternId} patternUnits="userSpaceOnUse" width={TILE} height={TILE}>
-          <g fill="none" stroke="currentColor" strokeWidth={1}>
+          <g fill="none" stroke="currentColor" strokeWidth={1} strokeLinejoin="round">
             {CONTOURS.map(({ id: ringId, d }) => (
               <path key={ringId} d={d} />
             ))}

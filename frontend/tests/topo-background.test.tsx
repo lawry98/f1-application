@@ -63,16 +63,18 @@ describe('TopoBackground', () => {
   });
 
   it('defaults to a visible opacity', () => {
-    // 6%, not the brief's 5%: a 1px stroke at 5% over #09090B was invisible on a real screen.
+    // 12%. A 1px stroke at the brief's 5% over #09090B is invisible on a real display, and at
+    // 6% the outlines were legible only if you already knew to look for them.
     const { container } = render(<TopoBackground />);
 
-    expect(container.querySelector('svg')!.classList.contains('opacity-[0.06]')).toBe(true);
+    expect(container.querySelector('svg')!.classList.contains('opacity-[0.12]')).toBe(true);
   });
 
-  it('keeps every contour inside the tile so the seams do not show', () => {
-    // A pattern tile clips its contents, so a ring crossing an edge is sliced flat and the
-    // tiling shows up as a grid of straight cuts. The wobble reaches 1.26x a ring's nominal
-    // radius, which is easy to under-budget for by eye — hence an assertion.
+  it('keeps every outline inside the tile so the seams do not show', () => {
+    // A pattern tile clips its contents, so an outline crossing an edge is sliced flat and the
+    // tiling shows up as a grid of straight cuts. Every placement has to satisfy
+    // `size / 2 <= cx, cy <= TILE - size / 2`, which is easy to get wrong by eye when adding
+    // one — hence an assertion rather than a comment.
     const { container } = render(<TopoBackground />);
     const tile = Number(container.querySelector('pattern')!.getAttribute('width'));
 
@@ -90,13 +92,13 @@ describe('TopoBackground', () => {
     const svg = container.querySelector('svg')!;
 
     expect(svg.classList.contains('opacity-[0.04]')).toBe(true);
-    expect(svg.classList.contains('opacity-[0.06]')).toBe(false);
+    expect(svg.classList.contains('opacity-[0.12]')).toBe(false);
   });
 
   it('renders identical geometry every time', () => {
-    // The contour wobble is a sum of sines, not Math.random, precisely so the server and the
-    // client agree. If this ever fails, every page carrying the texture has a hydration
-    // mismatch.
+    // The outlines are a fixed table put through a fixed transform, with nothing random
+    // anywhere, precisely so the server and the client agree. If this ever fails, every page
+    // carrying the texture has a hydration mismatch.
     //
     // The pattern id is excluded: `useId` hands each instance its own, which is the point of
     // using it, and React derives it from the position in the tree so it matches across the

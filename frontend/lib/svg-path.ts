@@ -49,6 +49,30 @@ export function catmullRomPath(points: readonly Point[], closed = false): string
   return closed ? `${path} Z` : path;
 }
 
+/**
+ * Straight segments between the points, with no smoothing.
+ *
+ * For a *schematic* circuit this beats `catmullRomPath`. Smoothing a sparse set of points
+ * rounds every direction change into a wide arc, so a hairpin and a fast sweep end up the same
+ * radius and the outline reads as a blob. Straight segments keep a straight straight and a
+ * sharp corner sharp; pair it with `stroke-linejoin="round"` and the joins pick up a corner
+ * radius of about the stroke width, which is what a printed track map looks like.
+ *
+ * Use `catmullRomPath` instead when the points are *sampled* from a real curve — dense enough
+ * that the smoothing is interpolating rather than inventing.
+ */
+export function polylinePath(points: readonly Point[], closed = false): string {
+  if (points.length < 2) return '';
+
+  const [startX, startY] = points[0]!;
+  let path = `M ${fmt(startX)} ${fmt(startY)}`;
+  for (const [x, y] of points.slice(1)) {
+    path += ` L ${fmt(x)} ${fmt(y)}`;
+  }
+
+  return closed ? `${path} Z` : path;
+}
+
 /** Three decimals is well inside sub-pixel for our viewBoxes and keeps the markup small. */
 function fmt(value: number): string {
   return Number(value.toFixed(3)).toString();
