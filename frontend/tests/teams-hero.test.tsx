@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
-import { TeamsHero } from '@/components/teams/teams-hero';
+import { TeamsHero, HERO_TIMING } from '@/components/teams/teams-hero';
 import { TEAMS } from '@/data/teams-data';
 import { monogram } from '@/components/teams/team-monogram-tile';
 
@@ -40,9 +40,12 @@ describe('TeamsHero', () => {
     }
   });
 
+  // This test's job is tab order, not copy — the number in the CTA is pinned by "says how many
+  // constructors the page holds" below, which derives it from TEAMS.length. Duplicating that
+  // assertion here would make an unrelated test fail every time the grid size changes.
   it('reaches the Explore Constructors CTA before any livery column in tab order', () => {
     render(<TeamsHero onSelectTeam={vi.fn()} />);
-    const cta = screen.getByRole('button', { name: /explore constructors/i });
+    const cta = screen.getByRole('button', { name: /explore \d+ constructors/i });
     const firstColumn = screen.getAllByRole('button', { name: /jump to /i })[0]!;
 
     // DOCUMENT_POSITION_FOLLOWING (4) means firstColumn comes after cta in the DOM,
@@ -113,5 +116,28 @@ describe('TeamsHero', () => {
     expect(reveal!.querySelector('img')).toHaveAttribute('alt', 'Ferrari logo');
     // Hidden below lg so the two marks never both show.
     expect(reveal!.className).toMatch(/\bhidden\b/);
+  });
+
+  it('says how many constructors the page holds, and counts them rather than asserting', () => {
+    render(<TeamsHero onSelectTeam={vi.fn()} />);
+    expect(
+      screen.getByRole('button', { name: `Explore ${TEAMS.length} Constructors` }),
+    ).toBeInTheDocument();
+  });
+
+  // Item 8 is "tighten the existing stagger", which is only meaningful as a number. The last
+  // thing to arrive is the scroll cue, and it now arrives inside a second — before this it was
+  // 1.4s in, by which point a visitor who scrolled has already left.
+  it('finishes its entrance inside a second', () => {
+    expect(HERO_TIMING.cue).toBeLessThan(1);
+    expect(HERO_TIMING.badge).toBeLessThan(HERO_TIMING.subtitleDelay);
+    expect(HERO_TIMING.subtitleDelay).toBeLessThan(HERO_TIMING.cta);
+    expect(HERO_TIMING.cta).toBeLessThan(HERO_TIMING.cue);
+  });
+
+  // Eleven columns at the old 0.06 step put the last livery 0.6s behind the first, which reads
+  // as a queue rather than a wall arriving.
+  it('lands the whole livery wall before the CTA does', () => {
+    expect(HERO_TIMING.wallStep * (TEAMS.length - 1)).toBeLessThan(HERO_TIMING.cta);
   });
 });

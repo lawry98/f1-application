@@ -1299,8 +1299,12 @@ stays behind `!reducedMotion`.
 
 Run: `mise exec -- pnpm test tests/teams-hero.test.tsx`
 Expected: PASS. The pre-existing `reaches the Explore Constructors CTA before any livery column in
-tab order` test matches on `/explore constructors/i`, which still matches the new copy — confirm it
-is still green rather than editing it.
+tab order` test matches on `/explore constructors/i`, which does **not** match the new copy —
+`Explore 11 Constructors` does not contain the contiguous substring `explore constructors`, so the
+number breaks it. Widen its matcher to `/explore \d+ constructors/i`; its subject is tab order, not
+copy, and the CTA's exact wording is already pinned by the new "says how many constructors the
+page holds" test, which derives it from `TEAMS.length` — duplicating that assertion here would
+make an unrelated test fail every time the grid size changes.
 
 - [ ] **Step 5: Confirm the suite**
 
