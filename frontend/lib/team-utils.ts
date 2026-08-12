@@ -122,10 +122,12 @@ export function blendOver(hex: string, alpha: number, bg: string): string {
 const liftCache = new Map<string, string>();
 
 /**
- * Shared mechanism behind `readableOnDark`, `ringOnDark` and `seamLabelColor`: lighten `hex`
- * in HSL, one step of lightness at a time, until it clears `target` contrast against `bg`,
- * then return the first candidate that does. Caches on `` `${bg}:${target}:${hex}` `` so
- * callers using different targets or different backgrounds don't collide.
+ * Shared mechanism behind every lift-until-readable helper in this module —
+ * `readableOnDark`, `ringOnDark`, `seamLabelColor`, `railStandingColor`, `sectionStandingColor`,
+ * `portraitCaptionColor`, and `trayValueColor`: lighten `hex` in HSL, one step of lightness at a
+ * time, until it clears `target` contrast against `bg`, then return the first candidate that does.
+ * Caches on `` `${bg}:${target}:${hex}` `` so callers using different targets or different
+ * backgrounds don't collide.
  *
  * Lightness is raised in HSL rather than blended toward white so hue and saturation survive —
  * the result still reads as the brand colour instead of washing out to grey.
@@ -169,6 +171,17 @@ export function readableOnDark(hex: string): string {
 }
 
 /**
+ * Below this point, five call sites each pair their own backdrop function with a lift-until-
+ * readable colour function — `seamLabelColor`, `railStandingColor`, `sectionStandingColor`,
+ * `portraitCaptionColor`, `trayValueColor`. The reason all five exist rather than reusing
+ * `readableOnDark` is the same every time and stated once here, not per function: `readableOnDark`
+ * clears 4.5:1 on bare `zinc-950` *by construction* — it stops at the first lightness step that
+ * clears there — so it has zero headroom for any wash, highlight, scrim or card sitting between
+ * the glyphs and the page. What differs per site, and is worth restating there, is the measured
+ * numbers and *which* element keeps its authored strength while the text moves instead.
+ */
+
+/**
  * Opacity of the seam wash where it is strongest — the gradient's first stop, at the top of
  * the band. Authored as the `4d` suffix so the gradient string and the contrast maths cannot
  * drift apart; change it in one place and both follow.
@@ -196,11 +209,10 @@ export function seamLabelBackdrop(hex: string): string {
 /**
  * A team colour lifted far enough to clear WCAG AA as the seam's small caps label.
  *
- * `readableOnDark` is the wrong tool here and measurably so: judged against the background
- * the label really has, it leaves seven of the eleven liveries between 3.58 and 4.03 —
- * Audi at 3.58, Williams 3.60, Aston Martin 3.63, Cadillac 3.70, Ferrari 3.75, Red Bull
- * 3.80, Racing Bulls 3.98. The wash is what the seam exists for, so the wash keeps its
- * authored strength and the *label* moves instead.
+ * Judged against the background the label really has, `readableOnDark` leaves seven of the
+ * eleven liveries between 3.58 and 4.03 — Audi at 3.58, Williams 3.60, Aston Martin 3.63,
+ * Cadillac 3.70, Ferrari 3.75, Red Bull 3.80, Racing Bulls 3.98. The wash is what the seam
+ * exists for, so the wash keeps its authored strength and the *label* moves instead.
  */
 export function seamLabelColor(hex: string): string {
   return liftUntilContrast(hex, MIN_CONTRAST, seamLabelBackdrop(hex));
@@ -228,11 +240,10 @@ export function railStandingBackdrop(): string {
 /**
  * A team colour lifted far enough to clear AA as the active rail row's standings line.
  *
- * `readableOnDark` is the wrong tool for the same reason it was wrong for the seam: judged
- * against the highlight rather than the page, it leaves seven of the eleven liveries short —
- * Cadillac at 3.93, Audi 3.94, Racing Bulls 3.95, Aston Martin 3.97, Williams 3.99, Red Bull
- * 4.04, Ferrari 4.02. The highlight is what marks the row as current, so the highlight keeps
- * its authored strength and the *text* moves.
+ * Judged against the highlight rather than the page, `readableOnDark` leaves seven of the eleven
+ * liveries short — Cadillac at 3.93, Audi 3.94, Racing Bulls 3.95, Aston Martin 3.97, Williams
+ * 3.99, Red Bull 4.04, Ferrari 4.02. The highlight is what marks the row as current, so the
+ * highlight keeps its authored strength and the *text* moves.
  */
 export function railStandingColor(hex: string): string {
   return liftUntilContrast(hex, MIN_CONTRAST, railStandingBackdrop());

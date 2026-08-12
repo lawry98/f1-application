@@ -11,6 +11,7 @@ import {
   contrastRatio,
   trayValueBackdrop,
   trayValueColor,
+  DARK_BG,
   MIN_CONTRAST,
 } from '@/lib/team-utils';
 import { restingTextNeutrals } from './zinc';
@@ -156,9 +157,17 @@ describe('TeamsCompareTray', () => {
     const neutrals = restingTextNeutrals(container);
     expect(neutrals.length).toBeGreaterThan(0);
     for (const { hex, text } of neutrals) {
-      expect(contrastRatio(hex, '#09090b'), `${hex} on "${text}"`).toBeGreaterThanOrEqual(
+      expect(contrastRatio(hex, DARK_BG), `${hex} on "${text}"`).toBeGreaterThanOrEqual(
         MIN_CONTRAST,
       );
+    }
+    // Stricter: the tray's real composite (`trayValueBackdrop()`) is lighter than the page
+    // background, so this is a harder bar than the one above, not a redundant one.
+    for (const { hex, text } of neutrals) {
+      expect(
+        contrastRatio(hex, trayValueBackdrop()),
+        `${hex} on "${text}"`,
+      ).toBeGreaterThanOrEqual(MIN_CONTRAST);
     }
   });
 

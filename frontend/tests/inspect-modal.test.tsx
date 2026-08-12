@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
 import { InspectModal } from '@/components/teams/inspect-modal';
-import { TEAMS } from '@/data/teams-data';
+import { TEAMS, TEAM_MAP } from '@/data/teams-data';
 import { contrastRatio, DARK_BG, MIN_CONTRAST } from '@/lib/team-utils';
 import { restingTextNeutrals } from './zinc';
 
@@ -30,7 +30,7 @@ describe('InspectModal', () => {
 
   it('opens on the team it was given', () => {
     renderModal('ferrari');
-    expect(screen.getByText('Scuderia Ferrari HP')).toBeInTheDocument();
+    expect(screen.getByText(TEAM_MAP['ferrari']!.name)).toBeInTheDocument();
   });
 
   // Spelled-out sequence, matching `Team 2 of 11` elsewhere. It is the page's running order, not

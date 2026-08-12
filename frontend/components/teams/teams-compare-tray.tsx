@@ -148,13 +148,14 @@ export function TeamsCompareTray({ teams: [left, right], reducedMotion, onClear 
                   key={team.id}
                   data-testid={`compare-value-${i}`}
                   className={cn(
-                    'text-sm lg:flex-1',
+                    'font-mono text-sm tabular-nums lg:flex-1',
                     i === 0 ? 'order-2 lg:order-1 lg:text-right' : 'order-3 lg:order-3',
                     leader === i ? 'font-semibold' : 'font-normal text-zinc-200',
                   )}
                   style={leader === i ? { color: trayValueColor(team.color) } : undefined}
                 >
-                  <span className="mr-2 text-[10px] uppercase tracking-[0.15em] text-zinc-400 lg:hidden">
+                  {/* Mobile stacked label: proportional, not the mono the value adopts below. */}
+                  <span className="mr-2 font-sans text-[10px] uppercase tracking-[0.15em] text-zinc-400 lg:hidden">
                     {team.shortName}
                   </span>
                   {f.value(team)}

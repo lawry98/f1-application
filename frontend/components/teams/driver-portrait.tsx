@@ -96,9 +96,9 @@ export function DriverPortrait({ driver, team, priority, className }: DriverPort
         white name and the neutral short code, never pass through the colour layer at all. Over a
         pale race suit the name measured 1.13:1 and the nationality 1.89:1.
 
-        The dissolve gradient above is not this: it reaches `zinc-950` only at the very bottom edge
-        and is ~0.4 where the first line of text sits, because its job is to blend the portrait
-        into the page rather than to back the text. `portraitScrim` is flat at full strength behind
+        The dissolve gradient above is not this: it peaks at `PORTRAIT_DISSOLVE_ALPHA` (0.6) at the
+        very bottom edge and is ~0.4 of that where the first line of text sits, because its job is
+        to blend the portrait into the page rather than to back the text. `portraitScrim` is flat at full strength behind
         the text and fades out above it, and `PORTRAIT_SCRIM_TEXT_INSET` is what keeps the text out
         of that fade, where the guarantee stops holding.
       */}

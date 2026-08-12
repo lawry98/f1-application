@@ -161,7 +161,12 @@ which under `demand` fires only on invalidation. An `Invalidator` component sits
 scene-graph mutation, so the Suspense swap when the GLB resolves needs no help. What actually
 requires `Invalidator` is `RealCar`'s imperative `material.color.set(teamColor)`, which mutates an
 existing Three.js object outside R3F's prop diffing and so is never auto-invalidated — without it,
-a livery change under `demand` would show the wrong colour until the next invalidation.
+a livery change under `demand` would show the wrong colour until the next invalidation. That
+recolour call is dormant today, though: `f1-car-model.tsx`'s material filter matches names
+containing `body`/`Body`/`paint`, but the committed GLB's materials are named `Livery`, `RearLight`,
+`Wheels` and `WheelCovers`, so `bodyMaterials` is empty and `material.color.set()` never runs on
+anything — `Invalidator` currently invalidates for a colour change that never happens, and becomes
+load-bearing the moment that filter is fixed.
 
 **The landing page composes, it doesn't contain.** `app/page.tsx` is seven imports from
 `components/landing/`; the hero, features, and footer markup are not inline.

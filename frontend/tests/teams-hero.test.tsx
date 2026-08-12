@@ -128,7 +128,7 @@ describe('TeamsHero', () => {
   // Item 8 is "tighten the existing stagger", which is only meaningful as a number. The last
   // thing to arrive is the scroll cue, and it now arrives inside a second — before this it was
   // 1.4s in, by which point a visitor who scrolled has already left.
-  it('finishes its entrance inside a second', () => {
+  it('starts every element’s entrance inside a second', () => {
     expect(HERO_TIMING.cue).toBeLessThan(1);
     expect(HERO_TIMING.badge).toBeLessThan(HERO_TIMING.subtitleDelay);
     expect(HERO_TIMING.subtitleDelay).toBeLessThan(HERO_TIMING.cta);

@@ -103,7 +103,9 @@ PRs are opened by hand.
 - `readableOnDark` is correct **only on bare `zinc-950`** and has **zero headroom by construction**:
   it stops at the first lightness step clearing 4.5:1, so *any* translucent layer between the glyphs
   and the page puts it under. Five call sites already needed their own pair —
-  `seamLabelColor`, `railStandingColor`, `sectionStandingColor`, `portraitCaptionColor`, `onColor`.
+  `seamLabelColor`, `railStandingColor`, `sectionStandingColor`, `portraitCaptionColor`,
+  `trayValueColor`. (`onColor` is not one of these — it picks black or white to sit *on* a fill,
+  not a backdrop/text pair.)
 - **Any new team-coloured text on a card, wash or tint needs its own `<thing>Backdrop()` /
   `<thing>Color()` pair, built from `blendOver` + `liftUntilContrast` in `frontend/lib/team-utils.ts`.**
   That module is **extended, never replaced**.
@@ -2176,7 +2178,7 @@ remove it from the import then, and not before.
 - [ ] **Step 5: Run to verify it passes**
 
 Run: `mise exec -- pnpm test tests/inspect-modal.test.tsx`
-Expected: PASS, 16 tests.
+Expected: PASS, 15 tests.
 
 `does not re-lock the body when the constructor changes` is the one to watch. If it fails, `go` has
 stopped being reference-stable — check it closes over `count` and not `index`.

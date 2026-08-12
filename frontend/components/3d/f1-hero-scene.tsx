@@ -31,6 +31,12 @@ function HeroFallbackCar({ rotationSpeed, float }: { rotationSpeed: number; floa
  * imperative `material.color.set(teamColor)`: it mutates an existing Three.js object directly,
  * outside R3F's declarative prop diffing, so nothing invalidates it on its own. Must live inside
  * `<Canvas>`; `useThree` throws outside one.
+ *
+ * That recolour call is dormant today: `f1-car-model.tsx`'s material filter matches names
+ * containing `body`/`Body`/`paint`, but the GLB's actual materials are `Livery`, `RearLight`,
+ * `Wheels` and `WheelCovers` — zero matches, so `bodyMaterials` is empty and `material.color.set()`
+ * never runs on anything. This component invalidates for a colour change that never happens, and
+ * becomes load-bearing the moment that filter is fixed.
  */
 function Invalidator({ teamColor }: { teamColor: string }) {
   const invalidate = useThree((state) => state.invalidate);
