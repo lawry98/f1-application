@@ -1,22 +1,40 @@
 'use client';
 
-import { Suspense } from 'react';
-import { Canvas } from '@react-three/fiber';
+import { Suspense, useEffect } from 'react';
+import { Canvas, useThree } from '@react-three/fiber';
+import { useReducedMotion } from 'motion/react';
 import { cn } from '@/lib/utils';
+import { useDocumentVisible } from '@/hooks/use-document-visible';
 import { PrimitiveCar, RealCar } from './f1-car-model';
 
-function HeroFallbackCar() {
+function HeroFallbackCar({ rotationSpeed, float }: { rotationSpeed: number; float: boolean }) {
   return (
     <PrimitiveCar
       bodyColor="#dc2626"
       sidepodColor="#b91c1c"
       scale={0.8}
-      rotationSpeed={0.3}
-      float
+      rotationSpeed={rotationSpeed}
+      float={float}
       bodyEnvMapIntensity={1.5}
       exhaustEmissiveIntensity={0.2}
     />
   );
+}
+
+/**
+ * Renders one frame whenever `teamColor` changes.
+ *
+ * Only load-bearing under `frameloop="demand"`, which is the reduced-motion path: in that mode R3F
+ * draws on invalidation rather than on a clock, so a livery change — or the GLB finishing its load
+ * and replacing the primitive fallback — would otherwise never reach the screen. Must live inside
+ * `<Canvas>`; `useThree` throws outside one.
+ */
+function Invalidator({ teamColor }: { teamColor: string }) {
+  const invalidate = useThree((state) => state.invalidate);
+  useEffect(() => {
+    invalidate();
+  }, [invalidate, teamColor]);
+  return null;
 }
 
 interface F1HeroSceneProps {
@@ -30,6 +48,24 @@ export default function F1HeroScene({
   hideOverlay = false,
   className,
 }: F1HeroSceneProps) {
+  const visible = useDocumentVisible();
+  const reducedMotion = useReducedMotion() ?? false;
+
+  /*
+   * The frame loop, as state.
+   *
+   * `never` while the tab is backgrounded — spec item 11's "idle on visibilitychange", and the
+   * only one of the three that is purely a saving.
+   *
+   * `demand` under reduced motion, which is the spec's literal `frameloop="demand"` applied in the
+   * one case where it is right: the car turns and floats through `useFrame`, so `demand` in the
+   * normal case would simply freeze the feature, while continuous rotation is exactly the
+   * sustained movement `prefers-reduced-motion` asks to be spared. `Invalidator` is what keeps
+   * the still frame correct.
+   */
+  const frameloop = !visible ? 'never' : reducedMotion ? 'demand' : 'always';
+  const motion = { rotationSpeed: reducedMotion ? 0 : 0.3, float: !reducedMotion };
+
   return (
     <div
       className={cn(
@@ -37,7 +73,8 @@ export default function F1HeroScene({
         className ?? 'h-[600px]',
       )}
     >
-      <Canvas camera={{ position: [5, 2.5, 5], fov: 45 }} dpr={[1, 2]} shadows>
+      <Canvas camera={{ position: [5, 2.5, 5], fov: 45 }} dpr={[1, 2]} shadows frameloop={frameloop}>
+        <Invalidator teamColor={teamColor} />
         <color attach="background" args={['#09090b']} />
         <fog attach="fog" args={['#09090b', 5, 15]} />
 
@@ -74,14 +111,8 @@ export default function F1HeroScene({
           castShadow
         />
 
-        <Suspense fallback={<HeroFallbackCar />}>
-          <RealCar
-            teamColor={teamColor}
-            scale={1}
-            position={[0, -0.5, 0]}
-            rotationSpeed={0.3}
-            float
-          />
+        <Suspense fallback={<HeroFallbackCar {...motion} />}>
+          <RealCar teamColor={teamColor} scale={1} position={[0, -0.5, 0]} {...motion} />
         </Suspense>
 
         {/* Reflective ground plane */}

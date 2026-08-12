@@ -150,6 +150,16 @@ reason, not because of cold-cache telemetry downloads.
 **`gltf.scene.clone()` must stay inside `useMemo`** — without it Three.js re-clones the scene on
 every render.
 
+**The 3D scene's `frameloop` is state, and `demand` is not the default for a reason.** `f1-hero-scene.tsx`
+is reached from exactly one place — the teams page's Inspect modal — and the right rail deliberately
+has no canvas, which is what keeps `three` / `@react-three/fiber` out of the page-load bundle. The
+loop is `never` while `document.visibilityState` is not `visible`, `demand` under
+`prefers-reduced-motion`, and `always` otherwise. Setting `demand` unconditionally looks like the
+obvious optimisation and freezes the car: `RealCar`'s rotation and float run through `useFrame`,
+which under `demand` fires only on invalidation. That is also why an `Invalidator` component sits
+inside the `Canvas` — under `demand` the GLB finishing its load would otherwise never reach the
+screen, and the modal would show an empty canvas that looks exactly like a WebGL failure.
+
 **The landing page composes, it doesn't contain.** `app/page.tsx` is seven imports from
 `components/landing/`; the hero, features, and footer markup are not inline.
 
