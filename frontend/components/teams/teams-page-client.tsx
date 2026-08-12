@@ -146,7 +146,9 @@ export function TeamsPageClient() {
       </div>
 
       <AnimatePresence>
-        {inspectOpen && <InspectModal team={TEAM_MAP[activeTeamId]!} onClose={closeInspect} />}
+        {inspectOpen && (
+          <InspectModal teams={TEAMS} initialTeamId={activeTeamId} onClose={closeInspect} />
+        )}
       </AnimatePresence>
     </div>
   );

@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { motion } from 'motion/react';
-import { X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { type Team } from '@/data/teams-data';
@@ -18,13 +18,46 @@ const F1HeroScene = dynamic(() => import('@/components/3d/f1-hero-scene'), {
 });
 
 interface InspectModalProps {
-  team: Team;
+  teams: Team[];
+  /** Which constructor the inspector opens on. Paging from here is the dialog's own business. */
+  initialTeamId: string;
   onClose: () => void;
 }
 
-export function InspectModal({ team, onClose }: InspectModalProps) {
+/**
+ * The 3D inspector.
+ *
+ * It owns its own index rather than driving the page's active team. Calling `claim` from in here
+ * would rewrite the URL, move the nav rail's highlight and open a 1200ms claim lease against a
+ * scroll spy that cannot see any scrolling — the body is locked — in exchange for nothing anyone
+ * using a dialog asked for. Closing leaves the page exactly where it was.
+ */
+export function InspectModal({ teams, initialTeamId, onClose }: InspectModalProps) {
   const previousFocusRef = useRef<Element | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+
+  const [index, setIndex] = useState(() => {
+    const found = teams.findIndex((t) => t.id === initialTeamId);
+    return found === -1 ? 0 : found;
+  });
+
+  const team = teams[index]!;
+  const count = teams.length;
+
+  /**
+   * Wraps in both directions, so neither control is ever a dead end and neither is ever disabled.
+   *
+   * Reference-stable across index changes — it closes over `count`, not `index`. That matters more
+   * than it looks: it is a dependency of the mount effect below, and an effect that re-ran on every
+   * page would re-lock the body and restore focus out of the dialog on each arrow press.
+   */
+  const go = useCallback(
+    (delta: number) => setIndex((i) => (i + delta + count) % count),
+    [count],
+  );
+
+  const previousTeam = teams[(index - 1 + count) % count]!;
+  const nextTeam = teams[(index + 1) % count]!;
 
   useEffect(() => {
     previousFocusRef.current = document.activeElement;
@@ -35,6 +68,14 @@ export function InspectModal({ team, onClose }: InspectModalProps) {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         onClose();
+        return;
+      }
+      if (e.key === 'ArrowLeft') {
+        go(-1);
+        return;
+      }
+      if (e.key === 'ArrowRight') {
+        go(1);
         return;
       }
 
@@ -67,7 +108,7 @@ export function InspectModal({ team, onClose }: InspectModalProps) {
         previousFocusRef.current.focus();
       }
     };
-  }, [onClose]);
+  }, [onClose, go]);
 
   return (
     <>
@@ -105,19 +146,48 @@ export function InspectModal({ team, onClose }: InspectModalProps) {
             />
             <div>
               <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-400">Inspecting</p>
-              <p className="text-sm font-bold uppercase tracking-wider text-white">{team.name}</p>
+              <p
+                data-testid="inspect-team-name"
+                aria-live="polite"
+                className="text-sm font-bold uppercase tracking-wider text-white"
+              >
+                {team.name}
+              </p>
             </div>
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onClose}
-            autoFocus
-            className="h-8 w-8 text-zinc-400 hover:text-white"
-            aria-label="Close inspector"
-          >
-            <X size={16} />
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => go(-1)}
+              className="h-8 w-8 text-zinc-400 hover:text-white"
+              aria-label={`Previous constructor, ${previousTeam.shortName}`}
+            >
+              <ChevronLeft size={16} />
+            </Button>
+            <p className="w-14 text-center font-mono text-[11px] tracking-[0.1em] text-zinc-400">
+              {`${String(index + 1).padStart(2, '0')} / ${String(count).padStart(2, '0')}`}
+            </p>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => go(1)}
+              className="h-8 w-8 text-zinc-400 hover:text-white"
+              aria-label={`Next constructor, ${nextTeam.shortName}`}
+            >
+              <ChevronRight size={16} />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onClose}
+              autoFocus
+              className="ml-2 h-8 w-8 text-zinc-400 hover:text-white"
+              aria-label="Close inspector"
+            >
+              <X size={16} />
+            </Button>
+          </div>
         </div>
 
         {/* Color accent line */}
