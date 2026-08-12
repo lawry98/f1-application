@@ -1,4 +1,5 @@
 import type { Config } from 'tailwindcss';
+import defaultTheme from 'tailwindcss/defaultTheme';
 
 const config: Config = {
   darkMode: ['class'],
@@ -7,9 +8,24 @@ const config: Config = {
     extend: {
       colors: {
         f1: {
-          red: '#dc2626',
+          // The single saturated colour in the palette. Rationed to scribbles, redacted
+          // bars, highlighted rows, primary buttons, tick marks, and glow strokes —
+          // everything else is ink and greys.
+          red: '#E10600',
           dark: '#18181b',
         },
+        /** Alias of f1-red, for new code where "brand" reads better than "f1-red". */
+        brand: '#E10600',
+        /**
+         * Warm off-white for display headlines. Pure white against #09090B reads as a
+         * screenshot of a screen; ink reads as printed matter, which is the whole point.
+         */
+        ink: '#F4F4ED',
+        base: '#09090B',
+        /** Red-tinted dark, for sections that alternate against `base`. */
+        'base-warm': '#140B0B',
+        /** Defined so the palette has a second voice available. Deliberately unused. */
+        volt: '#D2FF00',
         background: 'hsl(var(--background))',
         foreground: 'hsl(var(--foreground))',
         card: {
@@ -50,6 +66,17 @@ const config: Config = {
           '4': 'hsl(var(--chart-4))',
           '5': 'hsl(var(--chart-5))',
         },
+      },
+      fontFamily: {
+        sans: ['var(--font-inter)', ...defaultTheme.fontFamily.sans],
+        /** Heavy grotesk for ALL-CAPS display headlines. Variable wght + wdth. */
+        display: ['var(--font-archivo)', ...defaultTheme.fontFamily.sans],
+        /** Italic serif for the one or two accent words inside a display headline. */
+        'serif-display': ['var(--font-instrument-serif)', ...defaultTheme.fontFamily.serif],
+      },
+      transitionTimingFunction: {
+        /** Expo-out. The house easing for every reveal. */
+        'out-expo': 'cubic-bezier(0.16, 1, 0.3, 1)',
       },
       borderRadius: {
         lg: 'var(--radius)',

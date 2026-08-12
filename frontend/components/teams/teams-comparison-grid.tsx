@@ -74,7 +74,7 @@ export function TeamsComparisonGrid({
             by="word"
             startOnView
             once
-            className="text-3xl font-black uppercase tracking-tight text-white md:text-4xl"
+            className="text-3xl font-black uppercase tracking-tight text-ink md:text-4xl"
           >
             Constructors&apos; Championship
           </TextAnimate>

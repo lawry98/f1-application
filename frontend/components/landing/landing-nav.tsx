@@ -16,7 +16,7 @@ export function LandingNav() {
       >
         <Link
           href="/"
-          className="flex items-center gap-2 text-sm font-semibold tracking-tight text-white transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-f1-red focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
+          className="flex items-center gap-2 text-sm font-semibold tracking-tight text-ink transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-f1-red focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
         >
           <span className="h-2 w-2 rounded-full bg-f1-red" aria-hidden="true" />
           F1 Briefing Agent

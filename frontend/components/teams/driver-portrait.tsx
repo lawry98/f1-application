@@ -70,7 +70,7 @@ export function DriverPortrait({ driver, team, priority, className }: DriverPort
       {/* Ghost number — the fallback card's signature element, kept in both states. */}
       <span
         aria-hidden="true"
-        className="pointer-events-none absolute right-2 top-1 select-none font-black leading-none text-white"
+        className="pointer-events-none absolute right-2 top-1 select-none font-black leading-none text-ink"
         style={{ opacity: failed ? 0.06 : 0.45, fontSize: failed ? '5rem' : '2.5rem' }}
       >
         {driver.number}
@@ -98,7 +98,7 @@ export function DriverPortrait({ driver, team, priority, className }: DriverPort
         >
           {driver.nationality}
         </p>
-        <p className="mt-0.5 text-sm font-bold leading-tight text-white">{driver.name}</p>
+        <p className="mt-0.5 text-sm font-bold leading-tight text-ink">{driver.name}</p>
         <p className="text-[10px] uppercase tracking-[0.15em] text-zinc-400">
           {driver.shortCode}
         </p>

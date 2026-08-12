@@ -105,7 +105,7 @@ export function InspectModal({ team, onClose }: InspectModalProps) {
             />
             <div>
               <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-400">Inspecting</p>
-              <p className="text-sm font-bold uppercase tracking-wider text-white">{team.name}</p>
+              <p className="text-sm font-bold uppercase tracking-wider text-ink">{team.name}</p>
             </div>
           </div>
           <Button

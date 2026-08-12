@@ -16,7 +16,7 @@ export function BriefingCard({ race, briefing, truncated }: BriefingCardProps) {
     <BlurFade delay={0.1} inView>
       <Card className="border-zinc-800 bg-zinc-900 shadow-xl">
         <CardHeader className="border-b border-zinc-800">
-          <CardTitle className="text-2xl font-bold text-white">🏁 {race}</CardTitle>
+          <CardTitle className="text-2xl font-bold text-ink">🏁 {race}</CardTitle>
           <p className="text-sm text-zinc-500">Race Weekend Briefing</p>
         </CardHeader>
         <CardContent className="pt-6">
@@ -24,13 +24,13 @@ export function BriefingCard({ race, briefing, truncated }: BriefingCardProps) {
             <ReactMarkdown
               components={{
                 h1: ({ children }) => (
-                  <h1 className="mb-4 mt-6 text-3xl font-bold text-white">{children}</h1>
+                  <h1 className="mb-4 mt-6 text-3xl font-bold text-ink">{children}</h1>
                 ),
                 h2: ({ children }) => (
                   <h2 className="mb-3 mt-6 text-2xl font-bold text-f1-red">{children}</h2>
                 ),
                 h3: ({ children }) => (
-                  <h3 className="mb-2 mt-4 text-xl font-semibold text-white">{children}</h3>
+                  <h3 className="mb-2 mt-4 text-xl font-semibold text-ink">{children}</h3>
                 ),
                 p: ({ children }) => (
                   <p className="mb-4 leading-relaxed text-zinc-300">{children}</p>

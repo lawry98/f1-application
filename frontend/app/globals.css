@@ -6,6 +6,33 @@ body {
   background: #09090b;
 }
 
+@layer utilities {
+  /*
+   * Display-numeral scale. Clamped rather than stepped through breakpoints so a 379
+   * or a 68% keeps its proportions between 390px and 1440px without a media query.
+   * Line-height under 1 is safe here because .text-mega is only ever one line.
+   */
+  .text-mega {
+    font-size: clamp(4rem, 14vw, 12rem);
+    line-height: 0.85;
+    letter-spacing: -0.035em;
+  }
+
+  /*
+   * The ticket-stub corner. A 45° notch cut out of one corner, which is what makes a
+   * dark rectangle read as a torn-off stub rather than as another card.
+   */
+  .notch-card {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% calc(100% - 22px),
+      calc(100% - 22px) 100%,
+      0 100%
+    );
+  }
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;
@@ -82,6 +109,22 @@ body {
 
 html {
   scroll-behavior: smooth;
+}
+
+/*
+ * Lenis and native smooth scrolling cannot both own the scroll position — the browser
+ * animates towards one target while Lenis's RAF loop writes another, and the result reads
+ * as stutter.
+ *
+ * The hook is `.lenis`, not `.lenis-smooth`: this build of Lenis only ever adds the bare
+ * `lenis` class to <html> (verified in the browser — `html` read back as
+ * `dark …variables… lenis`, and the `.lenis-smooth` selector this first targeted never
+ * matched, leaving `scroll-behavior: smooth` live alongside the RAF loop). Because Lenis is
+ * never constructed under `prefers-reduced-motion`, the class is present exactly when Lenis
+ * owns the scroll, so no `!important` and no JS branch are needed.
+ */
+html.lenis {
+  scroll-behavior: auto;
 }
 
 /*

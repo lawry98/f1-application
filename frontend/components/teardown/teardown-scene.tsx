@@ -131,7 +131,7 @@ export function TeardownScene() {
         <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">
           Loading frames
         </p>
-        <p className="mb-6 font-mono text-5xl font-bold tabular-nums text-white">
+        <p className="mb-6 font-mono text-5xl font-bold tabular-nums text-ink">
           {loadedCount}
           <span className="text-zinc-700">/{FRAME_COUNT}</span>
         </p>
@@ -158,7 +158,7 @@ export function TeardownScene() {
               ← Back
             </Link>
             <span className="select-none text-zinc-700">|</span>
-            <span className="text-sm font-semibold text-white">
+            <span className="text-sm font-semibold text-ink">
               <span className="text-f1-red">Anatomy</span> of an F1 Car
             </span>
           </div>

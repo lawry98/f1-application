@@ -97,7 +97,7 @@ export function TeamSection({ team, index, isActive, onInspect, reducedMotion }:
         data-testid="team-watermark"
         aria-hidden="true"
         className={cn(
-          'pointer-events-none absolute top-8 select-none text-[14rem] font-black leading-none text-white opacity-[0.035]',
+          'pointer-events-none absolute top-8 select-none text-[14rem] font-black leading-none text-ink opacity-[0.035]',
           blobOnRight ? '-left-10' : '-right-10',
         )}
       >
@@ -132,7 +132,7 @@ export function TeamSection({ team, index, isActive, onInspect, reducedMotion }:
                 by="word"
                 startOnView
                 once
-                className="text-4xl font-black uppercase leading-tight tracking-tight text-white md:text-5xl lg:text-6xl"
+                className="text-4xl font-black uppercase leading-tight tracking-tight text-ink md:text-5xl lg:text-6xl"
                 style={{ color: 'white' }}
               >
                 {team.shortName}

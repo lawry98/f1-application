@@ -10,7 +10,7 @@ export function LandingFooter() {
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <span className="h-2 w-2 rounded-full bg-f1-red" aria-hidden="true" />
-              <span className="text-sm font-semibold text-white">F1 Briefing Agent</span>
+              <span className="text-sm font-semibold text-ink">F1 Briefing Agent</span>
             </div>
             <p className="text-xs text-zinc-600">AI-powered race weekend intelligence</p>
           </div>

@@ -31,7 +31,7 @@ export function LandingHero() {
             </Badge>
 
             <div className="space-y-5">
-              <h1 className="text-5xl font-bold leading-[1.08] tracking-tight text-white lg:text-6xl xl:text-7xl">
+              <h1 className="text-5xl font-bold leading-[1.08] tracking-tight text-ink lg:text-6xl xl:text-7xl">
                 Race weekend intel, <span className="text-f1-red">before the lights</span> go out.
               </h1>
               <p className="max-w-lg text-lg leading-relaxed text-zinc-400">
@@ -110,7 +110,7 @@ function HeroBriefingPreview() {
             <p className="text-[10px] font-semibold uppercase tracking-widest text-f1-red">
               Race Briefing
             </p>
-            <h3 className="font-semibold text-white">Monaco Grand Prix</h3>
+            <h3 className="font-semibold text-ink">Monaco Grand Prix</h3>
           </div>
           <span className="flex items-center gap-1.5 rounded-full bg-green-500/10 px-2.5 py-1 text-[11px] font-medium text-green-400">
             <span className="h-1.5 w-1.5 rounded-full bg-green-400" aria-hidden="true" />

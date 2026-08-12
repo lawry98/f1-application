@@ -123,7 +123,7 @@ export function StickyTeamPanel({ activeTeam, onInspect }: StickyTeamPanelProps)
             <div className="mt-1 flex items-center gap-2">
               <span
                 data-testid="championship-count"
-                className="text-2xl font-black leading-none text-white"
+                className="text-2xl font-black leading-none text-ink"
               >
                 {activeTeam.championships > 0 ? activeTeam.championships : '—'}
               </span>

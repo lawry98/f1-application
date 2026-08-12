@@ -107,7 +107,7 @@ export default function F1HeroScene({
       {!hideOverlay && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
           <div className="px-4 text-center">
-            <h2 className="mb-3 text-6xl font-bold text-white drop-shadow-2xl md:text-7xl">
+            <h2 className="mb-3 text-6xl font-bold text-ink drop-shadow-2xl md:text-7xl">
               <span className="text-f1-red">F1</span> Briefing Agent
             </h2>
             <p className="text-xl text-zinc-300 drop-shadow-lg md:text-2xl">

@@ -61,8 +61,9 @@ describe('/credits', () => {
     }
   });
 
-  // f1-red is 4.12:1 on zinc-950: it clears only the 3:1 large-text bar, so every use of it has
-  // to be inside something set at text-2xl or larger.
+  // f1-red is 4.01:1 on zinc-950: it clears only the 3:1 large-text bar, so every use of it has
+  // to be inside something set at text-2xl or larger. (4.12:1 when the brand red was #dc2626;
+  // #E10600 is marginally darker. The bar it fails and the bar it clears are unchanged.)
   it('uses f1-red only on large headings', () => {
     const { container } = render(<CreditsPage />);
     const reds = Array.from(container.querySelectorAll('[class*="text-f1-red"]'));

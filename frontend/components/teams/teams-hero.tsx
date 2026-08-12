@@ -83,7 +83,7 @@ export function TeamsHero({ onSelectTeam }: TeamsHeroProps) {
           duration={0.8}
           startOnView
           once
-          className="text-[clamp(3.5rem,12vw,9rem)] font-black uppercase leading-none tracking-[0.15em] text-white"
+          className="text-[clamp(3.5rem,12vw,9rem)] font-black uppercase leading-none tracking-[0.15em] text-ink"
         >
           THE GRID
         </TextAnimate>

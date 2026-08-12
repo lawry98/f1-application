@@ -23,7 +23,7 @@ export function LandingCtaBand() {
           </p>
           <h2
             id="cta-heading"
-            className="mb-6 text-4xl font-bold tracking-tight text-white lg:text-5xl"
+            className="mb-6 text-4xl font-bold tracking-tight text-ink lg:text-5xl"
           >
             Your race weekend briefing, one click away.
           </h2>

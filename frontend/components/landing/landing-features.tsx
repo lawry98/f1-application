@@ -57,7 +57,7 @@ export function LandingFeatures() {
             </p>
             <h2
               id="features-heading"
-              className="text-3xl font-bold tracking-tight text-white lg:text-4xl"
+              className="text-3xl font-bold tracking-tight text-ink lg:text-4xl"
             >
               Everything for a complete race weekend picture
             </h2>
@@ -77,7 +77,7 @@ export function LandingFeatures() {
                     <Icon className="h-5 w-5 text-f1-red" aria-hidden="true" />
                   </div>
                   <div className="space-y-2">
-                    <CardTitle className="text-base font-semibold text-white">{title}</CardTitle>
+                    <CardTitle className="text-base font-semibold text-ink">{title}</CardTitle>
                     <CardDescription className="text-sm leading-relaxed text-zinc-400">
                       {description}
                     </CardDescription>

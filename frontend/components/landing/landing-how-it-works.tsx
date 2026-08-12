@@ -40,7 +40,7 @@ export function LandingHowItWorks() {
             </p>
             <h2
               id="how-it-works-heading"
-              className="text-3xl font-bold tracking-tight text-white lg:text-4xl"
+              className="text-3xl font-bold tracking-tight text-ink lg:text-4xl"
             >
               From query to briefing in seconds
             </h2>
@@ -79,7 +79,7 @@ export function LandingHowItWorks() {
 
                   {/* Content */}
                   <div className="pb-2 pt-3">
-                    <h3 className="mb-2 text-xl font-semibold text-white">{title}</h3>
+                    <h3 className="mb-2 text-xl font-semibold text-ink">{title}</h3>
                     <p className="max-w-2xl text-base leading-relaxed text-zinc-400">
                       {description}
                     </p>

@@ -146,7 +146,7 @@ export function BriefingLoader({
             <p className="text-[10px] font-semibold uppercase tracking-widest text-f1-red">
               Generating briefing
             </p>
-            <h3 className="truncate font-semibold text-white">{race || 'Resolving race…'}</h3>
+            <h3 className="truncate font-semibold text-ink">{race || 'Resolving race…'}</h3>
           </div>
           <p className="shrink-0 pt-1 font-mono text-sm tabular-nums text-zinc-400">
             <span className="sr-only">Elapsed </span>
