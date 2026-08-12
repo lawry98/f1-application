@@ -1652,9 +1652,12 @@ Add, above `F1HeroSceneProps`:
 /**
  * Renders one frame whenever `teamColor` changes.
  *
- * Only load-bearing under `frameloop="demand"`, which is the reduced-motion path: in that mode R3F
- * draws on invalidation rather than on a clock, so a livery change — or the GLB finishing its load
- * and replacing the primitive fallback — would otherwise never reach the screen. Must live inside
+ * Only load-bearing under `frameloop="demand"`, which is the reduced-motion path. R3F's own
+ * reconciler already auto-invalidates on any scene-graph mutation — mounting/unmounting Object3D
+ * children, which is exactly what the Suspense swap from the primitive fallback to `RealCar` does
+ * once the GLB resolves — so that transition needs no help here. What isn't covered is `RealCar`'s
+ * imperative `material.color.set(teamColor)`: it mutates an existing Three.js object directly,
+ * outside R3F's declarative prop diffing, so nothing invalidates it on its own. Must live inside
  * `<Canvas>`; `useThree` throws outside one.
  */
 function Invalidator({ teamColor }: { teamColor: string }) {
@@ -1764,7 +1767,7 @@ ab errors
 The car must be **visible and turning** (take two screenshots a second apart and confirm the pose
 differs). `ab errors` must be empty.
 
-Then the reduced-motion path, which is the one that can go black:
+Then the reduced-motion path:
 
 ```bash
 ab set media reduced-motion
@@ -1775,9 +1778,12 @@ ab screenshot /tmp/f1-plan-b/modal-reduced.png
 ab errors
 ```
 
-The car must be **visible and still**. A black or empty canvas here means `demand` rendered once
-before the GLB resolved and `Invalidator` did not cover it — that is a real bug in this task, not a
-browser quirk. Reset with `ab set media` afterwards.
+The car must be **visible and still**, in the livery colour for the team being inspected. R3F's
+reconciler auto-invalidates the Suspense swap on its own, so a black or empty canvas here would
+point elsewhere (a genuine load or WebGL failure), not at `Invalidator`. What a missing or broken
+`Invalidator` actually produces is a wrong colour: `RealCar`'s `material.color.set(teamColor)` runs
+outside the reconciler's prop diffing, so under `demand` a livery change would stick at whatever
+colour was last drawn until something else triggers a frame. Reset with `ab set media` afterwards.
 
 - [ ] **Step 9: Correct the 3D README, which is stale**
 
@@ -1808,9 +1814,12 @@ has no canvas, which is what keeps `three` / `@react-three/fiber` out of the pag
 loop is `never` while `document.visibilityState` is not `visible`, `demand` under
 `prefers-reduced-motion`, and `always` otherwise. Setting `demand` unconditionally looks like the
 obvious optimisation and freezes the car: `RealCar`'s rotation and float run through `useFrame`,
-which under `demand` fires only on invalidation. That is also why an `Invalidator` component sits
-inside the `Canvas` — under `demand` the GLB finishing its load would otherwise never reach the
-screen, and the modal would show an empty canvas that looks exactly like a WebGL failure.
+which under `demand` fires only on invalidation. An `Invalidator` component sits inside the
+`Canvas` for a narrower reason than it looks: R3F's reconciler already auto-invalidates on any
+scene-graph mutation, so the Suspense swap when the GLB resolves needs no help. What actually
+requires `Invalidator` is `RealCar`'s imperative `material.color.set(teamColor)`, which mutates an
+existing Three.js object outside R3F's prop diffing and so is never auto-invalidated — without it,
+a livery change under `demand` would show the wrong colour until the next invalidation.
 ```
 
 - [ ] **Step 11: Commit**
@@ -1828,8 +1837,10 @@ case where a still car is the correct answer, and the sustained rotation
 stops rather than shortens, which is what reduce asks for.
 
 An Invalidator inside the Canvas draws a frame when the livery changes.
-Under demand the GLB finishing its load would otherwise never reach the
-screen, and an empty canvas is indistinguishable from a WebGL failure.
+R3F's own reconciler already invalidates on the Suspense swap when the GLB
+resolves, so Invalidator isn't covering that; it exists because RealCar's
+material.color.set(teamColor) mutates an existing object outside R3F's
+prop diffing, which nothing else would invalidate under demand.
 
 dpr=[1,2] was already set and is unchanged. The rail still has no canvas
 and must not get one: its absence is what keeps three/@react-three/fiber

@@ -156,9 +156,12 @@ has no canvas, which is what keeps `three` / `@react-three/fiber` out of the pag
 loop is `never` while `document.visibilityState` is not `visible`, `demand` under
 `prefers-reduced-motion`, and `always` otherwise. Setting `demand` unconditionally looks like the
 obvious optimisation and freezes the car: `RealCar`'s rotation and float run through `useFrame`,
-which under `demand` fires only on invalidation. That is also why an `Invalidator` component sits
-inside the `Canvas` — under `demand` the GLB finishing its load would otherwise never reach the
-screen, and the modal would show an empty canvas that looks exactly like a WebGL failure.
+which under `demand` fires only on invalidation. An `Invalidator` component sits inside the
+`Canvas` for a narrower reason than it looks: R3F's reconciler already auto-invalidates on any
+scene-graph mutation, so the Suspense swap when the GLB resolves needs no help. What actually
+requires `Invalidator` is `RealCar`'s imperative `material.color.set(teamColor)`, which mutates an
+existing Three.js object outside R3F's prop diffing and so is never auto-invalidated — without it,
+a livery change under `demand` would show the wrong colour until the next invalidation.
 
 **The landing page composes, it doesn't contain.** `app/page.tsx` is seven imports from
 `components/landing/`; the hero, features, and footer markup are not inline.

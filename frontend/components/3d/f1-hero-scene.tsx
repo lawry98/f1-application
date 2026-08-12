@@ -24,9 +24,12 @@ function HeroFallbackCar({ rotationSpeed, float }: { rotationSpeed: number; floa
 /**
  * Renders one frame whenever `teamColor` changes.
  *
- * Only load-bearing under `frameloop="demand"`, which is the reduced-motion path: in that mode R3F
- * draws on invalidation rather than on a clock, so a livery change — or the GLB finishing its load
- * and replacing the primitive fallback — would otherwise never reach the screen. Must live inside
+ * Only load-bearing under `frameloop="demand"`, which is the reduced-motion path. R3F's own
+ * reconciler already auto-invalidates on any scene-graph mutation — mounting/unmounting Object3D
+ * children, which is exactly what the Suspense swap from the primitive fallback to `RealCar` does
+ * once the GLB resolves — so that transition needs no help here. What isn't covered is `RealCar`'s
+ * imperative `material.color.set(teamColor)`: it mutates an existing Three.js object directly,
+ * outside R3F's declarative prop diffing, so nothing invalidates it on its own. Must live inside
  * `<Canvas>`; `useThree` throws outside one.
  */
 function Invalidator({ teamColor }: { teamColor: string }) {
