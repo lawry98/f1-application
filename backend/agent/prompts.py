@@ -10,6 +10,7 @@ Historical data year: {historical_year}
 Select which tools to run to gather data for the briefing. Available tools:
 - get_track_info: Track characteristics and circuit details
 - get_recent_top_finishers: Top-10 finishing order from the most recent race (not cumulative standings)
+- get_championship_standings: Driver and constructor championship tables for the season
 - get_circuit_winners: Recent winners at this circuit
 - search_f1_news: Latest news about this race
 - get_race_weather: Weather forecast for race location
@@ -58,6 +59,7 @@ Generate the complete briefing now:"""
 DEFAULT_TOOLS = [
     "get_track_info",
     "get_recent_top_finishers",
+    "get_championship_standings",
     "get_circuit_winners",
     "search_f1_news",
     "get_race_weather",

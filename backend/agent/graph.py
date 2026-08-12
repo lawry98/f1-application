@@ -25,6 +25,7 @@ from tools.f1_data_tools import get_circuit_winners, get_recent_top_finishers
 from tools.fastf1_tools import get_driver_form, get_recent_race_results, get_track_info
 from tools.race_resolver import resolve_next_race
 from tools.search_tools import search_f1_news
+from tools.standings_tools import SEASON_NOT_STARTED, get_championship_standings
 from tools.weather_tools import get_race_weather
 
 logger = logging.getLogger(__name__)
@@ -32,6 +33,7 @@ logger = logging.getLogger(__name__)
 all_tools = [
     get_track_info,
     get_recent_top_finishers,
+    get_championship_standings,
     get_circuit_winners,
     search_f1_news,
     get_race_weather,
@@ -39,26 +41,26 @@ all_tools = [
     get_recent_race_results,
 ]
 
-# Cross-request cache for the historical FastF1 tools — the finishing order of a
-# past race does not change, and these five are the ~9s concurrent wall clock of
-# the FastF1 tools, the dominant share of a 15-20s gathering stage. Weather (a
-# forecast) and news (current by definition) are deliberately absent: serving
-# either stale is worse than refetching. Only successful results are stored, so a
-# transient upstream failure cannot poison later briefings. Deliberately
-# cross-request, unlike the per-request schedule cache routes.py clears — see
-# ADR-0003. Key space is bounded (~races x 5 tools x a few years), so there is no
-# eviction.
+# Cross-request cache for the historical race-data tools — the finishing order of a
+# past race does not change, and these six are the dominant share of the gathering
+# stage's wall clock. Weather (a forecast) and news (current by definition) are
+# deliberately absent: serving either stale is worse than refetching. Only successful
+# results are stored, so a transient upstream failure cannot poison later briefings.
+# Deliberately cross-request, unlike the per-request schedule cache routes.py clears
+# — see ADR-0003. Key space is bounded (~races x 6 tools x a few years), so there is
+# no eviction.
 CACHEABLE_TOOLS = frozenset(
     {
         "get_track_info",
         "get_recent_top_finishers",
+        "get_championship_standings",
         "get_circuit_winners",
         "get_driver_form",
         "get_recent_race_results",
     }
 )
 
-# Of the five cacheable tools, these three answer a question whose meaning shifts
+# Of the six cacheable tools, these four answer a question whose meaning shifts
 # with the calendar even though the race data behind it is immutable — it is the
 # query, not the data, that is date-relative:
 #   - get_recent_top_finishers: "the season's most recent completed race" — a new
@@ -66,6 +68,10 @@ CACHEABLE_TOOLS = frozenset(
 #   - get_driver_form: "the last N races" — same sliding window.
 #   - get_circuit_winners: "the last `years_back` years" — the window's boundary
 #     year advances every 1 January.
+#   - get_championship_standings: takes an explicit year, but its answer grows with
+#     every race of that year. Without a date component the args ({"year": 2026})
+#     never change, so one early-season fetch would be served as "current standings"
+#     for the rest of the season.
 # Their cache key includes today's date so a new day (or, for get_circuit_winners,
 # a new year) forces a refetch instead of serving an answer that was only true
 # yesterday. The other two tools (get_track_info, get_recent_race_results) take an
@@ -76,6 +82,7 @@ DATE_DEPENDENT_TOOLS = frozenset(
         "get_recent_top_finishers",
         "get_driver_form",
         "get_circuit_winners",
+        "get_championship_standings",
     }
 )
 
@@ -214,6 +221,11 @@ def _build_tool_args(task_name: str, race_info: dict) -> dict[str, Any] | None:
         return {"circuit_name": race_info["name"], "year": race_info["historical_year"]}
     if task_name == "get_recent_top_finishers":
         return {"year": race_info["historical_year"]}
+    if task_name == "get_championship_standings":
+        # The season currently underway, not `historical_year` (year - 1): from round 2
+        # onward, "current standings" means this season's table. `historical_year` only
+        # applies before round 1 — `_invoke_tool` retries with it in that one case.
+        return {"year": race_info["year"]}
     if task_name == "get_circuit_winners":
         return {"circuit_name": race_info["name"], "years_back": 3}
     if task_name == "search_f1_news":
@@ -229,13 +241,53 @@ def _build_tool_args(task_name: str, race_info: dict) -> dict[str, Any] | None:
     return None
 
 
-def _invoke_tool(tool: Any, task_name: str, race_info: dict) -> ToolResult:
-    """Invoke a single tool with arguments derived from race_info; never raises.
+def _invoke_with_cache(tool: Any, task_name: str, args: dict) -> ToolResult:
+    """Invoke a tool with explicit args, serving from the result cache when possible.
 
-    Serves cacheable tools from the result cache when possible. The lock is
-    released during the invocation, as in tools/schedule_cache.py: concurrent
-    misses on the same key both fetch, and the last write wins.
+    Split out of ``_invoke_tool`` so the standings retry below can make a second,
+    separately-keyed cache-aware call rather than bypassing the cache entirely.
+    The lock is released during the invocation, as in tools/schedule_cache.py:
+    concurrent misses on the same key both fetch, and the last write wins.
     """
+    cacheable = task_name in CACHEABLE_TOOLS
+    # The date belongs in the key, not the args: `_build_tool_args` stays a pure
+    # function of race_info, and the date-dependent tools (see DATE_DEPENDENT_TOOLS
+    # above) get an extra key component that changes once a day, forcing a refetch
+    # instead of serving yesterday's "most recent" race.
+    date_component = date.today().isoformat() if task_name in DATE_DEPENDENT_TOOLS else None
+    cache_key = (task_name, tuple(sorted(args.items())), date_component)
+
+    if cacheable:
+        with _result_cache_lock:
+            if cache_key in _result_cache:
+                # Only successes are ever stored, so a hit is always success=True.
+                # deepcopy: the cache is cross-request and lives for the process
+                # lifetime, so handing out the stored dict by reference would let
+                # any consumer that mutates ToolResult["data"] in place silently
+                # corrupt every later hit. No consumer does today, but the cost of
+                # a copy is nothing next to the fetch it replaces.
+                return ToolResult(
+                    tool_name=task_name,
+                    success=True,
+                    data=copy.deepcopy(_result_cache[cache_key]),
+                    cached=True,
+                )
+
+    result = tool.invoke(args)
+    success = "error" not in result
+
+    if cacheable and success:
+        with _result_cache_lock:
+            # deepcopy on the way in too: the caller keeps `result` and may pass it
+            # on or (in principle) mutate it, so the cache must hold its own private
+            # copy rather than the same object the miss caller received.
+            _result_cache[cache_key] = copy.deepcopy(result)
+
+    return ToolResult(tool_name=task_name, success=success, data=result, cached=False)
+
+
+def _invoke_tool(tool: Any, task_name: str, race_info: dict) -> ToolResult:
+    """Invoke a single tool with arguments derived from race_info; never raises."""
     try:
         args = _build_tool_args(task_name, race_info)
         if args is None:
@@ -246,41 +298,21 @@ def _invoke_tool(tool: Any, task_name: str, race_info: dict) -> ToolResult:
                 cached=False,
             )
 
-        cacheable = task_name in CACHEABLE_TOOLS
-        # The date belongs in the key, not the args: `_build_tool_args` stays a pure
-        # function of race_info, and the three date-dependent tools (see
-        # DATE_DEPENDENT_TOOLS above) get an extra key component that changes once a
-        # day, forcing a refetch instead of serving yesterday's "most recent" race.
-        date_component = date.today().isoformat() if task_name in DATE_DEPENDENT_TOOLS else None
-        cache_key = (task_name, tuple(sorted(args.items())), date_component)
+        outcome = _invoke_with_cache(tool, task_name, args)
 
-        if cacheable:
-            with _result_cache_lock:
-                if cache_key in _result_cache:
-                    # Only successes are ever stored, so a hit is always success=True.
-                    # deepcopy: the cache is cross-request and lives for the process
-                    # lifetime, so handing out the stored dict by reference would let
-                    # any consumer that mutates ToolResult["data"] in place silently
-                    # corrupt every later hit. No consumer does today, but the cost of
-                    # a copy is nothing next to the fetch it replaces.
-                    return ToolResult(
-                        tool_name=task_name,
-                        success=True,
-                        data=copy.deepcopy(_result_cache[cache_key]),
-                        cached=True,
-                    )
+        # Pre-season fallback, and only that. A season that has not run yet has no
+        # standings to report, so last year's final classification is the sensible
+        # substitute. Keyed off the structural `reason` marker rather than the error
+        # text: a transport failure (an HTTP 429, say) must NOT fall back, because
+        # serving last season's table labelled as current is worse than serving the
+        # error, which the synthesizer already knows how to omit.
+        if (
+            task_name == "get_championship_standings"
+            and outcome["data"].get("reason") == SEASON_NOT_STARTED
+        ):
+            outcome = _invoke_with_cache(tool, task_name, {"year": race_info["historical_year"]})
 
-        result = tool.invoke(args)
-        success = "error" not in result
-
-        if cacheable and success:
-            with _result_cache_lock:
-                # deepcopy on the way in too: the caller keeps `result` and may pass it
-                # on or (in principle) mutate it, so the cache must hold its own private
-                # copy rather than the same object the miss caller received.
-                _result_cache[cache_key] = copy.deepcopy(result)
-
-        return ToolResult(tool_name=task_name, success=success, data=result, cached=False)
+        return outcome
     except Exception as exc:
         logger.exception("Tool '%s' raised an unexpected exception: %s", task_name, exc)
         return ToolResult(
