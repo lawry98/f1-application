@@ -44,7 +44,7 @@ export default function CreditsPage() {
   const licenceTerms = readLicenceTerms();
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white">
+    <main className="min-h-screen bg-zinc-950 text-white">
       <div className="container mx-auto max-w-4xl px-4 py-16">
         <h1 className="mb-3 text-4xl font-bold">
           <span className="text-f1-red">Credits</span> &amp; Attributions
@@ -242,6 +242,6 @@ export default function CreditsPage() {
           </Link>
         </div>
       </div>
-    </div>
+    </main>
   );
 }
