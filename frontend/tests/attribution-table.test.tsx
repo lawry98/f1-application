@@ -71,12 +71,42 @@ describe('AttributionTable', () => {
   });
 
   // The subject cell beside the thumbnail is the row's accessible name; a duplicate alt would be
-  // announced twice.
+  // announced twice. Asserting the count first keeps this from passing vacuously if every
+  // thumbnail vanished.
   it('leaves the thumbnails out of the accessibility tree', () => {
     const { container } = renderDrivers();
-    for (const img of Array.from(container.querySelectorAll('img'))) {
+    const imgs = Array.from(container.querySelectorAll('img'));
+    expect(imgs).toHaveLength(22);
+    for (const img of imgs) {
       expect(img.getAttribute('alt')).toBe('');
     }
+  });
+
+  // Pins the sizing triple the aspect-ratio rule depends on: photographs are a fixed square,
+  // object-cover crop; logos are height-driven, object-contain, with a responsive max-width cap
+  // (72px below `sm`, 160px at `sm`+) so a wide wordmark clears the 16px legibility floor once
+  // there is room, without reopening the 390px horizontal-overflow this table was rebalanced to
+  // close. Neither variant's classes are guarded anywhere else — a browser check can see the
+  // painted result but not which class produced it.
+  it('sizes photograph thumbnails as a fixed square crop', () => {
+    const { container } = renderDrivers();
+    const img = container.querySelector('img');
+    expect(img).not.toBeNull();
+    expect(img?.className).toContain('h-8');
+    expect(img?.className).toContain('w-8');
+    expect(img?.className).toContain('object-cover');
+    expect(img?.className).not.toContain('object-contain');
+  });
+
+  it('sizes logo thumbnails by height with a responsive max-width cap', () => {
+    const { container } = renderLogos();
+    const img = container.querySelector('img');
+    expect(img).not.toBeNull();
+    expect(img?.className).toContain('h-5');
+    expect(img?.className).toContain('w-auto');
+    expect(img?.className).toContain('max-w-[72px]');
+    expect(img?.className).toContain('sm:max-w-[160px]');
+    expect(img?.className).toContain('object-contain');
   });
 
   it('shows each row its author verbatim, derivative-work credits included', () => {
@@ -86,14 +116,20 @@ describe('AttributionTable', () => {
     ).toBeInTheDocument();
   });
 
-  it('links a source to Commons under the full file title as its accessible name', () => {
+  // WCAG 2.5.3 Label in Name: the visible word ("Commons") must be contained in the accessible
+  // name, so the name is prefixed with it rather than being the bare title. The full title still
+  // has to be present verbatim — a truncated or missing title must still fail this.
+  it('links a source to Commons, naming Commons and the full file title in its accessible name', () => {
     renderDrivers();
-    const link = screen.getByRole('link', { name: /^Alonso-68 \(24710447098\)\.jpg$/ });
+    const link = screen.getByRole('link', {
+      name: /^Commons: Alonso-68 \(24710447098\)\.jpg$/,
+    });
     expect(link).toHaveAttribute(
       'href',
       'https://commons.wikimedia.org/wiki/File:Alonso-68_(24710447098).jpg',
     );
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+    expect(link).toHaveAttribute('title', 'Alonso-68 (24710447098).jpg');
   });
 
   it('links a licence to its terms when they are known', () => {

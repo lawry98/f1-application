@@ -1432,7 +1432,16 @@ JSON.stringify({
   shortestLogo: Math.min(
     ...Array.from(document.images)
       .filter((i) => i.currentSrc.includes('/logos/'))
-      .map((i) => Math.round(i.getBoundingClientRect().height)),
+      // `getBoundingClientRect().height` is the <img> BOX, which `h-5` pins to 20px
+      // unconditionally regardless of `max-w` or `object-fit` — it is a tautology, not a
+      // measurement of the aspect-ratio rule. The painted mark's height is capped by whichever
+      // of the box's height or (box width / natural aspect ratio) is smaller, since
+      // `object-contain` letterboxes rather than crops.
+      .map((i) => {
+        const box = i.getBoundingClientRect();
+        const naturalRatio = i.naturalWidth / i.naturalHeight;
+        return Math.round(Math.min(box.height, box.width / naturalRatio));
+      }),
   ),
   sections: ['driver-photographs', 'team-logos'].map((id) => !!document.getElementById(id)),
 })
@@ -1445,7 +1454,7 @@ Pass conditions, all four:
 | `viewport` | the width and height just set — **different numbers at each step** |
 | `overflow` | `scrollWidth <= innerWidth`. The five-column table at 390px exists to satisfy this |
 | `images` / `painted` | 32 and 32 |
-| `shortestLogo` | ≥ 16 — this is the aspect-ratio rule, and jsdom can never check it |
+| `shortestLogo` | ≥ 16 at `sm` and up — this is the painted height of the mark inside its box, not the box itself. Below `sm` the cap is a documented 72px limit and the floor is not reachable; see `attribution-table.tsx`'s `THUMBNAIL.logo.image` comment. |
 
 - [ ] **Step 3: Run axe at each viewport**
 

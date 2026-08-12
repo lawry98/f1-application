@@ -16,6 +16,12 @@ export const metadata: Metadata = {
     'Attribution for the photographs, logos, 3D model, data and technologies used in the F1 Briefing Agent.',
 };
 
+// Pins the route to static rendering. The "a malformed credit row fails the build" guarantee
+// only holds if this page is prerendered; a future dynamic opt-in (force-dynamic, a
+// searchParams prop, a dynamic parent layout) would silently turn every throw in lib/credits.ts
+// from a loud CI failure into a request-time 500 on a public page.
+export const dynamic = 'force-static';
+
 /** The link treatment /teams uses. */
 const LINK =
   'rounded text-zinc-300 underline decoration-zinc-700 underline-offset-2 transition-colors duration-200 hover:text-white hover:decoration-zinc-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500';

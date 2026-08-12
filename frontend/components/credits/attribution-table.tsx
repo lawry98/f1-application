@@ -60,7 +60,16 @@ const THUMBNAIL = {
     column: 'w-[21%]',
     width: 72,
     height: 20,
-    image: 'h-5 w-auto max-w-[72px] object-contain',
+    // `max-w-[72px]` alone paints Aston Martin's 9.48:1 wordmark at ~7.6px and McLaren's 6.78:1
+    // at ~10.6px — both under the 16px legibility floor, because `object-contain` letterboxes a
+    // wide mark inside a fixed-height box once the width clamp wins. `sm:max-w-[160px]` widens
+    // the cap where the Asset column has room (~181px at 1440px, ~150px at 1152px), which clears
+    // 16px for every logo at `sm` and up (Aston Martin: 160 / 9.48 ≈ 16.9px). Below `sm` the
+    // Asset column is only ~75px wide with five columns and no scroll container allowed, so the
+    // 16px floor is genuinely unreachable there — Aston Martin paints 72 / 9.48 ≈ 7.6px at 390px.
+    // That is a documented limit, not an oversight: widening the base cap reopens the horizontal
+    // overflow this table was rebalanced to close (see the `THUMBNAIL` comment above).
+    image: 'h-5 w-auto max-w-[72px] sm:max-w-[160px] object-contain',
     // No horizontal padding: freeing the tile's 16px of `px-2` for the column's own margin
     // against it is what lets Subject/Author/Licence/Source grow below. See their comments.
     tile: 'rounded bg-zinc-900 py-1',
@@ -179,13 +188,17 @@ export function AttributionTable({
                     rather than the column text — nothing legible fits five columns at 390px.
                     Below `sm` the visible word is dropped to an arrow only: at 390px this cell
                     was the reason Subject/Author had to stay narrow enough to break driver and
-                    team names mid-word. The `aria-label` already carries the full title, so the
-                    accessible name and the `href` are unchanged either way. */}
+                    team names mid-word. The accessible name is prefixed with the visible word
+                    ("Commons: …") so the visible label is contained in the accessible name —
+                    WCAG 2.5.3 Label in Name — and `title` surfaces the same title to a sighted
+                    reader on hover, which several of the CC BY/BY-SA 2.0 rows' licence terms ask
+                    for. The `href` is unchanged either way. */}
                 <a
                   href={row.sourceUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  aria-label={row.sourceTitle}
+                  aria-label={`Commons: ${row.sourceTitle}`}
+                  title={row.sourceTitle}
                   className={LINK}
                 >
                   <span className="hidden sm:inline">Commons </span>
