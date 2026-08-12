@@ -7,7 +7,10 @@ import {
   MIN_CONTRAST,
   portraitCaptionBackdrop,
   portraitCaptionColor,
+  portraitDissolve,
   portraitScrim,
+  PORTRAIT_DISSOLVE_ALPHA,
+  PORTRAIT_SCRIM_ALPHA,
   PORTRAIT_SCRIM_FADE_PX,
   PORTRAIT_SCRIM_TEXT_INSET,
 } from '@/lib/team-utils';
@@ -98,6 +101,23 @@ describe('DriverPortrait', () => {
     expect(caption.style.background).toContain(`${PORTRAIT_SCRIM_FADE_PX}px`);
     expect(parseFloat(caption.style.paddingTop)).toBe(PORTRAIT_SCRIM_TEXT_INSET);
     expect(PORTRAIT_SCRIM_TEXT_INSET).toBeGreaterThan(PORTRAIT_SCRIM_FADE_PX);
+  });
+
+  it('paints its dissolve from the shared gradient, not a Tailwind opacity suffix', () => {
+    const { container } = render(<DriverPortrait driver={leclerc} team={ferrari} />);
+    const dissolve = container.querySelector('[data-testid="portrait-dissolve"]') as HTMLElement;
+    expect(dissolve).not.toBeNull();
+    // No `.replace()` here, unlike the scrim test two blocks down. jsdom drops `to bottom`
+    // because it is the CSS default direction; `to top` is not the default and survives.
+    expect(dissolve.style.background).toBe(portraitDissolve());
+  });
+
+  // The two darkenings are anchored to the same bottom edge. The scrim is the one that backs the
+  // caption and carries the AA guarantee, so the dissolve has to stay under it — otherwise the
+  // composite behind the text has a second contributor that portraitCaptionBackdrop does not
+  // model, and the number the tests assert stops describing the page.
+  it('keeps the dissolve weaker than the scrim it now sits beneath', () => {
+    expect(PORTRAIT_DISSOLVE_ALPHA).toBeLessThan(PORTRAIT_SCRIM_ALPHA);
   });
 
   it('keeps the fallback latched when the same failed driver is re-rendered', () => {

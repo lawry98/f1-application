@@ -26,8 +26,19 @@ optional text overlay.
 - `hideOverlay?: boolean` — hide the "F1 Briefing Agent" text overlay
 - `className?: string` — container sizing (defaults to `h-[600px]`)
 
-**Consumers:** `components/teams/sticky-car-viewer.tsx` and
-`components/teams/inspect-modal.tsx` (both pass `hideOverlay` and a live `teamColor`).
+**Consumer:** `components/teams/inspect-modal.tsx`, and only that. The teams page's right rail
+deliberately has **no** canvas: removing it moved the entire `three` / `@react-three/fiber` bundle
+off page load and behind the Inspect click. Do not add one back.
+
+**Frame loop.** `frameloop` is state, not a constant: `never` while the document is hidden,
+`demand` under `prefers-reduced-motion` — where the car is deliberately still, and the in-canvas
+`Invalidator` is what makes the one frame it does draw correct — and `always` otherwise. A literal
+`frameloop="demand"` in the normal case would freeze the car, because `RealCar`'s rotation and
+float run through `useFrame`. `Invalidator` covers `RealCar`'s imperative
+`material.color.set(teamColor)`, but that call is dormant today: the material filter matches
+`body`/`Body`/`paint`, and the GLB's actual materials are `Livery`/`RearLight`/`Wheels`/`WheelCovers`,
+so nothing matches and the car never recolours yet — `Invalidator` invalidates for a change that
+never happens until the filter is fixed.
 
 ### F1CarShowcase (`f1-car-showcase.tsx`, default export)
 

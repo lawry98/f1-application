@@ -30,6 +30,12 @@ import {
   PORTRAIT_SCRIM_ALPHA,
   PORTRAIT_SCRIM_FADE_PX,
   PORTRAIT_SCRIM_TEXT_INSET,
+  TRAY_FILL,
+  TRAY_ALPHA,
+  trayValueBackdrop,
+  trayValueColor,
+  PORTRAIT_DISSOLVE_ALPHA,
+  portraitDissolve,
 } from '@/lib/team-utils';
 import { TEAMS, TEAM_MAP, STANDINGS_AS_OF } from '@/data/teams-data';
 
@@ -560,5 +566,70 @@ describe('standings data', () => {
 
   it('dates its own numbers rather than implying they are live', () => {
     expect(STANDINGS_AS_OF).toMatch(/Round 11/);
+  });
+});
+
+describe('trayValueColor', () => {
+  it('clears AA on the tray’s own backdrop for every team', () => {
+    expect(TEAMS).toHaveLength(11);
+    const backdrop = trayValueBackdrop();
+    for (const team of TEAMS) {
+      expect(
+        contrastRatio(trayValueColor(team.color), backdrop),
+        `${team.shortName} tray value ${trayValueColor(team.color)} on ${backdrop}`,
+      ).toBeGreaterThanOrEqual(MIN_CONTRAST);
+    }
+  });
+
+  // The reason this helper exists at all, stated as a test. `readableOnDark` stops at the first
+  // lightness step clearing 4.5:1 on bare zinc-950, so it has no headroom for any layer on top.
+  // The tray is zinc-900 at 0.6 over the page, which computes to #121215 — lighter than the page —
+  // and a colour sitting at exactly 4.5:1 on #09090b lands at ~4.23:1 there. Ferrari is the
+  // worked example; every livery that needed lifting behaves the same way.
+  it('is a different answer from readableOnDark, because the tray is not the page', () => {
+    const backdrop = trayValueBackdrop();
+    expect(contrastRatio(readableOnDark('#dc0000'), backdrop)).toBeLessThan(MIN_CONTRAST);
+    expect(contrastRatio(trayValueColor('#dc0000'), backdrop)).toBeGreaterThanOrEqual(MIN_CONTRAST);
+  });
+
+  it('leaves a livery that already clears the bar alone', () => {
+    expect(trayValueColor('#ffffff')).toBe('#ffffff');
+  });
+});
+
+describe('the tray backdrop', () => {
+  // A Tailwind class cannot be built from a runtime value, so the component keeps the literal
+  // `bg-zinc-900/60` and these two constants carry the same numbers for the contrast maths.
+  // teams-compare-tray.test.tsx pins the class to them from the other side.
+  it('is authored as zinc-900 at the opacity the component uses', () => {
+    expect(TRAY_FILL).toBe('#18181b');
+    expect(TRAY_ALPHA).toBe(0.6);
+  });
+
+  it('is lighter than the page, which is the whole problem', () => {
+    expect(contrastRatio(trayValueBackdrop(), '#ffffff')).toBeLessThan(
+      contrastRatio(DARK_BG, '#ffffff'),
+    );
+  });
+});
+
+describe('portraitDissolve', () => {
+  // The dissolve and the caption scrim now overlap: the scrim is anchored to the same bottom edge
+  // the dissolve is darkest at, so before this they stacked to near-opaque and ate the photo.
+  // The scrim is what backs the caption and carries the AA guarantee, so it must stay the
+  // stronger of the two — the dissolve is only there to soften the portrait's bottom edge.
+  it('is weaker than the scrim that actually backs the caption', () => {
+    expect(PORTRAIT_DISSOLVE_ALPHA).toBeLessThan(PORTRAIT_SCRIM_ALPHA);
+  });
+
+  it('fades to fully transparent at the top of the portrait', () => {
+    expect(portraitDissolve()).toMatch(/rgba\(9, 9, 11, 0\) 100%/);
+  });
+
+  // jsdom's cssstyle cannot parse a gradient containing calc() — it rewrites the whole declaration
+  // to `background-image: none`, which looks exactly like a component that never set it. Same
+  // reason portraitScrim() is written downwards from 0px.
+  it('contains no calc(), which jsdom cannot parse', () => {
+    expect(portraitDissolve()).not.toMatch(/calc\(/);
   });
 });

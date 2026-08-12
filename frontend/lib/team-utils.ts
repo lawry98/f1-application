@@ -122,10 +122,12 @@ export function blendOver(hex: string, alpha: number, bg: string): string {
 const liftCache = new Map<string, string>();
 
 /**
- * Shared mechanism behind `readableOnDark`, `ringOnDark` and `seamLabelColor`: lighten `hex`
- * in HSL, one step of lightness at a time, until it clears `target` contrast against `bg`,
- * then return the first candidate that does. Caches on `` `${bg}:${target}:${hex}` `` so
- * callers using different targets or different backgrounds don't collide.
+ * Shared mechanism behind every lift-until-readable helper in this module —
+ * `readableOnDark`, `ringOnDark`, `seamLabelColor`, `railStandingColor`, `sectionStandingColor`,
+ * `portraitCaptionColor`, and `trayValueColor`: lighten `hex` in HSL, one step of lightness at a
+ * time, until it clears `target` contrast against `bg`, then return the first candidate that does.
+ * Caches on `` `${bg}:${target}:${hex}` `` so callers using different targets or different
+ * backgrounds don't collide.
  *
  * Lightness is raised in HSL rather than blended toward white so hue and saturation survive —
  * the result still reads as the brand colour instead of washing out to grey.
@@ -169,6 +171,17 @@ export function readableOnDark(hex: string): string {
 }
 
 /**
+ * Below this point, five call sites each pair their own backdrop function with a lift-until-
+ * readable colour function — `seamLabelColor`, `railStandingColor`, `sectionStandingColor`,
+ * `portraitCaptionColor`, `trayValueColor`. The reason all five exist rather than reusing
+ * `readableOnDark` is the same every time and stated once here, not per function: `readableOnDark`
+ * clears 4.5:1 on bare `zinc-950` *by construction* — it stops at the first lightness step that
+ * clears there — so it has zero headroom for any wash, highlight, scrim or card sitting between
+ * the glyphs and the page. What differs per site, and is worth restating there, is the measured
+ * numbers and *which* element keeps its authored strength while the text moves instead.
+ */
+
+/**
  * Opacity of the seam wash where it is strongest — the gradient's first stop, at the top of
  * the band. Authored as the `4d` suffix so the gradient string and the contrast maths cannot
  * drift apart; change it in one place and both follow.
@@ -196,11 +209,10 @@ export function seamLabelBackdrop(hex: string): string {
 /**
  * A team colour lifted far enough to clear WCAG AA as the seam's small caps label.
  *
- * `readableOnDark` is the wrong tool here and measurably so: judged against the background
- * the label really has, it leaves seven of the eleven liveries between 3.58 and 4.03 —
- * Audi at 3.58, Williams 3.60, Aston Martin 3.63, Cadillac 3.70, Ferrari 3.75, Red Bull
- * 3.80, Racing Bulls 3.98. The wash is what the seam exists for, so the wash keeps its
- * authored strength and the *label* moves instead.
+ * Judged against the background the label really has, `readableOnDark` leaves seven of the
+ * eleven liveries between 3.58 and 4.03 — Audi at 3.58, Williams 3.60, Aston Martin 3.63,
+ * Cadillac 3.70, Ferrari 3.75, Red Bull 3.80, Racing Bulls 3.98. The wash is what the seam
+ * exists for, so the wash keeps its authored strength and the *label* moves instead.
  */
 export function seamLabelColor(hex: string): string {
   return liftUntilContrast(hex, MIN_CONTRAST, seamLabelBackdrop(hex));
@@ -228,11 +240,10 @@ export function railStandingBackdrop(): string {
 /**
  * A team colour lifted far enough to clear AA as the active rail row's standings line.
  *
- * `readableOnDark` is the wrong tool for the same reason it was wrong for the seam: judged
- * against the highlight rather than the page, it leaves seven of the eleven liveries short —
- * Cadillac at 3.93, Audi 3.94, Racing Bulls 3.95, Aston Martin 3.97, Williams 3.99, Red Bull
- * 4.04, Ferrari 4.02. The highlight is what marks the row as current, so the highlight keeps
- * its authored strength and the *text* moves.
+ * Judged against the highlight rather than the page, `readableOnDark` leaves seven of the eleven
+ * liveries short — Cadillac at 3.93, Audi 3.94, Racing Bulls 3.95, Aston Martin 3.97, Williams
+ * 3.99, Red Bull 4.04, Ferrari 4.02. The highlight is what marks the row as current, so the
+ * highlight keeps its authored strength and the *text* moves.
  */
 export function railStandingColor(hex: string): string {
   return liftUntilContrast(hex, MIN_CONTRAST, railStandingBackdrop());
@@ -332,6 +343,71 @@ export function portraitCaptionBackdrop(): string {
  */
 export function portraitCaptionColor(hex: string): string {
   return liftUntilContrast(hex, MIN_CONTRAST, portraitCaptionBackdrop());
+}
+
+/**
+ * Tailwind `zinc-900`, and the opacity the compare tray is authored at — `bg-zinc-900/60`.
+ *
+ * Same arrangement as `RAIL_ACTIVE_FILL` / `RAIL_ACTIVE_ALPHA` above, and for the same reason: a
+ * Tailwind class cannot be built from a runtime value, so the component keeps the literal and the
+ * tests pin the two together from both sides.
+ */
+export const TRAY_FILL = '#18181b';
+export const TRAY_ALPHA = 0.6;
+
+/**
+ * The opaque colour behind a value in the compare tray. The tray is a card, not the page: a
+ * `zinc-900` wash at `TRAY_ALPHA` over `zinc-950` flattens to `#121215`, which is *lighter* than
+ * `zinc-950` and therefore a harder background to read on, not an easier one.
+ */
+export function trayValueBackdrop(): string {
+  return blendOver(TRAY_FILL, TRAY_ALPHA, DARK_BG);
+}
+
+/**
+ * A team colour lifted far enough to clear AA as the tray's leading value.
+ *
+ * Fifth call site of the same lesson. `readableOnDark` clears 4.5:1 on bare `zinc-950` *by
+ * construction* — it returns the first lightness step that clears, so there is no headroom above
+ * the bar — and a colour sitting at exactly 4.5:1 on `#09090b` measures ~4.23:1 on `#121215`.
+ * Every livery that needed lifting at all fails here; the ones already above the bar (Haas's
+ * white) pass through untouched.
+ */
+export function trayValueColor(hex: string): string {
+  return liftUntilContrast(hex, MIN_CONTRAST, trayValueBackdrop());
+}
+
+/**
+ * Strength of the portrait's bottom-edge dissolve, at its darkest.
+ *
+ * This used to be a Tailwind `from-zinc-950 via-zinc-950/40` gradient reaching **full** `zinc-950`
+ * at the bottom edge — authored before the caption had a scrim of its own. The scrim landed on
+ * 2026-08-11 anchored to that same edge, so the two now stack: 0.9 over 1.0 is opaque, and the
+ * bottom third of every headshot went black.
+ *
+ * The number is bounded rather than chosen freely: the scrim is what backs the caption and carries
+ * the AA guarantee, so the dissolve must stay the *weaker* of the two, or it becomes a second
+ * uncontrolled contributor to a composite `portraitCaptionBackdrop` already claims to describe.
+ * Anything under `PORTRAIT_SCRIM_ALPHA` is safe for contrast — a darker composite only ever raises
+ * the real ratio above the asserted worst case — so this is a visual judgement inside a hard
+ * ceiling.
+ */
+export const PORTRAIT_DISSOLVE_ALPHA = 0.6;
+
+/**
+ * The portrait's bottom-edge dissolve: strongest at the bottom, gone by the top.
+ *
+ * Written with explicit `rgba()` stops rather than Tailwind's `from-`/`via-`/`to-` for the same
+ * reason `portraitScrim` is: the alpha has to be one number shared with the contrast maths, and a
+ * Tailwind opacity suffix cannot be built from a runtime value. No `calc()` — jsdom's CSS parser
+ * silently discards a whole gradient declaration that contains one.
+ */
+export function portraitDissolve(): string {
+  const [r, g, b] = parseHex(DARK_BG);
+  const rgba = (a: number) => `rgba(${r}, ${g}, ${b}, ${a})`;
+  return `linear-gradient(to top, ${rgba(PORTRAIT_DISSOLVE_ALPHA)} 0%, ${rgba(
+    PORTRAIT_DISSOLVE_ALPHA * 0.4,
+  )} 45%, ${rgba(0)} 100%)`;
 }
 
 /** Whether a livery is too bright to use as a surface in this dark UI. */

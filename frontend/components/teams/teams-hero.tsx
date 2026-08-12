@@ -13,6 +13,30 @@ import { TEAMS } from '@/data/teams-data';
 import { TeamLogo } from './team-logo';
 import { TeamMonogramTile } from './team-monogram-tile';
 
+/**
+ * The hero's entrance, in one place.
+ *
+ * Item 8 asks for the existing stagger to be tightened, which is only a real change if it is a
+ * number. It was: badge 0.1, subtitle 0.4, CTA 0.8, scroll cue 1.4, and a 0.06s step across
+ * eleven livery columns — so the last element of a *hero* arrived two seconds in, well after a
+ * visitor who is going to scroll has scrolled. Everything below finishes inside a second and the
+ * wall lands before the CTA rather than behind it.
+ *
+ * Exported because "tightened" is otherwise unverifiable: `teams-hero.test.tsx` asserts the
+ * ordering and the ceiling instead of pinning eleven literals that would drift.
+ */
+export const HERO_TIMING = {
+  badge: 0.05,
+  titleDuration: 0.6,
+  subtitleDelay: 0.25,
+  subtitleDuration: 0.5,
+  cta: 0.5,
+  cue: 0.9,
+  cueDuration: 0.4,
+  wallStep: 0.04,
+  wallDuration: 0.5,
+} as const;
+
 interface TeamsHeroProps {
   onSelectTeam: (id: string) => void;
 }
@@ -54,7 +78,12 @@ export function TeamsHero({ onSelectTeam }: TeamsHeroProps) {
             transition={
               reducedMotion
                 ? { duration: 0 }
-                : { type: 'spring', duration: 0.6, bounce: 0, delay: i * 0.06 }
+                : {
+                    type: 'spring',
+                    duration: HERO_TIMING.wallDuration,
+                    bounce: 0,
+                    delay: i * HERO_TIMING.wallStep,
+                  }
             }
             style={{
               background: `linear-gradient(to top, ${team.color}22, transparent 65%)`,
@@ -70,7 +99,7 @@ export function TeamsHero({ onSelectTeam }: TeamsHeroProps) {
 
       {/* Content */}
       <div className="relative z-10 flex flex-col items-center gap-6 px-6 text-center">
-        <BlurFade delay={0.1} inView>
+        <BlurFade delay={HERO_TIMING.badge} inView>
           <Badge variant="outline" className="border-zinc-600 text-zinc-400">
             2026 Season · 11 Constructors
           </Badge>
@@ -80,7 +109,7 @@ export function TeamsHero({ onSelectTeam }: TeamsHeroProps) {
           as="h1"
           animation={reducedMotion ? 'fadeIn' : 'blurInUp'}
           by="character"
-          duration={0.8}
+          duration={HERO_TIMING.titleDuration}
           startOnView
           once
           className="text-[clamp(3.5rem,12vw,9rem)] font-black uppercase leading-none tracking-[0.15em] text-white"
@@ -92,8 +121,8 @@ export function TeamsHero({ onSelectTeam }: TeamsHeroProps) {
           as="p"
           animation={reducedMotion ? 'fadeIn' : 'blurInUp'}
           by="word"
-          delay={0.4}
-          duration={0.6}
+          delay={HERO_TIMING.subtitleDelay}
+          duration={HERO_TIMING.subtitleDuration}
           startOnView
           once
           className="max-w-md text-lg font-light uppercase tracking-widest text-zinc-400"
@@ -101,7 +130,7 @@ export function TeamsHero({ onSelectTeam }: TeamsHeroProps) {
           2026 F1 Constructor Profiles
         </TextAnimate>
 
-        <BlurFade delay={reducedMotion ? 0 : 0.8} inView>
+        <BlurFade delay={reducedMotion ? 0 : HERO_TIMING.cta} inView>
           <Button
             size="lg"
             className="mt-4 gap-2 bg-f1-red text-white hover:bg-f1-red/90"
@@ -112,7 +141,7 @@ export function TeamsHero({ onSelectTeam }: TeamsHeroProps) {
               })
             }
           >
-            Explore Constructors
+            Explore {TEAMS.length} Constructors
             <ChevronRight className="h-4 w-4" />
           </Button>
         </BlurFade>
@@ -200,7 +229,7 @@ export function TeamsHero({ onSelectTeam }: TeamsHeroProps) {
           className="absolute bottom-10 left-1/2 -translate-x-1/2 text-zinc-500"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ delay: 1.4, duration: 0.6 }}
+          transition={{ delay: HERO_TIMING.cue, duration: HERO_TIMING.cueDuration }}
         >
           <motion.div
             animate={{ y: [0, 8, 0] }}
