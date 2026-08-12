@@ -151,9 +151,10 @@ export function readLogoCredits(): CreditRow[] {
   );
 }
 
-export function readMarqueNotes(): MarqueNote[] {
-  const where = 'public/logos/CREDITS.md';
-  return tableRows(readFileSync(LOGOS_CREDITS, 'utf8'), MARQUE_HEADER, where).map((row) => {
+/** `| file | what it is | what it is missing |` rows, validated. Exported so malformed input can
+ * be exercised with inline markdown literals, the same way `parseCreditRows` is. */
+export function parseMarqueNotes(markdown: string, where: string): MarqueNote[] {
+  return tableRows(markdown, MARQUE_HEADER, where).map((row) => {
     const fileCell = row[0]!;
     const whatItIs = row[1]!;
     const whatItIsMissing = row[2]!;
@@ -169,6 +170,10 @@ export function readMarqueNotes(): MarqueNote[] {
   });
 }
 
+export function readMarqueNotes(): MarqueNote[] {
+  return parseMarqueNotes(readFileSync(LOGOS_CREDITS, 'utf8'), 'public/logos/CREDITS.md');
+}
+
 /**
  * Licence name → terms URL, from the "Licence texts" table.
  *
@@ -176,11 +181,13 @@ export function readMarqueNotes(): MarqueNote[] {
  * a row uses is in here: the driver rows say `CC0` where this table says `CC0 1.0`. That
  * disagreement lives in the source data and is left there — a licence with no entry renders as
  * plain text rather than a link.
+ *
+ * Exported as `parseLicenceTerms` so malformed input can be exercised with inline markdown
+ * literals, the same way `parseCreditRows` is.
  */
-export function readLicenceTerms(): Map<string, string> {
-  const where = 'public/drivers/CREDITS.md';
+export function parseLicenceTerms(markdown: string, where: string): Map<string, string> {
   const terms = new Map<string, string>();
-  for (const row of tableRows(readFileSync(DRIVERS_CREDITS, 'utf8'), TERMS_HEADER, where)) {
+  for (const row of tableRows(markdown, TERMS_HEADER, where)) {
     const name = row[0]!;
     const url = row[1]!.replace(/^</, '').replace(/>$/, '');
     if (!name) throw new Error(`${where}: licence terms row has an empty licence name`);
@@ -190,4 +197,8 @@ export function readLicenceTerms(): Map<string, string> {
     terms.set(name, url);
   }
   return terms;
+}
+
+export function readLicenceTerms(): Map<string, string> {
+  return parseLicenceTerms(readFileSync(DRIVERS_CREDITS, 'utf8'), 'public/drivers/CREDITS.md');
 }

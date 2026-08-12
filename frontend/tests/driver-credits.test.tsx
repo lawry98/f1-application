@@ -88,7 +88,7 @@ describe('driver photograph credits', () => {
     );
 
     const link = screen.getByRole('link', { name: /attribution and licence/i });
-    expect(link).toHaveAttribute('href', '/drivers/CREDITS.md');
+    expect(link).toHaveAttribute('href', '/credits#driver-photographs');
     // A real anchor with an href is in the tab order; nothing hides it from the a11y tree.
     expect(link.tagName).toBe('A');
     expect(link).not.toHaveAttribute('aria-hidden');

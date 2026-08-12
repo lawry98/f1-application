@@ -292,6 +292,14 @@ Vitest with jsdom, in `frontend/tests/`. A few things about them are not guessab
   It also stubs `scrollIntoView`, `scrollTo`, and `matchMedia` for the same reason — the teams
   page calls all three, and jsdom implements none of them. `matchMedia` reports no match, so
   components take their narrow branch unless a test overrides it.
+- **`next/image` renders two different `src` shapes, and a test that assumes one fails on the
+  other.** Next's default loader refuses to proxy an SVG without `dangerouslyAllowSVG`, so
+  `/logos/alpine.svg` stays literal while `/drivers/x.png` becomes
+  `/_next/image?url=%2Fdrivers%2Fx.png&w=64&q=75`. `tests/attribution-table.test.tsx` normalises
+  both before comparing. `/credits`' page component is *synchronous* despite being a server
+  component doing file I/O, which is the only reason RTL can render it at all — an `async` server
+  component cannot be rendered by RTL, and that is why the data, the table and the page are three
+  units.
 - **`AnimatePresence mode="wait"` makes content untestable.** The incoming child is held back
   behind the outgoing one's exit animation, which never resolves synchronously under jsdom, so
   `getByRole` finds nothing. Use it for swaps nobody asserts on; anywhere a test needs the new

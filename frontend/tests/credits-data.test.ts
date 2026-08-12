@@ -4,6 +4,8 @@ import { join } from 'node:path';
 
 import {
   parseCreditRows,
+  parseLicenceTerms,
+  parseMarqueNotes,
   readDriverCredits,
   readLicenceTerms,
   readLogoCredits,
@@ -119,6 +121,12 @@ describe('credit table parsing failures', () => {
     );
   });
 
+  it('throws on an empty subject', () => {
+    const empty =
+      '| `a.png` |  | [t](https://commons.wikimedia.org/wiki/File:t.jpg) | Author | CC BY 4.0 |';
+    expect(() => parseCreditRows(md(empty), header, 'x.md')).toThrow(/empty subject/);
+  });
+
   it('throws on an empty author', () => {
     const empty =
       '| `a.png` | A | [t](https://commons.wikimedia.org/wiki/File:t.jpg) |  | CC BY 4.0 |';
@@ -154,5 +162,41 @@ describe('credit table parsing failures', () => {
       '| `a.png` | a thing | another thing |',
     ].join('\n');
     expect(tableRows(twoTables, DRIVER_HEADER, 'x.md')).toHaveLength(1);
+  });
+});
+
+describe('marque note parsing failures', () => {
+  const header = ['File', 'What it is', 'What it is missing'];
+
+  function md(...rows: string[]): string {
+    return ['# doc', '', `| ${header.join(' | ')} |`, '|---|---|---|', ...rows, ''].join('\n');
+  }
+
+  it('throws when the file cell is not a backticked name', () => {
+    const bad = '| a.svg | a thing | another thing |';
+    expect(() => parseMarqueNotes(md(bad), 'x.md')).toThrow(/backticked name/);
+  });
+
+  it('throws on an empty cell', () => {
+    const empty = '| `a.svg` | a thing |  |';
+    expect(() => parseMarqueNotes(md(empty), 'x.md')).toThrow(/empty cell/);
+  });
+});
+
+describe('licence terms parsing failures', () => {
+  const header = ['Licence', 'Terms'];
+
+  function md(...rows: string[]): string {
+    return ['# doc', '', `| ${header.join(' | ')} |`, '|---|---|', ...rows, ''].join('\n');
+  }
+
+  it('throws on an empty licence name', () => {
+    const empty = '|  | <https://creativecommons.org/licenses/by/4.0/> |';
+    expect(() => parseLicenceTerms(md(empty), 'x.md')).toThrow(/empty licence name/);
+  });
+
+  it('throws when the terms URL is not https', () => {
+    const bad = '| CC BY 4.0 | <http://creativecommons.org/licenses/by/4.0/> |';
+    expect(() => parseLicenceTerms(md(bad), 'x.md')).toThrow(/no https terms URL/);
   });
 });
