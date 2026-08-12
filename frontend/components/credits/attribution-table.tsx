@@ -83,16 +83,29 @@ export function AttributionTable({
           <th scope="col" className={cn(thumbnail.column, LABEL, 'pb-2')}>
             <span className="sr-only">Asset</span>
           </th>
-          <th scope="col" className={cn('w-[30%]', LABEL, 'pb-2')}>
+          <th scope="col" className={cn('w-[15%]', LABEL, 'pb-2')}>
             {subjectLabel}
           </th>
-          <th scope="col" className={cn('w-[24%]', LABEL, 'pb-2')}>
+          {/* Sized for "Attributed to" (the logo table's authorLabel), not "Author" — "Attributed"
+              alone measures 83px at the 10px mobile size and doesn't have a wrap point, so a
+              column sized for the shorter "Author" overflowed into Licence's. 25% clears it. */}
+          <th scope="col" className={cn('w-[25%]', LABEL, 'pb-2')}>
             {authorLabel}
           </th>
-          <th scope="col" className={cn('w-[18%]', LABEL, 'pb-2')}>
+          {/* th labels don't get pr-3 like body cells do, so each column also has to fit its own
+              uppercase, tracking-[0.2em] header word with no wrap point: "Licence" alone measures
+              57px at the 10px mobile size, which the first pass at this rebalance (10%, i.e. 36px
+              at 390px) undershot — the header text overlapped "Source"'s. 17% clears it with
+              margin. */}
+          <th scope="col" className={cn('w-[17%]', LABEL, 'pb-2')}>
             Licence
           </th>
-          <th scope="col" className={cn(LABEL, 'pb-2')}>
+          {/* Explicit, not the table-fixed remainder: at the 88px-wide logo thumbnail column
+              and a 390px viewport, the old remainder shrank to ~12px and the un-breakable word
+              "Commons" overflowed the cell (and the page) by ~20-26px. 18% leaves ~52px of
+              content room after the cell's pr-3, over the ~48px "Commons ↗" needs at the 10px
+              mobile size. */}
+          <th scope="col" className={cn('w-[18%]', LABEL, 'pb-2')}>
             Source
           </th>
         </tr>
