@@ -90,9 +90,24 @@ const config: Config = {
           '0%': { transform: 'translateX(-100%)' },
           '100%': { transform: 'translateX(400%)' },
         },
+        // The marquee track holds its content twice, so it is 200% of the visible width and
+        // translating by half of itself lands the copy exactly where the original started —
+        // the loop point is therefore invisible. Translating by 100% instead would drag the
+        // whole track off screen and leave a gap for half the cycle.
+        'marquee-left': {
+          '0%': { transform: 'translateX(0)' },
+          '100%': { transform: 'translateX(-50%)' },
+        },
+        'marquee-right': {
+          '0%': { transform: 'translateX(-50%)' },
+          '100%': { transform: 'translateX(0)' },
+        },
       },
       animation: {
         sweep: 'sweep 1.6s linear infinite',
+        // Linear, because any easing on an infinite loop reads as a stutter at the seam.
+        'marquee-left': 'marquee-left 40s linear infinite',
+        'marquee-right': 'marquee-right 40s linear infinite',
       },
     },
   },
