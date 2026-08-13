@@ -86,16 +86,40 @@ describe('TeardownScene', () => {
     expect(bar).toHaveAttribute('aria-valuemax', '100');
   });
 
-  it('keeps the callout copy when the card becomes a corner marker', () => {
+  it('renders all four corner-marker callouts, numbered in order', () => {
     render(<TeardownScene />);
 
-    // The restyle replaced a bordered, blurred label card with a dot-and-leader marker. Both
-    // strings have to survive that — this is the assertion that proves the callout was re-set
-    // rather than quietly dropped.
+    // The original callout's copy is unchanged and must survive every restyle of its container —
+    // this is the assertion that proves it was re-set rather than quietly dropped.
     expect(screen.getByText('V6 Turbo Hybrid Power Unit')).toBeInTheDocument();
     expect(
       screen.getByText('1.6L V6 turbo-hybrid — over 1000 HP combined output'),
     ).toBeInTheDocument();
+
+    expect(screen.getByText('Front wing')).toBeInTheDocument();
+    expect(screen.getByText('Halo')).toBeInTheDocument();
+    expect(screen.getByText('Rear wing')).toBeInTheDocument();
+
+    // The numerals come from the array index, so they silently renumber if LABELS is reordered.
+    // Pinning them here means a reorder has to be deliberate: the sequence is front-to-back along
+    // the car and the scroll windows are staggered to match, so 03 must stay the power unit.
+    expect(screen.getByText('01')).toBeInTheDocument();
+    expect(screen.getByText('02')).toBeInTheDocument();
+    expect(screen.getByText('03')).toBeInTheDocument();
+    expect(screen.getByText('04')).toBeInTheDocument();
+  });
+
+  it('runs the rear two markers leftward so they cannot overflow the viewport', () => {
+    const { container } = render(<TeardownScene />);
+
+    // A marker is ~223px wide at desktop and ~173px at 390, where the car box is only 359px across.
+    // Anchored past roughly 70% of the car's width, a right-running marker pushes a horizontal
+    // scrollbar onto the whole page — which is a defect that actually shipped once, at 390, with a
+    // single marker. The mirrored variant is what makes four callouts possible at all, so the two
+    // rear ones must carry it. jsdom cannot measure the overflow, but it can hold the class
+    // contract that prevents it.
+    const mirrored = container.querySelectorAll('.flex-row-reverse');
+    expect(mirrored).toHaveLength(2);
   });
 
   it('renders the outro below the sequence', () => {
@@ -116,6 +140,7 @@ describe('TeardownScene', () => {
     expect(container.querySelector('div[style*="500vh"]')).not.toBeNull();
     expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument();
     expect(screen.getByText('V6 Turbo Hybrid Power Unit')).toBeInTheDocument();
+    expect(screen.getByText('Front wing')).toBeInTheDocument();
     expect(container.querySelector('#teardown-outro')).not.toBeNull();
   });
 });

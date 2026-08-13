@@ -26,6 +26,25 @@ const STATS = [
  * see SHARED-P4.md's contrast table), `body` is the descriptive sentence, `footer` the closing
  * strip.
  */
+/**
+ * The four road-car comparison figures, cited verbatim in the task brief and (per that brief) in
+ * the parent's commit message — do not recompute, round, or add a fifth. The downforce row is the
+ * conservative end of a 1000–1600 kg range that varies with setup and regulation era; it is low on
+ * purpose, per the brief, not an oversight (the same figure and the same caveat this branch's
+ * `f1_data_tools.py`/`CLAUDE.md` register applies to backend numbers — cite the source, don't
+ * "improve" it). `f1Unit` is the raised fragment rendered in a `<sup>` beside `f1Value`, mirroring
+ * `sup` on `MegaStat` — but this table is static (no count-up), so there's no `MegaStat` instance
+ * to actually reuse, just its visual idiom. `roadValue` is a full string that already carries its
+ * own unit (e.g. `'3.5 s'`) rather than a separate value/unit pair: the road-car column is
+ * deliberately the quieter foil, not a second loud numeral that needs the same split treatment.
+ */
+const COMPARISON_ROWS = [
+  { label: '0–100 km/h', f1Value: '2.6', f1Unit: 'S', roadValue: '3.5 s' },
+  { label: '100–0 km/h braking', f1Value: '15', f1Unit: 'M', roadValue: '32 m' },
+  { label: 'Downforce at 250 km/h', f1Value: '1000', f1Unit: 'KG', roadValue: 'near zero' },
+  { label: 'Power to weight', f1Value: '1300', f1Unit: 'HP/T', roadValue: '450 hp/t' },
+] as const;
+
 const SYSTEMS = [
   {
     kicker: '01 · Power unit',
@@ -69,11 +88,14 @@ const SYSTEMS = [
  *
  * Extended per the task brief to fix a reported bug: the section originally ended after the
  * closing paragraph and filled only about a quarter of the viewport below the docked car, leaving
- * a large band of empty `bg-zinc-950`. Two blocks were added below the original content (kept
+ * a large band of empty `bg-zinc-950`. Three blocks were added below the original content (kept
  * verbatim, per the brief): a second heading group over four `TicketCard`s describing the car's
- * systems, then a closing line and a `/briefing` CTA. Both reuse `id="teardown-outro-heading"` as
- * the section's sole `aria-labelledby` target — the new `h3` gets its own `id` for in-page
- * reachability but does not become a second landmark label, since a section has exactly one.
+ * systems, a road-car comparison table added in a later pass ("the scale" block — see its own
+ * comment below for why it's a `<table>`), then a closing line and a `/briefing` CTA with no
+ * heading of its own. The two new `h3`s (systems, scale) each get their own `id` for in-page
+ * reachability, but both keep pointing the section's sole `aria-labelledby` at the original
+ * `id="teardown-outro-heading"` `h2` — a section has exactly one accessible name, and neither new
+ * heading becomes a second landmark label.
  */
 export function TeardownOutro(): React.JSX.Element {
   return (
@@ -212,6 +234,113 @@ export function TeardownOutro(): React.JSX.Element {
               </TicketCard>
             ))}
           </div>
+        </div>
+
+        {/* "The scale" block — a road-car comparison, inserted here deliberately: the task brief
+            calls this the *third* block of the outro, sitting between the four systems
+            `TicketCard`s above and the closing line + CTA below, not appended after them. The
+            "Block 1"/"Block 2" labels on the comments above and below are left as written rather
+            than renumbered to "Block 1/2/3" — the brief says not to disturb those two blocks, and
+            a comment-only renumbering still touches content it named as off-limits. Same
+            `mt-20 lg:mt-28` beat as the systems block above: a new visual beat, not a continuation
+            of what's above it. */}
+        <div className="mt-20 lg:mt-28">
+          <div className="mb-16 max-w-2xl">
+            <p className="mb-4 flex items-center gap-2.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-500">
+              <span className="h-1.5 w-5 flex-shrink-0 bg-f1-red" aria-hidden="true" />
+              For scale
+            </p>
+            {/* `h3`, same reasoning as the systems block's `h3` above: the section's one
+                `aria-labelledby` stays on the original `h2` (see the file's top docstring); this
+                heading just needs its own `id` to be independently reachable. Sentence case typed
+                in the markup, `uppercase` doing the shouting, same mixed-type idiom as every other
+                heading on this branch. */}
+            <h3
+              id="teardown-outro-scale-heading"
+              className="font-display text-4xl uppercase leading-[0.95] tracking-tight text-ink lg:text-5xl"
+            >
+              The same job,{' '}
+              <span className="font-serif-display text-[1.05em] normal-case italic text-f1-red">
+                a different animal
+              </span>
+              .
+            </h3>
+          </div>
+
+          {/* A real <table>, not a <div> grid: this is genuinely tabular data — two named columns
+              (Formula 1, a road car) compared row-by-row across four fixed measures — and a
+              <table> gives that structure to assistive tech for free (`scope="col"`/`scope="row"`,
+              a screen reader's table-navigation commands) instead of reconstructing the same
+              relationships from ARIA on a grid of `<div>`s. The tradeoff is responsiveness, which
+              is why `table-fixed` plus explicit column widths is used instead of the default
+              `auto` table layout: `auto` sizes each column from its widest cell and can grow the
+              table wider than its container on a long value, `fixed` cannot — that is what keeps
+              three columns from forcing horizontal overflow at a 390px viewport (label column at
+              40%, each value column at 30%, comfortably inside a ~358px content width after the
+              container's `px-4`) without reaching for a horizontal scroll container, which the
+              brief asks not to invent. */}
+          <table className="w-full table-fixed border-collapse text-left">
+            <caption className="sr-only">
+              Formula 1 car compared with a fast road car across four performance measures
+            </caption>
+            <thead>
+              <tr className="border-b border-white/[0.07]">
+                {/* Corner cell: neither of the brief's two named columns is "row label", so this
+                    cell has no visible heading — but a <th> with literally no text content still
+                    has no accessible name, which some screen readers announce as a bare "blank" on
+                    every row. The sr-only span gives it one without adding visible copy the brief
+                    never asked for. */}
+                <th scope="col" className="w-[40%] pb-3">
+                  <span className="sr-only">Measure</span>
+                </th>
+                <th
+                  scope="col"
+                  className="w-[30%] pb-3 pr-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-400"
+                >
+                  Formula 1
+                </th>
+                <th
+                  scope="col"
+                  className="w-[30%] pb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-400"
+                >
+                  Road car
+                </th>
+              </tr>
+            </thead>
+            {/* `divide-y` on the body rows, a `border-b` on the header row above — two different
+                mechanisms for the same hairline, because `divide-y` only ever paints *between*
+                its own children and would draw nothing above the first body row. */}
+            <tbody className="divide-y divide-white/[0.07]">
+              {COMPARISON_ROWS.map((row) => (
+                <tr key={row.label}>
+                  {/* `scope="row"`, not a <td>: this cell names what the row is about (the
+                      measure), the same relationship `scope="col"` gives the two value columns
+                      above — a screen reader can announce "0–100 km/h, Formula 1, 2.6 S" from
+                      either header, which a bare <td> label would not offer. */}
+                  <th scope="row" className="py-4 pr-3 text-sm font-normal text-zinc-400">
+                    {row.label}
+                  </th>
+                  <td className="py-4 pr-3 font-display text-2xl text-ink lg:text-3xl">
+                    {row.f1Value}
+                    {/* Raised unit at `text-[0.5em]` per the brief — the same superscript idiom
+                        `MegaStat` uses (a sibling `<sup>` sharing the numeral's own font-size
+                        rather than the page default), just at the brief's own size rather than
+                        `mega-stat.tsx`'s `0.35em`: this is a static table value, not a counted
+                        `MegaStat`, so there's no shared component whose exact figure to inherit. */}
+                    <sup className="align-super text-[0.5em]">{row.f1Unit}</sup>
+                  </td>
+                  {/* Deliberately quieter than the F1 column per the brief: smaller (`text-sm`
+                      against the F1 column's `text-2xl`/`text-3xl`) and `zinc-500` rather than
+                      `text-ink` — the road car is the foil here, not the subject. `zinc-500` at
+                      this size is the shipped exception SHARED-P4.md's contrast table names
+                      ("fine at 12px+ regular body sizes"), not the 11px small-caps case where it
+                      fails 4.5:1. Never `f1-red`: every value in this table sits well under the
+                      24px floor that colour needs to clear WCAG on this background. */}
+                  <td className="py-4 text-sm text-zinc-500">{row.roadValue}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
 
         {/* Block 2: closing line + CTA. Same `mt-20 lg:mt-28` beat as block 1, separating this

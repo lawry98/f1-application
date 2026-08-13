@@ -27,6 +27,21 @@ const SYSTEM_KICKERS = [
 const SYSTEM_TITLES = ['V6 turbo-hybrid', 'Active wings', 'Carbon monocoque', '18-inch slicks'];
 const SYSTEM_FOOTERS = ['~1000 HP combined', 'Active aero', 'Monocoque + halo', 'Carbon discs'];
 
+/**
+ * The four road-car comparison rows, likewise copied out by hand — cited verbatim in the task
+ * brief and (per that brief) in the parent's commit message, so a future edit that rounds,
+ * recomputes, or drops one fails here rather than agreeing with whatever the component says.
+ * `ROW_UNITS` includes `'KG'` — the same unit `STAT_UNITS` already uses for "Minimum weight" —
+ * on purpose: the brief's downforce row and the existing minimum-weight stat are both genuinely
+ * measured in kilograms, so the page now has two independent, correct `'KG'` labels. That is
+ * exactly what breaks a singular `getByText('KG')`, which is why the stat-units assertion below
+ * was changed to `getAllByText`; see that test's comment.
+ */
+const ROW_LABELS = ['0–100 km/h', '100–0 km/h braking', 'Downforce at 250 km/h', 'Power to weight'];
+const ROW_F1_VALUES = ['2.6', '15', '1000', '1300'];
+const ROW_UNITS = ['S', 'M', 'KG', 'HP/T'];
+const ROW_ROAD_VALUES = ['3.5 s', '32 m', 'near zero', '450 hp/t'];
+
 describe('TeardownOutro', () => {
   describe('content survives', () => {
     it('renders the kicker', () => {
@@ -61,7 +76,14 @@ describe('TeardownOutro', () => {
         expect(screen.getAllByText(value).length).toBeGreaterThanOrEqual(1);
       }
       for (const unit of STAT_UNITS) {
-        expect(screen.getByText(unit)).toBeInTheDocument();
+        // `getAllByText`, not the singular `getByText` this started as: the road-car comparison
+        // table added later also carries a `'KG'` unit (its downforce row, genuinely also
+        // kilograms — see the `ROW_UNITS` comment above), so `'KG'` is no longer unique on the
+        // page. `getByText('KG')` now throws "multiple elements found" rather than failing on
+        // content, which is the kind of break the task brief anticipated ("existing assertions"
+        // can need updating when new content legitimately duplicates a string) without meaning
+        // the underlying check — "KG" is present — is any less true.
+        expect(screen.getAllByText(unit).length).toBeGreaterThanOrEqual(1);
       }
       for (const label of STAT_LABELS) {
         expect(screen.getByText(label)).toBeInTheDocument();
@@ -82,16 +104,30 @@ describe('TeardownOutro', () => {
       expect(screen.getByText('Under the bodywork')).toBeInTheDocument();
     });
 
-    it('renders the full h3 sentence despite it being split across spans', () => {
+    it('renders the full systems h3 sentence despite it being split across spans', () => {
       // Same reasoning as the h2 test above: the accent run ("one compromise") is its own <span>
       // so the serif/italic/red treatment applies to it alone, so a naive `getByText` against the
       // full sentence finds nothing. Normalising `textContent` proves the sentence reads correctly
-      // once the spans are flattened.
-      render(<TeardownOutro />);
-      const heading = screen.getByRole('heading', { level: 3 });
+      // once the spans are flattened. Selected by id, not `getByRole('heading', { level: 3 })` —
+      // there are now two h3s (this one and the scale block's below), so the role query alone is
+      // ambiguous and throws; the id pins down *which* h3 this assertion is about.
+      const { container } = render(<TeardownOutro />);
+      const heading = container.querySelector('#teardown-outro-systems-heading')!;
 
       expect(heading.textContent?.replace(/\s+/g, ' ').trim()).toBe(
         'Four systems, one compromise.',
+      );
+    });
+
+    it('renders the full scale h3 sentence despite it being split across spans', () => {
+      // The new h3 for this task, same split-across-spans shape as the other two headings in this
+      // file — the accent run ("a different animal") is its own <span> for the serif/italic/red
+      // treatment, so this asserts the flattened `textContent` rather than a naive `getByText`.
+      const { container } = render(<TeardownOutro />);
+      const heading = container.querySelector('#teardown-outro-scale-heading')!;
+
+      expect(heading.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+        'The same job, a different animal.',
       );
     });
 
@@ -109,6 +145,45 @@ describe('TeardownOutro', () => {
       }
     });
 
+    it('renders the third kicker, "For scale"', () => {
+      render(<TeardownOutro />);
+      expect(screen.getByText('For scale')).toBeInTheDocument();
+    });
+
+    it('renders all four comparison rows — labels, F1 values, units and road-car values verbatim', () => {
+      // Values and units are separately matchable because `getNodeText` (the primitive under
+      // `getByText`) only reads an element's *direct* text-node children, not descendant elements
+      // — so `<td>2.6<sup>S</sup></td>` gives the `<td>` an own-text of `'2.6'` and the `<sup>` an
+      // own-text of `'S'`, with no concatenated `'2.6S'` in between to confuse a partial match.
+      // That is the same shape `MegaStat` already relies on for its own value/sup split.
+      render(<TeardownOutro />);
+
+      for (const label of ROW_LABELS) {
+        expect(screen.getByText(label)).toBeInTheDocument();
+      }
+      for (const value of ROW_F1_VALUES) {
+        // getAllByText, not getByText: '1000' also appears as the "By the numbers" power-unit
+        // stat's value, itself rendered twice by `MegaStat` (the width-reserving invisible twin
+        // plus the live digits — see the STAT_VALUES test above), so '1000' can legitimately
+        // match three elements at once here.
+        expect(screen.getAllByText(value).length).toBeGreaterThanOrEqual(1);
+      }
+      for (const unit of ROW_UNITS) {
+        // getAllByText: 'KG' also appears in the "By the numbers" stats (Minimum weight, 768 KG)
+        // — see the `ROW_UNITS` comment at the top of the file.
+        expect(screen.getAllByText(unit).length).toBeGreaterThanOrEqual(1);
+      }
+      for (const roadValue of ROW_ROAD_VALUES) {
+        expect(screen.getByText(roadValue)).toBeInTheDocument();
+      }
+    });
+
+    it("renders the comparison table's two named column headers", () => {
+      render(<TeardownOutro />);
+      expect(screen.getByText('Formula 1')).toBeInTheDocument();
+      expect(screen.getByText('Road car')).toBeInTheDocument();
+    });
+
     it('renders the closing line above the CTA', () => {
       render(<TeardownOutro />);
       expect(screen.getByText('That is the car. The race is the other half.')).toBeInTheDocument();
@@ -121,11 +196,12 @@ describe('TeardownOutro', () => {
       expect(container.querySelector('section#teardown-outro')).toBeInTheDocument();
     });
 
-    it('labels the section with the heading it points at, not the newly-added h3', () => {
+    it('labels the section with the heading it points at, not either new h3', () => {
       // This is the assertion the task brief calls out as catching the easy mistake in this
-      // change: adding a second heading group is exactly the kind of edit that tempts
-      // re-pointing (or duplicating) `aria-labelledby` at the new heading. A section has exactly
-      // one accessible name, and it must keep resolving to the original h2.
+      // change: adding a new heading group is exactly the kind of edit that tempts re-pointing
+      // (or duplicating) `aria-labelledby` at the new heading. A section has exactly one
+      // accessible name, and it must keep resolving to the original h2 — now checked against
+      // *both* h3s (systems, and this task's scale block), not just one.
       const { container } = render(<TeardownOutro />);
       const section = container.querySelector('section#teardown-outro')!;
       const labelledBy = section.getAttribute('aria-labelledby');
@@ -135,24 +211,29 @@ describe('TeardownOutro', () => {
       // an id that no longer exists is silently worse than no label at all, and the attribute
       // alone can't tell you which happened.
       const h2 = screen.getByRole('heading', { level: 2 });
-      const h3 = screen.getByRole('heading', { level: 3 });
+      // `getAllByRole`, not `getByRole`: there are now two h3s on the page (systems, scale), so
+      // the singular query throws "multiple elements found" rather than answering the question.
+      const h3s = screen.getAllByRole('heading', { level: 3 });
+      expect(h3s).toHaveLength(2);
       expect(container.querySelector(`#${labelledBy}`)).toBe(h2);
-      expect(container.querySelector(`#${labelledBy}`)).not.toBe(h3);
+      for (const h3 of h3s) {
+        expect(container.querySelector(`#${labelledBy}`)).not.toBe(h3);
+      }
     });
 
     it('renders exactly four stats', () => {
       const { container } = render(<TeardownOutro />);
-      // Six decorative red tick bars total: one in each of the section's two kickers ("By the
-      // numbers" and the newly-added "Under the bodywork"), plus one per MegaStat (each stat
-      // draws its own tick above its numeral). Scoped to `[aria-hidden="true"].bg-f1-red` rather
-      // than a bare `.bg-f1-red` selector, because the `/briefing` CTA pill added by this task
-      // also carries `bg-f1-red` as its fill colour — that element is an interactive link, not a
-      // decorative tick, and a bare-class selector would silently fold it into this count. This
-      // grew from 5 (4 stats + 1 kicker) to 6 when the second kicker was added, reusing the same
-      // shared kicker idiom (and therefore the same red bar) as the first — per SHARED-P4.md,
-      // that duplication is deliberate, not a copy-paste bug.
+      // Seven decorative red tick bars total: one in each of the section's three kickers ("By
+      // the numbers", "Under the bodywork", and this task's "For scale"), plus one per MegaStat
+      // (each stat draws its own tick above its numeral). Scoped to
+      // `[aria-hidden="true"].bg-f1-red` rather than a bare `.bg-f1-red` selector, because the
+      // `/briefing` CTA pill also carries `bg-f1-red` as its fill colour — that element is an
+      // interactive link, not a decorative tick, and a bare-class selector would silently fold it
+      // into this count. This grew from 6 (4 stats + 2 kickers) to 7 when this task's kicker was
+      // added, reusing the same shared kicker idiom (and therefore the same red bar) as the other
+      // two — per SHARED-P4.md, that duplication is deliberate, not a copy-paste bug.
       expect(container.querySelectorAll('[aria-hidden="true"].bg-f1-red')).toHaveLength(
-        STAT_VALUES.length + 2,
+        STAT_VALUES.length + 3,
       );
     });
 
@@ -165,13 +246,40 @@ describe('TeardownOutro', () => {
       expect(container.querySelectorAll('.notch-card')).toHaveLength(4);
     });
 
-    it('gives the new h3 an id, independent of the section label', () => {
+    it('gives each new h3 its own id, independent of the section label and of each other', () => {
       const { container } = render(<TeardownOutro />);
-      const h3 = screen.getByRole('heading', { level: 3 });
+      // `getAllByRole`: two h3s now exist (systems, scale), so the singular query would throw.
+      const h3s = screen.getAllByRole('heading', { level: 3 });
+      expect(h3s).toHaveLength(2);
 
-      expect(h3.id).toBeTruthy();
-      expect(h3.id).not.toBe('teardown-outro-heading');
-      expect(container.querySelector(`#${h3.id}`)).toBe(h3);
+      for (const h3 of h3s) {
+        expect(h3.id).toBeTruthy();
+        expect(h3.id).not.toBe('teardown-outro-heading');
+        expect(container.querySelector(`#${h3.id}`)).toBe(h3);
+      }
+      // Distinct from each other too: two h3s sharing one id would each still resolve `#id` to
+      // *a* h3 in the loop above (whichever the browser returns first for that id), silently
+      // hiding the collision.
+      expect(h3s[0]!.id).not.toBe(h3s[1]!.id);
+    });
+
+    it('sits between the systems TicketCards and the closing CTA line, in document order', () => {
+      // The task brief's own name for the bug this guards against: appending the new block at the
+      // end instead of splicing it in between the two existing ones. `compareDocumentPosition`
+      // with `DOCUMENT_POSITION_FOLLOWING` answers "does B come after A in the document" directly
+      // from the DOM tree, which is a stronger check than comparing substring indices in
+      // `container.textContent` — it can't be fooled by, say, CSS moving something visually
+      // without moving it in the DOM (irrelevant under jsdom, but the assertion should mean the
+      // same thing it will once this renders for real).
+      const { container } = render(<TeardownOutro />);
+      const cards = container.querySelectorAll('.notch-card');
+      const lastCard = cards[cards.length - 1]!;
+      const scaleHeading = container.querySelector('#teardown-outro-scale-heading')!;
+      const closingLine = screen.getByText('That is the car. The race is the other half.');
+
+      const FOLLOWING = Node.DOCUMENT_POSITION_FOLLOWING;
+      expect(lastCard.compareDocumentPosition(scaleHeading) & FOLLOWING).toBeTruthy();
+      expect(scaleHeading.compareDocumentPosition(closingLine) & FOLLOWING).toBeTruthy();
     });
 
     it('renders the /briefing CTA as a reachable link with its accessible name', () => {

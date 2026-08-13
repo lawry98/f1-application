@@ -9,6 +9,7 @@ import NextImage from 'next/image';
 import Link from 'next/link';
 import { ChevronDown } from 'lucide-react';
 import { motion, useReducedMotion, useScroll, useTransform } from 'motion/react';
+import { cn } from '@/lib/utils';
 import { LaurelFlourish } from '@/components/candy/laurel-flourish';
 import { RedactedReveal } from '@/components/candy/redacted-reveal';
 import { TeardownOutro } from '@/components/teardown/teardown-outro';
@@ -71,25 +72,79 @@ interface ComponentLabel {
   id: string;
   name: string;
   detail: string;
-  /** Percentage left offset relative to canvas wrapper */
+  /** Percentage left offset of the marker's **dot**, relative to the canvas wrapper. */
   x: number;
   /** Percentage top offset relative to canvas wrapper */
   y: number;
+  /**
+   * Which way the leader line and text run from the dot.
+   *
+   * A marker is ~223px wide at desktop (180px of text plus the dot, leader and gaps) and ~173px at
+   * 390. Anything anchored past roughly 70% of the car's width has to run leftward or it pushes a
+   * horizontal scrollbar onto the page — which is exactly what the single right-running marker did
+   * at 390 before it was narrowed. Measured at 390, where the car box is 359px wide: a right-running
+   * marker eats 48% of that width, so 'left' is the only option for the rear of the car.
+   */
+  side: 'left' | 'right';
   /** Scroll fraction at which the label fades in */
   showFrom: number;
   /** Scroll fraction at which the label fades out */
   showTo: number;
 }
 
+/**
+ * The four callouts, staggered so that at most one is on screen at a time.
+ *
+ * Two constraints shape the ranges. Every one closes before `DOCK_START` (0.94), because a callout
+ * still fading while the car is flying into the header rides the FLIP transform down to 5% scale and
+ * reads as debris. And they are sequenced front-to-back to follow the teardown itself: the frames
+ * are a fixed side elevation with panels lifting off progressively, so the anchors never move and
+ * only the visibility windows do.
+ *
+ * Because the windows do not overlap, markers are free to occupy the same *space* at different
+ * times — 03 running left from 60% and 02 running right from 44% both cover the midfield, and never
+ * together.
+ */
 const LABELS: ComponentLabel[] = [
+  {
+    id: 'front-wing',
+    name: 'Front wing',
+    detail: 'Multi-element, and from 2026 it moves — flattening to shed drag on the straights',
+    x: 10,
+    y: 68,
+    side: 'right',
+    showFrom: 0.1,
+    showTo: 0.34,
+  },
+  {
+    id: 'halo',
+    name: 'Halo',
+    detail: 'Titanium survival structure, load-tested to around twelve tonnes',
+    x: 44,
+    y: 44,
+    side: 'right',
+    showFrom: 0.32,
+    showTo: 0.56,
+  },
   {
     id: 'engine',
     name: 'V6 Turbo Hybrid Power Unit',
     detail: '1.6L V6 turbo-hybrid — over 1000 HP combined output',
-    x: 52,
-    y: 38,
-    showFrom: 0.55,
-    showTo: 0.95,
+    x: 60,
+    y: 56,
+    side: 'left',
+    showFrom: 0.54,
+    showTo: 0.78,
+  },
+  {
+    id: 'rear-wing',
+    name: 'Rear wing',
+    detail: 'Sheds drag down the straight, then reloads for the corner',
+    x: 88,
+    y: 42,
+    side: 'left',
+    showFrom: 0.76,
+    showTo: 0.92,
   },
 ];
 
@@ -475,15 +530,26 @@ export function TeardownScene() {
                 {LABELS.map((label, i) => {
                   const visible =
                     scrollFraction >= label.showFrom && scrollFraction <= label.showTo;
+                  const isLeft = label.side === 'left';
                   return (
                     <div
                       key={label.id}
-                      className="pointer-events-none absolute flex items-start gap-2"
+                      className={cn(
+                        'pointer-events-none absolute flex items-start gap-2',
+                        // The mirrored variant. `flex-row-reverse` alone would reverse the visual
+                        // order but leave the box growing rightward from `left: x%`, so the dot
+                        // would end up at the far end of the marker instead of on the part it
+                        // annotates. Pulling the whole box back by its own width is what keeps the
+                        // dot exactly on `x%` in both directions — which matters because `x` is
+                        // documented as the *dot's* position, and the anchors were measured off the
+                        // frames on that basis.
+                        isLeft && 'flex-row-reverse text-right',
+                      )}
                       style={{
                         left: `${label.x}%`,
                         top: `${label.y}%`,
                         opacity: visible ? 1 : 0,
-                        transform: `translateY(${visible ? 0 : 10}px)`,
+                        transform: `translateX(${isLeft ? '-100%' : '0'}) translateY(${visible ? 0 : 10}px)`,
                         transition: 'opacity 0.45s ease, transform 0.45s ease',
                       }}
                     >
@@ -499,13 +565,13 @@ export function TeardownScene() {
                         className="mt-[8px] block h-px w-6 flex-shrink-0 bg-zinc-500"
                       />
                       {/*
-                       * Narrower below `sm`, because a corner marker extends to the *right* of its
-                       * anchor rather than being centred on it the way the old label card was. The
-                       * card carried `translateX(-50%)`, so its 180px sat half either side of the
-                       * 52% anchor and could never overflow; a marker's text starts at the end of
-                       * its leader line. Measured at 390px: the anchor lands at x=202, the dot,
-                       * gaps and 24px leader put the text at x=245, and 180px of it ran to 425 —
-                       * a 35px horizontal scrollbar on the whole page.
+                       * Narrower below `sm`, because a corner marker runs *outward* from its anchor
+                       * rather than being centred on it the way the old label card was. The card
+                       * carried `translateX(-50%)`, so its 180px sat half either side of the anchor
+                       * and could never overflow; a marker's text starts at the end of its leader
+                       * line. Measured at 390px: the anchor landed at x=202, the dot, gaps and 24px
+                       * leader put the text at x=245, and 180px of it ran to 425 — a 35px
+                       * horizontal scrollbar on the whole page.
                        */}
                       <div className="w-[130px] sm:w-[180px]">
                         {/* zinc-400, not zinc-500 — the 10-11px labels on this branch are all
