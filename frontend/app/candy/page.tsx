@@ -188,10 +188,13 @@ export default function CandyPage() {
           <div className={CELL}>
             <Scribble type="p1">
               <span className="font-display text-2xl uppercase tracking-tight text-ink">
-                Verstappen
+                379
               </span>
             </Scribble>
-            <p className={CAPTION}>p1 · handwritten, for a win</p>
+            <p className={CAPTION}>
+              p1 · handwritten, for a win. Centred, so it is drawn across a numeral — its real use
+              is over a /teams points stat, never across a long word.
+            </p>
           </div>
 
           <div className={CELL}>
