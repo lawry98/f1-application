@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 
 import { CircuitGlow } from '@/components/candy/circuit-glow';
 import { DoubleMarquee } from '@/components/candy/double-marquee';
+import { LaurelFlourish } from '@/components/candy/laurel-flourish';
 import { MegaStat } from '@/components/candy/mega-stat';
 import { RedactedReveal } from '@/components/candy/redacted-reveal';
 import { Scribble } from '@/components/candy/scribble';
@@ -99,7 +100,9 @@ export default function CandyPage() {
         <p className="mt-6 max-w-2xl text-sm leading-relaxed text-zinc-400">
           Every variant of every Phase 2 component, with dummy data. Scroll-triggered components
           fire once as they enter view, so reload to watch them again. Toggle
-          <code className="mx-1 rounded bg-white/5 px-1 py-0.5 text-xs">prefers-reduced-motion</code>
+          <code className="mx-1 rounded bg-white/5 px-1 py-0.5 text-xs">
+            prefers-reduced-motion
+          </code>
           in devtools: everything here must still read as finished, never mid-animation and never
           blank.
         </p>
@@ -187,9 +190,7 @@ export default function CandyPage() {
 
           <div className={CELL}>
             <Scribble type="p1">
-              <span className="font-display text-2xl uppercase tracking-tight text-ink">
-                379
-              </span>
+              <span className="font-display text-2xl uppercase tracking-tight text-ink">379</span>
             </Scribble>
             <p className={CAPTION}>
               p1 · handwritten, for a win. Centred, so it is drawn across a numeral — its real use
@@ -199,11 +200,36 @@ export default function CandyPage() {
 
           <div className={CELL}>
             <Scribble type="strike">
-              <span className="font-display text-2xl uppercase tracking-tight text-ink">
-                DNF
-              </span>
+              <span className="font-display text-2xl uppercase tracking-tight text-ink">DNF</span>
             </Scribble>
             <p className={CAPTION}>strike · diagonal scrawl</p>
+          </div>
+        </div>
+      </Section>
+
+      <Section label="LaurelFlourish">
+        <div className="grid gap-12 sm:grid-cols-2">
+          <div className={CELL}>
+            {/* The real call site's size: two branches flanking the 36px car docked in the
+                /teardown header. Rendered here at that size rather than blown up, because the
+                geometry only has to read at 36px and a styleguide that flatters it at 200px would
+                hide the one thing worth checking. */}
+            <LaurelFlourish className="text-ink">
+              <span className="font-display text-2xl uppercase tracking-tight text-ink">P1</span>
+            </LaurelFlourish>
+            <p className={CAPTION}>
+              Wraps its children — the branches flank whatever sits between them. Strokes
+              currentColor and sets no colour of its own, so the call site must supply one.
+            </p>
+          </div>
+
+          <div className={CELL}>
+            <LaurelFlourish className="text-ink [&_svg]:h-16" />
+            <p className={CAPTION}>
+              Childless, enlarged via [&amp;_svg]:h-16. Draws over 500ms then settles to 40%
+              opacity; draw=&quot;immediate&quot; fires on mount instead of on scroll, which is how
+              /teardown triggers it at dock time.
+            </p>
           </div>
         </div>
       </Section>
@@ -288,8 +314,8 @@ export default function CandyPage() {
           <div>
             <TicketCard notch="none">
               <p className="px-4 py-5 text-sm leading-relaxed text-zinc-400">
-                No kicker, no footer, no notch. Neither strip should render an empty bordered band
-                — if you can see a hairline above or below this paragraph, that is the bug.
+                No kicker, no footer, no notch. Neither strip should render an empty bordered band —
+                if you can see a hairline above or below this paragraph, that is the bug.
               </p>
             </TicketCard>
             <p className={CAPTION}>notch=&quot;none&quot;, both slots omitted</p>
