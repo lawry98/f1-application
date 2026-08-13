@@ -559,24 +559,34 @@ export function TeardownScene() {
       <TeardownOutro />
 
       {/*
-       * Progress readout: a mega numeral bottom-left at 15% opacity. `aria-hidden` because at 15%
+       * Progress readout: a display numeral bottom-left at 15% opacity. `aria-hidden` because at 15%
        * opacity it is texture, not a readout — the accessible progress lives on the bar below,
        * which carries the real `role="progressbar"` and `aria-valuenow`. Fixed and behind the
        * content (z-10) so it reads as a watermark under the outro rather than a label on it.
        */}
       <div
         aria-hidden="true"
-        className="pointer-events-none fixed bottom-0 left-2 z-10 select-none"
+        // `bottom-1.5`, not `bottom-0`: the red progress bar is pinned at `bottom-0` and
+        // `leading-[0.75]` leaves the numeral no descender space, so at zero the glyphs sit
+        // directly on the bar and read as clipped.
+        className="pointer-events-none fixed bottom-1.5 left-2 z-10 select-none"
         style={{
-          // Fades out as the car lands rather than sitting at a flat 15% forever. A `.text-mega`
-          // numeral is ~300px across at 1440, pinned bottom-left, and the outro's closing paragraph
-          // is also bottom-left — measured in Chromium, "100%" sat directly across that sentence.
-          // The readout has nothing left to report once the scrub is finished, so it leaves.
+          // Fades out as the car lands rather than sitting at a flat 15% forever. The readout is
+          // pinned bottom-left and so is the outro's closing paragraph, and it has nothing left to
+          // report once the scrub is finished, so it leaves rather than sitting across the copy.
           opacity: isArriving ? 0 : 0.15,
           transition: 'opacity 400ms ease',
         }}
       >
-        <span className="text-mega font-display leading-[0.75] tracking-tight text-ink">
+        {/*
+         * Deliberately **not** `.text-mega`, which the spec's "font-display mega numeral" wording
+         * would suggest and which this first shipped as. `.text-mega` is `clamp(4rem, 14vw, 12rem)`
+         * — 192px tall at 1440, 64px at 390 — and reviewed in a browser it read as a competing
+         * headline in the corner rather than as a watermark under the sequence. This clamp tops out
+         * at 56px, about a third of the height. Same display face, same tight leading and negative
+         * tracking, so it is the same object, just no longer shouting.
+         */}
+        <span className="font-display text-[clamp(2rem,4vw,3.5rem)] leading-[0.75] tracking-tight text-ink">
           {pct}
           <sup className="align-super text-[0.35em]">%</sup>
         </span>

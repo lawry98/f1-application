@@ -12,6 +12,21 @@ const STAT_VALUES = ['1000', '15000', '768', '5'];
 const STAT_UNITS = ['HP', 'RPM', 'KG', 'G'];
 const STAT_LABELS = ['Power unit output', 'Rev limit', 'Minimum weight', 'Peak cornering'];
 
+/**
+ * The four "systems" card copy blocks, likewise copied out by hand rather than imported — these
+ * are cited verbatim in the task brief and (per that brief) in the parent's commit message, so the
+ * test should fail if a future edit rounds, rewords, or drops one rather than silently agreeing
+ * with whatever the component says.
+ */
+const SYSTEM_KICKERS = [
+  '01 · Power unit',
+  '02 · Aerodynamics',
+  '03 · Chassis',
+  '04 · Tyres and brakes',
+];
+const SYSTEM_TITLES = ['V6 turbo-hybrid', 'Active wings', 'Carbon monocoque', '18-inch slicks'];
+const SYSTEM_FOOTERS = ['~1000 HP combined', 'Active aero', 'Monocoque + halo', 'Carbon discs'];
+
 describe('TeardownOutro', () => {
   describe('content survives', () => {
     it('renders the kicker', () => {
@@ -61,6 +76,43 @@ describe('TeardownOutro', () => {
         ),
       ).toBeInTheDocument();
     });
+
+    it('renders the second kicker, "Under the bodywork"', () => {
+      render(<TeardownOutro />);
+      expect(screen.getByText('Under the bodywork')).toBeInTheDocument();
+    });
+
+    it('renders the full h3 sentence despite it being split across spans', () => {
+      // Same reasoning as the h2 test above: the accent run ("one compromise") is its own <span>
+      // so the serif/italic/red treatment applies to it alone, so a naive `getByText` against the
+      // full sentence finds nothing. Normalising `textContent` proves the sentence reads correctly
+      // once the spans are flattened.
+      render(<TeardownOutro />);
+      const heading = screen.getByRole('heading', { level: 3 });
+
+      expect(heading.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+        'Four systems, one compromise.',
+      );
+    });
+
+    it('renders all four system-card kickers, titles and footers verbatim', () => {
+      render(<TeardownOutro />);
+
+      for (const kicker of SYSTEM_KICKERS) {
+        expect(screen.getByText(kicker)).toBeInTheDocument();
+      }
+      for (const title of SYSTEM_TITLES) {
+        expect(screen.getByText(title)).toBeInTheDocument();
+      }
+      for (const footer of SYSTEM_FOOTERS) {
+        expect(screen.getByText(footer)).toBeInTheDocument();
+      }
+    });
+
+    it('renders the closing line above the CTA', () => {
+      render(<TeardownOutro />);
+      expect(screen.getByText('That is the car. The race is the other half.')).toBeInTheDocument();
+    });
   });
 
   describe('structural contract the parent page depends on', () => {
@@ -69,7 +121,11 @@ describe('TeardownOutro', () => {
       expect(container.querySelector('section#teardown-outro')).toBeInTheDocument();
     });
 
-    it('labels the section with the heading it points at', () => {
+    it('labels the section with the heading it points at, not the newly-added h3', () => {
+      // This is the assertion the task brief calls out as catching the easy mistake in this
+      // change: adding a second heading group is exactly the kind of edit that tempts
+      // re-pointing (or duplicating) `aria-labelledby` at the new heading. A section has exactly
+      // one accessible name, and it must keep resolving to the original h2.
       const { container } = render(<TeardownOutro />);
       const section = container.querySelector('section#teardown-outro')!;
       const labelledBy = section.getAttribute('aria-labelledby');
@@ -78,17 +134,51 @@ describe('TeardownOutro', () => {
       // Resolving the reference, not just asserting the string: an `aria-labelledby` pointing at
       // an id that no longer exists is silently worse than no label at all, and the attribute
       // alone can't tell you which happened.
-      expect(container.querySelector(`#${labelledBy}`)).toBe(
-        screen.getByRole('heading', { level: 2 }),
-      );
+      const h2 = screen.getByRole('heading', { level: 2 });
+      const h3 = screen.getByRole('heading', { level: 3 });
+      expect(container.querySelector(`#${labelledBy}`)).toBe(h2);
+      expect(container.querySelector(`#${labelledBy}`)).not.toBe(h3);
     });
 
     it('renders exactly four stats', () => {
       const { container } = render(<TeardownOutro />);
-      // Five red tick bars total: one in this section's own kicker, one per MegaStat (each
-      // stat draws its own tick above its numeral). Counted by the mark rather than a grid/layout
-      // class, so this survives any amount of Tailwind churn to the grid itself.
-      expect(container.querySelectorAll('.bg-f1-red')).toHaveLength(STAT_VALUES.length + 1);
+      // Six decorative red tick bars total: one in each of the section's two kickers ("By the
+      // numbers" and the newly-added "Under the bodywork"), plus one per MegaStat (each stat
+      // draws its own tick above its numeral). Scoped to `[aria-hidden="true"].bg-f1-red` rather
+      // than a bare `.bg-f1-red` selector, because the `/briefing` CTA pill added by this task
+      // also carries `bg-f1-red` as its fill colour — that element is an interactive link, not a
+      // decorative tick, and a bare-class selector would silently fold it into this count. This
+      // grew from 5 (4 stats + 1 kicker) to 6 when the second kicker was added, reusing the same
+      // shared kicker idiom (and therefore the same red bar) as the first — per SHARED-P4.md,
+      // that duplication is deliberate, not a copy-paste bug.
+      expect(container.querySelectorAll('[aria-hidden="true"].bg-f1-red')).toHaveLength(
+        STAT_VALUES.length + 2,
+      );
+    });
+
+    it('renders exactly four TicketCards for the systems grid', () => {
+      // `.notch-card` is `TicketCard`'s own class, applied only when `notch="bottom-right"`
+      // (the default, and what this component uses) — counting it rather than a locally-authored
+      // wrapper class ties the assertion to "four TicketCard instances actually rendered", not to
+      // this file's own grid markup, which is free to change independently.
+      const { container } = render(<TeardownOutro />);
+      expect(container.querySelectorAll('.notch-card')).toHaveLength(4);
+    });
+
+    it('gives the new h3 an id, independent of the section label', () => {
+      const { container } = render(<TeardownOutro />);
+      const h3 = screen.getByRole('heading', { level: 3 });
+
+      expect(h3.id).toBeTruthy();
+      expect(h3.id).not.toBe('teardown-outro-heading');
+      expect(container.querySelector(`#${h3.id}`)).toBe(h3);
+    });
+
+    it('renders the /briefing CTA as a reachable link with its accessible name', () => {
+      render(<TeardownOutro />);
+      const link = screen.getByRole('link', { name: 'Generate a Briefing' });
+
+      expect(link).toHaveAttribute('href', '/briefing');
     });
   });
 

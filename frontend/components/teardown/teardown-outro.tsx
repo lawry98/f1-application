@@ -1,5 +1,9 @@
+import { ArrowRight } from 'lucide-react';
+import Link from 'next/link';
 import { MegaStat } from '@/components/candy/mega-stat';
+import { TicketCard } from '@/components/candy/ticket-card';
 import { TopoBackground } from '@/components/candy/topo-background';
+import { Button } from '@/components/ui/button';
 
 /**
  * 2026-regulation figures, cited verbatim in the task brief and (per that brief) in the parent's
@@ -16,17 +20,60 @@ const STATS = [
 ] as const;
 
 /**
+ * The four 2026-regulation systems, cited verbatim in the task brief and (per that brief) in the
+ * parent's commit message — do not reword, extend, or add a fifth. `title` is the card's first
+ * line (small display-caps, not `f1-red`: at this size red fails the 4.5:1 small-text floor —
+ * see SHARED-P4.md's contrast table), `body` is the descriptive sentence, `footer` the closing
+ * strip.
+ */
+const SYSTEMS = [
+  {
+    kicker: '01 · Power unit',
+    title: 'V6 turbo-hybrid',
+    body: 'A 1.6-litre V6 turbo, and from 2026 an electric motor almost its equal — roughly 400 kW of combustion against 350 kW of deployment, running on fully sustainable fuel.',
+    footer: '~1000 HP combined',
+  },
+  {
+    kicker: '02 · Aerodynamics',
+    title: 'Active wings',
+    body: 'Front and rear wings that shed drag down the straight and load up again for the corner. Every surface trades top speed against the grip needed to carry it.',
+    footer: 'Active aero',
+  },
+  {
+    kicker: '03 · Chassis',
+    title: 'Carbon monocoque',
+    body: "A survival cell moulded in carbon fibre with the halo bonded to it. The halo alone is load-tested to around twelve tonnes — roughly a London bus resting on the driver's head.",
+    footer: 'Monocoque + halo',
+  },
+  {
+    kicker: '04 · Tyres and brakes',
+    title: '18-inch slicks',
+    body: 'Three dry compounds plus intermediates and full wets, on 18-inch rims. The carbon brake discs behind them run past 1000°C into a heavy braking zone.',
+    footer: 'Carbon discs',
+  },
+] as const;
+
+/**
  * The closing section of `/teardown`, read with a ~36px docked mini car sitting in the page
  * header above it (per the parent's `teardown-scene.tsx`) — the reason this reads as a stage for
  * that car rather than an unrelated new page. No `'use client'`: nothing here needs a hook.
- * `MegaStat` already calls `useReducedMotion()` and covers its own reduced-motion branch, so this
- * file can stay a synchronous server component importing a client child, the same shape every
- * landing section on this branch already uses.
+ * `MegaStat`, `TicketCard` and `Button` all call hooks internally (`useReducedMotion`,
+ * `React.forwardRef`/context, etc.) and each covers its own behaviour, so this file can stay a
+ * synchronous server component importing client children, the same shape every landing section on
+ * this branch already uses.
  *
  * No entrance motion of its own was added. `MegaStat`'s own count-up (once-in-view, respects
  * reduced motion) already gives the four stats an entrance; stacking a second `motion.div` fade
  * around each one would double-animate the same reveal for no visible gain, and `'use client'`
  * only earns its cost here if a hook is actually needed.
+ *
+ * Extended per the task brief to fix a reported bug: the section originally ended after the
+ * closing paragraph and filled only about a quarter of the viewport below the docked car, leaving
+ * a large band of empty `bg-zinc-950`. Two blocks were added below the original content (kept
+ * verbatim, per the brief): a second heading group over four `TicketCard`s describing the car's
+ * systems, then a closing line and a `/briefing` CTA. Both reuse `id="teardown-outro-heading"` as
+ * the section's sole `aria-labelledby` target — the new `h3` gets its own `id` for in-page
+ * reachability but does not become a second landmark label, since a section has exactly one.
  */
 export function TeardownOutro(): React.JSX.Element {
   return (
@@ -107,6 +154,89 @@ export function TeardownOutro(): React.JSX.Element {
         <p className="mt-16 max-w-[65ch] text-zinc-400">
           Every one of those numbers is a compromise with the other three. That is the whole sport.
         </p>
+
+        {/* Block 1: "the systems". `mt-20 lg:mt-28` per the brief's vertical-rhythm note — this is
+            a new visual beat, not a continuation of the stats above, so it wants clearly more
+            separation than the `mt-16` between the heading and the stats. */}
+        <div className="mt-20 lg:mt-28">
+          <div className="mb-16 max-w-2xl">
+            <p className="mb-4 flex items-center gap-2.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-500">
+              <span className="h-1.5 w-5 flex-shrink-0 bg-f1-red" aria-hidden="true" />
+              Under the bodywork
+            </p>
+            {/* `h3`, not `h2`: the section already has one `h2` and the section's own
+                `aria-labelledby` points at it (see the docstring above). This heading gets its own
+                `id` purely so it is independently reachable — the section is not re-labelled by
+                it. Same mixed-type idiom as the `h2` above: sentence case typed in the markup,
+                `uppercase` doing the shouting, the serif accent carrying `normal-case` so its
+                sentence-case reads against the surrounding caps. */}
+            <h3
+              id="teardown-outro-systems-heading"
+              className="font-display text-4xl uppercase leading-[0.95] tracking-tight text-ink lg:text-5xl"
+            >
+              Four systems,{' '}
+              <span className="font-serif-display text-[1.05em] normal-case italic text-f1-red">
+                one compromise
+              </span>
+              .
+            </h3>
+          </div>
+
+          {/* One column at base, two from `sm`, four from `lg` per the brief. `items-stretch`
+              (grid's default) plus `h-full` on each card is what keeps all four notched corners
+              on one baseline — without `h-full` a shorter body would leave that card's card
+              shorter than its neighbours and the row of ticket stubs would read as ragged rather
+              than a matched set. */}
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            {SYSTEMS.map((system) => (
+              <TicketCard
+                key={system.kicker}
+                kicker={system.kicker}
+                footer={
+                  <span className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
+                    {system.footer}
+                  </span>
+                }
+                className="h-full"
+              >
+                {/* `TicketCard`'s main content slot carries no padding, so `px-4 py-3` here
+                    matches the value `/candy`'s styleguide uses for the same slot. Title stays
+                    `text-ink`, not `f1-red`: at this display size (well under 24px) red fails the
+                    4.5:1 small-text contrast floor SHARED-P4.md measures. */}
+                <div className="px-4 py-3">
+                  <p className="font-display text-sm uppercase tracking-tight text-ink">
+                    {system.title}
+                  </p>
+                  <p className="mt-2 text-sm leading-relaxed text-zinc-400">{system.body}</p>
+                </div>
+              </TicketCard>
+            ))}
+          </div>
+        </div>
+
+        {/* Block 2: closing line + CTA. Same `mt-20 lg:mt-28` beat as block 1, separating this
+            band from the cards above it. */}
+        <div className="mt-20 lg:mt-28">
+          <p className="text-sm text-zinc-400">That is the car. The race is the other half.</p>
+          {/* Red pill, copied verbatim from SHARED-P3.md §3 ("Buttons — the red pill and the dark
+              pill") via SHARED-P4.md's pointer to it — same classes, same `hover:bg-[#B80500]`
+              (not `hover:bg-red-700`, a different hue that would read as a colour change rather
+              than a darkening) as the hero and CTA band use. The `mt-6` spacing lives on a
+              wrapping `div`, not folded into the `Button`'s own `className`, so that string stays
+              an exact, diffable copy of the brief's markup. */}
+          <div className="mt-6">
+            <Button
+              asChild
+              size="lg"
+              className="rounded-full bg-f1-red px-7 text-[12px] font-bold uppercase tracking-[0.14em] text-white transition-colors hover:bg-[#B80500] focus-visible:ring-f1-red"
+            >
+              <Link href="/briefing">
+                Generate a Briefing
+                <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
+              </Link>
+            </Button>
+          </div>
+        </div>
       </div>
     </section>
   );
