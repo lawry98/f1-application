@@ -270,6 +270,16 @@ export interface ScribbleProps {
   /** Wrapped content. The scribble overlays it; omit for a bare scribble. */
   children?: React.ReactNode;
   draw?: 'onView' | 'immediate';
+  /**
+   * Seconds to wait before the first stroke starts, on top of the per-stroke stagger.
+   *
+   * It exists for marks that annotate something which is itself animating in. The landing hero
+   * underlines a headline line that sits under a `RedactedReveal` bar for the first ~750 ms; drawn
+   * at 0 the mark is finished and hidden behind the bar before the bar clears, so the annotation
+   * never appears to be *made* — it is simply already there, which is the one thing the draw-on
+   * exists to avoid.
+   */
+  delay?: number;
   className?: string;
 }
 
@@ -301,6 +311,7 @@ export function Scribble({
   type,
   children,
   draw = 'onView',
+  delay = 0,
   className,
 }: ScribbleProps): React.JSX.Element {
   const prefersReducedMotion = useReducedMotion();
@@ -365,7 +376,10 @@ export function Scribble({
             const transition = {
               duration: DRAW_SECONDS,
               ease: EASE_OUT_EXPO,
-              delay: index * STROKE_STAGGER_SECONDS,
+              // The call site's wait is added to, not substituted for, the per-stroke stagger:
+              // holding the mark back must not collapse the strokes into one simultaneous event,
+              // which is the tell the stagger exists to remove.
+              delay: delay + index * STROKE_STAGGER_SECONDS,
             };
 
             // motion animates `pathLength` directly — it sets the SVG `pathLength` attribute to 1

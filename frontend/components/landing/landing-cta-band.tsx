@@ -1,14 +1,35 @@
 import Link from 'next/link';
-import { ChevronRight } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { BlurFade } from '@/components/ui/blur-fade';
-import { DotPattern } from '@/components/ui/dot-pattern';
+import { Scribble } from '@/components/candy/scribble';
+import { TopoBackground } from '@/components/candy/topo-background';
+
+/**
+ * Why the Scribble's `delay` is 0.45 s and not 0.
+ *
+ * The whole block sits inside a `BlurFade`, whose transition is `delay: 0.04 + delay` over
+ * `duration: 0.4` — so the heading has finished un-blurring at 0.44 s. Drawn at 0 the circle
+ * completes (0.8 s draw, but the first ~400 ms of it) while the text behind it is still blurred and
+ * translating, which reads as the mark being *part of* the fade-in rather than as an annotation
+ * made afterwards. That "already there" quality is the one thing a draw-on exists to avoid, and it
+ * is the same reason `ScribbleProps.delay` exists at all.
+ *
+ * `draw` is left at its default `onView`: the heading is not under a `RedactedReveal`, so there is
+ * no bar to wait for, and `onView` is what keeps the mark from drawing itself off-screen.
+ */
+const SCRIBBLE_DELAY_SECONDS = 0.45;
 
 export function LandingCtaBand() {
   return (
-    <section className="relative overflow-hidden bg-zinc-950 py-28" aria-labelledby="cta-heading">
-      {/* Background */}
-      <DotPattern className="text-zinc-800/20" width={20} height={20} cr={0.8} />
+    <section className="relative overflow-hidden bg-base py-28" aria-labelledby="cta-heading">
+      {/*
+       * Background. `text-ink` only — the default `opacity-[0.12]` is kept deliberately, because
+       * that number is calibrated in `topo-background.tsx` against this exact page background:
+       * a 1px stroke at 5% over #09090B is invisible on a real display and at 6% you have to know
+       * to look for it. Overriding it down here would silently delete the texture.
+       */}
+      <TopoBackground className="text-ink opacity-[0.07]" />
       <div
         className="pointer-events-none absolute inset-0 flex items-center justify-center"
         aria-hidden="true"
@@ -16,38 +37,87 @@ export function LandingCtaBand() {
         <div className="h-[600px] w-[600px] rounded-full bg-red-600/[0.08] blur-3xl" />
       </div>
 
-      <div className="container relative mx-auto max-w-4xl px-4 text-center">
+      {/*
+       * `px-6`, not the `px-4` this had before. The circle scribble's overlay is
+       * `-inset-x-[5%]`, i.e. it deliberately overhangs the phrase it marks by 5% of that phrase's
+       * width on each side. At 375 px the container is the only gutter the mark has, and 16 px of
+       * it left the overhang within a few pixels of the viewport edge on the narrowest phones. This
+       * is the change the brief sanctions — widen the container, never shrink the mark, because the
+       * overhang is what stops the circle reading as a border-radius.
+       */}
+      <div className="container relative mx-auto max-w-4xl px-6 text-center">
         <BlurFade inView delay={0} direction="up">
-          <p className="mb-4 text-sm font-semibold uppercase tracking-widest text-f1-red">
+          {/*
+           * The kicker used to be `text-sm … text-f1-red`, which is small red text: #E10600 on
+           * #09090B measures 4.01:1, over WCAG's 3:1 large-text bar but under the 4.5:1 small-text
+           * one. The colour moves into a decorative bar (unconstrained) and the words go grey.
+           */}
+          <p className="mb-4 flex items-center justify-center gap-2.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-400">
+            <span className="h-1.5 w-5 flex-shrink-0 bg-f1-red" aria-hidden="true" />
             Ready to get started?
           </p>
+
+          {/*
+           * The accent run stays `ink`, and the red arrives only as the scribble. This is the
+           * choice the brief offered first and it is the right one here for a reason specific to
+           * `circle`: unlike `underline` or `strike`, the mark encloses its words rather than
+           * crossing them, so a red stroke and red glyphs sit inside one another with no value
+           * separation and the whole phrase muddies into a single red smear at a glance. Ink
+           * glyphs inside a red ring keep the ring reading as a ring. The `f1-red` serif treatment
+           * from SHARED-P3 §2 is therefore deliberately *not* applied to this one heading — the
+           * scribble is already carrying this section's ration of red.
+           *
+           * Consequently the Scribble needs no `[&_svg]:text-…` recolour: it keeps its own
+           * `text-f1-red`. If this is ever flipped to a red accent run, the mark must be recoloured
+           * with `className="[&_svg]:text-ink"` and never `className="text-ink"` — the wrapper's
+           * text colour cascades into the children and would tint the headline itself.
+           *
+           * `text-balance` rather than a `<br />`: the full string measures wider than the
+           * `max-w-4xl` column at `lg:text-5xl`, so it wraps to two lines on its own, but the
+           * natural break point lands within a few pixels of "briefing," and a hard `<br />` would
+           * be wrong at every width below that. Balancing splits it as the composition wants and
+           * degrades to ordinary wrapping where `text-wrap: balance` is unsupported.
+           */}
           <h2
             id="cta-heading"
-            className="mb-6 text-4xl font-bold tracking-tight text-ink lg:text-5xl"
+            className="mb-6 text-balance font-display text-4xl uppercase leading-[0.95] tracking-tight text-ink lg:text-5xl"
           >
-            Your race weekend briefing, one click away.
+            Your race weekend briefing,{' '}
+            <span className="font-serif-display text-[1.05em] normal-case italic">
+              <Scribble type="circle" delay={SCRIBBLE_DELAY_SECONDS}>
+                one click
+              </Scribble>{' '}
+              away.
+            </span>
           </h2>
           <p className="mx-auto mb-10 max-w-xl text-lg text-zinc-400">
             No setup, no account required. Enter any Grand Prix name and receive a comprehensive
             AI-generated briefing in seconds.
           </p>
 
+          {/*
+           * The red pill / dark pill pair, verbatim from SHARED-P3 §3 — the hero carries the
+           * identical strings and any divergence between the two shows up on one scroll. White on
+           * #E10600 is 5.0:1, so the 12 px label clears AA. `hover:bg-[#B80500]` rather than
+           * `hover:bg-red-700`: Tailwind's red-700 (#B91C1C) is a different hue from the brand red
+           * and reads as the button changing colour instead of darkening.
+           */}
           <div className="flex flex-wrap items-center justify-center gap-4">
             <Button
               asChild
               size="lg"
-              className="bg-f1-red text-white hover:bg-red-700 focus-visible:ring-f1-red"
+              className="rounded-full bg-f1-red px-7 text-[12px] font-bold uppercase tracking-[0.14em] text-white transition-colors hover:bg-[#B80500] focus-visible:ring-f1-red"
             >
               <Link href="/briefing">
                 Generate a Briefing
-                <ChevronRight className="ml-2 h-4 w-4" aria-hidden="true" />
+                <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
               </Link>
             </Button>
             <Button
               asChild
               variant="outline"
               size="lg"
-              className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 hover:text-white focus-visible:ring-zinc-600"
+              className="rounded-full border-white/15 bg-white/[0.02] px-7 text-[12px] font-bold uppercase tracking-[0.14em] text-zinc-300 transition-colors hover:border-white/25 hover:bg-white/[0.06] hover:text-ink focus-visible:ring-zinc-600"
             >
               <Link href="/teardown">Explore Car Anatomy</Link>
             </Button>

@@ -425,6 +425,25 @@ describe('Scribble', () => {
     expect(screen.getByText('WORD')).toBeInTheDocument();
   });
 
+  it('ignores delay under reduced motion rather than holding the mark back', () => {
+    // `delay` exists so a mark can wait for the reveal bar covering its word to clear. Under
+    // reduced motion there is no bar and no draw-on, so a delayed mark must be *fully present at
+    // first paint*, not merely started late — a wait implemented as a shared transition would
+    // otherwise leave a reduced-motion user looking at nothing for the delay's duration.
+    reduceMotion = true;
+    const { container } = render(
+      <Scribble type="underline" delay={0.9}>
+        WORD
+      </Scribble>,
+    );
+
+    const paths = Array.from(container.querySelectorAll('path'));
+    expect(paths).toHaveLength(STROKE_COUNT.underline);
+    for (const path of paths) {
+      expect(path.hasAttribute('stroke-dasharray')).toBe(false);
+    }
+  });
+
   it('keeps the overlay decorative under reduced motion too', () => {
     // The reduced-motion branch swaps `motion.path` for a plain `path`, which is exactly the kind
     // of second code path where an `aria-hidden` or a `pointer-events-none` gets dropped.

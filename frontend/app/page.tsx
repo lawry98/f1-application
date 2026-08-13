@@ -1,5 +1,6 @@
 import { LandingNav } from '@/components/landing/landing-nav';
 import { LandingHero } from '@/components/landing/landing-hero';
+import { LandingMarqueeBand } from '@/components/landing/landing-marquee-band';
 import { LandingFeatures } from '@/components/landing/landing-features';
 import { LandingHowItWorks } from '@/components/landing/landing-how-it-works';
 import { LandingBuiltWith } from '@/components/landing/landing-built-with';
@@ -12,6 +13,7 @@ export default function Home() {
       <LandingNav />
       <main>
         <LandingHero />
+        <LandingMarqueeBand />
         <LandingFeatures />
         <LandingHowItWorks />
         <LandingBuiltWith />
