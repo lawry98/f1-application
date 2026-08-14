@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TeardownScene } from '@/components/teardown/teardown-scene';
 import { contrastRatio, DARK_BG, MIN_CONTRAST } from '@/lib/team-utils';
-import { detach, restingTextNeutrals } from './zinc';
+import { restingTextNeutrals } from './zinc';
 
 /**
  * These tests can say nothing about the scrub, the dock, or the FLIP transform. jsdom lays nothing
@@ -206,57 +206,44 @@ describe('TeardownScene', () => {
     }
   });
 
-  it('holds every resting neutral above the small-text floor, bar three pre-existing runs', () => {
+  it('holds every resting neutral above the small-text floor', () => {
     /*
-     * The contrast assertion this file shipped without — and it sits next to `teardown-outro.tsx`,
-     * where a `zinc-500` regression was found precisely because every contrast claim on this
-     * branch lived in prose until these tests started measuring the ratio. Same shape as
-     * `tests/teardown-outro.test.tsx` and `tests/credits-page.test.tsx`. `DARK_BG` (#09090b) is
-     * the real background: `/teardown` paints `bg-zinc-950`, the same hex, and nothing in this
-     * component's own tree puts a translucent surface behind a neutral.
+     * Same shape as `tests/teardown-outro.test.tsx` and `tests/credits-page.test.tsx`. `DARK_BG`
+     * (#09090b) is the real background: `/teardown` paints `bg-zinc-950`, the same hex, and
+     * nothing in this component's own tree puts a translucent surface behind a neutral.
      *
-     * **Three regions are excluded, and none of them is this branch's to fix.** All three are
-     * `text-zinc-500` (#71717a) at 12px — small text, so held to 4.5:1 — and all three measure
-     * **4.12:1**, under the floor. They are pre-existing on `main`, out of scope for this pass,
-     * and deliberately left at the colour they have:
-     *
-     *   1. the frame-count / loading overlay, whose kicker is `zinc-500` at 4.12:1 (and which also
-     *      carries a `zinc-700` "/192" denominator at 1.91:1 and a `zinc-600` "Preparing teardown
-     *      sequence…" line at 2.57:1 — it is excluded whole, so all three go with it);
-     *   2. the header's "Back" link;
-     *   3. the "Scroll to begin" hint.
-     *
-     * The count is pinned and the skipped runs are pinned by text, so the hole cannot silently
-     * widen: adding a fourth dim run, or letting one of these regions grow another, fails here
-     * rather than passing quietly. Fixing any of them is a matter of deleting its line from the
-     * expected list and watching the main assertion cover it.
+     * **This assertion used to carry three exclusions and no longer does.** The header's "Back"
+     * link, the "Scroll to begin" hint and the whole frame-count / loading overlay were skipped as
+     * pre-existing dim runs — `zinc-500` at 4.12:1, a `zinc-700` "/192" denominator at 1.91:1 and
+     * a `zinc-600` "Preparing teardown sequence…" line at 2.57:1. All five are now `zinc-400`
+     * (7.76:1) and go through the main loop like everything else, so the exclusion list, its
+     * pinned count and its pinned text list were deleted rather than left behind as a hole that
+     * nothing falls into. The five are re-pinned positively below: they must be *measured*, not
+     * merely absent, or a future refactor that drops them from the tree would pass silently.
      */
     const { container } = render(<TeardownScene />);
 
-    // `aria-hidden` decoration first, by the property that justifies skipping it rather than by
-    // shade — the same technique `landing-how-it-works.test.tsx` uses. The header's `←` and its
-    // `|` divider inherit `zinc-500`/`zinc-700` from their wrappers, are out of the accessibility
-    // tree, and duplicate an accessible label that is measured below. The day one becomes real
-    // content it stops being excluded and this test fails.
+    // `aria-hidden` decoration is skipped by the property that justifies skipping it rather than
+    // by shade — the same technique `landing-how-it-works.test.tsx` uses. The header's `←` and its
+    // `|` divider inherit their colour from a wrapper, are out of the accessibility tree, and
+    // duplicate an accessible label that is measured below. The day one becomes real content it
+    // stops being excluded and this test fails.
     Array.from(container.querySelectorAll('[aria-hidden="true"]')).forEach((el) => el.remove());
-
-    const loadingOverlay = container.querySelector<HTMLElement>('.fixed.inset-0.z-50');
-    const backLink = container.querySelector<HTMLElement>('header a[href="/"]');
-    const excluded = [loadingOverlay, backLink, screen.getByText('Scroll to begin')].filter(
-      (el): el is HTMLElement => el !== null,
-    );
-    expect(excluded).toHaveLength(3);
-
-    expect(restingTextNeutrals(detach(excluded)).map(({ hex, text }) => `${hex} ${text}`)).toEqual([
-      '#71717a Loading frames',
-      '#3f3f46 / 192',
-      '#52525b Preparing teardown sequence…',
-      '#71717a Back',
-      '#71717a Scroll to begin',
-    ]);
 
     const neutrals = restingTextNeutrals(container);
     expect(neutrals.length).toBeGreaterThan(0);
+
+    // Non-vacuity for the five runs the exclusion list used to cover.
+    expect(neutrals.map(({ text }) => text)).toEqual(
+      expect.arrayContaining([
+        'Loading frames',
+        '/ 192',
+        'Preparing teardown sequence…',
+        'Back',
+        'Scroll to begin',
+      ]),
+    );
+
     for (const { hex, text } of neutrals) {
       expect(contrastRatio(hex, DARK_BG), `${hex} behind "${text}"`).toBeGreaterThanOrEqual(
         MIN_CONTRAST,

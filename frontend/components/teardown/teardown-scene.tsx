@@ -421,12 +421,12 @@ export function TeardownScene() {
        */}
       {!isLoaded && (
         <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-0 bg-zinc-950">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-zinc-400">
             Loading frames
           </p>
           <p className="mb-6 font-mono text-5xl font-bold tabular-nums text-ink">
             {loadedCount}
-            <span className="text-zinc-700">/{FRAME_COUNT}</span>
+            <span className="text-zinc-400">/{FRAME_COUNT}</span>
           </p>
           {/* Progress bar */}
           <div className="h-[3px] w-72 overflow-hidden rounded-full bg-zinc-800">
@@ -435,7 +435,7 @@ export function TeardownScene() {
               style={{ width: `${loadPct}%`, transition: 'width 80ms linear' }}
             />
           </div>
-          <p className="mt-5 text-xs text-zinc-600">Preparing teardown sequence…</p>
+          <p className="mt-5 text-xs text-zinc-400">Preparing teardown sequence…</p>
         </div>
       )}
       {/* ── Header ──
@@ -450,7 +450,7 @@ export function TeardownScene() {
         <div className="container mx-auto flex items-center gap-3 px-4 py-2.5 sm:gap-4">
           <Link
             href="/"
-            className="flex-shrink-0 text-xs text-zinc-500 transition-colors hover:text-zinc-300"
+            className="flex-shrink-0 text-xs text-zinc-400 transition-colors hover:text-zinc-300"
           >
             {/* The label is hidden rather than shortened below `sm`: at 390px the 24px title, the
                 divider and the 120px slot already fill the row, and a wrapped header is the exact
@@ -715,7 +715,7 @@ export function TeardownScene() {
               transition: 'opacity 0.6s ease',
             }}
           >
-            <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">Scroll to begin</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-zinc-400">Scroll to begin</p>
             <ChevronDown className="h-4 w-4 animate-bounce text-zinc-600" />
           </div>
         </div>

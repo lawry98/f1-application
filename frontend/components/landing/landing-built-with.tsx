@@ -14,7 +14,7 @@ export function LandingBuiltWith() {
     <section className="border-y border-zinc-800/60 bg-zinc-950 py-12" aria-label="Built with">
       <div className="container mx-auto max-w-7xl px-4">
         <BlurFadeReduced inView delay={0} direction="up">
-          <p className="mb-8 text-center text-xs font-semibold uppercase tracking-widest text-zinc-600">
+          <p className="mb-8 text-center text-xs font-semibold uppercase tracking-widest text-zinc-400">
             Built with
           </p>
           <ul
@@ -26,7 +26,7 @@ export function LandingBuiltWith() {
               <li key={label}>
                 <div className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-2">
                   <span className="text-sm font-medium text-zinc-300">{label}</span>
-                  <span className="hidden text-xs text-zinc-600 sm:block">&middot; {note}</span>
+                  <span className="hidden text-xs text-zinc-400 sm:block">&middot; {note}</span>
                 </div>
               </li>
             ))}
