@@ -126,6 +126,11 @@ export function TeamSection({ team, index, isActive, onInspect, reducedMotion }:
 
             <div className="min-w-0 flex-1">
               <p className="mb-2 text-xs uppercase tracking-[0.2em] text-zinc-400">Constructor</p>
+              {/* No `style={{ color: 'white' }}` here, and it must not come back. `TextAnimate`
+                  spreads its rest props onto the motion element *after* `className`, so an inline
+                  colour beats `text-ink` outright — this heading went on painting #FFFFFF through
+                  the whole text-white → text-ink sweep while every other heading on the site moved
+                  to #F4F4ED, and nothing in the diff showed it. */}
               <TextAnimate
                 as="h2"
                 animation={reducedMotion ? 'fadeIn' : 'slideUp'}
@@ -133,7 +138,6 @@ export function TeamSection({ team, index, isActive, onInspect, reducedMotion }:
                 startOnView
                 once
                 className="text-4xl font-black uppercase leading-tight tracking-tight text-ink md:text-5xl lg:text-6xl"
-                style={{ color: 'white' }}
               >
                 {team.shortName}
               </TextAnimate>

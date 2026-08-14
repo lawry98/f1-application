@@ -8,19 +8,8 @@ import { Scribble } from '@/components/candy/scribble';
 import { TicketCard } from '@/components/candy/ticket-card';
 import { TopoBackground } from '@/components/candy/topo-background';
 import monaco from '@/data/circuits/mc-1929.json';
-import type { Point } from '@/lib/svg-path';
+import { toPoints } from '@/lib/circuit-geometry';
 import { cn } from '@/lib/utils';
-
-/**
- * The JSON's `points` widen to `number[][]`, and `Point` is a fixed-length readonly pair, so a
- * straight `as Point[]` is not a legal assertion between them (TS2352). Same helper as
- * `app/candy/page.tsx` — the `= 0` defaults are what make it typecheck under
- * `noUncheckedIndexedAccess`, which makes destructuring an array yield `number | undefined`. They
- * are unreachable for this data (the converter writes pairs) but cannot lie the way a `!` can.
- */
-function toPoints(raw: number[][]): Point[] {
-  return raw.map(([x = 0, y = 0]): Point => [x, y]);
-}
 
 /**
  * Hoisted to module scope so the conversion runs once per process rather than once per render of
@@ -54,9 +43,11 @@ const LINE_GAP = ' ';
 export function LandingHero() {
   return (
     <section className="relative flex min-h-[calc(100vh-3.5rem)] items-center overflow-hidden bg-base pt-14">
-      {/* Contour texture, replacing the dot grid. Absolutely positioned and aria-hidden by the
-          component itself; it needs the `relative` on the section above to resolve its inset. */}
       {/*
+       * The contour texture positions and hides itself — `absolute inset-0` and `aria-hidden` live
+       * inside the component — so the `relative` on the section above is what its `inset-0`
+       * resolves against; drop it and the texture escapes to the nearest positioned ancestor.
+       *
        * `text-ink` is not optional here. `TopoBackground` strokes `currentColor` and sets no colour
        * of its own, and nothing in this section's ancestry declares one — measured in Chromium, a
        * bare `<TopoBackground />` resolved to `rgb(0, 0, 0)`, i.e. black contours over `#09090B`.
@@ -167,11 +158,27 @@ export function LandingHero() {
               </p>
             </div>
 
+            {/*
+             * The focus rings are the one part of this pill pair that cannot be chosen by eye.
+             *
+             * `components/ui/button.tsx` ships `focus-visible:ring-1 focus-visible:ring-ring` and
+             * **no ring-offset**, so an override only names a colour and the ring is painted flush
+             * against the button's own fill. WCAG 2.4.11 wants 3:1 between the indicator and what
+             * it sits against, and the obvious choices both fail that against the adjacent colour:
+             * `ring-f1-red` on `bg-f1-red` is 1.00:1 — a red ring on a red button, i.e. invisible —
+             * and `ring-zinc-600` on the outline pill's `bg-white/[0.02]` over `base` is 2.57:1.
+             *
+             * So each ring takes the *other* pill's colour and an explicit offset, which puts a
+             * 2px band of page background between ring and fill and gives the ring a background it
+             * actually contrasts with. `landing-cta-band.tsx` and `teardown-outro.tsx` carry the
+             * identical strings; `landing-footer.tsx` is the same shape with `ring-offset-base-warm`
+             * because its links sit on the warm card, not on `base`.
+             */}
             <div className="flex flex-wrap items-center gap-3">
               <Button
                 asChild
                 size="lg"
-                className="rounded-full bg-f1-red px-7 text-[12px] font-bold uppercase tracking-[0.14em] text-white transition-colors hover:bg-[#B80500] focus-visible:ring-f1-red"
+                className="rounded-full bg-f1-red px-7 text-[12px] font-bold uppercase tracking-[0.14em] text-white transition-colors hover:bg-[#B80500] focus-visible:ring-ink focus-visible:ring-offset-2 focus-visible:ring-offset-base"
               >
                 <Link href="/briefing">
                   Generate a Briefing
@@ -182,7 +189,7 @@ export function LandingHero() {
                 asChild
                 variant="outline"
                 size="lg"
-                className="rounded-full border-white/15 bg-white/[0.02] px-7 text-[12px] font-bold uppercase tracking-[0.14em] text-zinc-300 transition-colors hover:border-white/25 hover:bg-white/[0.06] hover:text-ink focus-visible:ring-zinc-600"
+                className="rounded-full border-white/15 bg-white/[0.02] px-7 text-[12px] font-bold uppercase tracking-[0.14em] text-zinc-300 transition-colors hover:border-white/25 hover:bg-white/[0.06] hover:text-ink focus-visible:ring-f1-red focus-visible:ring-offset-2 focus-visible:ring-offset-base"
               >
                 <Link href="/teardown">Explore Car Anatomy</Link>
               </Button>

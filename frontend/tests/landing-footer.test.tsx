@@ -3,6 +3,20 @@ import { describe, expect, it } from 'vitest';
 
 import { LandingFooter } from '@/components/landing/landing-footer';
 import { NAV_LINKS } from '@/components/landing/links';
+import { contrastRatio, MIN_CONTRAST } from '@/lib/team-utils';
+import { restingTextNeutrals } from './zinc';
+
+/**
+ * `base-warm`, resolved out of `tailwind.config.ts`.
+ *
+ * Not `DARK_BG`, and the difference is the whole point of this constant existing. The footer's
+ * landmark is `bg-base` but every word in it sits on the card *inside* that landmark, which is
+ * `bg-base-warm` — 11 levels of red lighter. Measuring the footer's neutrals against `#09090B`
+ * would report them all optimistically and pass while the rendered page failed, which is the
+ * mistake `CLAUDE.md` records shipping twice on the teams pages. The card is opaque, so this is
+ * the literal colour behind the glyphs and not a composite.
+ */
+const BASE_WARM = '#140B0B';
 
 /** Collapse the whitespace JSX leaves between inline elements before comparing prose. */
 function normalise(text: string | null): string {
@@ -100,5 +114,27 @@ describe('LandingFooter', () => {
     const separator = container.querySelector('[role="separator"]');
     expect(separator).toHaveAttribute('aria-hidden', 'true');
     expect(container.querySelectorAll('[aria-hidden="true"]').length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('holds every resting neutral above AA on the warm card', () => {
+    /*
+     * The footer is the densest run of 11px text on the page — the brand line, five nav links and
+     * two legal paragraphs — and all of it is one shade. Until this test, that shade's contrast
+     * lived only in a comment, and a comment catches nothing: a `zinc-500` regression shipped and
+     * survived a phase review elsewhere on this branch. `restingTextNeutrals` maps the class back
+     * to the hex Tailwind paints, so a single step down the ramp fails on the ratio.
+     *
+     * Resting state only, which is what the helper's own class filter enforces: the links' hover
+     * colour is a different state and is allowed to sit either side of the bar.
+     */
+    const { container } = render(<LandingFooter />);
+    const neutrals = restingTextNeutrals(container);
+
+    expect(neutrals.length).toBeGreaterThan(0);
+    for (const { hex, text } of neutrals) {
+      expect(contrastRatio(hex, BASE_WARM), `${hex} on "${text}"`).toBeGreaterThanOrEqual(
+        MIN_CONTRAST,
+      );
+    }
   });
 });

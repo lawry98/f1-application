@@ -1,6 +1,8 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { LandingHero } from '@/components/landing/landing-hero';
+import { cardSurfaceBackdrop, contrastRatio, DARK_BG, MIN_CONTRAST } from '@/lib/team-utils';
+import { detach, restingTextNeutrals, whiteWashSurfaces } from './zinc';
 
 /**
  * Collapse runs of whitespace and trim.
@@ -22,6 +24,10 @@ function byNormalisedText(tag: string, text: string) {
       element?.tagName === tag.toUpperCase() && normalise(element.textContent) === text,
   );
 }
+
+// `whiteWashSurfaces` and `detach` are shared with `landing-cta-band` and `landing-features` and
+// live in `./zinc`; the hero's washed surfaces are the ticket card and badge (`bg-white/[0.03]`)
+// and the outline pill (`bg-white/[0.02]`).
 
 describe('LandingHero', () => {
   describe('headline', () => {
@@ -141,6 +147,63 @@ describe('LandingHero', () => {
 
       expect(circuit).not.toBeNull();
       expect(circuit?.querySelector('path')).toHaveAttribute('d', expect.stringContaining('M '));
+    });
+  });
+
+  describe('resting contrast', () => {
+    /*
+     * Every contrast claim on this branch lived in a comment until these tests. That is how a
+     * `zinc-500` regression shipped and survived a phase review elsewhere on the branch: a comment
+     * asserting 4.5:1 is not checked by anything. `restingTextNeutrals` maps each resting
+     * `text-zinc-N` class back to the hex Tailwind would paint, so these measure a *ratio* rather
+     * than pin a class string — swapping `zinc-400` for `zinc-500` fails on 4.12 being under 4.5,
+     * which is the thing that actually matters.
+     *
+     * The section is split by what is actually behind the glyphs, never judged wholesale.
+     */
+    it('holds every neutral on bare `base` above AA', () => {
+      const { container } = render(<LandingHero />);
+      // Detaching the washed surfaces leaves only text sitting directly on `base`.
+      detach(whiteWashSurfaces(container));
+      const neutrals = restingTextNeutrals(container);
+
+      expect(neutrals.length).toBeGreaterThan(0);
+      for (const { hex, text } of neutrals) {
+        expect(contrastRatio(hex, DARK_BG), `${hex} on "${text}"`).toBeGreaterThanOrEqual(
+          MIN_CONTRAST,
+        );
+      }
+    });
+
+    it('holds every neutral on a white-washed surface above AA against that wash', () => {
+      const { container } = render(<LandingHero />);
+      const surfaces = whiteWashSurfaces(container);
+      // Three: the preview card, the badge, the outline pill. Pinned so that a surface gaining or
+      // losing its wash is a failure here rather than a silent change of which bar applies.
+      expect(surfaces).toHaveLength(3);
+
+      /*
+       * The one settled exclusion in this section, excluded explicitly rather than by silence.
+       *
+       * `PreviewRow`'s secondary line is `text-sm text-zinc-500` — #71717a on the card's
+       * `cardSurfaceBackdrop()` measures ~3.9:1, under the 4.5:1 small-text bar. It predates this
+       * branch and the user deliberately left it alone, so this test must neither raise its
+       * threshold nor quietly stop covering the rows around it. Asserting the count first is what
+       * keeps the exclusion honest: if these four rows ever disappear, or a fifth `zinc-500` run
+       * appears in the card, this line fails instead of widening the hole.
+       */
+      const excluded = Array.from(container.querySelectorAll('p.text-zinc-500'));
+      expect(excluded).toHaveLength(4);
+      excluded.forEach((el) => el.remove());
+
+      const backdrop = cardSurfaceBackdrop();
+      const neutrals = restingTextNeutrals(detach(surfaces));
+      expect(neutrals.length).toBeGreaterThan(0);
+      for (const { hex, text } of neutrals) {
+        expect(contrastRatio(hex, backdrop), `${hex} on "${text}"`).toBeGreaterThanOrEqual(
+          MIN_CONTRAST,
+        );
+      }
     });
   });
 

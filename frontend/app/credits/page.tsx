@@ -148,6 +148,56 @@ export default function CreditsPage() {
           </p>
         </section>
 
+        {/*
+         * Circuit geometry. This section exists because the data started shipping to browsers:
+         * `landing-hero.tsx` statically imports `data/circuits/mc-1929.json`, so MIT-licensed
+         * derivative data is now in the `/` client bundle for every visitor. MIT obliges the
+         * copyright and permission notice to travel with it, and until this section landed the
+         * only copy was `data/circuits/CREDITS.md` — a repo file, outside `public/`, unreachable
+         * by anyone using the site.
+         *
+         * Unlike the two tables above, the notice is written inline rather than linked. Those
+         * link to `/drivers/CREDITS.md` and `/logos/CREDITS.md`, which Next serves because they
+         * sit in `public/`; `data/circuits/CREDITS.md` does not and is not servable, so a link
+         * would 404 and discharge nothing. One source, one row of prose — a table would be a
+         * table with a single row.
+         */}
+        <section className="mb-16">
+          <h2 className={cn('mb-3', HEADING)}>Circuit geometry</h2>
+          <div className={RULE} />
+          <p className={PROSE}>
+            The track outlines drawn on this site are derived from{' '}
+            <a
+              href="https://github.com/bacinger/f1-circuits"
+              target="_blank"
+              rel="noopener noreferrer"
+              className={LINK}
+            >
+              bacinger/f1-circuits
+            </a>
+            , a set of surveyed Formula 1 circuit centre lines in GeoJSON, &copy; 2019&ndash;2025
+            Tomislav Bacinger and used under the{' '}
+            <a
+              href="https://opensource.org/license/mit"
+              target="_blank"
+              rel="noopener noreferrer"
+              className={LINK}
+            >
+              MIT licence
+            </a>
+            . The files here are not the upstream data verbatim: each circuit is reprojected from
+            WGS84 into a normalised box &mdash; longitude scaled by the cosine of mean latitude, the
+            y axis flipped for SVG, aspect ratio preserved &mdash; and downsampled to at most 240
+            points.
+          </p>
+          <p className={cn('mt-4', PROSE)}>
+            The MIT licence permits use, copying, modification and distribution provided its
+            copyright notice and permission notice travel with the software. Both are reproduced in
+            full in <code>frontend/data/circuits/CREDITS.md</code>, alongside the three sources that
+            were evaluated and rejected.
+          </p>
+        </section>
+
         <section className="mb-16">
           <h2 className={cn('mb-3', HEADING)}>3D model</h2>
           <div className={RULE} />

@@ -267,14 +267,16 @@ async function main() {
   console.log('Logos:');
   for (const [id, url] of Object.entries(LOGOS)) {
     const destination = join(logoDir, `${id}.svg`);
-    (await downloadLogo(url, destination, destination)) ? ok++ : missed++;
+    if (await downloadLogo(url, destination, destination)) ok++;
+    else missed++;
     await sleep(REQUEST_SPACING_MS);
   }
 
   console.log('Headshots:');
   for (const [id, url] of Object.entries(HEADSHOTS)) {
     const destination = join(driverDir, `${id}.png`);
-    (await downloadHeadshot(url, destination, destination)) ? ok++ : missed++;
+    if (await downloadHeadshot(url, destination, destination)) ok++;
+    else missed++;
     await sleep(REQUEST_SPACING_MS);
   }
 

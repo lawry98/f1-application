@@ -1,12 +1,15 @@
 import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MegaStat } from '@/components/candy/mega-stat';
+import { contrastRatio, DARK_BG, MIN_CONTRAST } from '@/lib/team-utils';
+import { restingTextNeutrals } from './zinc';
 
-// See `SHARED.md`'s "Testing reduced motion" recipe: `useReducedMotion` caches its answer in a
-// module-global on first call and reads `(prefers-reduced-motion)`, not the `: reduce` variant
-// `tests/setup.ts` stubs `matchMedia` with — so it cannot be driven through `matchMedia` at all.
-// Partial-mocking the module and flipping this flag is the only way this repo has found to
-// control it per-test.
+// `useReducedMotion` caches its answer in a module-global on first call and reads
+// `(prefers-reduced-motion)`, not the `: reduce` variant `tests/setup.ts` stubs `matchMedia` with
+// — so it cannot be driven through `matchMedia` at all. Partial-mocking the module and flipping
+// this flag is the only way this repo has found to control it per-test. It still works now that
+// the component reads `useReducedMotionSafe`, because that hook calls motion's hook internally and
+// `vi.mock` replaces the module for every importer in this file's registry.
 let reduceMotion = false;
 
 vi.mock('motion/react', async (importOriginal) => {
@@ -19,12 +22,12 @@ beforeEach(() => {
 });
 
 /**
- * `MegaStat` renders the numeral twice: once `invisible` (reserves the final value's width from
- * the first frame, per the CLS note in `SHARED.md`) and once painted (either the live, animating
- * copy or, in the reduced-motion/string branch, the same final text again). Tests that care about
- * what's *actually on screen* need the painted one, not whichever the DOM order happens to put
- * first — this picks it out by the one thing that reliably distinguishes them: the `invisible`
- * class.
+ * `MegaStat` renders the numeral twice: once `invisible` (reserving the final value's width from
+ * the first frame, so the box never grows as digits are added — the CLS guard) and once painted
+ * (either the live, animating copy or, in the reduced-motion/string branch, the same final text
+ * again). Tests that care about what is *actually on screen* need the painted one, not whichever
+ * the DOM order happens to put first — this picks it out by the one thing that reliably
+ * distinguishes them: the `invisible` class.
  */
 function paintedNumeral(container: HTMLElement): Element {
   const candidates = Array.from(container.querySelectorAll('.tabular-nums'));
@@ -76,14 +79,44 @@ describe('MegaStat', () => {
   });
 
   it('gives the counting numeral an accessible name that is always the final value', () => {
-    // Without reduced motion, the painted numeral is mid-count and `aria-hidden` — the accessible
-    // name for the stat comes from `aria-label` on its container instead, and that label is
-    // static, so it is correct even while the digits are still animating.
+    // Without reduced motion, both numerals are `aria-hidden` — the width-reserving twin because
+    // it is invisible, the painted one because it is mid-count — so the name has to come from the
+    // container. It is asserted through `getByRole`, i.e. through the **computed accessible
+    // name**, not through the presence of an `aria-label` attribute.
+    //
+    // That distinction is the whole point of this test, and asserting the attribute is what let
+    // the defect ship: the label used to sit on a bare `<span>`, whose implicit role is `generic`,
+    // and ARIA 1.2 prohibits `aria-label` on `generic` — both Chromium and Gecko drop it, axe
+    // reports `aria-prohibited-attr`, and the stat announces with no number at all. An
+    // attribute-presence check passes happily through all of that. Same shape of defect as
+    // asserting a params dict instead of the serialised URL.
+    render(<MegaStat value={379} label="Points" />);
+
+    expect(screen.getByRole('img', { name: '379' })).toBeInTheDocument();
+  });
+
+  it('keeps the unit readable beside the named numeral rather than swallowing it', () => {
+    // `role="img"` makes its subtree presentational, so its scope is load-bearing: on the numeral
+    // *row* it would take the `sup` with it and `/teardown`'s "1000 HP" would announce as "1000".
+    // Scoped to the counting box, the image is the numeral and the unit stays real text.
+    render(<MegaStat value={1000} label="Power unit output" sup="HP" />);
+
+    const numeral = screen.getByRole('img', { name: '1000' });
+    expect(numeral).not.toHaveTextContent('HP');
+    expect(screen.getByText('HP').closest('[aria-hidden="true"]')).toBeNull();
+  });
+
+  it('exposes no img role once the value is static, because the text itself is readable', () => {
+    // Reduced motion and string values paint the true final text with no `aria-hidden` on it, so
+    // an authored name would be a second source of truth for something already in the tree.
+    reduceMotion = true;
     const { container } = render(<MegaStat value={379} label="Points" />);
 
-    const painted = paintedNumeral(container);
-    expect(painted).toHaveAttribute('aria-hidden', 'true');
-    expect(painted.closest('[aria-label]')).toHaveAttribute('aria-label', '379');
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+    // `paintedNumeral`, not `getByText('379')`: the invisible twin carries the same text, so a
+    // text query matches two nodes and throws.
+    expect(paintedNumeral(container)).not.toHaveAttribute('aria-hidden');
+    expect(paintedNumeral(container).textContent).toBe('379');
   });
 
   it('renders ordinal and sup when provided', () => {
@@ -162,9 +195,9 @@ describe('MegaStat', () => {
     // reduced-motion/value-type branch.
     const { container } = render(<MegaStat value={379} label="Points" />);
 
-    const numerals = container.querySelectorAll('.tabular-nums');
-    expect(numerals.length).toBeGreaterThanOrEqual(2);
-    numerals.forEach((el) => expect(el).toHaveClass('tabular-nums'));
+    // Only the count carries information: asserting `toHaveClass('tabular-nums')` on the results
+    // of a `.tabular-nums` selector is a tautology the selector already guarantees.
+    expect(container.querySelectorAll('.tabular-nums').length).toBeGreaterThanOrEqual(2);
   });
 
   it('renders the .text-mega scale by default', () => {
@@ -186,5 +219,115 @@ describe('MegaStat', () => {
     );
 
     expect(container.querySelector('.my-marker-class')).toBeInTheDocument();
+  });
+
+  it('holds the label above the 4.5:1 small-text contrast floor, as a ratio not a class name', () => {
+    // The label is 11px — small text — so it is held to 4.5:1, not the 3:1 large-text bar.
+    // `zinc-500` measures 4.12:1 on bare `base` and fails; `zinc-400` measures 7.76:1. Measuring
+    // the *ratio* through `contrastRatio` is what makes swapping the shade fail on the number,
+    // which a `toHaveClass('text-zinc-400')` string match would not.
+    //
+    // `MegaStat` paints no background of its own, and the two shipped call sites do **not** give
+    // it the same one. `/teardown`'s outro seats its four stats in bare grid cells on the section's
+    // `bg-zinc-950` — the same hex as `DARK_BG` (#09090b) — but `/candy` renders its three inside a
+    // cell styled `bg-white/[0.02]`. A translucent white wash lightens the backdrop, which *lowers*
+    // a light neutral's ratio: `zinc-400` is 7.52:1 on the `/candy` cell against 7.76:1 on bare
+    // base, so the card is the stricter of the two and the one to re-measure against first if this
+    // shade is ever lowered. Both clear 4.5:1 with room to spare today, which is why this measures
+    // against `DARK_BG`; the margin, not the pass, is what those two numbers record. Measuring the
+    // right colour against the wrong background is the mistake `CLAUDE.md` records shipping twice,
+    // so a call site putting a heavier layer behind this has to re-measure and pass its own
+    // `tone.label`.
+    const { container } = render(<MegaStat value={379} label="Points" />);
+
+    const neutrals = restingTextNeutrals(container);
+    expect(neutrals.length).toBeGreaterThan(0);
+    for (const { hex, text } of neutrals) {
+      expect(contrastRatio(hex, DARK_BG), `${hex} behind "${text}"`).toBeGreaterThanOrEqual(
+        MIN_CONTRAST,
+      );
+    }
+  });
+
+  it('renders its pre-existing defaults when none of the new props are passed', () => {
+    // The backward-compatibility guard for `tone`, `scribbleClassName` and the widened `ordinal`.
+    // Every call site of this component predates all three and none of them can be edited from
+    // here, so the no-new-props render has to be byte-identical to what it was. This pins each
+    // default the new props override, in one place.
+    const { container } = render(
+      <MegaStat value={379} label="Points" ordinal="ST" scribble="p1" />,
+    );
+
+    expect(container.querySelector('.bg-f1-red')).toBeInTheDocument(); // tick
+    expect(container.querySelector('.text-ink')).toBeInTheDocument(); // numeral
+    expect(container.querySelector('.text-zinc-400')).toBeInTheDocument(); // label
+    expect(screen.getByText('ST').tagName).toBe('SUP'); // string ordinal
+    // Scribble keeps its own default red when nothing is forwarded to it.
+    expect(container.querySelector('svg')!.classList.contains('text-f1-red')).toBe(true);
+  });
+
+  it('lets tone replace the numeral, tick and label colours', () => {
+    // Phase 5 renders a right-rail stat over a per-team gradient and needs all three: `className`
+    // only reaches the outer div, and every colour here is on a descendant.
+    const { container } = render(
+      <MegaStat
+        value={379}
+        label="Points"
+        tone={{ numeral: 'text-white', tick: 'bg-black', label: 'text-zinc-300' }}
+      />,
+    );
+
+    expect(container.querySelector('.text-white')).toBeInTheDocument();
+    expect(container.querySelector('.bg-black')).toBeInTheDocument();
+    expect(container.querySelector('.text-zinc-300')).toBeInTheDocument();
+    // Replaced, not merely accompanied — twMerge has to drop each default rather than emit both.
+    expect(container.querySelector('.text-ink')).toBeNull();
+    expect(container.querySelector('.bg-f1-red')).toBeNull();
+    expect(container.querySelector('.text-zinc-400')).toBeNull();
+  });
+
+  it('keeps the display size when tone.numeral recolours the numeral', () => {
+    // The documented twMerge trap, now with a caller-supplied colour in it: `cn` groups a bare
+    // unrecognised `text-<word>` into the same conflict class as a text colour, so
+    // `twMerge('text-mega text-ink')` returns `text-ink` alone. That is why the size and the colour
+    // sit on two nested spans, and why `tone.numeral` must merge into the *colour* one. Routing it
+    // through the size's `cn()` would silently drop `.text-mega` and no other test would notice.
+    const { container } = render(
+      <MegaStat value={379} label="Points" tone={{ numeral: 'text-white' }} />,
+    );
+
+    expect(container.querySelector('.text-mega')).toBeInTheDocument();
+    expect(container.querySelector('.text-white')).toBeInTheDocument();
+    expect(container.querySelector('.text-ink')).toBeNull();
+  });
+
+  it('forwards scribbleClassName to the internal Scribble', () => {
+    // `Scribble`'s only recolour hatch is `[&_svg]:text-…` on its own `className` (a bare text
+    // colour on its wrapper would cascade into the annotated children), and the element is
+    // `MegaStat`'s internal — so without this prop a `p1` over a Ferrari/Sauber/Alpine panel is a
+    // red mark on red with nothing able to reach it.
+    const { container } = render(
+      <MegaStat value={1} label="Position" scribble="p1" scribbleClassName="[&_svg]:text-ink" />,
+    );
+
+    const wrapper = container.querySelector('svg')!.closest('.relative.inline-block');
+    expect(wrapper).not.toBeNull();
+    expect(wrapper!.classList.contains('[&_svg]:text-ink')).toBe(true);
+  });
+
+  it('renders an element ordinal verbatim instead of wrapping it in a sup', () => {
+    // Phase 5's ordinal is a chip, and `align-super text-[0.35em]` would shrink a chip to a third
+    // of a line and hang it off the baseline — i.e. un-chip it, making the widened type useless.
+    // A *string* ordinal still gets the `<sup>`, which the default-props test above pins.
+    const { container } = render(
+      <MegaStat
+        value={1}
+        label="Championship position"
+        ordinal={<span className="chip">ST</span>}
+      />,
+    );
+
+    expect(container.querySelectorAll('sup')).toHaveLength(0);
+    expect(screen.getByText('ST')).toHaveClass('chip');
   });
 });

@@ -5,9 +5,10 @@
 'use client';
 
 import { useRef } from 'react';
-import { motion, useReducedMotion, useScroll, useTransform } from 'motion/react';
+import { motion, useScroll, useTransform } from 'motion/react';
 
-import { BlurFade } from '@/components/ui/blur-fade';
+import { BlurFadeReduced } from '@/components/candy/blur-fade-reduced';
+import { useReducedMotionSafe } from '@/hooks/use-reduced-motion-safe';
 import { cn } from '@/lib/utils';
 
 const STEPS = [
@@ -76,7 +77,15 @@ const SCROLL_COMPLETE_AT = 0.85;
 
 export function LandingHowItWorks() {
   const stepsRef = useRef<HTMLDivElement>(null);
-  const prefersReducedMotion = useReducedMotion();
+  // `useReducedMotionSafe`, not motion's own hook. This branch decides an *inline style* — the
+  // connector's `scaleY` is either a literal 1 or a MotionValue reading 0 at rest — and this
+  // component is server-rendered like every other client component in the app. Motion's
+  // `useReducedMotion()` returns `null` on the server and the real preference on the client's
+  // first render, so under the preference the two passes disagree on `transform` and React 18
+  // reports a hydration mismatch on a `style` attribute exactly as it does on a text node. The
+  // safe hook reports `false` until a layout effect has run, so the two passes agree and the flip
+  // lands before paint. See `hooks/use-reduced-motion-safe.ts`.
+  const prefersReducedMotion = useReducedMotionSafe();
 
   const { scrollYProgress } = useScroll({
     target: stepsRef,
@@ -93,7 +102,7 @@ export function LandingHowItWorks() {
     <section id="how-it-works" className="bg-base py-24" aria-labelledby="how-it-works-heading">
       <div className="container mx-auto max-w-7xl px-4">
         {/* Section header */}
-        <BlurFade inView delay={0} direction="up">
+        <BlurFadeReduced inView delay={0} direction="up">
           <div className="mb-16 max-w-2xl">
             {/* The kicker used to be `text-sm … text-f1-red`, which is small red text: f1-red on
                 `base` measures 4.01:1, clearing WCAG's 3:1 large-text bar but not the 4.5:1 small
@@ -120,7 +129,7 @@ export function LandingHowItWorks() {
               Four steps. One pipeline. Powered by LangGraph and Claude AI.
             </p>
           </div>
-        </BlurFade>
+        </BlurFadeReduced>
 
         {/* Steps */}
         <div ref={stepsRef} className="relative">
@@ -153,7 +162,7 @@ export function LandingHowItWorks() {
 
           <div className="space-y-10">
             {STEPS.map(({ number, title, description }, i) => (
-              <BlurFade key={number} inView delay={0.1 * i} direction="up">
+              <BlurFadeReduced key={number} inView delay={0.1 * i} direction="up">
                 <div className="flex gap-6 lg:gap-8">
                   {/* Step number */}
                   <div className="flex-shrink-0">
@@ -194,7 +203,7 @@ export function LandingHowItWorks() {
                     </p>
                   </div>
                 </div>
-              </BlurFade>
+              </BlurFadeReduced>
             ))}
           </div>
         </div>

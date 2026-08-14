@@ -67,3 +67,53 @@ export function restingTextNeutrals(root: ParentNode): RestingNeutral[] {
   }
   return out;
 }
+
+/**
+ * Every element under `root` that paints a translucent white surface over the page — the ticket
+ * cards and icon tiles (`bg-white/[0.03]`), the badges, and the outline pills (`bg-white/[0.02]`).
+ *
+ * They exist as a group because of the one mistake `CLAUDE.md` records shipping twice on the teams
+ * pages — measuring the right *colour* against the wrong *background*. `base` is `#09090B`, and a
+ * 2–3% white wash over it is lighter, so text on one of these surfaces scores a *lower* ratio than
+ * the same text on bare `base`. Judging a whole section against `DARK_BG` reports every one of
+ * them optimistically and passes while the rendered page fails. Pair with `detach` below and
+ * `cardSurfaceBackdrop()` from `@/lib/team-utils` to measure each group against what is really
+ * behind it.
+ *
+ * The alphas are pinned in the pattern rather than matched loosely: a new surface at some other
+ * alpha is a background this helper has not been told about, and silently including it would be
+ * the same wrong-background failure one level up.
+ */
+export function whiteWashSurfaces(root: ParentNode): HTMLElement[] {
+  return Array.from(root.querySelectorAll<HTMLElement>('*')).filter((el) =>
+    Array.from(el.classList).some((c) => /^bg-white\/\[0\.0[23]\]$/.test(c)),
+  );
+}
+
+/**
+ * Move `elements` out of the rendered tree and into a detached parent.
+ *
+ * Two jobs in one. It takes the washed surfaces out of the container, so whatever is left there is
+ * text on bare `base` — and it gives `restingTextNeutrals` a root that *contains* the surfaces
+ * rather than being one. That helper walks `querySelectorAll('*')`, which excludes the node it is
+ * handed, and an outline pill carries its label as its own text node: handing it the pill directly
+ * reports nothing at all, and the assertion passes by measuring an empty list.
+ *
+ * Nested surfaces are left inside their parent (the feature cards and their icon tiles do this) so
+ * that moving one cannot tear it out of the other.
+ *
+ * **The one way this can silently under-report.** `restingTextNeutrals` walks *up* the tree for the
+ * nearest `text-zinc-N`, and detaching severs that chain: text whose colour is set on an ancestor
+ * that stays behind in the original container loses its shade and is dropped from the measurement
+ * with no failure — the same silent skip the helper was written to defeat. Nothing hits this today
+ * (all three landing sections set the colour on the text element itself), but a section that
+ * colours a *card wrapper* and relies on inheritance would go unmeasured. If a call site's neutral
+ * count ever drops without markup being deleted, this is why.
+ */
+export function detach(elements: HTMLElement[]): HTMLElement {
+  const holder = document.createElement('div');
+  elements
+    .filter((el) => !elements.some((other) => other !== el && other.contains(el)))
+    .forEach((el) => holder.appendChild(el));
+  return holder;
+}

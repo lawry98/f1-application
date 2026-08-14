@@ -1,4 +1,4 @@
-import { BlurFade } from '@/components/ui/blur-fade';
+import { BlurFadeReduced } from '@/components/candy/blur-fade-reduced';
 
 const TECH_STACK = [
   { label: 'FastF1', note: 'Telemetry & results' },
@@ -13,7 +13,7 @@ export function LandingBuiltWith() {
   return (
     <section className="border-y border-zinc-800/60 bg-zinc-950 py-12" aria-label="Built with">
       <div className="container mx-auto max-w-7xl px-4">
-        <BlurFade inView delay={0} direction="up">
+        <BlurFadeReduced inView delay={0} direction="up">
           <p className="mb-8 text-center text-xs font-semibold uppercase tracking-widest text-zinc-600">
             Built with
           </p>
@@ -31,7 +31,7 @@ export function LandingBuiltWith() {
               </li>
             ))}
           </ul>
-        </BlurFade>
+        </BlurFadeReduced>
       </div>
     </section>
   );

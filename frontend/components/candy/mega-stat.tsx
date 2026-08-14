@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
-import { useInView, useMotionValue, useReducedMotion, useSpring } from 'motion/react';
+import { isValidElement, useEffect, useRef, type ReactNode } from 'react';
+import { useInView, useMotionValue, useSpring } from 'motion/react';
+import { useReducedMotionSafe } from '@/hooks/use-reduced-motion-safe';
 import { cn } from '@/lib/utils';
 import { Scribble, type ScribbleType } from '@/components/candy/scribble';
 
@@ -14,7 +15,12 @@ import { Scribble, type ScribbleType } from '@/components/candy/scribble';
  */
 const COUNT_SPRING = { damping: 40, stiffness: 90, mass: 1 } as const;
 
-/** Every scroll-triggered instance in the kit fires once, this margin, per SHARED.md. */
+/**
+ * Every scroll-triggered instance in this kit fires **once**, at this margin — `Scribble` and
+ * `LaurelFlourish` inline the same pair. A mark that redraws each time it scrolls back past reads
+ * as a glitch rather than as an annotation, and `once: false` on a count-up would re-run the
+ * spring from 0 every time the stat left and re-entered the viewport.
+ */
 const ONCE_IN_VIEW = { once: true, margin: '-15% 0px' } as const;
 
 /**
@@ -25,9 +31,9 @@ const ONCE_IN_VIEW = { once: true, margin: '-15% 0px' } as const;
  *    preference, which is exactly the failure this kit's spec forbids — reduced motion has to
  *    render the *final* value with no count, not merely a fast one.
  * 2. It renders `startValue` (`0`) as the element's only child, so the box is exactly as wide as
- *    "0" on first paint and grows with every digit added — a CLS trap `SHARED.md` names as the
- *    single most important detail of this component. Nothing in that component reserves the final
- *    digit count's width up front.
+ *    "0" on first paint and grows with every digit added. Reserving the *final* value's width from
+ *    the first frame is the single most important detail of this component — see the counting-box
+ *    comment below — and nothing in `number-ticker.tsx` does it.
  * 3. It mutates `ref.current.textContent` directly and never renders the true final value anywhere
  *    in the tree, so a screen reader landing mid-count (or a test asserting the accessible value)
  *    has nothing correct to read until the spring finishes settling.
@@ -40,15 +46,52 @@ export interface MegaStatProps {
   value: number | string;
   /** Small-caps label above the numeral. */
   label: string;
-  /** Raised ordinal suffix, e.g. 'ST' | 'ND' | 'TH'. */
-  ordinal?: string;
+  /**
+   * Raised ordinal suffix. A string ('ST' | 'ND' | 'TH') gets the raised `<sup>` treatment; an
+   * *element* is rendered verbatim instead, because the only reason to pass one is that the call
+   * site wants its own box — `/teams` renders `1ST` as a chip — and `align-super text-[0.35em]`
+   * would shrink that chip to a third of a line and hang it off the baseline, i.e. un-chip it.
+   */
+  ordinal?: ReactNode;
   /** Raised trailing fragment, e.g. '.909' on a lap time, or '%'. */
   sup?: string;
   /** Overlays a Scribble across the numeral. Used for P1 moments. */
   scribble?: ScribbleType;
+  /**
+   * Forwarded to the internal `<Scribble>`'s own `className`, which is the only way to reach it —
+   * the element is this component's internal, so `Scribble`'s documented recolour escape hatch
+   * (`[&_svg]:text-…`, needed because a bare text colour on its wrapper cascades into the annotated
+   * children) would otherwise be unreachable. It is needed: the mark is locked to `text-f1-red`, so
+   * a `p1` over a Ferrari/Sauber/Alpine panel is a red scrawl on red.
+   */
+  scribbleClassName?: string;
   /** 'mega' is the .text-mega display scale; 'mid' the clamp(2.5rem, 6vw, 4.5rem) variant. */
   scale?: 'mega' | 'mid';
+  /** Per-part colour overrides for call sites on a coloured surface. See `MegaStatTone`. */
+  tone?: MegaStatTone;
   className?: string;
+}
+
+/**
+ * Per-part colour overrides. `className` lands on the outer `div` only, and every colour this
+ * component paints lives on a *descendant* — the numeral's `text-ink`, the tick's `bg-f1-red`, the
+ * label's `text-zinc-400` — so a call site over a coloured panel (the `/teams` right rail sits on a
+ * per-team gradient) cannot reach any of them through `className`. Each field replaces exactly the
+ * hard-coded class named in its own doc comment and nothing else.
+ *
+ * Contrast becomes the caller's problem the moment one of these is set, and it is a real one: the
+ * kit's floor is 4.5:1 for the 11px label, so a `tone.label` has to be measured against whatever
+ * backdrop the call site puts behind it (`lib/team-utils.ts` has the helpers for exactly that).
+ * The defaults clear it on the dark page — `tests/mega-stat.test.tsx` asserts that with
+ * `contrastRatio`, as a ratio rather than as a class-name match.
+ */
+export interface MegaStatTone {
+  /** Replaces `text-ink` on the numeral. */
+  numeral?: string;
+  /** Replaces `bg-f1-red` on the tick bar. */
+  tick?: string;
+  /** Replaces `text-zinc-400` on the label. */
+  label?: string;
 }
 
 /**
@@ -61,10 +104,15 @@ export function MegaStat({
   ordinal,
   sup,
   scribble,
+  scribbleClassName,
   scale = 'mega',
+  tone,
   className,
 }: MegaStatProps): React.JSX.Element {
-  const prefersReducedMotion = useReducedMotion();
+  // `useReducedMotionSafe`, not motion's `useReducedMotion`: `shouldAnimate` decides *which span
+  // carries the text*, and motion's hook answers `null` on the server against the real preference
+  // on the client's first render. See the root-cause note in `redacted-reveal.tsx`.
+  const prefersReducedMotion = useReducedMotionSafe();
   const containerRef = useRef<HTMLSpanElement>(null);
   const displayRef = useRef<HTMLSpanElement>(null);
   const isInView = useInView(containerRef, ONCE_IN_VIEW);
@@ -114,7 +162,11 @@ export function MegaStat({
   // ambiguous. Splitting the size class onto the outer element and the color/font onto the inner
   // one keeps the two out of the same `cn()` call entirely, which is the only fix that doesn't
   // involve reaching into `tailwind.config.ts` (out of scope — the parent owns shared files).
-  const numeralColorClass = 'font-display text-ink';
+  //
+  // `tone.numeral` therefore has to be merged **here**, on the inner span, and never alongside
+  // `numeralSizeClass`: routing it through the same `cn()` as bare `text-mega` would resurrect the
+  // exact bug above, silently dropping the display size for whatever colour the caller passed.
+  const numeralColorClass = cn('font-display text-ink', tone?.numeral);
 
   // The counting box: two spans in the same CSS grid cell (`col-start-1 row-start-1` on both,
   // sizing the grid to whichever child is larger). The first is the *final* value rendered
@@ -122,23 +174,41 @@ export function MegaStat({
   // wide as the finished number from the very first frame. The second is the live, painted digits.
   // Without the invisible sibling, a count from "0" to "379" would grow the box on every tick as
   // digits are added; `tabular-nums` alone only holds each *digit's* width steady, it does nothing
-  // about the digit *count* changing. This pairing is what SHARED.md's "reserve the final value's
-  // width" note is describing, and it's the reason there are two copies of the same text below
-  // instead of one.
+  // about the digit *count* changing. This pairing is the kit's "reserve the final value's width"
+  // rule, and it's the reason there are two copies of the same text below instead of one.
+  //
+  // **`role="img"` is what makes the container-label design actually work, and it is not
+  // decoration.** While counting, both copies are `aria-hidden` — the twin because it is invisible,
+  // the painted one because it is mid-count and transiently wrong — so the name has to come from
+  // `aria-label` on this container. A bare `<span>` has the implicit role `generic`, and ARIA 1.2
+  // *prohibits* `aria-label`/`aria-labelledby` on `generic`: Chromium and Gecko both drop it and
+  // axe flags `aria-prohibited-attr`. The stat then has **no** accessible number at all, and
+  // permanently, because the painted numeral stays `aria-hidden` after it settles. `img` is a role
+  // that permits a name from the author, so one attribute restores the name without changing the
+  // shape of the design.
+  //
+  // Deliberately **not** the "sr-only twin" pattern: this repo has a documented trap where an
+  // sr-only twin sat *beside* the painted spans and a contrast checker read the invisible copy
+  // instead of the visible glyphs, reporting 1:1. Naming the container sidesteps that entirely —
+  // there is one source of truth for the accessible name and it is not a rendered node a future
+  // tool could pick by mistake.
+  //
+  // It goes on the **counting box** rather than on the numeral row below, because `role="img"`
+  // makes its whole subtree presentational: on the row it would swallow the `sup`/`ordinal`
+  // siblings too, and `/teardown` would announce "1000" where the unit is "HP". Scoped here, the
+  // image *is* the numeral and the units stay real text beside it.
   const countingBox = (
-    <span ref={containerRef} className="relative inline-grid">
+    <span
+      ref={containerRef}
+      className="relative inline-grid"
+      {...(shouldAnimate ? { role: 'img', 'aria-label': finalText } : {})}
+    >
       <span aria-hidden="true" className={cn('invisible col-start-1 row-start-1 tabular-nums')}>
         {finalText}
       </span>
       {shouldAnimate ? (
-        // The painted, animating numeral. `aria-hidden` because it is mid-count and therefore
-        // transiently wrong; the accessible name for this whole stat comes from `aria-label`
-        // below instead of from this node's text. (Deliberately not the "sr-only twin" pattern —
-        // this repo has a documented trap where a sr-only twin sits *beside* the painted spans and
-        // a contrast checker read the invisible one instead of the visible one. Putting the label
-        // on the container sidesteps that shape of bug entirely: there is only one source of truth
-        // for the accessible name, and it isn't a rendered node a future tool could pick by
-        // mistake.)
+        // The painted, animating numeral: `aria-hidden` because it is mid-count and therefore
+        // transiently wrong. The name comes from this box's own `aria-label` instead.
         <span ref={displayRef} aria-hidden="true" className="col-start-1 row-start-1 tabular-nums">
           0
         </span>
@@ -152,21 +222,26 @@ export function MegaStat({
 
   return (
     <div className={cn('inline-flex flex-col items-start', className)}>
-      {/* The tick bar and label are purely decorative framing above the numeral; the numeral
-          alone carries the stat's meaning. `pointer-events-none` per SHARED.md's decorative-
-          overlay rule, even though it sits in flow rather than absolutely positioned — it is
-          still non-interactive and should never intercept a click meant for whatever wraps this
-          stat (a card, a link). */}
-      <div aria-hidden="true" className="pointer-events-none mb-2 h-1.5 w-5 bg-f1-red" />
-      {/* zinc-400, not zinc-500 — SHARED.md's contrast note: only zinc-400 clears 4.5:1 on `base`
-          at 11px. */}
-      <span className="mb-1 text-[11px] uppercase tracking-[0.2em] text-zinc-400">{label}</span>
+      {/* The tick bar is purely decorative framing above the numeral; the numeral alone carries
+          the stat's meaning. Decorative nodes in this kit are `aria-hidden` *and*
+          `pointer-events-none` — the latter even though this one sits in flow rather than
+          absolutely positioned, because it is still non-interactive and should never intercept a
+          click meant for whatever wraps the stat (a card, a link). Red as a bar is unconstrained:
+          the 4.01:1 contrast floor `f1-red` measures on the dark page applies to red *text*. */}
+      <div
+        aria-hidden="true"
+        className={cn('pointer-events-none mb-2 h-1.5 w-5 bg-f1-red', tone?.tick)}
+      />
+      {/* zinc-400, not zinc-500: at 11px this is small text, so it is held to 4.5:1 on the dark
+          page, and zinc-500 measures 4.12:1 there against zinc-400's 7.76:1. Every 11px label on
+          this branch is zinc-400 for that reason. `tests/mega-stat.test.tsx` measures the ratio
+          with `contrastRatio` rather than pinning the class name. */}
       <span
-        className={cn('relative inline-flex items-baseline', numeralSizeClass)}
-        // Only set while the digits themselves are mid-count and unreliable — see the comment on
-        // the painted span above.
-        {...(shouldAnimate ? { 'aria-label': finalText } : {})}
+        className={cn('mb-1 text-[11px] uppercase tracking-[0.2em] text-zinc-400', tone?.label)}
       >
+        {label}
+      </span>
+      <span className={cn('relative inline-flex items-baseline', numeralSizeClass)}>
         <span className={numeralColorClass}>
           {/* `Scribble` wraps `countingBox` — the counted value — and nothing wider. The spec's
               own phrasing draws this line: the mark goes "across the numeral", while the ordinal
@@ -178,12 +253,27 @@ export function MegaStat({
               width is already reserved for the final value (see the comment above it), so handing
               it to `Scribble` can never introduce a second, competing box whose size might shift
               independently of the CLS guard already in place. */}
-          {scribble ? <Scribble type={scribble}>{countingBox}</Scribble> : countingBox}
+          {scribble ? (
+            <Scribble type={scribble} className={scribbleClassName}>
+              {countingBox}
+            </Scribble>
+          ) : (
+            countingBox
+          )}
           {/* Superscripts sit outside the counting box entirely, as siblings sharing the
               parent's font-size — so a re-render of the counting digits above can never touch
               them, and their `em` sizing resolves against the numeral's own giant font-size
               rather than the page default. */}
-          {ordinal ? <sup className="align-super text-[0.35em]">{ordinal}</sup> : null}
+          {/* An element `ordinal` is rendered verbatim: see `MegaStatProps` — the `<sup>` treatment
+              is what a caller passing a chip is trying to escape, so applying it anyway would make
+              the widened type useless. A string keeps the raised suffix it has always had. */}
+          {ordinal ? (
+            isValidElement(ordinal) ? (
+              ordinal
+            ) : (
+              <sup className="align-super text-[0.35em]">{ordinal}</sup>
+            )
+          ) : null}
           {sup ? <sup className="align-super text-[0.35em]">{sup}</sup> : null}
         </span>
       </span>

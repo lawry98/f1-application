@@ -276,6 +276,34 @@ export function sectionStandingColor(hex: string): string {
 }
 
 /**
+ * The `bg-white/[0.03]` card surface `TicketCard` paints, as an opaque colour.
+ *
+ * This is the fourth backdrop variant, and it exists because the candy kit introduced a surface
+ * the other three do not describe. `readableOnDark`, `seamLabelColor`, `railStandingColor` and
+ * `sectionStandingColor` all answer "what colour must this text be"; this one answers the prior
+ * question — "what is actually behind it" — for a neutral that was chosen against bare `base` and
+ * then rendered on a card.
+ *
+ * The distinction is not academic and it is the reason this is a helper rather than a number
+ * inlined in a test. A translucent white surface *lightens* the background, which lifts a
+ * neutral's contrast against the page but lowers it against the surface: `zinc-500` measures
+ * 4.12:1 on bare `base` and 3.93:1 here. A test that measures a card's text against `DARK_BG`
+ * therefore reports the wrong number in the *safe* direction, passes, and leaves the rendered
+ * page failing — which is exactly the trap `CLAUDE.md` records the team pages hitting twice.
+ *
+ * The default covers both pages that use the card today: tailwind's `base` and this module's
+ * `DARK_BG` are the same colour (`#09090B`), so a `TicketCard` on the landing page and one on
+ * `/teardown`'s `bg-zinc-950` composite identically. Pass an explicit `bg` only for a card on
+ * something else — `base-warm`, or a team-colour gradient in Phase 5.
+ */
+export const CARD_SURFACE_ALPHA = 0.03;
+
+/** The opaque colour behind text inside a `TicketCard` on `bg` (default: `base` / `zinc-950`). */
+export function cardSurfaceBackdrop(bg: string = DARK_BG): string {
+  return blendOver('#ffffff', CARD_SURFACE_ALPHA, bg);
+}
+
+/**
  * Strength of the scrim under a driver portrait's caption, and the alpha its contrast is judged
  * at.
  *

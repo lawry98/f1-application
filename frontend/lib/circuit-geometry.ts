@@ -16,7 +16,9 @@
  * together, and a static import of all of them would put every circuit in the bundle to draw
  * one — so `loadCircuit` reaches for a single file through a dynamic import and the bundler
  * splits each circuit into its own chunk. Callers that already know their circuit at build time
- * (the `/candy` styleguide) can import the JSON directly instead and skip this entirely.
+ * (the `/candy` styleguide, the landing hero) can import the JSON directly instead and skip this
+ * entirely — `toPoints` below is the one piece of this module they still need, so that the static
+ * path and the dynamic path agree on the JSON↔`Point` boundary rather than each re-deriving it.
  */
 
 import type { Point } from '@/lib/svg-path';
@@ -41,6 +43,25 @@ export interface CircuitGeometry {
 }
 
 const LOCATION_TO_ID: Record<string, string> = index;
+
+/**
+ * Narrow a statically imported circuit's `points` to `Point[]`.
+ *
+ * TypeScript widens a JSON array of pairs to `number[][]`, and `Point` is a fixed-length readonly
+ * pair, so `as Point[]` is not a legal assertion between them (TS2352) — the conversion has to be
+ * a real `map`. The `= 0` defaults are what make it typecheck under `noUncheckedIndexedAccess`,
+ * which types destructuring an array element as `number | undefined`. They are unreachable for
+ * this data — the converter writes pairs — but a default cannot lie about a missing value the way
+ * a non-null assertion can.
+ *
+ * `loadCircuit` needs none of this because `CircuitGeometry` already declares `points: Point[]`
+ * and the dynamic import is cast to it wholesale. This exists for the static-import callers named
+ * in the module docstring; before it did, the same seven-line helper sat in two view components
+ * and Phase 6 was about to make it five.
+ */
+export function toPoints(raw: number[][]): Point[] {
+  return raw.map(([x = 0, y = 0]): Point => [x, y]);
+}
 
 /**
  * Lowercase, strip accents, collapse everything else to single hyphens.

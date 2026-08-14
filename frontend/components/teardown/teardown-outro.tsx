@@ -1,5 +1,6 @@
 import { ArrowRight } from 'lucide-react';
 import Link from 'next/link';
+import { memo } from 'react';
 import { MegaStat } from '@/components/candy/mega-stat';
 import { TicketCard } from '@/components/candy/ticket-card';
 import { TopoBackground } from '@/components/candy/topo-background';
@@ -22,9 +23,10 @@ const STATS = [
 /**
  * The four 2026-regulation systems, cited verbatim in the task brief and (per that brief) in the
  * parent's commit message — do not reword, extend, or add a fifth. `title` is the card's first
- * line (small display-caps, not `f1-red`: at this size red fails the 4.5:1 small-text floor —
- * see SHARED-P4.md's contrast table), `body` is the descriptive sentence, `footer` the closing
- * strip.
+ * line (small display-caps, not `f1-red`: `f1-red` measures 4.01:1 on this dark page, which
+ * clears WCAG's 3:1 large-text bar but fails the 4.5:1 small-text one, so red *text* is only
+ * allowed at ~24px+ regular or ~19px+ bold — red as a fill, bar or stroke is unconstrained),
+ * `body` is the descriptive sentence, `footer` the closing strip.
  */
 /**
  * The four road-car comparison figures, cited verbatim in the task brief and (per that brief) in
@@ -75,11 +77,12 @@ const SYSTEMS = [
 /**
  * The closing section of `/teardown`, read with a ~36px docked mini car sitting in the page
  * header above it (per the parent's `teardown-scene.tsx`) — the reason this reads as a stage for
- * that car rather than an unrelated new page. No `'use client'`: nothing here needs a hook.
- * `MegaStat`, `TicketCard` and `Button` all call hooks internally (`useReducedMotion`,
- * `React.forwardRef`/context, etc.) and each covers its own behaviour, so this file can stay a
- * synchronous server component importing client children, the same shape every landing section on
- * this branch already uses.
+ * that car rather than an unrelated new page. This file declares no `'use client'` of its own,
+ * because nothing in it needs a hook — `MegaStat`, `TicketCard` and `Button` each call their own
+ * hooks and each covers its own behaviour. That is a statement about this file's directives, not
+ * about where it renders: its only importer, `teardown-scene.tsx`, *is* `'use client'`, so this
+ * component compiles into the client bundle regardless. Do not budget bundle size on the absence
+ * of the directive.
  *
  * No entrance motion of its own was added. `MegaStat`'s own count-up (once-in-view, respects
  * reduced motion) already gives the four stats an entrance; stacking a second `motion.div` fade
@@ -97,13 +100,15 @@ const SYSTEMS = [
  * `id="teardown-outro-heading"` `h2` — a section has exactly one accessible name, and neither new
  * heading becomes a second landmark label.
  */
-export function TeardownOutro(): React.JSX.Element {
+function TeardownOutroSection(): React.JSX.Element {
   return (
     <section
       id="teardown-outro"
       aria-labelledby="teardown-outro-heading"
-      // `bg-zinc-950`, matching the rest of `/teardown` per SHARED-P4.md — the page does not use
-      // the `base` token. `relative overflow-hidden` is for `TopoBackground`: it needs a
+      // `bg-zinc-950`, matching the rest of `/teardown` — the page spells the colour out rather
+      // than using the `base` token, which resolves to the same `#09090B` (see
+      // `tailwind.config.ts` and `lib/team-utils.ts`'s `DARK_BG`), so contrast measured against
+      // either is the same number. `relative overflow-hidden` is for `TopoBackground`: it needs a
       // positioned ancestor to resolve its `inset-0`, and `overflow-hidden` keeps the fixed-pixel
       // tile from spilling past the section's edge on a viewport wider than one tile (900px).
       className="relative overflow-hidden bg-zinc-950 py-24 lg:py-32"
@@ -111,9 +116,9 @@ export function TeardownOutro(): React.JSX.Element {
       {/* Texture. `text-ink` is load-bearing, not decorative styling: `TopoBackground` strokes
           `currentColor` and declares no colour of its own, so a bare instance resolves to
           `rgb(0, 0, 0)` — black-on-`zinc-950`, invisible, and indistinguishable from a correct
-          instance without sampling the pixel. That is the exact bug SHARED-P4.md records as
-          having already shipped once in Phase 3's hero; this is the regression the test file's
-          `text-ink` assertion guards against. 0.07 matches the other three full-section instances
+          instance without sampling the pixel. That exact bug already shipped once on this branch
+          (the Phase 3 hero); this is the regression the test file's `text-ink` assertion guards
+          against. 0.07 matches the other three full-section instances
           (`landing-hero`, `landing-cta-band`, `landing-footer`) so all four read as one material. */}
       <TopoBackground className="text-ink opacity-[0.07]" />
 
@@ -124,10 +129,19 @@ export function TeardownOutro(): React.JSX.Element {
           right in this file. `components/candy/ticket-card.tsx` documents the same trap. */}
       <div className="container relative mx-auto px-4">
         <div className="mb-16 max-w-2xl">
-          {/* Kicker, copied verbatim from SHARED-P4.md's idiom. `zinc-500` at `text-[11px]
-              font-semibold` is the one shipped exception to "zinc-500 fails small text" — see
-              SHARED-P4.md's contrast-floor note; the colour is not "fixed" here. */}
-          <p className="mb-4 flex items-center gap-2.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-500">
+          {/* Section-kicker idiom, shared with the two `h3` blocks below and with the landing
+              sections: `mb-4 flex items-center gap-2.5 text-[11px] font-semibold uppercase
+              tracking-[0.2em]` plus a `h-1.5 w-5 flex-shrink-0 bg-f1-red` tick.
+
+              `zinc-400`, not the `zinc-500` this originally shipped with. `zinc-500` (`#71717a`)
+              measures 4.12:1 on `zinc-950` and 3.93:1 once a `TicketCard`'s `bg-white/[0.03]`
+              lightens the backdrop; the floor is 4.5:1. WCAG's large-text exemption does not
+              apply — it starts at 18.66px bold / 24px regular, so an 11px small-caps label and a
+              14px table cell are both squarely small text. `zinc-400` (`#a1a1aa`) is 7.76:1 on
+              the page and 7.42:1 on the card. `tests/teardown-outro.test.tsx` asserts both
+              numbers with `contrastRatio` rather than restating them in a comment, because a
+              commented measurement is exactly how the `zinc-500` regression survived a review. */}
+          <p className="mb-4 flex items-center gap-2.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-400">
             <span className="h-1.5 w-5 flex-shrink-0 bg-f1-red" aria-hidden="true" />
             By the numbers
           </p>
@@ -182,7 +196,9 @@ export function TeardownOutro(): React.JSX.Element {
             separation than the `mt-16` between the heading and the stats. */}
         <div className="mt-20 lg:mt-28">
           <div className="mb-16 max-w-2xl">
-            <p className="mb-4 flex items-center gap-2.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-500">
+            {/* Same kicker idiom and the same `zinc-400` as "By the numbers" above — see that
+                comment for the contrast measurements behind the colour. */}
+            <p className="mb-4 flex items-center gap-2.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-400">
               <span className="h-1.5 w-5 flex-shrink-0 bg-f1-red" aria-hidden="true" />
               Under the bodywork
             </p>
@@ -215,7 +231,12 @@ export function TeardownOutro(): React.JSX.Element {
                 key={system.kicker}
                 kicker={system.kicker}
                 footer={
-                  <span className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
+                  // `zinc-400`, not `zinc-500`: this label sits *inside* the card, on
+                  // `TicketCard`'s `bg-white/[0.03]` composite (`#101012`), where `zinc-500`
+                  // drops to 3.93:1 — lower than the 4.12:1 it already fails at on the bare
+                  // page. Judged against the card surface, not `DARK_BG`; see
+                  // `cardSurfaceBackdrop` in `lib/team-utils.ts`.
+                  <span className="text-[11px] uppercase tracking-[0.2em] text-zinc-400">
                     {system.footer}
                   </span>
                 }
@@ -223,8 +244,9 @@ export function TeardownOutro(): React.JSX.Element {
               >
                 {/* `TicketCard`'s main content slot carries no padding, so `px-4 py-3` here
                     matches the value `/candy`'s styleguide uses for the same slot. Title stays
-                    `text-ink`, not `f1-red`: at this display size (well under 24px) red fails the
-                    4.5:1 small-text contrast floor SHARED-P4.md measures. */}
+                    `text-ink`, not `f1-red`: at this display size (well under the ~24px regular /
+                    ~19px bold that WCAG treats as large text) `f1-red`'s 4.01:1 fails the 4.5:1
+                    small-text floor. `ink` is 17.21:1 on the card surface. */}
                 <div className="px-4 py-3">
                   <p className="font-display text-sm uppercase tracking-tight text-ink">
                     {system.title}
@@ -246,7 +268,9 @@ export function TeardownOutro(): React.JSX.Element {
             of what's above it. */}
         <div className="mt-20 lg:mt-28">
           <div className="mb-16 max-w-2xl">
-            <p className="mb-4 flex items-center gap-2.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-500">
+            {/* Third instance of the same kicker idiom, same `zinc-400` — see the "By the
+                numbers" kicker above for the contrast measurements. */}
+            <p className="mb-4 flex items-center gap-2.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-400">
               <span className="h-1.5 w-5 flex-shrink-0 bg-f1-red" aria-hidden="true" />
               For scale
             </p>
@@ -330,13 +354,15 @@ export function TeardownOutro(): React.JSX.Element {
                     <sup className="align-super text-[0.5em]">{row.f1Unit}</sup>
                   </td>
                   {/* Deliberately quieter than the F1 column per the brief: smaller (`text-sm`
-                      against the F1 column's `text-2xl`/`text-3xl`) and `zinc-500` rather than
-                      `text-ink` — the road car is the foil here, not the subject. `zinc-500` at
-                      this size is the shipped exception SHARED-P4.md's contrast table names
-                      ("fine at 12px+ regular body sizes"), not the 11px small-caps case where it
-                      fails 4.5:1. Never `f1-red`: every value in this table sits well under the
-                      24px floor that colour needs to clear WCAG on this background. */}
-                  <td className="py-4 text-sm text-zinc-500">{row.roadValue}</td>
+                      against the F1 column's `text-2xl`/`text-3xl`) and a neutral rather than
+                      `text-ink` — the road car is the foil here, not the subject. The quiet
+                      neutral is `zinc-400`, not `zinc-500`: `text-sm` is 14px, and WCAG's
+                      large-text exemption only begins at 18.66px bold / 24px regular, so this
+                      cell is small text and `zinc-500`'s 4.12:1 on `zinc-950` fails the 4.5:1
+                      floor exactly as the 11px labels do. Size buys nothing here. Never
+                      `f1-red` either: at 4.01:1 that colour needs ~24px regular / ~19px bold to
+                      be legal as text, and every value in this table is under it. */}
+                  <td className="py-4 text-sm text-zinc-400">{row.roadValue}</td>
                 </tr>
               ))}
             </tbody>
@@ -347,17 +373,23 @@ export function TeardownOutro(): React.JSX.Element {
             band from the cards above it. */}
         <div className="mt-20 lg:mt-28">
           <p className="text-sm text-zinc-400">That is the car. The race is the other half.</p>
-          {/* Red pill, copied verbatim from SHARED-P3.md §3 ("Buttons — the red pill and the dark
-              pill") via SHARED-P4.md's pointer to it — same classes, same `hover:bg-[#B80500]`
-              (not `hover:bg-red-700`, a different hue that would read as a colour change rather
-              than a darkening) as the hero and CTA band use. The `mt-6` spacing lives on a
-              wrapping `div`, not folded into the `Button`'s own `className`, so that string stays
-              an exact, diffable copy of the brief's markup. */}
+          {/* The shared "red pill": the same classes the landing hero and CTA band use, including
+              `hover:bg-[#B80500]` (not `hover:bg-red-700`, a different hue that would read as a
+              colour change rather than a darkening). The `mt-6` spacing lives on a wrapping
+              `div`, not folded into the `Button`'s own `className`, so that string stays an
+              exact, diffable copy of the shared pill's markup.
+
+              The focus ring is `ring-ink` with a `ring-offset-base`, not the `ring-f1-red` this
+              originally carried: `components/ui/button.tsx` supplies `focus-visible:ring-1` with
+              no ring-offset, so a red ring drawn hard against a red fill is 1.00:1 against the
+              colour adjacent to it, against WCAG 2.4.11's 3:1 floor for a focus indicator. The
+              offset separates the ring from the fill, and `base` is the correct offset colour
+              because this section's `bg-zinc-950` is that same `#09090B`. */}
           <div className="mt-6">
             <Button
               asChild
               size="lg"
-              className="rounded-full bg-f1-red px-7 text-[12px] font-bold uppercase tracking-[0.14em] text-white transition-colors hover:bg-[#B80500] focus-visible:ring-f1-red"
+              className="rounded-full bg-f1-red px-7 text-[12px] font-bold uppercase tracking-[0.14em] text-white transition-colors hover:bg-[#B80500] focus-visible:ring-ink focus-visible:ring-offset-2 focus-visible:ring-offset-base"
             >
               <Link href="/briefing">
                 Generate a Briefing
@@ -370,3 +402,14 @@ export function TeardownOutro(): React.JSX.Element {
     </section>
   );
 }
+
+/**
+ * Memoised, and the memo is load-bearing despite this component taking no props — do not delete
+ * it as a no-op. `teardown-scene.tsx` renders this section inside a tree that calls `setState`
+ * on a scroll-driven value, so it re-renders on scroll. Without `memo`, every one of those
+ * renders reconciles this whole subtree: four `MegaStat`s (each with its own `useInView` and
+ * spring), four `TicketCard`s, five `TopoBackground`s at twelve `<path>`s apiece, and the
+ * comparison table. Taking no props is exactly what makes the memo unconditional — there is no
+ * prop that can ever invalidate it, so the subtree is reconciled once.
+ */
+export const TeardownOutro = memo(TeardownOutroSection);

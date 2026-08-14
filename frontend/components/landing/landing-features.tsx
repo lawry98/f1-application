@@ -1,6 +1,6 @@
 import { Zap, Eye, Database, TrendingUp, Cloud, Layers } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { BlurFade } from '@/components/ui/blur-fade';
+import { BlurFadeReduced } from '@/components/candy/blur-fade-reduced';
 
 const FEATURES = [
   {
@@ -62,7 +62,7 @@ export function LandingFeatures() {
     >
       <div className="container mx-auto max-w-7xl px-4">
         {/* Section header */}
-        <BlurFade inView delay={0} direction="up">
+        <BlurFadeReduced inView delay={0} direction="up">
           <div className="mb-16 max-w-2xl">
             {/* Was `text-sm ... text-f1-red`. `f1-red` measures 4.01:1 on `base`, which clears
                 WCAG's 3:1 large-text bar but not the 4.5:1 small-text one — so a 14px red kicker
@@ -91,21 +91,23 @@ export function LandingFeatures() {
               One query. Multiple sources. One authoritative briefing.
             </p>
           </div>
-        </BlurFade>
+        </BlurFadeReduced>
 
         {/* Feature grid.
             A `ul`/`li` rather than nested divs: six sibling items of the same kind are a list, and
             saying so gives assistive tech the item count for free. The `li` is the grid item, so
-            the equal-height chain is `li h-full` → `BlurFade h-full` → `Card h-full`; drop any
+            the equal-height chain is `li h-full` → `BlurFadeReduced h-full` → `Card h-full`; drop any
             link in it and cards in a short row stop matching their neighbours' height. */}
         <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {FEATURES.map(({ icon: Icon, title, description }, i) => (
             <li key={title} className="h-full">
-              {/* 0.06 s per index is the spec's 60 ms stagger. Deliberately still BlurFade and not
-                  a hand-rolled `motion` stagger: this already fires once on view with the right
-                  direction, and replacing a working mechanism to change one number is how a
-                  restyle turns into a rewrite. */}
-              <BlurFade inView delay={0.06 * i} direction="up" className="h-full">
+              {/* 0.06 s per index is the spec's 60 ms stagger. Deliberately still the BlurFade
+                  mechanism and not a hand-rolled `motion` stagger: it already fires once on view
+                  with the right direction, and replacing a working mechanism to change one number
+                  is how a restyle turns into a rewrite. `BlurFadeReduced` is that same mechanism
+                  with a reduced-motion branch — under the preference all six cards are complete
+                  and unblurred on arrival rather than staggering in. */}
+              <BlurFadeReduced inView delay={0.06 * i} direction="up" className="h-full">
                 <Card className="group h-full border-white/10 bg-white/[0.03] transition-[border-color,transform] duration-300 ease-out-expo hover:-translate-y-0.5 hover:border-white/25">
                   <CardHeader className="space-y-4">
                     {/* The red tick icon chip: the page's tick mark, then the icon tile. Same
@@ -136,7 +138,7 @@ export function LandingFeatures() {
                     </div>
                   </CardHeader>
                 </Card>
-              </BlurFade>
+              </BlurFadeReduced>
             </li>
           ))}
         </ul>

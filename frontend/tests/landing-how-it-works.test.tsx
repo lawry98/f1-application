@@ -1,8 +1,10 @@
 import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { LandingHowItWorks } from '@/components/landing/landing-how-it-works';
+import { contrastRatio, DARK_BG, MIN_CONTRAST } from '@/lib/team-utils';
+import { restingTextNeutrals } from './zinc';
 
-// See `SHARED.md`'s "Testing reduced motion" recipe, used verbatim. `useReducedMotion` caches its
+// Testing reduced motion, the only recipe verified to work in this repo. `useReducedMotion` caches its
 // answer in a module-global on the first call and queries `(prefers-reduced-motion)` — not the
 // `: reduce` variant `tests/setup.ts` stubs `matchMedia` with — so overriding `matchMedia` cannot
 // drive it. Partial-mocking the module and flipping this flag is the only way to control it
@@ -163,5 +165,33 @@ describe('LandingHowItWorks', () => {
       expect(screen.getByText(title)).toBeInTheDocument();
     }
     expect(screen.getByText('04')).toBeInTheDocument();
+  });
+
+  it('holds every neutral this section actually reads out above AA', () => {
+    /*
+     * Every colour in this section sits directly on `base` — there is no card, no wash, no
+     * translucent surface anywhere in it — so `DARK_BG` is the real background and not an
+     * optimistic stand-in for one.
+     *
+     * The exclusion is deliberate and is the reason this test strips `aria-hidden` subtrees rather
+     * than filtering by shade. Step numerals `02`–`04` are `text-zinc-600`, #52525b on #09090B,
+     * which measures **2.57:1** — nowhere near the 4.5:1 bar. That is a settled decision, not an
+     * oversight: the numerals are `aria-hidden` decoration duplicating the ordering the DOM
+     * already carries, the user was shown the measurement and chose to keep them ghosted. Removing
+     * the hidden subtrees excludes them by the property that *justifies* the exclusion — being out
+     * of the accessibility tree — so the day one of those numerals becomes real content, it stops
+     * being excluded and this test fails. Raising the threshold or skipping the section would both
+     * lose that.
+     */
+    const { container } = render(<LandingHowItWorks />);
+    Array.from(container.querySelectorAll('[aria-hidden="true"]')).forEach((el) => el.remove());
+    const neutrals = restingTextNeutrals(container);
+
+    expect(neutrals.length).toBeGreaterThan(0);
+    for (const { hex, text } of neutrals) {
+      expect(contrastRatio(hex, DARK_BG), `${hex} on "${text}"`).toBeGreaterThanOrEqual(
+        MIN_CONTRAST,
+      );
+    }
   });
 });

@@ -4,7 +4,34 @@ import {
   loadCircuitByLocation,
   locationSlug,
   resolveCircuitId,
+  toPoints,
 } from '@/lib/circuit-geometry';
+
+describe('toPoints', () => {
+  it('narrows a JSON pair array without changing a single coordinate', () => {
+    expect(toPoints([[0, 1], [0.25, 0.5], [1, 0]])).toEqual([[0, 1], [0.25, 0.5], [1, 0]]);
+  });
+
+  /*
+   * The `= 0` defaults exist to satisfy `noUncheckedIndexedAccess`, which types a destructured
+   * array element as `number | undefined`. They are unreachable for real data — the converter
+   * always writes pairs — but they are asserted anyway, because the alternative the defaults
+   * replaced was a non-null assertion, and the whole argument for preferring a default is that it
+   * cannot lie about a missing value. A test that never exercises the default leaves that
+   * argument unverified.
+   */
+  it('fills a missing coordinate with 0 rather than emitting undefined', () => {
+    expect(toPoints([[5]])).toEqual([[5, 0]]);
+    expect(toPoints([[]])).toEqual([[0, 0]]);
+  });
+
+  it('maps rather than aliasing, so mutating the result cannot reach the imported JSON', () => {
+    const raw = [[1, 2]];
+    const points = toPoints(raw);
+
+    expect(points[0]).not.toBe(raw[0]);
+  });
+});
 
 describe('locationSlug', () => {
   /*

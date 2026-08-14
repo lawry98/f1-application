@@ -1,9 +1,14 @@
 import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { LandingCtaBand } from '@/components/landing/landing-cta-band';
+import { cardSurfaceBackdrop, contrastRatio, DARK_BG, MIN_CONTRAST } from '@/lib/team-utils';
+import { detach, restingTextNeutrals, whiteWashSurfaces } from './zinc';
 
 /** Collapse every run of whitespace to one space and trim. See the comment on the first test. */
 const normalise = (text: string | null) => (text ?? '').replace(/\s+/g, ' ').trim();
+
+// `whiteWashSurfaces` and `detach` are shared with `landing-hero` and `landing-features` and live
+// in `./zinc`; the one washed surface in this band is the outline pill (`bg-white/[0.02]`).
 
 describe('LandingCtaBand', () => {
   /*
@@ -120,6 +125,48 @@ describe('LandingCtaBand', () => {
 
       expect(normalise(wrapper.textContent)).toBe('one click');
       expect(wrapper.classList.contains('inline-block')).toBe(true);
+    });
+  });
+
+  describe('resting contrast', () => {
+    /*
+     * The kicker and the sub-paragraph both went grey precisely *because* red was measured and
+     * found wanting — #E10600 on #09090B is 4.01:1, under the 4.5:1 small-text bar. Until now that
+     * measurement lived only in a comment, and a comment is not checked by anything: a `zinc-500`
+     * regression shipped and survived a phase review elsewhere on this branch. These read each
+     * resting `text-zinc-N` class back to the hex Tailwind paints and assert the ratio, so
+     * dimming a label one step fails on the number rather than on a class name.
+     */
+    it('holds every neutral on bare `base` above AA', () => {
+      const { container } = render(<LandingCtaBand />);
+      detach(whiteWashSurfaces(container));
+      const neutrals = restingTextNeutrals(container);
+
+      expect(neutrals.length).toBeGreaterThan(0);
+      for (const { hex, text } of neutrals) {
+        expect(contrastRatio(hex, DARK_BG), `${hex} on "${text}"`).toBeGreaterThanOrEqual(
+          MIN_CONTRAST,
+        );
+      }
+    });
+
+    it('holds the outline pill label above AA against its own white wash', () => {
+      const { container } = render(<LandingCtaBand />);
+      const surfaces = whiteWashSurfaces(container);
+      // Exactly the one pill. Pinned so a second washed surface cannot appear without this
+      // assertion being reconsidered.
+      expect(surfaces).toHaveLength(1);
+
+      // `cardSurfaceBackdrop()` is white at 3% over `base`; the pill's wash is 2%, i.e. very
+      // slightly darker, so this is the conservative side of the pill's real background.
+      const backdrop = cardSurfaceBackdrop();
+      const neutrals = restingTextNeutrals(detach(surfaces));
+      expect(neutrals.length).toBeGreaterThan(0);
+      for (const { hex, text } of neutrals) {
+        expect(contrastRatio(hex, backdrop), `${hex} on "${text}"`).toBeGreaterThanOrEqual(
+          MIN_CONTRAST,
+        );
+      }
     });
   });
 

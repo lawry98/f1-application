@@ -1,6 +1,7 @@
 'use client';
 
-import { motion, useReducedMotion } from 'motion/react';
+import { motion } from 'motion/react';
+import { useReducedMotionSafe } from '@/hooks/use-reduced-motion-safe';
 import { cn } from '@/lib/utils';
 
 /** 500 ms, from the spec: "draw on over 500ms flanking the docked car". */
@@ -123,8 +124,10 @@ function LaurelBranch({
     <g opacity={SETTLED_OPACITY}>
       {BRANCH_PATHS.map((d) => (
         // Keyed on the path data itself, not on the array index: `BRANCH_PATHS` entries are unique
-        // and stable, and this repo carries zero eslint-disable comments, so `react/no-array-index-key`
+        // and stable, and this repo carries zero lint suppressions, so `react/no-array-index-key`
         // is honoured rather than suppressed — the same call `redacted-reveal.tsx` made in Phase 2.
+        // (Worded that way on purpose: the literal directive spelled out here would be the only
+        // match in the repo for the grep that audits the invariant, and would fail it.)
         <path key={d} d={d} />
       ))}
     </g>
@@ -260,7 +263,12 @@ export function LaurelFlourish({
   draw = 'onView',
   className,
 }: LaurelFlourishProps): React.JSX.Element {
-  const prefersReducedMotion = Boolean(useReducedMotion());
+  // `useReducedMotionSafe`, not motion's `useReducedMotion`: the preference picks plain `path`s
+  // under an `opacity` group against `motion.path`s, i.e. it changes the elements returned, and
+  // motion's hook disagrees between the server and the client's first render. It also already
+  // returns a `boolean` rather than motion's `boolean | null`, so the `Boolean(...)` this used to
+  // need is gone. Root-cause note in `redacted-reveal.tsx`.
+  const prefersReducedMotion = useReducedMotionSafe();
 
   return (
     <span className={cn('inline-flex items-center gap-2', className)}>

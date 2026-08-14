@@ -1,14 +1,15 @@
 import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { BlurFade } from '@/components/ui/blur-fade';
+import { BlurFadeReduced } from '@/components/candy/blur-fade-reduced';
 import { Scribble } from '@/components/candy/scribble';
 import { TopoBackground } from '@/components/candy/topo-background';
 
 /**
  * Why the Scribble's `delay` is 0.45 s and not 0.
  *
- * The whole block sits inside a `BlurFade`, whose transition is `delay: 0.04 + delay` over
+ * The whole block sits inside a `BlurFadeReduced`, which delegates to `BlurFade` on the
+ * un-reduced path — so the timing below is `BlurFade`'s: `delay: 0.04 + delay` over
  * `duration: 0.4` — so the heading has finished un-blurring at 0.44 s. Drawn at 0 the circle
  * completes (0.8 s draw, but the first ~400 ms of it) while the text behind it is still blurred and
  * translating, which reads as the mark being *part of* the fade-in rather than as an annotation
@@ -24,10 +25,18 @@ export function LandingCtaBand() {
   return (
     <section className="relative overflow-hidden bg-base py-28" aria-labelledby="cta-heading">
       {/*
-       * Background. `text-ink` only — the default `opacity-[0.12]` is kept deliberately, because
-       * that number is calibrated in `topo-background.tsx` against this exact page background:
-       * a 1px stroke at 5% over #09090B is invisible on a real display and at 6% you have to know
-       * to look for it. Overriding it down here would silently delete the texture.
+       * Background. Both classes are load-bearing.
+       *
+       * `text-ink` is not optional: `TopoBackground` strokes `currentColor` and sets no colour of
+       * its own, and nothing in this section's ancestry declares one, so a bare instance resolves
+       * to `rgb(0, 0, 0)` — black contours over #09090B, i.e. an *absent* texture that is
+       * indistinguishable from a tasteful one until you sample the colour.
+       *
+       * 0.07 rather than the component's own 0.12 default: at 12% over a full-bleed section the
+       * contours cross the headline and read as illustration competing with the type. The kit's
+       * docstring records 5% as invisible on a real display and 6% as legible only if you know to
+       * look, so 7% is the first step above that. The hero and the footer carry the identical
+       * class — the three full-section textures are one material and must be edited together.
        */}
       <TopoBackground className="text-ink opacity-[0.07]" />
       <div
@@ -46,7 +55,7 @@ export function LandingCtaBand() {
        * overhang is what stops the circle reading as a border-radius.
        */}
       <div className="container relative mx-auto max-w-4xl px-6 text-center">
-        <BlurFade inView delay={0} direction="up">
+        <BlurFadeReduced inView delay={0} direction="up">
           {/*
            * The kicker used to be `text-sm … text-f1-red`, which is small red text: #E10600 on
            * #09090B measures 4.01:1, over WCAG's 3:1 large-text bar but under the 4.5:1 small-text
@@ -63,9 +72,9 @@ export function LandingCtaBand() {
            * `circle`: unlike `underline` or `strike`, the mark encloses its words rather than
            * crossing them, so a red stroke and red glyphs sit inside one another with no value
            * separation and the whole phrase muddies into a single red smear at a glance. Ink
-           * glyphs inside a red ring keep the ring reading as a ring. The `f1-red` serif treatment
-           * from SHARED-P3 §2 is therefore deliberately *not* applied to this one heading — the
-           * scribble is already carrying this section's ration of red.
+           * glyphs inside a red ring keep the ring reading as a ring. The `f1-red` serif accent
+           * every other section heading uses is therefore deliberately *not* applied to this one —
+           * the scribble is already carrying this section's ration of red.
            *
            * Consequently the Scribble needs no `[&_svg]:text-…` recolour: it keeps its own
            * `text-f1-red`. If this is ever flipped to a red accent run, the mark must be recoloured
@@ -96,17 +105,25 @@ export function LandingCtaBand() {
           </p>
 
           {/*
-           * The red pill / dark pill pair, verbatim from SHARED-P3 §3 — the hero carries the
-           * identical strings and any divergence between the two shows up on one scroll. White on
+           * The red pill / dark pill pair. `landing-hero.tsx` and `teardown-outro.tsx` carry the
+           * identical strings, and any divergence between them shows up on one scroll. White on
            * #E10600 is 5.0:1, so the 12 px label clears AA. `hover:bg-[#B80500]` rather than
            * `hover:bg-red-700`: Tailwind's red-700 (#B91C1C) is a different hue from the brand red
            * and reads as the button changing colour instead of darkening.
+           *
+           * The focus rings are measured, not chosen. `components/ui/button.tsx` ships
+           * `focus-visible:ring-1 focus-visible:ring-ring` with **no ring-offset**, so an override
+           * that only names a colour paints the ring flush against the fill: `ring-f1-red` on
+           * `bg-f1-red` is 1.00:1 and `ring-zinc-600` on the outline pill's `bg-white/[0.02]` over
+           * `base` is 2.57:1, both under WCAG 2.4.11's 3:1. Each ring therefore takes the *other*
+           * pill's colour plus an explicit offset, so a 2px band of page background separates ring
+           * from fill. `landing-hero.tsx` and `teardown-outro.tsx` carry these strings verbatim.
            */}
           <div className="flex flex-wrap items-center justify-center gap-4">
             <Button
               asChild
               size="lg"
-              className="rounded-full bg-f1-red px-7 text-[12px] font-bold uppercase tracking-[0.14em] text-white transition-colors hover:bg-[#B80500] focus-visible:ring-f1-red"
+              className="rounded-full bg-f1-red px-7 text-[12px] font-bold uppercase tracking-[0.14em] text-white transition-colors hover:bg-[#B80500] focus-visible:ring-ink focus-visible:ring-offset-2 focus-visible:ring-offset-base"
             >
               <Link href="/briefing">
                 Generate a Briefing
@@ -117,12 +134,12 @@ export function LandingCtaBand() {
               asChild
               variant="outline"
               size="lg"
-              className="rounded-full border-white/15 bg-white/[0.02] px-7 text-[12px] font-bold uppercase tracking-[0.14em] text-zinc-300 transition-colors hover:border-white/25 hover:bg-white/[0.06] hover:text-ink focus-visible:ring-zinc-600"
+              className="rounded-full border-white/15 bg-white/[0.02] px-7 text-[12px] font-bold uppercase tracking-[0.14em] text-zinc-300 transition-colors hover:border-white/25 hover:bg-white/[0.06] hover:text-ink focus-visible:ring-f1-red focus-visible:ring-offset-2 focus-visible:ring-offset-base"
             >
               <Link href="/teardown">Explore Car Anatomy</Link>
             </Button>
           </div>
-        </BlurFade>
+        </BlurFadeReduced>
       </div>
     </section>
   );

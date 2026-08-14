@@ -1,6 +1,8 @@
 import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TeardownScene } from '@/components/teardown/teardown-scene';
+import { contrastRatio, DARK_BG, MIN_CONTRAST } from '@/lib/team-utils';
+import { detach, restingTextNeutrals } from './zinc';
 
 /**
  * These tests can say nothing about the scrub, the dock, or the FLIP transform. jsdom lays nothing
@@ -28,6 +30,17 @@ beforeEach(() => {
 /** Collapse runs of whitespace and trim — the title is split across two elements. */
 function normalise(text: string | null | undefined): string {
   return (text ?? '').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * The four corner-marker roots. Matched on the two layout classes only this component's markers
+ * carry (`items-start` + `gap-2`) rather than on the text inside them, because the assertions below
+ * are about the marker's own `style` attribute, and the copy sits three elements deeper.
+ */
+function calloutRoots(container: HTMLElement): HTMLElement[] {
+  const roots = Array.from(container.querySelectorAll<HTMLElement>('.items-start.gap-2'));
+  expect(roots).toHaveLength(4);
+  return roots;
 }
 
 describe('TeardownScene', () => {
@@ -122,6 +135,28 @@ describe('TeardownScene', () => {
     expect(mirrored).toHaveLength(2);
   });
 
+  it('scrims the callout copy but leaves the dot and the leader bare', () => {
+    const { container } = render(<TeardownScene />);
+
+    // The copy sits on a rendered car frame, not on the page background its colours were picked
+    // against: decoding the shipped PNGs and compositing over #09090B puts 35.4% of callout 02's
+    // text box under 4.5:1, with a brightest pixel of rgb(249,245,242) where `ink` reads 1.02:1.
+    // The scrim is what fixes that, and it belongs to the text block alone — a scrim on the marker
+    // itself would put a card back over the drawing, which is the treatment this replaced. jsdom
+    // can measure none of that, but the class contract that carries it is exactly this.
+    for (const root of calloutRoots(container)) {
+      const [dot, leader, copy] = Array.from(root.children);
+
+      expect(copy).toHaveClass('bg-zinc-950/85', 'backdrop-blur-sm');
+      // The 130px clamp is what keeps a marker inside the viewport at 390. `px-2` is free because
+      // preflight makes the box border-box, but a `max-w` or a dropped clamp would not be.
+      expect(copy).toHaveClass('w-[130px]', 'sm:w-[180px]');
+
+      expect(dot).not.toHaveClass('bg-zinc-950/85');
+      expect(leader).not.toHaveClass('bg-zinc-950/85');
+    }
+  });
+
   it('renders the outro below the sequence', () => {
     const { container } = render(<TeardownScene />);
 
@@ -142,5 +177,90 @@ describe('TeardownScene', () => {
     expect(screen.getByText('V6 Turbo Hybrid Power Unit')).toBeInTheDocument();
     expect(screen.getByText('Front wing')).toBeInTheDocument();
     expect(container.querySelector('#teardown-outro')).not.toBeNull();
+  });
+
+  it('lands the callouts without travel or a transition under reduced motion', () => {
+    reduceMotion = true;
+    const { container } = render(<TeardownScene />);
+
+    for (const root of calloutRoots(container)) {
+      // The fade and the 10px lift are the animation, and reduced motion asks for neither.
+      expect(root.style.transition).toBe('');
+      expect(root.style.transform).not.toContain('translateY');
+      // `translateX(-100%)` is not motion: it is what holds a mirrored marker's dot on its anchor,
+      // and dropping it under reduced motion would move every rear callout by its own width.
+      // Two of the four are mirrored, so the class and the transform have to agree here.
+      const expected = root.classList.contains('flex-row-reverse') ? 'translateX(-100%)' : null;
+      if (expected) expect(root.style.transform).toBe(expected);
+    }
+  });
+
+  it('animates the callouts in when motion is allowed', () => {
+    const { container } = render(<TeardownScene />);
+
+    // The negative half of the test above: without it, a reduced-motion branch that had quietly
+    // become unconditional would still pass, since "no transition anywhere" satisfies it.
+    for (const root of calloutRoots(container)) {
+      expect(root.style.transition).toContain('opacity 0.45s ease');
+      expect(root.style.transform).toContain('translateY');
+    }
+  });
+
+  it('holds every resting neutral above the small-text floor, bar three pre-existing runs', () => {
+    /*
+     * The contrast assertion this file shipped without — and it sits next to `teardown-outro.tsx`,
+     * where a `zinc-500` regression was found precisely because every contrast claim on this
+     * branch lived in prose until these tests started measuring the ratio. Same shape as
+     * `tests/teardown-outro.test.tsx` and `tests/credits-page.test.tsx`. `DARK_BG` (#09090b) is
+     * the real background: `/teardown` paints `bg-zinc-950`, the same hex, and nothing in this
+     * component's own tree puts a translucent surface behind a neutral.
+     *
+     * **Three regions are excluded, and none of them is this branch's to fix.** All three are
+     * `text-zinc-500` (#71717a) at 12px — small text, so held to 4.5:1 — and all three measure
+     * **4.12:1**, under the floor. They are pre-existing on `main`, out of scope for this pass,
+     * and deliberately left at the colour they have:
+     *
+     *   1. the frame-count / loading overlay, whose kicker is `zinc-500` at 4.12:1 (and which also
+     *      carries a `zinc-700` "/192" denominator at 1.91:1 and a `zinc-600` "Preparing teardown
+     *      sequence…" line at 2.57:1 — it is excluded whole, so all three go with it);
+     *   2. the header's "Back" link;
+     *   3. the "Scroll to begin" hint.
+     *
+     * The count is pinned and the skipped runs are pinned by text, so the hole cannot silently
+     * widen: adding a fourth dim run, or letting one of these regions grow another, fails here
+     * rather than passing quietly. Fixing any of them is a matter of deleting its line from the
+     * expected list and watching the main assertion cover it.
+     */
+    const { container } = render(<TeardownScene />);
+
+    // `aria-hidden` decoration first, by the property that justifies skipping it rather than by
+    // shade — the same technique `landing-how-it-works.test.tsx` uses. The header's `←` and its
+    // `|` divider inherit `zinc-500`/`zinc-700` from their wrappers, are out of the accessibility
+    // tree, and duplicate an accessible label that is measured below. The day one becomes real
+    // content it stops being excluded and this test fails.
+    Array.from(container.querySelectorAll('[aria-hidden="true"]')).forEach((el) => el.remove());
+
+    const loadingOverlay = container.querySelector<HTMLElement>('.fixed.inset-0.z-50');
+    const backLink = container.querySelector<HTMLElement>('header a[href="/"]');
+    const excluded = [loadingOverlay, backLink, screen.getByText('Scroll to begin')].filter(
+      (el): el is HTMLElement => el !== null,
+    );
+    expect(excluded).toHaveLength(3);
+
+    expect(restingTextNeutrals(detach(excluded)).map(({ hex, text }) => `${hex} ${text}`)).toEqual([
+      '#71717a Loading frames',
+      '#3f3f46 / 192',
+      '#52525b Preparing teardown sequence…',
+      '#71717a Back',
+      '#71717a Scroll to begin',
+    ]);
+
+    const neutrals = restingTextNeutrals(container);
+    expect(neutrals.length).toBeGreaterThan(0);
+    for (const { hex, text } of neutrals) {
+      expect(contrastRatio(hex, DARK_BG), `${hex} behind "${text}"`).toBeGreaterThanOrEqual(
+        MIN_CONTRAST,
+      );
+    }
   });
 });

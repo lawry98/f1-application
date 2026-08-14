@@ -7,7 +7,9 @@ import { LaurelFlourish } from '@/components/candy/laurel-flourish';
  * preference in a module-global set on its *first* call and never re-reads it, and it queries
  * `(prefers-reduced-motion)` rather than `(prefers-reduced-motion: reduce)`, which the
  * `matchMedia` stub in `tests/setup.ts` would not match anyway. Partial-mocking the module and
- * flipping a flag, per `SHARED.md`'s recipe, is the only way to see both branches in one file.
+ * flipping a flag is the only way to see both branches in one file. It still works now that the
+ * component reads `useReducedMotionSafe`, because that hook calls motion's hook internally and
+ * `vi.mock` replaces the module for every importer in this file's registry.
  */
 let reduceMotion = false;
 

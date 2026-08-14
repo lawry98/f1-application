@@ -1,6 +1,12 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { LandingFeatures } from '@/components/landing/landing-features';
+import { cardSurfaceBackdrop, contrastRatio, DARK_BG, MIN_CONTRAST } from '@/lib/team-utils';
+import { detach, restingTextNeutrals, whiteWashSurfaces } from './zinc';
+
+// `whiteWashSurfaces` and `detach` are shared with `landing-hero` and `landing-cta-band` and live
+// in `./zinc`; this section's washed surfaces are the six cards and the six icon tiles nested
+// inside them, all `bg-white/[0.03]`.
 
 /**
  * The six features, copied out of the component by hand *on purpose*.
@@ -152,6 +158,47 @@ describe('LandingFeatures', () => {
 
       for (const icon of Array.from(container.querySelectorAll('svg'))) {
         expect(icon).toHaveAttribute('aria-hidden', 'true');
+      }
+    });
+  });
+
+  describe('resting contrast', () => {
+    /*
+     * The kicker's own comment records why it is grey — #E10600 on #09090B is 4.01:1, under the
+     * 4.5:1 small-text bar — but a comment is not checked by anything, and a `zinc-500` regression
+     * shipped and survived a phase review elsewhere on this branch on exactly that basis. These
+     * read each resting `text-zinc-N` back to the hex Tailwind paints and assert the ratio, split
+     * by the background actually behind the glyphs.
+     */
+    it('holds the section header neutrals above AA on bare `base`', () => {
+      const { container } = render(<LandingFeatures />);
+      detach(whiteWashSurfaces(container));
+      const neutrals = restingTextNeutrals(container);
+
+      expect(neutrals.length).toBeGreaterThan(0);
+      for (const { hex, text } of neutrals) {
+        expect(contrastRatio(hex, DARK_BG), `${hex} on "${text}"`).toBeGreaterThanOrEqual(
+          MIN_CONTRAST,
+        );
+      }
+    });
+
+    it('holds every card neutral above AA against the card wash, not the page', () => {
+      const { container } = render(<LandingFeatures />);
+      const surfaces = whiteWashSurfaces(container);
+      // Twelve: six cards, six icon tiles. Pinned so a card losing its wash — and with it the
+      // stricter background this test judges it against — cannot pass silently.
+      expect(surfaces).toHaveLength(12);
+
+      const backdrop = cardSurfaceBackdrop();
+      const neutrals = restingTextNeutrals(detach(surfaces));
+      // All six descriptions, at minimum. The icon tiles hold no text and contribute nothing,
+      // which is correct: an icon is judged against WCAG's 3:1 non-text bar, not 4.5:1.
+      expect(neutrals.length).toBeGreaterThanOrEqual(6);
+      for (const { hex, text } of neutrals) {
+        expect(contrastRatio(hex, backdrop), `${hex} on "${text}"`).toBeGreaterThanOrEqual(
+          MIN_CONTRAST,
+        );
       }
     });
   });

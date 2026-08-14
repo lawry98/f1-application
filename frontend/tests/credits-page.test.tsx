@@ -61,6 +61,26 @@ describe('/credits', () => {
     }
   });
 
+  /**
+   * The circuit outlines are MIT, and MIT obliges the copyright notice to travel with any copy of
+   * the work. `landing-hero.tsx` statically imports `data/circuits/mc-1929.json`, so a copy now
+   * ships in the `/` client bundle to every visitor — which is what turned a repo-internal
+   * `CREDITS.md` into an undischarged obligation and put this section on the page.
+   *
+   * Asserted rather than trusted because the failure is silent: nothing breaks, no test goes red,
+   * and no user ever sees that the notice is missing. This is the same reason `lib/credits.ts`
+   * throws on a malformed row instead of rendering an empty author.
+   */
+  it('discharges the MIT notice for the vendored circuit geometry', () => {
+    render(<CreditsPage />);
+    expect(
+      screen.getByRole('link', { name: 'bacinger/f1-circuits' }),
+    ).toHaveAttribute('href', 'https://github.com/bacinger/f1-circuits');
+    // The copyright holder has to be named on the page, not only linked to.
+    expect(screen.getByText(/Tomislav Bacinger/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'MIT licence' })).toBeInTheDocument();
+  });
+
   // f1-red is 4.01:1 on zinc-950: it clears only the 3:1 large-text bar, so every use of it has
   // to be inside something set at text-2xl or larger. (4.12:1 when the brand red was #dc2626;
   // #E10600 is marginally darker. The bar it fails and the bar it clears are unchanged.)

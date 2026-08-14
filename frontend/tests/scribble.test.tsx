@@ -9,6 +9,10 @@ import { Scribble, type ScribbleType } from '@/components/candy/scribble';
  * `(prefers-reduced-motion: reduce)`, which the `matchMedia` stub in `tests/setup.ts` would not
  * match anyway. Partial-mocking the module and flipping a flag is the only way to see both
  * branches in one file; the spread keeps every real `motion` element working.
+ *
+ * It still works now that the component reads `useReducedMotionSafe` rather than motion's hook
+ * directly — that hook calls motion's internally, and `vi.mock` replaces the module for every
+ * importer in this file's registry, not just for the component under test.
  */
 let reduceMotion = false;
 

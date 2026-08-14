@@ -9,6 +9,7 @@ import NextImage from 'next/image';
 import Link from 'next/link';
 import { ChevronDown } from 'lucide-react';
 import { motion, useReducedMotion, useScroll, useTransform } from 'motion/react';
+import { useReducedMotionSafe } from '@/hooks/use-reduced-motion-safe';
 import { cn } from '@/lib/utils';
 import { LaurelFlourish } from '@/components/candy/laurel-flourish';
 import { RedactedReveal } from '@/components/candy/redacted-reveal';
@@ -34,6 +35,21 @@ const DOCK_START = 0.94;
 const DOCK_ARRIVE = 0.99;
 /** Scroll fraction at which the dock is complete. */
 const DOCK_END = 1;
+
+/**
+ * `DOCK_ARRIVE` as an integer percent, converted once here rather than at the comparison site.
+ * The scrub's React state is quantised to whole percent (see `scrollPct`), and `0.99 * 100` is
+ * `99.00000000000001` in IEEE 754 — so an inline `scrollPct >= DOCK_ARRIVE * 100` would be false
+ * at exactly 99, the one value it has to be true at.
+ *
+ * The two kinds of fraction→percent conversion in this file round differently, and both are
+ * right. A module-scope *threshold* constant like this one rounds, because it is naming a whole
+ * percent that a hand-written decimal missed by a float epsilon. The per-frame conversion inside
+ * `apply()` **floors** instead, because it is quantising a continuous scroll position into the
+ * bucket it is actually in — rounding there would make this very comparison fire from 98.5% and
+ * mount the landed car's laurel half a percent early. See the comment at `nextPct` for that half.
+ */
+const DOCK_ARRIVE_PCT = Math.round(DOCK_ARRIVE * 100);
 
 /**
  * The reserved header slot, in CSS pixels. 36px tall is the spec's docked car height; 120px wide
@@ -86,22 +102,29 @@ interface ComponentLabel {
    * marker eats 48% of that width, so 'left' is the only option for the rear of the car.
    */
   side: 'left' | 'right';
-  /** Scroll fraction at which the label fades in */
-  showFrom: number;
-  /** Scroll fraction at which the label fades out */
-  showTo: number;
+  /**
+   * Scroll **percent** at which the label fades in — an integer, not the 0–1 fraction these were
+   * originally written as. The visibility test runs off `scrollPct`, which is quantised to whole
+   * percent so that scrolling does not re-render the scene on every frame; keeping the windows in
+   * the same unit is what stops a `showFrom * 100` appearing at the comparison, where floating
+   * point turns `0.1 * 100` into `10.000000000000002` and the window opens one percent late.
+   */
+  showFromPct: number;
+  /** Scroll percent at which the label fades out. Integer, for the reason above. */
+  showToPct: number;
 }
 
 /**
- * The four callouts, staggered so that at most one is on screen at a time.
+ * The four callouts, staggered so that only one is on screen at a time bar a two-point handover,
+ * where the outgoing one is fading out under the incoming one's fade in.
  *
- * Two constraints shape the ranges. Every one closes before `DOCK_START` (0.94), because a callout
+ * Two constraints shape the ranges. Every one closes before `DOCK_START` (94%), because a callout
  * still fading while the car is flying into the header rides the FLIP transform down to 5% scale and
  * reads as debris. And they are sequenced front-to-back to follow the teardown itself: the frames
  * are a fixed side elevation with panels lifting off progressively, so the anchors never move and
  * only the visibility windows do.
  *
- * Because the windows do not overlap, markers are free to occupy the same *space* at different
+ * Because the windows barely overlap, markers are free to occupy the same *space* at different
  * times — 03 running left from 60% and 02 running right from 44% both cover the midfield, and never
  * together.
  */
@@ -113,8 +136,8 @@ const LABELS: ComponentLabel[] = [
     x: 10,
     y: 68,
     side: 'right',
-    showFrom: 0.1,
-    showTo: 0.34,
+    showFromPct: 10,
+    showToPct: 34,
   },
   {
     id: 'halo',
@@ -123,8 +146,8 @@ const LABELS: ComponentLabel[] = [
     x: 44,
     y: 44,
     side: 'right',
-    showFrom: 0.32,
-    showTo: 0.56,
+    showFromPct: 32,
+    showToPct: 56,
   },
   {
     id: 'engine',
@@ -133,8 +156,8 @@ const LABELS: ComponentLabel[] = [
     x: 60,
     y: 56,
     side: 'left',
-    showFrom: 0.54,
-    showTo: 0.78,
+    showFromPct: 54,
+    showToPct: 78,
   },
   {
     id: 'rear-wing',
@@ -143,8 +166,8 @@ const LABELS: ComponentLabel[] = [
     x: 88,
     y: 42,
     side: 'left',
-    showFrom: 0.76,
-    showTo: 0.92,
+    showFromPct: 76,
+    showToPct: 92,
   },
 ];
 
@@ -158,11 +181,32 @@ export function TeardownScene() {
   const slotRef = useRef<HTMLDivElement>(null);
   const dockMetricsRef = useRef<DockMetrics | null>(null);
 
+  /**
+   * Two reduced-motion hooks, and which one a site takes is not interchangeable.
+   *
+   * motion's `useReducedMotion()` returns `null` during SSR and the user's real preference on the
+   * client's *first* render, so anything that reaches the rendered markup — an element, a class, an
+   * inline `style` entry — differs across the hydration boundary and React warns. Reproduced in
+   * Chromium under emulated reduced motion. `useReducedMotionSafe()` reports `false` until a layout
+   * effect has run, which reproduces the server's markup on the first client pass and flips before
+   * paint.
+   *
+   * So: `prefersReducedMotion` below feeds `useTransform` only. Those are motion values written
+   * straight to the DOM node after mount, and at the SSR scroll position of 0 both branches of each
+   * one evaluate to the same number anyway (`dockProgress` 0, `canvasOpacity` 1), so it cannot
+   * reach the server markup. Everything that renders an attribute takes the safe hook.
+   */
   const prefersReducedMotion = useReducedMotion();
+  const prefersReducedMotionSafe = useReducedMotionSafe();
 
   const [loadedCount, setLoadedCount] = useState(0);
   const [isLoaded, setIsLoaded] = useState(false);
-  const [scrollFraction, setScrollFraction] = useState(0);
+  /**
+   * The scrub position as an **integer percent**, not the raw 0–1 fraction. See `apply` for why the
+   * quantisation exists; the progress readout, `isArriving` and the callout windows are the only
+   * consumers and all three are already percent- or threshold-granular.
+   */
+  const [scrollPct, setScrollPct] = useState(0);
   const [hasScrolled, setHasScrolled] = useState(false);
 
   /**
@@ -232,7 +276,13 @@ export function TeardownScene() {
   /**
    * Driven as a motion value rather than React state on purpose: this changes on every scroll frame,
    * and routing it through `setState` would re-render the whole scene — canvas element, labels,
-   * header and all — 60 times a second. `motion.div` writes the style straight to the DOM node.
+   * header, outro and all — 60 times a second. `motion.div` writes the style straight to the DOM
+   * node, so nothing re-renders.
+   *
+   * The scene does still hold one piece of scroll position in state, `scrollPct`, because the
+   * callouts' visibility and the dock's arrival are React-rendered rather than animated. That one is
+   * quantised to whole percent precisely so it does not undo this: it changes at most ~101 times
+   * across the entire scrub instead of once per frame.
    */
   const carTransform = useTransform(dockProgress, (t) => {
     const m = dockMetricsRef.current;
@@ -311,7 +361,19 @@ export function TeardownScene() {
     if (!isLoaded) return undefined;
 
     const apply = (fraction: number) => {
-      setScrollFraction(fraction);
+      // Quantised before it reaches state, so a scrub from 0 to 1 costs ~101 renders of this
+      // component rather than one per animation frame. React bails out of the re-render when the
+      // value is unchanged, which is the overwhelming majority of calls.
+      //
+      // `Math.floor`, not `Math.round`, and the difference is behavioural rather than cosmetic:
+      // rounding would make `scrollPct >= DOCK_ARRIVE_PCT` true from 98.5% rather than 99%, and
+      // that comparison mounts the landed car's laurel, which draws itself on mount. Mounted half a
+      // percent early it would draw while `miniOpacity` is still 0 — the flourish would play out
+      // unseen and simply fade in already finished. Flooring keeps every threshold in this file at
+      // the exact scroll position it is at today; the only cost is that a window closes up to one
+      // percent late, since sub-percent motion is no longer observable.
+      const nextPct = Math.floor(fraction * 100);
+      setScrollPct(nextPct);
       if (fraction > 0.005) setHasScrolled(true);
 
       const idx = Math.min(FRAME_COUNT - 1, Math.floor(fraction * FRAME_COUNT));
@@ -333,7 +395,6 @@ export function TeardownScene() {
     return scrollYProgress.on('change', apply);
   }, [isLoaded, drawFrame, scrollYProgress]);
 
-  const pct = Math.round(scrollFraction * 100);
   const loadPct = Math.round((loadedCount / FRAME_COUNT) * 100);
 
   /**
@@ -342,7 +403,7 @@ export function TeardownScene() {
    * viewport event and there is nothing else to hang it on. Scrolling back up unmounts it and
    * scrolling down replays the draw, which is correct — the flourish marks the arrival.
    */
-  const isArriving = scrollFraction >= DOCK_ARRIVE;
+  const isArriving = scrollPct >= DOCK_ARRIVE_PCT;
 
   // ── Main scene ─────────────────────────────────────────────────────────────
   return (
@@ -377,8 +438,15 @@ export function TeardownScene() {
           <p className="mt-5 text-xs text-zinc-600">Preparing teardown sequence…</p>
         </div>
       )}
-      {/* ── Header ── */}
-      <header className="fixed top-0 z-30 w-full border-b border-zinc-800/60 bg-zinc-950/80 backdrop-blur-sm">
+      {/* ── Header ──
+       * `bg-zinc-950/95`, not the `/80` this shipped with, and the change is a contrast one. At /80
+       * nothing scrolled under the header but the dark frame sequence; the outro below it puts
+       * `text-4xl` `ink` headings through the same band, and where one lands behind the red accent
+       * the composite reads `rgb(56,56,56)`, against which `f1-red` measures 2.36:1 — under the 3:1
+       * bar the title was raised to 24px specifically to clear. Confirmed in Chromium: the outro
+       * heading was plainly legible *through* the header. Only the backdrop moved; the title's size
+       * and the red accent are settled and stay as they are. */}
+      <header className="fixed top-0 z-30 w-full border-b border-zinc-800/60 bg-zinc-950/95 backdrop-blur-sm">
         <div className="container mx-auto flex items-center gap-3 px-4 py-2.5 sm:gap-4">
           <Link
             href="/"
@@ -515,7 +583,11 @@ export function TeardownScene() {
                   // ramp, so this transition is what turns the step into the "simple fade into the
                   // slot at the end" the spec asks for. Under normal motion both are continuous and
                   // a transition would fight the scrub, so it is not applied.
-                  transition: prefersReducedMotion ? 'opacity 400ms ease' : undefined,
+                  //
+                  // The safe hook, unlike the two `useTransform`s above: this is a rendered `style`
+                  // entry, and motion's own hook would emit it on the client's first render but not
+                  // on the server's, which React reports as a mismatched `style` attribute.
+                  transition: prefersReducedMotionSafe ? 'opacity 400ms ease' : undefined,
                 }}
               >
                 {/* Canvas — fills the wrapper exactly */}
@@ -528,8 +600,7 @@ export function TeardownScene() {
 
                 {/* ── Corner-marker callouts ── */}
                 {LABELS.map((label, i) => {
-                  const visible =
-                    scrollFraction >= label.showFrom && scrollFraction <= label.showTo;
+                  const visible = scrollPct >= label.showFromPct && scrollPct <= label.showToPct;
                   const isLeft = label.side === 'left';
                   return (
                     <div
@@ -549,13 +620,23 @@ export function TeardownScene() {
                         left: `${label.x}%`,
                         top: `${label.y}%`,
                         opacity: visible ? 1 : 0,
-                        transform: `translateX(${isLeft ? '-100%' : '0'}) translateY(${visible ? 0 : 10}px)`,
-                        transition: 'opacity 0.45s ease, transform 0.45s ease',
+                        // `translateX` is layout, not motion — it is what keeps a mirrored marker's
+                        // dot on `x%` — so it is in both branches. The 10px lift and the transition
+                        // are the animation, and under reduced motion the callout simply is where it
+                        // ends up, appearing and disappearing without travel. This is a rendered
+                        // `style` attribute, so it takes the hydration-safe hook, not motion's.
+                        transform: prefersReducedMotionSafe
+                          ? `translateX(${isLeft ? '-100%' : '0'})`
+                          : `translateX(${isLeft ? '-100%' : '0'}) translateY(${visible ? 0 : 10}px)`,
+                        transition: prefersReducedMotionSafe
+                          ? undefined
+                          : 'opacity 0.45s ease, transform 0.45s ease',
                       }}
                     >
-                      {/* Marker: 3px red dot, then a hairline leader out to the text. The old
-                          treatment was a bordered, blurred card floating over the car; a corner
-                          marker annotates the drawing instead of covering it. */}
+                      {/* Marker: 3px red dot, then a hairline leader out to the text. Both stay
+                          bare over the frame — no scrim, no border — which is the whole difference
+                          between this and the bordered card it replaced: the marker touches the
+                          drawing, only the copy below sits on a backdrop. */}
                       <span
                         aria-hidden="true"
                         className="mt-[7px] block h-[3px] w-[3px] flex-shrink-0 rounded-full bg-f1-red"
@@ -573,10 +654,29 @@ export function TeardownScene() {
                        * leader put the text at x=245, and 180px of it ran to 425 — a 35px
                        * horizontal scrollbar on the whole page.
                        */}
-                      <div className="w-[130px] sm:w-[180px]">
-                        {/* zinc-400, not zinc-500 — the 10-11px labels on this branch are all
-                            zinc-400 (7.75:1); zinc-500 measures 4.11:1 and fails the small-text
-                            floor. */}
+                      {/*
+                       * The scrim, and it is the *text block only* that carries it — the dot and the
+                       * leader line above stay bare, so the marker still annotates the drawing
+                       * rather than covering it the way the old bordered card did.
+                       *
+                       * Without it these glyphs sit directly on a rendered car frame, which is not
+                       * the background their colours were chosen against. Decoding the shipped PNGs
+                       * and compositing over `#09090B`: 35.4% of callout 02's text box is under
+                       * 4.5:1 at frame 64, 19.6% of 04's at frame 158, and the brightest pixel under
+                       * any of them is `rgb(249,245,242)`, where `ink` reads 1.02:1. Confirmed in
+                       * Chromium at 1440. At `zinc-950/85` that worst case composites to
+                       * `rgb(45,44,46)`, where `ink` is 12.6:1 and `zinc-400` 5.4:1 — both clear.
+                       *
+                       * `px-2` costs no width. Tailwind's preflight sets `box-sizing: border-box`,
+                       * so the padding comes out of the 130px rather than adding to it and the
+                       * marker stays the ~173px at 390 that the `side` mirroring is sized against.
+                       * Do not swap the clamp for a `max-w`, which would let it grow.
+                       */}
+                      <div className="w-[130px] rounded bg-zinc-950/85 px-2 py-1 backdrop-blur-sm sm:w-[180px]">
+                        {/* zinc-400, not zinc-500. On this scrim zinc-400's worst case is 5.4:1 and
+                            zinc-500's is 2.9:1, which fails outright; on bare zinc-950 the two are
+                            7.76:1 and 4.11:1. The scrim's ratio is the one that governs — these
+                            glyphs are never on bare zinc-950. */}
                         <span className="block font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-400">
                           {String(i + 1).padStart(2, '0')}
                         </span>
@@ -653,7 +753,7 @@ export function TeardownScene() {
          * tracking, so it is the same object, just no longer shouting.
          */}
         <span className="font-display text-[clamp(2rem,4vw,3.5rem)] leading-[0.75] tracking-tight text-ink">
-          {pct}
+          {scrollPct}
           <sup className="align-super text-[0.35em]">%</sup>
         </span>
       </div>
@@ -662,11 +762,11 @@ export function TeardownScene() {
       <div
         role="progressbar"
         aria-label="Teardown sequence progress"
-        aria-valuenow={pct}
+        aria-valuenow={scrollPct}
         aria-valuemin={0}
         aria-valuemax={100}
         className="fixed bottom-0 left-0 z-30 h-0.5 bg-f1-red"
-        style={{ width: `${pct}%` }}
+        style={{ width: `${scrollPct}%` }}
       />
     </div>
   );

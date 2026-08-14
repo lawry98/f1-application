@@ -1,7 +1,8 @@
 'use client';
 
 import * as React from 'react';
-import { motion, useReducedMotion } from 'motion/react';
+import { motion } from 'motion/react';
+import { useReducedMotionSafe } from '@/hooks/use-reduced-motion-safe';
 import { cn } from '@/lib/utils';
 
 /** 650ms out-expo wipe, per the spec. */
@@ -12,7 +13,11 @@ const FADE_DURATION_S = 0.15;
 const LINE_STAGGER_S = 0.1;
 /** `ease-out-expo` as a JS easing array — `tailwind.config.ts`'s `out-expo` is CSS-only. */
 const EASE_OUT_EXPO: [number, number, number, number] = [0.16, 1, 0.3, 1];
-/** Every scroll-triggered instance in the kit fires once, this margin, per `SHARED.md`. */
+/**
+ * Every scroll-triggered instance in this kit fires **once**, at this margin — `MegaStat`,
+ * `Scribble` and `LaurelFlourish` all repeat the same pair. A bar that re-wipes every time its
+ * line scrolls back past reads as a glitch rather than as a reveal.
+ */
 const ONCE_IN_VIEW = { once: true, margin: '-15% 0px' } as const;
 
 /**
@@ -73,6 +78,28 @@ export interface RedactedRevealProps {
  * underneath anyway). Two independently timed animations sharing one `delay` base is what
  * lets both requirements — "wipes over 650ms" and "text fades over the final 150ms" — hold at
  * once.
+ *
+ * **The reduced-motion branch must come from `useReducedMotionSafe`, never from motion's own
+ * `useReducedMotion`. This is the file that proved it.** motion's hook reads a module-level store
+ * that only the browser initialises, so it answers `null` during SSR and the user's *real*
+ * preference on the client's very first render. Any component that branches which *elements* it
+ * returns on that value therefore emits one tree on the server and a different one on the client's
+ * first pass — a hydration mismatch. Reproduced in Chromium under emulated reduced motion on `/`:
+ *
+ *     Warning: Expected server HTML to contain a matching text node for "Race weekend" in <span>
+ *         at RedactedReveal (components/candy/redacted-reveal.tsx)
+ *
+ * It is invisible unless reduced motion is actually emulated, which is how four components in this
+ * kit shipped with it: without the preference set, server and client agree on "no preference" by
+ * accident. `useReducedMotionSafe` returns `false` on the server and on the first client render,
+ * then flips in a *layout* effect so the corrected tree commits before paint — see
+ * `hooks/use-reduced-motion-safe.ts` for why a mounted flag rather than a structural rewrite, and
+ * why layout timing rather than `useEffect`. `mega-stat.tsx`, `scribble.tsx` and
+ * `laurel-flourish.tsx` branch structurally too and point back here.
+ *
+ * Motion's own hook stays correct for feeding an animation *value*, which never reaches the SSR
+ * markup. Nothing in this file does that: the preference here decides whether the bar element
+ * exists at all.
  */
 export function RedactedReveal({
   children,
@@ -82,9 +109,12 @@ export function RedactedReveal({
   trigger = 'onView',
   className,
 }: RedactedRevealProps) {
-  const prefersReducedMotion = useReducedMotion();
+  const prefersReducedMotion = useReducedMotionSafe();
   const lines = React.Children.toArray(children);
-  const barColorClassName = variant === 'ink' ? 'bg-ink' : 'bg-brand';
+  // `bg-f1-red`, not the `bg-brand` alias of the identical hex this used to carry. They render the
+  // same; the point is that a `grep f1-red` audit — which this branch's own commits run — finds
+  // the site-defining reveal bar instead of silently missing it.
+  const barColorClassName = variant === 'ink' ? 'bg-ink' : 'bg-f1-red';
 
   return (
     <>
@@ -102,11 +132,11 @@ export function RedactedReveal({
           React.isValidElement(line) && line.key !== null ? line.key : `line-${index}`;
 
         if (prefersReducedMotion) {
-          // SHARED.md's reduced-motion rule is "render the static final state immediately,
-          // with no transition" — the end state of this effect is bar gone, text fully
-          // visible, so that's a line with no bar element at all rather than a bar animated
-          // to its resting scale. Never gate the child on the animation: it is the same
-          // node the motion branch renders, just without the motion wrapper around it.
+          // The kit's reduced-motion rule is "render the static *final* state immediately, with
+          // no transition" — not a frozen initial state. The end state of this effect is bar
+          // gone, text fully visible, so that is a line with no bar element at all rather than a
+          // bar animated to its resting scale. Never gate the child on the animation: it is the
+          // same node the motion branch renders, just without the motion wrapper around it.
           return (
             <Component key={lineKey} className={cn('relative inline-block', className)}>
               {line}

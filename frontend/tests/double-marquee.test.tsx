@@ -2,7 +2,8 @@ import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DoubleMarquee } from '@/components/candy/double-marquee';
 
-// See SHARED.md's "Testing reduced motion" recipe: `useReducedMotion` caches its answer in a
+// Testing reduced motion, the only recipe verified to work in this repo: `useReducedMotion`
+// caches its answer in a
 // module-global on the *first* call and never re-reads `window.matchMedia`, so a test can't
 // drive it through matchMedia at all. Partial-mocking the module and flipping this flag per test
 // is the only way that has been verified to work in this repo.

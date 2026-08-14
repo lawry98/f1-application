@@ -14,7 +14,19 @@ const config: Config = {
           red: '#E10600',
           dark: '#18181b',
         },
-        /** Alias of f1-red, for new code where "brand" reads better than "f1-red". */
+        /**
+         * Retained alias of `f1-red`, kept only so existing `brand-*` classes keep resolving.
+         *
+         * **`f1-red` is the canonical class and new code uses it**, which is the opposite of what
+         * this comment used to say. The reason is greppability, not taste: this branch audits the
+         * red by running `grep f1-red` over the tree, and a second token for the identical hex
+         * means every such audit silently misses whatever is written the other way. The last
+         * `bg-brand` in the codebase was moved to `bg-f1-red` for exactly that, so the grep is
+         * currently complete — adding a `brand-*` use would quietly break it again.
+         *
+         * Not deleted, because removing the token turns any stale usage into a class that resolves
+         * to nothing and renders transparent rather than failing the build.
+         */
         brand: '#E10600',
         /**
          * Warm off-white for display headlines. Pure white against #09090B reads as a

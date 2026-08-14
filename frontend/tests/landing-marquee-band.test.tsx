@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import { LandingMarqueeBand } from '@/components/landing/landing-marquee-band';
+import { restingTextNeutrals } from './zinc';
 
 /**
  * The band is decorative, so almost everything worth asserting here is about what it must *not*
@@ -65,5 +66,26 @@ describe('LandingMarqueeBand', () => {
     // can never observe that scrollbar. Asserting the class itself is the closest available
     // proxy, which is why this test looks tautological and is not.
     expect(container.firstElementChild).toHaveClass('overflow-hidden');
+  });
+
+  it('reads no neutral text out to anyone, so nothing here is under a contrast bar', () => {
+    /*
+     * The inverse of the contrast assertion the other landing sections carry, because this band
+     * is the one section that has no accessible text at all.
+     *
+     * It is not a vacuous test. `DoubleMarquee` paints its top line `text-zinc-600` — #52525b on
+     * `base` #09090B, **2.57:1** — which would fail AA outright if it were content. It is not:
+     * the component sets `aria-hidden="true"` on its own root, the words are the F1 race-start
+     * call rather than information, and the type is 7vw. Stripping the hidden subtrees and finding
+     * nothing left is what says "this band contributes no text a contrast bar applies to". Add one
+     * accessible word here and this fails, which is the moment to measure it properly.
+     *
+     * The `zinc-600` line itself lives in `components/candy/double-marquee.tsx` and is that
+     * component's call to make, not this section's.
+     */
+    const { container } = render(<LandingMarqueeBand />);
+    Array.from(container.querySelectorAll('[aria-hidden="true"]')).forEach((el) => el.remove());
+
+    expect(restingTextNeutrals(container)).toHaveLength(0);
   });
 });

@@ -1,6 +1,7 @@
 'use client';
 
-import { motion, useReducedMotion } from 'motion/react';
+import { motion } from 'motion/react';
+import { useReducedMotionSafe } from '@/hooks/use-reduced-motion-safe';
 import { cn } from '@/lib/utils';
 
 export type ScribbleType = 'circle' | 'underline' | 'p1' | 'strike';
@@ -314,7 +315,10 @@ export function Scribble({
   delay = 0,
   className,
 }: ScribbleProps): React.JSX.Element {
-  const prefersReducedMotion = useReducedMotion();
+  // `useReducedMotionSafe`, not motion's `useReducedMotion`: the preference picks `motion.path`
+  // against a plain `path`, i.e. it changes the elements returned, and motion's hook disagrees
+  // between the server and the client's first render. Root-cause note in `redacted-reveal.tsx`.
+  const prefersReducedMotion = useReducedMotionSafe();
   const shape = SHAPES[type];
 
   return (

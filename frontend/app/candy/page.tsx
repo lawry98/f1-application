@@ -7,9 +7,10 @@ import { MegaStat } from '@/components/candy/mega-stat';
 import { RedactedReveal } from '@/components/candy/redacted-reveal';
 import { Scribble } from '@/components/candy/scribble';
 import { TicketCard } from '@/components/candy/ticket-card';
+import { TopoBackground } from '@/components/candy/topo-background';
 import monaco from '@/data/circuits/mc-1929.json';
 import monza from '@/data/circuits/it-1922.json';
-import type { Point } from '@/lib/svg-path';
+import { toPoints } from '@/lib/circuit-geometry';
 import { cn } from '@/lib/utils';
 
 export const metadata: Metadata = {
@@ -28,22 +29,12 @@ export const metadata: Metadata = {
  *
  * A server component holding client components: the geometry is read from the vendored JSON at
  * build time and handed down as plain arrays, which is the same shape Phase 3 and Phase 6 will
- * use. `lib/circuit-geometry.ts` exists for the runtime case where only a race *location* is
- * known; here the circuits are known at author time, so importing them directly is both simpler
- * and cheaper than going through the loader.
+ * use. `lib/circuit-geometry.ts`'s *loader* exists for the runtime case where only a race
+ * *location* is known; here the circuits are known at author time, so importing them directly is
+ * both simpler and cheaper than going through it. The narrowing from the JSON's `number[][]` to
+ * `Point[]` still comes from that module — `toPoints` — so the static and dynamic paths share one
+ * definition of the JSON↔`Point` boundary instead of each carrying a copy.
  */
-
-/**
- * The JSON's `points` widen to `number[][]`, and `Point` is a fixed-length readonly pair, so a
- * straight `as Point[]` is not a legal assertion between them (TS2352).
- *
- * The `= 0` defaults are what make this typecheck under `noUncheckedIndexedAccess`, which makes
- * destructuring an array yield `number | undefined`. They are unreachable for this data — the
- * converter writes pairs — but writing them is cheaper than a non-null assertion and cannot lie.
- */
-function toPoints(raw: number[][]): Point[] {
-  return raw.map(([x = 0, y = 0]): Point => [x, y]);
-}
 
 const MONZA_POINTS = toPoints(monza.points);
 const MONACO_POINTS = toPoints(monaco.points);
@@ -360,6 +351,64 @@ export default function CandyPage() {
             <p className={CAPTION}>
               variant=&quot;plain&quot; at 120 px inside a card · no glow, grey stroke. Two
               instances on one page must not share a blur filter id.
+            </p>
+          </div>
+        </div>
+      </Section>
+
+      {/*
+       * This cell exists because `TopoBackground`'s one real bug has now shipped twice.
+       *
+       * The component strokes `currentColor` and declares no colour of its own, so a bare
+       * `<TopoBackground />` paints whatever the *ancestry* happens to say. On a landing section
+       * that says nothing, that is `rgb(0, 0, 0)` — black contours over #09090B, measured in
+       * Chromium. The texture is not subtle in that state, it is *absent*, and an invisible texture
+       * and a tasteful one look identical in review. It shipped in Phase 3's hero and had to be
+       * guarded again in Phase 4.
+       *
+       * The two cells below are deliberately not "works / broken". This page's own `main` declares
+       * `text-zinc-300`, so the bare instance here is visible — which *is* the lesson: whether a
+       * bare instance renders at all is a property of a container someone else wrote, and the two
+       * cells sit side by side to show the same markup painting two different colours. `text-ink`
+       * on the left is not a style preference, it is what makes the texture's colour independent
+       * of where it is dropped.
+       *
+       * Only this page can show that. The unit test can assert a `<pattern>` exists; it cannot see
+       * what colour the stroke resolves to, because jsdom applies no stylesheet and inherits
+       * nothing.
+       *
+       * `relative` and a fixed height on each cell are not decoration: the component is
+       * `absolute inset-0`, so with no positioned ancestor of non-zero height it has nothing to
+       * resolve its inset against and paints nowhere at all.
+       */}
+      <Section label="TopoBackground">
+        <div className="grid gap-10 md:grid-cols-2">
+          <div className={cn(CELL, 'relative h-56 overflow-hidden')}>
+            <TopoBackground className="text-ink opacity-[0.07]" />
+            <p className="relative font-display text-2xl uppercase tracking-tight text-ink">
+              Coloured at the call site
+            </p>
+            <p className={cn(CAPTION, 'relative')}>
+              <code className="text-zinc-400">text-ink opacity-[0.07]</code> · the standardised
+              full-section treatment. The hero, the CTA band and the footer carry this exact class
+              so the three textures read as one material. The component&apos;s own 0.12 default
+              suits a small container; across a full-bleed section it puts contours through the
+              headline.
+            </p>
+          </div>
+
+          <div className={cn(CELL, 'relative h-56 overflow-hidden')}>
+            <TopoBackground />
+            <p className="relative font-display text-2xl uppercase tracking-tight text-ink">
+              Inheriting instead
+            </p>
+            <p className={cn(CAPTION, 'relative')}>
+              No <code className="text-zinc-400">text-*</code> at all — the strokes take
+              <code className="mx-1 text-zinc-400">currentColor</code> from this page&apos;s
+              <code className="mx-1 text-zinc-400">main</code>, which happens to say
+              <code className="mx-1 text-zinc-400">text-zinc-300</code>. Drop the identical markup
+              into a section that declares no colour and it resolves to black on #09090B and
+              vanishes. Always name the colour.
             </p>
           </div>
         </div>

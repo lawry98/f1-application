@@ -1,6 +1,8 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { TeardownOutro } from '@/components/teardown/teardown-outro';
+import { cardSurfaceBackdrop, contrastRatio, DARK_BG, MIN_CONTRAST } from '@/lib/team-utils';
+import { restingTextNeutrals } from './zinc';
 
 /**
  * The four 2026-regulation figures, copied out of the component by hand on purpose — importing
@@ -51,7 +53,10 @@ describe('TeardownOutro', () => {
 
     it('renders the full heading sentence despite it being split across spans', () => {
       // The accent run ("behind the car") is its own <span> so the caps/serif treatment can
-      // apply to it alone (see SHARED-P4.md's mixed-type-heading idiom) — a naive
+      // apply to it alone — that is the branch's mixed-type heading idiom: ALL-CAPS
+      // `font-display` in `ink` with one or two accent words swapped to `font-serif-display`
+      // italic in `f1-red`, the accent staying sentence-case because the contrast between the
+      // two cases is the point. A naive
       // `getByText('The numbers behind the car.')` therefore finds nothing, because Testing
       // Library matches per element and no single element holds the whole sentence. Normalising
       // `textContent` is what proves the sentence still reads correctly once the spans are
@@ -231,7 +236,9 @@ describe('TeardownOutro', () => {
       // interactive link, not a decorative tick, and a bare-class selector would silently fold it
       // into this count. This grew from 6 (4 stats + 2 kickers) to 7 when this task's kicker was
       // added, reusing the same shared kicker idiom (and therefore the same red bar) as the other
-      // two — per SHARED-P4.md, that duplication is deliberate, not a copy-paste bug.
+      // two. That duplication is deliberate, not a copy-paste bug: the kicker idiom is one
+      // markup shape — `text-[11px] font-semibold uppercase tracking-[0.2em]` plus an
+      // `aria-hidden` `h-1.5 w-5 bg-f1-red` tick — reused verbatim wherever a section opens.
       expect(container.querySelectorAll('[aria-hidden="true"].bg-f1-red')).toHaveLength(
         STAT_VALUES.length + 3,
       );
@@ -287,6 +294,77 @@ describe('TeardownOutro', () => {
       const link = screen.getByRole('link', { name: 'Generate a Briefing' });
 
       expect(link).toHaveAttribute('href', '/briefing');
+    });
+  });
+
+  describe('contrast', () => {
+    /**
+     * The assertion this section shipped without, and the reason it shipped a regression.
+     *
+     * Every 11px label here was moved off `zinc-500` in an earlier phase for contrast, and a
+     * later pass put `zinc-500` back on three kickers, four card footers and four table cells —
+     * with comments asserting it was fine. Nothing failed, because every contrast claim on this
+     * branch lived in prose. These tests measure the ratio instead: `zinc-500` is `#71717a`, and
+     * `contrastRatio` puts it at 4.12:1 on `zinc-950` and 3.93:1 on the card surface, both under
+     * the 4.5:1 floor, so reverting the colour fails here on the number rather than on a class
+     * string. WCAG's large-text exemption is not a way out of it either — it begins at 18.66px
+     * bold / 24px regular, and the largest neutral in this section is a 14px table cell.
+     */
+    it('holds every resting neutral above the small-text floor on the card surface', () => {
+      // Measured against `cardSurfaceBackdrop()`, not `DARK_BG`, for every neutral in the tree
+      // — including the ones sitting directly on the section's `bg-zinc-950`. A translucent
+      // white card surface *lightens* what is behind the glyphs, which lowers a light neutral's
+      // ratio, so the card composite is the stricter of the two backgrounds this section paints
+      // on and clearing it implies clearing bare `zinc-950`. The next test pins that "stricter"
+      // premise down rather than leaving it as an assumption, because measuring the right colour
+      // against the wrong background is the failure mode this whole test exists to catch: it
+      // reports a safe number, passes, and leaves the rendered page failing.
+      const { container } = render(<TeardownOutro />);
+      const neutrals = restingTextNeutrals(container);
+      const cardBg = cardSurfaceBackdrop();
+
+      expect(neutrals.length).toBeGreaterThan(0);
+      for (const { hex, text } of neutrals) {
+        expect(contrastRatio(hex, cardBg), `${hex} behind "${text}"`).toBeGreaterThanOrEqual(
+          MIN_CONTRAST,
+        );
+      }
+    });
+
+    it('is right that the card surface is the stricter background of the two', () => {
+      // The premise the test above rests on, asserted rather than assumed: for a light-on-dark
+      // neutral, the card composite can only ever score at or below bare `zinc-950`. If a future
+      // surface change ever inverted that, the test above would silently become the *lenient*
+      // one and stop catching anything.
+      const { container } = render(<TeardownOutro />);
+      const cardBg = cardSurfaceBackdrop();
+
+      for (const { hex, text } of restingTextNeutrals(container)) {
+        expect(contrastRatio(hex, cardBg), `${hex} behind "${text}"`).toBeLessThanOrEqual(
+          contrastRatio(hex, DARK_BG),
+        );
+      }
+    });
+
+    it('actually paints neutrals inside the TicketCards, so the card backdrop is exercised', () => {
+      // Without this, the two tests above would still pass on a version of this component that
+      // had stopped putting any text inside a card at all — the stricter background would be
+      // measured against nothing that really sits on it. Each card carries at least its body
+      // paragraph and its footer label.
+      const { container } = render(<TeardownOutro />);
+      const cards = Array.from(container.querySelectorAll('.notch-card'));
+      const cardBg = cardSurfaceBackdrop();
+
+      expect(cards).toHaveLength(4);
+      for (const card of cards) {
+        const neutrals = restingTextNeutrals(card);
+        expect(neutrals.length).toBeGreaterThanOrEqual(2);
+        for (const { hex, text } of neutrals) {
+          expect(contrastRatio(hex, cardBg), `${hex} behind "${text}"`).toBeGreaterThanOrEqual(
+            MIN_CONTRAST,
+          );
+        }
+      }
     });
   });
 
