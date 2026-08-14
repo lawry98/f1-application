@@ -87,22 +87,28 @@ function rgbToHsl([r8, g8, b8]: [number, number, number]): [number, number, numb
   const d = max - min;
   if (d === 0) return [0, 0, l];
   const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-  const h = max === r ? ((g - b) / d + (g < b ? 6 : 0)) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  const h =
+    max === r ? (g - b) / d + (g < b ? 6 : 0) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
   return [h * 60, s, l];
 }
 
 function hslToRgb(h: number, s: number, l: number): [number, number, number] {
   const c = (1 - Math.abs(2 * l - 1)) * s;
-  const hp = ((h % 360) + 360) % 360 / 60;
+  const hp = (((h % 360) + 360) % 360) / 60;
   const x = c * (1 - Math.abs((hp % 2) - 1));
   const m = l - c / 2;
   const [r, g, b] =
-    hp < 1 ? [c, x, 0]
-    : hp < 2 ? [x, c, 0]
-    : hp < 3 ? [0, c, x]
-    : hp < 4 ? [0, x, c]
-    : hp < 5 ? [x, 0, c]
-    : [c, 0, x];
+    hp < 1
+      ? [c, x, 0]
+      : hp < 2
+        ? [x, c, 0]
+        : hp < 3
+          ? [0, c, x]
+          : hp < 4
+            ? [0, x, c]
+            : hp < 5
+              ? [x, 0, c]
+              : [c, 0, x];
   return [(r + m) * 255, (g + m) * 255, (b + m) * 255];
 }
 
@@ -258,9 +264,68 @@ export function railStandingColor(hex: string): string {
  */
 export const GLOW_PEAK_OPACITY = 0.18;
 
-/** The opaque colour the glow leaves behind the section's standing line. */
+/**
+ * Peak alpha of the per-team gradient a section paints beneath everything else, and — same rule
+ * as `GLOW_PEAK_OPACITY` — the alpha its composite is judged at.
+ *
+ * The spec's Phase 5 line is "`TopoBackground` at 4% over each team-colour gradient", and the
+ * gradient is the part with a contrast cost. It is a *ramp*, fading to transparent well before the
+ * section ends, so judging every run in the section at the ramp's peak is the conservative side of
+ * the real number for all but the topmost line.
+ *
+ * **0.1 was chosen by measurement, and it is what forces the section's neutral floor up a rung.**
+ * The gradient does not replace the glow, it stacks under it, so the worst case behind a line of
+ * section copy is the livery at 0.1 and then again at `GLOW_PEAK_OPACITY`. On Haas's `#ffffff`
+ * that composites to `#4a4a4b`, where `zinc-400` measures **3.45:1** — under AA. Notably it was
+ * already marginal without any gradient at all: glow-only composites to `#353537`, where
+ * `zinc-400` is **4.78:1**, i.e. 0.28 of headroom, and *any* gradient above 0.02 spends it.
+ *
+ * So the rung moves rather than the design: inside a team section every resting neutral is
+ * `zinc-300` or lighter, which measures **5.99:1** on that same worst case and **5.54:1** through
+ * a `TicketCard`'s wash on top of it. Raising this constant without re-measuring both numbers is
+ * the mistake `CLAUDE.md` records the team pages shipping twice.
+ */
+export const SECTION_GRADIENT_PEAK_ALPHA = 0.1;
+
+/**
+ * The section's team-colour gradient: the livery at `SECTION_GRADIENT_PEAK_ALPHA` along the top
+ * edge, ramping to nothing across the section's upper half.
+ *
+ * `rgba()` rather than an `#RRGGBBAA` suffix because jsdom's CSS parser drops the eight-digit hex
+ * form inside a gradient, which would make the declaration unobservable in a test — the same class
+ * of parser gap `portraitScrim` documents for `calc()`.
+ */
+export function sectionGradient(hex: string): string {
+  const [r, g, b] = parseHex(hex);
+  return `linear-gradient(to bottom, rgba(${r}, ${g}, ${b}, ${SECTION_GRADIENT_PEAK_ALPHA}), rgba(${r}, ${g}, ${b}, 0) 60%)`;
+}
+
+/**
+ * The worst opaque colour a line of section copy can sit on: the gradient at its peak, with the
+ * glow blob at *its* peak on top of that.
+ *
+ * Both layers are full-section and both are decorative, so any given glyph may have one, the
+ * other, or neither behind it. Composing both is the only bound that holds everywhere.
+ */
+export function sectionSurfaceBackdrop(hex: string): string {
+  return blendOver(hex, GLOW_PEAK_OPACITY, blendOver(hex, SECTION_GRADIENT_PEAK_ALPHA, DARK_BG));
+}
+
+/** The same stack with a `TicketCard`'s `bg-white/[0.03]` wash on top — driver cards sit here. */
+export function sectionCardBackdrop(hex: string): string {
+  return cardSurfaceBackdrop(sectionSurfaceBackdrop(hex));
+}
+
+/**
+ * The opaque colour the section's decorative layers leave behind its standing line.
+ *
+ * This used to be the glow alone. It is the whole stack now, because the gradient sits under the
+ * glow and lightens it further — leaving this describing only half of what is really there would
+ * make `sectionStandingColor` lift against a background lighter than the one it measured, which is
+ * precisely the "right colour, wrong background" failure this module exists to prevent.
+ */
 export function sectionStandingBackdrop(hex: string): string {
-  return blendOver(hex, GLOW_PEAK_OPACITY, DARK_BG);
+  return sectionSurfaceBackdrop(hex);
 }
 
 /**

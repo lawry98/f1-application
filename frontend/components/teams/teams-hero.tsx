@@ -68,8 +68,26 @@ export function TeamsHero({ onSelectTeam }: TeamsHeroProps) {
         ))}
       </div>
 
-      {/* Content */}
-      <div className="relative z-10 flex flex-col items-center gap-6 px-6 text-center">
+      {/* Content
+       *
+       * `pointer-events-none`, and it is a bug fix rather than a style: **seven of the eleven
+       * livery columns below were unclickable.** This block is `z-10` and the columns are `z-0`,
+       * and although the block is only as wide as its widest child, "THE GRID" at
+       * `clamp(3.5rem,12vw,9rem)` spans roughly 900px of a 1440px hero — so it sat over columns 3
+       * through 9. Hit-tested in Chromium with `document.elementsFromPoint` at each column's
+       * centre: Mercedes, Ferrari, Cadillac and Aston Martin resolved to their own button, and
+       * McLaren, Red Bull, Haas, Racing Bulls, Audi, Alpine and Williams all resolved to this div.
+       *
+       * The first attempt was `pointer-events-none` on the `TextAnimate` heading alone, because
+       * the topmost node in the stack was one of its per-character `inline-block whitespace-pre`
+       * spans. That made it **worse** — nine columns dead instead of seven — because the click
+       * then landed on this wrapper one layer down. The wrapper is the actual blocker; the span
+       * was only what happened to be on top.
+       *
+       * `pointer-events` is an inherited property, so this one declaration frees the badge, the
+       * headline and the sub-heading, and the CTA below opts back in with `pointer-events-auto`.
+       * Re-hit-tested after the change: zero columns covered, CTA still reachable. */}
+      <div className="pointer-events-none relative z-10 flex flex-col items-center gap-6 px-6 text-center">
         <BlurFade delay={0.1} inView>
           <Badge variant="outline" className="border-zinc-600 text-zinc-400">
             2026 Season · 11 Constructors
@@ -102,9 +120,12 @@ export function TeamsHero({ onSelectTeam }: TeamsHeroProps) {
         </TextAnimate>
 
         <BlurFade delay={reducedMotion ? 0 : 0.8} inView>
+          {/* `pointer-events-auto`: the only interactive child of a wrapper that just turned
+              pointer events off for the whole content block. Without it the hero's primary CTA
+              becomes the twelfth casualty of the fix for the other eleven. */}
           <Button
             size="lg"
-            className="mt-4 gap-2 bg-f1-red text-white hover:bg-f1-red/90"
+            className="pointer-events-auto mt-4 gap-2 bg-f1-red text-white hover:bg-f1-red/90"
             onClick={() =>
               document.getElementById(`team-${TEAMS[0]!.id}`)?.scrollIntoView({
                 behavior: reducedMotion ? 'auto' : 'smooth',

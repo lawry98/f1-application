@@ -62,9 +62,7 @@ describe('TeamsHero', () => {
     const tokens = columnLayer(container).className.split(/\s+/);
 
     expect(tokens).toContain('lg:inset-0');
-    const unsetsBlockEdge = tokens.filter((t) =>
-      /^lg:(top|bottom|inset-y)-auto$/.test(t),
-    );
+    const unsetsBlockEdge = tokens.filter((t) => /^lg:(top|bottom|inset-y)-auto$/.test(t));
     expect(unsetsBlockEdge).toEqual([]);
   });
 
@@ -113,5 +111,32 @@ describe('TeamsHero', () => {
     expect(reveal!.querySelector('img')).toHaveAttribute('alt', 'Ferrari logo');
     // Hidden below lg so the two marks never both show.
     expect(reveal!.className).toMatch(/\bhidden\b/);
+  });
+
+  /*
+   * The content block sits `z-10` over the `z-0` livery columns, and "THE GRID" at
+   * `clamp(3.5rem,12vw,9rem)` is wide enough that the block covered seven of the eleven. Verified
+   * by hit-testing every column's centre with `document.elementsFromPoint` in Chromium at
+   * 1440x1000: McLaren, Red Bull, Haas, Racing Bulls, Audi, Alpine and Williams all resolved to
+   * this wrapper rather than to their own button, before and only before the fix.
+   *
+   * **jsdom cannot reproduce that** — it lays nothing out, so `elementFromPoint` is meaningless
+   * here and no test in this file could have caught the original bug. What this pins instead is
+   * the *mechanism*: `pointer-events` is inherited, so the whole block being `none` with exactly
+   * the CTA opting back in is the shape of the fix, and either half going missing is a regression
+   * that puts the hero back to seven dead columns (or, if the `auto` is lost, to a dead CTA).
+   */
+  it('lets pointer events through the headline block while keeping the CTA clickable', () => {
+    render(<TeamsHero onSelectTeam={vi.fn()} />);
+
+    const cta = screen.getByRole('button', { name: /explore constructors/i });
+    const content = cta.closest('div.z-10');
+    expect(content, 'the CTA must still live inside the z-10 content block').not.toBeNull();
+
+    expect(content!.className).toMatch(/\bpointer-events-none\b/);
+    expect(cta.className).toMatch(/\bpointer-events-auto\b/);
+
+    // Non-vacuity: the block really does contain the wide headline the columns were losing to.
+    expect(content!.querySelector('h1')).not.toBeNull();
   });
 });

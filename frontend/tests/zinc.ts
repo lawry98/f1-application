@@ -48,21 +48,97 @@ function zincClass(el: Element): string | null {
 export function restingTextNeutrals(root: ParentNode): RestingNeutral[] {
   const out: RestingNeutral[] = [];
   for (const el of Array.from(root.querySelectorAll('*'))) {
-    const own = Array.from(el.childNodes)
-      .filter((n) => n.nodeType === 3)
-      .map((n) => n.textContent?.trim() ?? '')
-      .filter(Boolean)
-      .join(' ');
+    const own = ownText(el);
     if (!own) continue;
 
+    // The walk stops at whichever colour source is *nearer*, and an inline `style="color: …"`
+    // beats a class outright in the cascade. `/teams` is why this matters: team liveries arrive
+    // as inline colours from `lib/team-utils.ts`, often on a span nested inside a `text-zinc-N`
+    // wrapper, and reporting that run at the wrapper's shade would measure a colour the page
+    // never paints — the same wrong-input failure `whiteWashSurfaces` guards against on the
+    // background side. Those runs belong to `inlineColouredText` below, not here.
     let shade: string | null = null;
     for (let node: Element | null = el; node && !shade; node = node.parentElement) {
+      if (inlineColor(node)) break;
       shade = zincClass(node);
     }
     if (!shade) continue;
 
     const hex = ZINC[shade];
     if (!hex) throw new Error(`add zinc-${shade} to the ZINC map in tests/zinc.ts`);
+    out.push({ hex, text: own.slice(0, 32) });
+  }
+  return out;
+}
+
+/** An element's own text children, joined — the unit both walkers key on. */
+function ownText(el: Element): string {
+  return Array.from(el.childNodes)
+    .filter((n) => n.nodeType === 3)
+    .map((n) => n.textContent?.trim() ?? '')
+    .filter(Boolean)
+    .join(' ');
+}
+
+/**
+ * `#rrggbb` for an element's inline `color`, or `null` if it sets none.
+ *
+ * jsdom normalises `style={{ color: '#dc0000' }}` to the string `rgb(220, 0, 0)`, so the value
+ * has to be converted back before `contrastRatio` — which, like every colour function in
+ * `@/lib/team-utils`, parses hex only.
+ */
+function inlineColor(el: Element): string | null {
+  const raw = (el as HTMLElement).style?.color;
+  if (!raw) return null;
+  const rgb = /^rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(raw);
+  if (rgb) {
+    return `#${[rgb[1], rgb[2], rgb[3]]
+      .map((c) => Number(c).toString(16).padStart(2, '0'))
+      .join('')}`;
+  }
+  if (/^#[0-9a-f]{6}$/i.test(raw)) return raw.toLowerCase();
+  throw new Error(`tests/zinc.ts cannot read the inline colour "${raw}"`);
+}
+
+export interface LiveryRun {
+  /** The hex actually painted, normalised out of whatever jsdom stored. */
+  hex: string;
+  /** The text it colours, for a failure message that names the thing on screen. */
+  text: string;
+}
+
+/**
+ * Every text run under `root` whose colour comes from an inline `style="color: …"`.
+ *
+ * `restingTextNeutrals`' counterpart, and `/teams` needs it because that page's most
+ * contrast-sensitive text is not a `text-zinc-N` class at all — the seam label, the section
+ * standing line, the rail's active standings row, the portrait nationality and every `MegaStat`
+ * tone override carry a **team livery**, computed at render time by `lib/team-utils.ts` and
+ * applied inline. A class-reading helper reports none of them, so a suite built only on
+ * `restingTextNeutrals` would pass over `/teams` while measuring nothing that can actually fail.
+ *
+ * Deliberately **not** filtered to "team colours": it reports every inline-coloured run, so a call
+ * site that paints a raw livery straight onto text — bypassing the contrast layer, which is the
+ * one mistake `CLAUDE.md` says this page has made twice — shows up here as a failing ratio rather
+ * than as an absence.
+ *
+ * Same keying as `restingTextNeutrals` (an element's *own* text children, nearest colour source
+ * walking up), so the two partition the tree between them and neither double-counts the other's
+ * runs.
+ */
+export function inlineColouredText(root: ParentNode): LiveryRun[] {
+  const out: LiveryRun[] = [];
+  for (const el of Array.from(root.querySelectorAll('*'))) {
+    const own = ownText(el);
+    if (!own) continue;
+
+    let hex: string | null = null;
+    for (let node: Element | null = el; node && !hex; node = node.parentElement) {
+      hex = inlineColor(node);
+      if (!hex && zincClass(node)) break;
+    }
+    if (!hex) continue;
+
     out.push({ hex, text: own.slice(0, 32) });
   }
   return out;

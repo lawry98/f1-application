@@ -23,7 +23,11 @@ import {
   RAIL_ACTIVE_ALPHA,
   sectionStandingBackdrop,
   sectionStandingColor,
+  sectionSurfaceBackdrop,
+  sectionCardBackdrop,
+  sectionGradient,
   GLOW_PEAK_OPACITY,
+  SECTION_GRADIENT_PEAK_ALPHA,
   portraitCaptionBackdrop,
   portraitCaptionColor,
   portraitScrim,
@@ -32,6 +36,7 @@ import {
   PORTRAIT_SCRIM_TEXT_INSET,
 } from '@/lib/team-utils';
 import { TEAMS, TEAM_MAP, STANDINGS_AS_OF } from '@/data/teams-data';
+import { ZINC } from './zinc';
 
 describe('seasonsSince', () => {
   it('counts seasons from the debut year to 2026', () => {
@@ -250,9 +255,7 @@ describe('the seam label', () => {
 
   it('agrees with blendOver on what sits behind the label', () => {
     for (const team of TEAMS) {
-      expect(seamLabelBackdrop(team.color)).toBe(
-        blendOver(team.color, SEAM_WASH_ALPHA, DARK_BG),
-      );
+      expect(seamLabelBackdrop(team.color)).toBe(blendOver(team.color, SEAM_WASH_ALPHA, DARK_BG));
     }
   });
 });
@@ -282,7 +285,15 @@ describe('the active rail row’s standings line', () => {
   // the fix would look unnecessary. Seven of the eleven fail on the highlight — Ferrari at
   // 4.02, which is the number the browser reported for the shipped code.
   it('is a real lift over readableOnDark, which fails on that same highlight', () => {
-    const failing = ['ferrari', 'red-bull', 'racing-bulls', 'audi', 'williams', 'cadillac', 'aston-martin'];
+    const failing = [
+      'ferrari',
+      'red-bull',
+      'racing-bulls',
+      'audi',
+      'williams',
+      'cadillac',
+      'aston-martin',
+    ];
     for (const id of failing) {
       const team = TEAM_MAP[id]!;
       expect(
@@ -308,12 +319,58 @@ describe('the section standing line', () => {
   // behind this line is the livery at ~0.78 alpha — Alpine's #0184e9 — where *pure white* tops
   // out at 3.83:1. No text colour clears AA there, so the glow's peak had to come down before
   // any lift could work. These assertions pin both halves of that.
-  it('agrees with blendOver on what the glow leaves behind', () => {
+  // Two decorative layers now, not one. Phase 5 paints a per-team gradient under the whole
+  // section, and the glow sits on top of it, so the backdrop is the livery composited twice. The
+  // old single-layer expectation is kept below as the *negative*: it is what this would be if the
+  // gradient were left out, and leaving it out is the failure mode — a lighter real background
+  // than the one the colour was lifted against.
+  it('agrees with blendOver on both layers the section paints behind the line', () => {
     for (const team of TEAMS) {
       expect(sectionStandingBackdrop(team.color)).toBe(
-        blendOver(team.color, GLOW_PEAK_OPACITY, DARK_BG),
+        blendOver(
+          team.color,
+          GLOW_PEAK_OPACITY,
+          blendOver(team.color, SECTION_GRADIENT_PEAK_ALPHA, DARK_BG),
+        ),
       );
     }
+  });
+
+  it('is strictly lighter than the glow alone, so the gradient is genuinely accounted for', () => {
+    for (const team of TEAMS) {
+      const glowOnly = blendOver(team.color, GLOW_PEAK_OPACITY, DARK_BG);
+      // Light-on-dark: a lighter backdrop is the stricter one. If these two ever agree, the
+      // gradient has been dropped from the stack and every lift below is measured optimistically.
+      expect(
+        contrastRatio('#ffffff', sectionStandingBackdrop(team.color)),
+        `${team.shortName} backdrop ignores the section gradient`,
+      ).toBeLessThan(contrastRatio('#ffffff', glowOnly));
+    }
+  });
+
+  // The section's neutral floor, which the gradient is what moved. `zinc-400` had 0.28 of
+  // headroom on the glow alone (4.78:1 on Haas) and does not survive the gradient at 3.45:1;
+  // `zinc-300` clears it at 5.99:1, and at 5.54:1 through a TicketCard's wash on top. Every
+  // resting neutral inside a team section is held to that rung, and this is where the rung
+  // itself is proved rather than asserted in a comment.
+  it('admits zinc-300 but not zinc-400 anywhere in a team section', () => {
+    expect(TEAMS).toHaveLength(11);
+    const haas = TEAMS.find((t) => t.color === '#ffffff');
+    expect(haas, 'the white livery is the worst case and must still be on the grid').toBeDefined();
+
+    for (const team of TEAMS) {
+      for (const bg of [sectionSurfaceBackdrop(team.color), sectionCardBackdrop(team.color)]) {
+        expect(
+          contrastRatio(ZINC['300']!, bg),
+          `${team.shortName} zinc-300`,
+        ).toBeGreaterThanOrEqual(MIN_CONTRAST);
+      }
+    }
+
+    expect(
+      contrastRatio(ZINC['400']!, sectionSurfaceBackdrop(haas!.color)),
+      'zinc-400 must NOT clear the floor, or the rung above is unmotivated',
+    ).toBeLessThan(MIN_CONTRAST);
   });
 
   // The necessary condition the shipped glow violated: if white cannot clear AA on the
@@ -406,8 +463,7 @@ describe('the portrait caption', () => {
 
   it('is a real lift over readableOnDark, which fails on that same backdrop', () => {
     const failing = TEAMS.filter(
-      (team) =>
-        contrastRatio(readableOnDark(team.color), portraitCaptionBackdrop()) < MIN_CONTRAST,
+      (team) => contrastRatio(readableOnDark(team.color), portraitCaptionBackdrop()) < MIN_CONTRAST,
     );
     expect(failing.map((team) => team.id)).toContain('ferrari');
     expect(failing.length).toBeGreaterThan(4);
@@ -435,8 +491,9 @@ describe('the portrait caption', () => {
     const scrim = portraitScrim();
     // One transparent stop at the top edge, then two at full strength — the flat zone the
     // guarantee depends on. A single full-strength stop would be a fade all the way down.
-    expect(scrim.match(new RegExp(`rgba\\(9, 9, 11, ${PORTRAIT_SCRIM_ALPHA}\\)`, 'g')) ?? [])
-      .toHaveLength(2);
+    expect(
+      scrim.match(new RegExp(`rgba\\(9, 9, 11, ${PORTRAIT_SCRIM_ALPHA}\\)`, 'g')) ?? [],
+    ).toHaveLength(2);
     expect(scrim).toContain(`${PORTRAIT_SCRIM_FADE_PX}px`);
     expect(scrim).toContain('rgba(9, 9, 11, 0) 0px');
   });
@@ -560,5 +617,26 @@ describe('standings data', () => {
 
   it('dates its own numbers rather than implying they are live', () => {
     expect(STANDINGS_AS_OF).toMatch(/Round 11/);
+  });
+});
+
+describe('the section gradient', () => {
+  // Written as `rgba()` rather than `#RRGGBBAA` because jsdom's CSS parser drops the eight-digit
+  // hex form inside a gradient and rewrites the declaration to nothing — the same parser gap
+  // `portraitScrim` documents for `calc()`. Asserting the string here is what stops someone
+  // "tidying" it back to the shorter form and making it silently unobservable in every component
+  // test that checks the section paints one.
+  it('carries the livery and the authored peak alpha as rgba, not as an eight-digit hex', () => {
+    expect(sectionGradient('#dc0000')).toBe(
+      `linear-gradient(to bottom, rgba(220, 0, 0, ${SECTION_GRADIENT_PEAK_ALPHA}), rgba(220, 0, 0, 0) 60%)`,
+    );
+  });
+
+  it('ramps to fully transparent, so the composite is only ever at most the peak', () => {
+    for (const team of TEAMS) {
+      const css = sectionGradient(team.color);
+      expect(css, `${team.shortName}`).toContain(', 0) 60%)');
+      expect(css, `${team.shortName}`).not.toContain('#');
+    }
   });
 });
