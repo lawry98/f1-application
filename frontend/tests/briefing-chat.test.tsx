@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BriefingChat } from '@/components/briefing/briefing-chat';
 import { blendOver, contrastRatio, MIN_CONTRAST } from '@/lib/team-utils';
 import { ChunkFeed, frame } from './sse';
-import { restingTextNeutrals, ZINC } from './zinc';
+import { placeholderNeutrals, restingTextNeutrals, ZINC } from './zinc';
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -206,6 +206,41 @@ describe('BriefingChat empty state and reveal wiring', () => {
         `"${text}" is unreadable over the circuit`,
       ).toBeGreaterThanOrEqual(MIN_CONTRAST);
     }
+  });
+
+  it('keeps the primary input’s placeholder readable on the field it sits in', async () => {
+    /*
+     * The one run on this page that the whole contrast sweep could not see. A placeholder is an
+     * attribute rather than a text node and its colour is a `placeholder:` variant rather than a
+     * plain class, so `restingTextNeutrals` reports nothing about it — which is how
+     * `placeholder:text-zinc-500` survived a phase of contrast work at **3.08:1**.
+     *
+     * Measured against `zinc-800`, the field's *own* opaque fill, not against the page: the input
+     * paints `bg-zinc-800`, and white-over-dark makes each layer lighter, so judging this against
+     * the darker page backdrop would report it optimistically — the same wrong-background failure
+     * `CLAUDE.md` records shipping twice on `/teams`.
+     *
+     * It also matters more than the ratio alone suggests: this is the primary input's only
+     * affordance, and the sentence in it is where the example circuit names live.
+     */
+    stubFetch(new ChunkFeed());
+    const { container } = render(<BriefingChat />);
+    await settle();
+
+    const fieldFill = ZINC['800']!;
+    const placeholders = placeholderNeutrals(container);
+
+    expect(placeholders.length, 'no placeholder colours found — the helper sees nothing').toBe(1);
+    for (const { hex, text } of placeholders) {
+      expect(
+        contrastRatio(hex, fieldFill),
+        `the placeholder "${text}" is unreadable on the field`,
+      ).toBeGreaterThanOrEqual(MIN_CONTRAST);
+    }
+
+    // The premise: the shade this moved off genuinely cannot pass here, so the assertion above is
+    // measuring a bar something can fail rather than one nothing can.
+    expect(contrastRatio(ZINC['500']!, fieldFill)).toBeLessThan(MIN_CONTRAST);
   });
 
   it('tells the card the stream is still writing, so the final block stays bare', async () => {

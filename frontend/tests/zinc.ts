@@ -15,6 +15,10 @@ export const ZINC: Record<string, string> = {
   '500': '#71717a',
   '600': '#52525b',
   '700': '#3f3f46',
+  // Not a text shade on this branch — it is here because it is a *surface*: `bg-zinc-800` is the
+  // fill of `/briefing`'s primary input, and the placeholder inside it has to be judged against
+  // the layer it really sits on rather than against the page behind the field.
+  '800': '#27272a',
 };
 
 export interface RestingNeutral {
@@ -98,6 +102,34 @@ function inlineColor(el: Element): string | null {
   }
   if (/^#[0-9a-f]{6}$/i.test(raw)) return raw.toLowerCase();
   throw new Error(`tests/zinc.ts cannot read the inline colour "${raw}"`);
+}
+
+/**
+ * Every placeholder under `root` whose colour comes from a `placeholder:text-zinc-N` class.
+ *
+ * A third partition of the tree, and the reason it needs one: a placeholder is an *attribute*,
+ * not a text node, and its colour is a variant class rather than a plain one — so
+ * `restingTextNeutrals` and `inlineColouredText` between them report **nothing** about it. That
+ * is not a theoretical gap. `/briefing`'s primary input shipped `placeholder:text-zinc-500`
+ * through a whole phase of contrast work and a whole-branch review at **3.08:1** over its own
+ * `bg-zinc-800` fill, while every sweep on the page passed, because no helper could see it.
+ *
+ * Reported with the placeholder's own text so a failure names the string on screen. An input with
+ * no such class is skipped — it inherits the field's text colour, which the other two helpers do
+ * see — so pair this with a non-vacuity assertion, the same as the other two.
+ */
+export function placeholderNeutrals(root: ParentNode): RestingNeutral[] {
+  const out: RestingNeutral[] = [];
+  for (const el of Array.from(root.querySelectorAll<HTMLElement>('[placeholder]'))) {
+    const match = Array.from(el.classList).find((c) => /^placeholder:text-zinc-\d+$/.test(c));
+    if (!match) continue;
+
+    const shade = match.replace('placeholder:text-zinc-', '');
+    const hex = ZINC[shade];
+    if (!hex) throw new Error(`add zinc-${shade} to the ZINC map in tests/zinc.ts`);
+    out.push({ hex, text: el.getAttribute('placeholder') ?? '' });
+  }
+  return out;
 }
 
 export interface LiveryRun {

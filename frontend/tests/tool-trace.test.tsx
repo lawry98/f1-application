@@ -150,6 +150,51 @@ describe('ToolTrace', () => {
     expect(screen.queryByRole('listitem')).toBeNull();
   });
 
+  it('keeps the disclosure glyph out of the button’s accessible name', () => {
+    /*
+     * `▼`/`▶` is a picture of the state `aria-expanded` already reports, so leaving it in the
+     * accessible name makes the control announce as "Agent Tool Trace (2 tools executed) ▶" —
+     * the state twice, once in a form no screen reader can render usefully. The `sr-only`
+     * outcome runs in the rows below set the precedent: text that carries meaning is accessible,
+     * marks that duplicate it are `aria-hidden`.
+     *
+     * Asserted through the accessible *name* rather than by looking for the attribute, because
+     * the attribute is only the current means — a glyph swapped for an `aria-hidden` SVG would
+     * still pass, and a glyph moved outside the button would too.
+     */
+    render(<ToolTrace tools={TOOLS} />);
+
+    // `name` is matched exactly, and that is the whole assertion: RTL computes the real
+    // accessible name through the same `aria-hidden`-aware algorithm a screen reader uses, so a
+    // glyph still inside the name makes this query find nothing rather than merely read oddly.
+    expect(
+      screen.getByRole('button', {
+        name: `Agent Tool Trace (${TOOLS.length} tools executed)`,
+      }),
+    ).toBeInTheDocument();
+
+    // Collapsed and expanded print different glyphs; neither may reach the name.
+    fireEvent.click(screen.getByRole('button'));
+    expect(
+      screen.getByRole('button', {
+        name: `Agent Tool Trace (${TOOLS.length} tools executed)`,
+      }),
+    ).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('points aria-controls at the list it toggles', () => {
+    // A disclosure button says *what* it expands. Without it the rows are just the next thing in
+    // the DOM, and a screen-reader user who activates the control is told nothing appeared.
+    render(<ToolTrace tools={TOOLS} />);
+    const header = screen.getByRole('button');
+    const controls = header.getAttribute('aria-controls');
+
+    expect(controls, 'the disclosure button controls nothing').toBeTruthy();
+
+    expand();
+    expect(screen.getByRole('list')).toHaveAttribute('id', controls);
+  });
+
   it('distinguishes a failed tool from a successful one in the accessibility tree', () => {
     /*
      * This replaces an assertion on the `OK` / `FAIL` badge text, which no longer exists: the

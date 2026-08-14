@@ -44,7 +44,10 @@ export function BriefingChat() {
     setQuery,
     submit,
   } = useBriefing();
-  const { races, loading: racesLoading } = useRaces();
+  // `races` is the whole calendar and `upcoming` the six the chip row shows. They are separate
+  // because the slice is a layout decision: joining the round against it made ROUND — the band's
+  // headline row — exist only when the requested race happened to be one of the next six events.
+  const { races, upcoming, loading: racesLoading } = useRaces();
 
   const handleRaceSelect = (raceName: string): void => {
     setQuery(raceName);
@@ -55,7 +58,7 @@ export function BriefingChat() {
     <div className="mx-auto max-w-4xl">
       <div className="mb-8 rounded-lg border border-zinc-800 bg-zinc-900 p-6 shadow-xl">
         <RaceSelector
-          races={races}
+          races={upcoming}
           loading={racesLoading}
           onSelectRace={handleRaceSelect}
           disabled={loading}
@@ -69,7 +72,15 @@ export function BriefingChat() {
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && submit()}
             placeholder="Enter a circuit name (e.g., 'Monaco', 'Silverstone', 'Spa')"
-            className="flex-1 border-zinc-700 bg-zinc-800 text-white placeholder:text-zinc-500 focus-visible:ring-f1-red"
+            /*
+             * `placeholder:text-zinc-400`, measured against the field's **own** `bg-zinc-800`
+             * fill rather than against the page: 5.81:1, where `zinc-500` was 3.08:1 — the worst
+             * resting run this page had. It survived a whole phase of contrast work because no
+             * sweep could see it: a placeholder is an attribute, not a text node, and its colour
+             * is a variant class, so `restingTextNeutrals` reports nothing about it.
+             * `placeholderNeutrals` in `tests/zinc.ts` exists for exactly this run.
+             */
+            className="flex-1 border-zinc-700 bg-zinc-800 text-white placeholder:text-zinc-400 focus-visible:ring-f1-red"
             disabled={loading}
             aria-label="Circuit name"
           />
@@ -84,16 +95,22 @@ export function BriefingChat() {
       </div>
 
       {/*
-        The band renders from the moment `race_info` lands, which is several seconds before the
-        first word of prose — so it fills in *during* the run rather than appearing with the
-        result. `round` is joined here rather than inside the band because the calendar is the
-        parent's to fetch: `RaceInfo` carries no round and `Race` does, and giving the band its
-        own fetch would put the same list on the wire twice.
+        **Mounted from the moment the run starts, not from the moment `race_info` lands.** The
+        band fills in *during* a run — `race_info` arrives 2–4 s in, several seconds before the
+        first word of prose — and mounting it then inserted a block above a loader the user was
+        already watching, shifting the whole page down by the band's height. Measured on a real
+        stream: 0.05393 of layout shift, on a page whose spec success criterion is CLS 0. So the
+        band claims its box at submit and renders no rows until it has fields to put in them.
+
+        `round` is joined here rather than inside the band because the calendar is the parent's to
+        fetch: `RaceInfo` carries no round and `Race` does, and giving the band its own fetch would
+        put the same list on the wire twice. The join takes `raceInfo.year` because a Grand Prix
+        keeps its name for decades — without it, "Monaco 1988" is handed this season's round.
       */}
-      {raceInfo && (
+      {(loading || raceInfo) && (
         <BriefingCircuitBand
           raceInfo={raceInfo}
-          round={roundFor(races, raceInfo.name)}
+          round={raceInfo ? roundFor(races, raceInfo.name, raceInfo.year) : null}
           className="mb-8"
         />
       )}

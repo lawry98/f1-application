@@ -126,6 +126,20 @@ function PositionChip({ position, color }: { position: number; color: string }) 
   );
 }
 
+/**
+ * The cross-fade every block in this rail that *may* remount shares.
+ *
+ * Authored once because there are two such blocks now rather than one: the points stat between
+ * them is deliberately outside both (see `StickyTeamPanel`), and two hand-copied spring configs
+ * either side of it would be free to drift apart and desynchronise the swap.
+ */
+const SWAP_MOTION = {
+  initial: { opacity: 0 },
+  animate: { opacity: 1 },
+  exit: { opacity: 0 },
+  transition: { type: 'spring', duration: 0.3, bounce: 0 },
+} as const;
+
 function MetaCell({ label, value }: { label: string; value: string }) {
   return (
     <div>
@@ -146,15 +160,36 @@ export function StickyTeamPanel({ activeTeam, onInspect }: StickyTeamPanelProps)
         style={{ backgroundColor: activeTeam.color }}
       />
 
+      {/*
+        **Three blocks, not one, and the split is the fix for a real defect.**
+
+        This whole panel used to be a single `AnimatePresence mode="wait"` child keyed on
+        `activeTeam.id`, which meant every team change remounted the entire subtree — including the
+        `MegaStat`. A remounted `MegaStat` is a *new* instance: its `useInView(once: true)` starts
+        over and its spring starts over, so the points numeral counted up from 0 again. Scrolling
+        the page once fired ~11 count-ups on the single number this rail exists to show, and
+        `MegaStat`'s own `ONCE_IN_VIEW` comment says the once-ness exists precisely to prevent that
+        — the remount defeated it from the outside, where nothing in that file could see it.
+
+        So the stat is **hoisted out of the keyed subtree** and the swap wraps what sits either side
+        of it. Its `value` prop now changes on a live instance, and `MegaStat`'s effect calls
+        `motionValue.set(next)`, so the spring travels from the outgoing team's total to the
+        incoming one's — the numeral animates *between* figures, which is what a standings rail
+        should do anyway.
+
+        The two surviving blocks keep the cross-fade they had. They are separate `AnimatePresence`
+        elements rather than one, because DOM order puts the stat between them and the visual order
+        is not negotiable. They share `SWAP_MOTION` and the same key, so they enter and leave in
+        lockstep.
+
+        The layout is preserved by hoisting these children into the panel's own flex column, which
+        is the same `flex h-full flex-col` the removed wrapper was: the stat block keeps `flex-1
+        min-h-0` and both swap blocks are `flex-shrink-0`, exactly the distribution they had one
+        level down. jsdom lays nothing out, so no test in this file can confirm that — it is a
+        browser check.
+      */}
       <AnimatePresence mode="wait">
-        <motion.div
-          key={activeTeam.id}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
-          className="flex h-full min-h-0 flex-col"
-        >
+        <motion.div key={activeTeam.id} {...SWAP_MOTION} className="flex-shrink-0">
           {/*
             Spelled out, because a bare `02 / 11` sitting next to a championship position is
             the ambiguity brief item 2 is about — and this counter used to read
@@ -181,11 +216,15 @@ export function StickyTeamPanel({ activeTeam, onInspect }: StickyTeamPanelProps)
               className="relative z-10"
             />
           </div>
+        </motion.div>
+      </AnimatePresence>
 
-          {/* Championship standing — brief item 10. The dossier carried none of this before,
-              which left the one always-visible panel silent about the season it describes. */}
-          <div className="flex min-h-0 flex-1 flex-col justify-center border-t border-zinc-800/60 px-4 py-4">
-            {/* **No tick above this label, and that is a decision made from a screenshot.** The
+      {/* Championship standing — brief item 10. The dossier carried none of this before,
+              which left the one always-visible panel silent about the season it describes.
+
+              Deliberately outside the swap above: see the block comment on it. */}
+      <div className="flex min-h-0 flex-1 flex-col justify-center border-t border-zinc-800/60 px-4 py-4">
+        {/* **No tick above this label, and that is a decision made from a screenshot.** The
                 first version put one here as well, to match the `All-time` block — but the
                 `MegaStat` immediately below brings its own tick above its own `POINTS` label, so
                 the block rendered two identical 20x6 red marks 12px apart with one line of 9px
@@ -193,10 +232,10 @@ export function StickyTeamPanel({ activeTeam, onInspect }: StickyTeamPanelProps)
                 two labelled stats. The spec's "stat labels take MegaStat red tick marks" is still
                 satisfied: the points stat has one (MegaStat's own) and the all-time stat has one.
                 This line is the *date* on the stat below it, not a stat of its own. */}
-            <p className="text-[9px] uppercase tracking-[0.18em] text-zinc-400">
-              {`Championship · ${STANDINGS_AS_OF}`}
-            </p>
-            {/*
+        <p className="text-[9px] uppercase tracking-[0.18em] text-zinc-400">
+          {`Championship · ${STANDINGS_AS_OF}`}
+        </p>
+        {/*
               The spec's centrepiece for this rail: "Right-rail points become a MegaStat — 379 with
               a POINTS label and a 1ST ordinal chip; the championship leader alone gets
               Scribble type='p1' across its numeral."
@@ -228,25 +267,30 @@ export function StickyTeamPanel({ activeTeam, onInspect }: StickyTeamPanelProps)
               stops overshooting the numeral, which is the thing that makes it look drawn rather
               than set (see the `overlay` comment on `p1` in `scribble.tsx`).
             */}
-            <MegaStat
-              scale="mid"
-              value={activeTeam.points}
-              label="Points"
-              ordinal={<PositionChip position={activeTeam.position} color={activeTeam.color} />}
-              scribble={activeTeam.position === 1 ? 'p1' : undefined}
-              scribbleClassName="[&_svg]:text-f1-red [&_svg]:opacity-[0.72]"
-            />
-            <span className="mt-2 h-[7px] overflow-hidden bg-zinc-800">
-              <span
-                className="block h-full origin-left"
-                style={{
-                  backgroundColor: activeTeam.color,
-                  transform: `scaleX(${activeTeam.points / MOST_POINTS})`,
-                }}
-              />
-            </span>
-          </div>
+        <MegaStat
+          scale="mid"
+          value={activeTeam.points}
+          label="Points"
+          ordinal={<PositionChip position={activeTeam.position} color={activeTeam.color} />}
+          scribble={activeTeam.position === 1 ? 'p1' : undefined}
+          scribbleClassName="[&_svg]:text-f1-red [&_svg]:opacity-[0.72]"
+        />
+        <span className="mt-2 h-[7px] overflow-hidden bg-zinc-800">
+          <span
+            className="block h-full origin-left"
+            style={{
+              backgroundColor: activeTeam.color,
+              transform: `scaleX(${activeTeam.points / MOST_POINTS})`,
+            }}
+          />
+        </span>
+      </div>
 
+      {/* The second half of the swap: the all-time block and the CTA, which have no spring of
+          their own to restart and so lose nothing by remounting. Same key and same
+          `SWAP_MOTION` as the block above, so the two cross-fade together. */}
+      <AnimatePresence mode="wait">
+        <motion.div key={activeTeam.id} {...SWAP_MOTION} className="flex-shrink-0">
           {/* Broadcast stat block */}
           <div className="flex-shrink-0 border-t border-zinc-800/60 px-4 py-3">
             <div aria-hidden="true" className={TICK_CLASS} />

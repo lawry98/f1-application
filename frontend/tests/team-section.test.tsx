@@ -6,10 +6,13 @@ import { monogram } from '@/components/teams/team-monogram-tile';
 import { TEAMS, TEAM_MAP, type Team } from '@/data/teams-data';
 import { inlineColouredText, restingTextNeutrals, ZINC, detach } from './zinc';
 import {
+  blendOver,
   seamWash,
+  seamLabelBackdrop,
   seamLabelColor,
   readableOnDark,
   SEAM_WASH_ALPHA,
+  SECTION_GRADIENT_PEAK_ALPHA,
   sectionGradient,
   sectionStandingColor,
   sectionStandingBackdrop,
@@ -80,6 +83,25 @@ function renderSection(overrides: Partial<Parameters<typeof TeamSection>[0]> = {
  *     their label from `onColor`, which picks black or white against that fill. Measuring either
  *     against the section stack measures a background they never have.
  */
+/**
+ * What is really behind the seam label, composed here from the two primitives rather than read
+ * back out of `seamLabelBackdrop`.
+ *
+ * That independence is the whole point. `seamLabelColor` lifts against whatever
+ * `seamLabelBackdrop` returns, so any assertion that asks the helper for the backdrop and then
+ * measures the colour the helper derived from it passes **by construction** — including with the
+ * gradient layer missing, which is how that omission survived a whole-branch review. Re-deriving
+ * the stack from `blendOver`, `SEAM_WASH_ALPHA` and `SECTION_GRADIENT_PEAK_ALPHA` is what lets
+ * these tests disagree with the module.
+ *
+ * The order is the paint order: the section's per-team gradient goes down first, at its peak,
+ * because the seam band is `h-16` at the section's **top edge** — exactly where that ramp starts —
+ * and the seam wash goes over it.
+ */
+function seamStackBackdrop(hex: string): string {
+  return blendOver(hex, SEAM_WASH_ALPHA, blendOver(hex, SECTION_GRADIENT_PEAK_ALPHA, DARK_BG));
+}
+
 function sectionStackOnly(container: HTMLElement, team: Team): HTMLElement {
   const hidden = Array.from(container.querySelectorAll<HTMLElement>('[aria-hidden="true"]'));
 
@@ -312,18 +334,37 @@ describe('TeamSection', () => {
       const { container } = render(
         <TeamSection team={team} index={0} isActive onInspect={vi.fn()} reducedMotion={false} />,
       );
-      const runs = inlineColouredText(sectionStackOnly(container, team));
-      const backdrop = sectionSurfaceBackdrop(team.color);
+      const stack = sectionStackOnly(container, team);
 
-      // The seam label and the standing line, both team-coloured. Two is the count, not a floor
-      // that happens to hold — if one of them stops being painted this way the assertion below
-      // would have nothing left to measure.
+      // **The seam label is judged separately, and this used to be the bug.** This run was
+      // measured against `sectionSurfaceBackdrop` along with the standing line — a background
+      // lighter than the helper's own assumption but *darker* than the seam's real one, so it
+      // erred in the safe direction and passed while nine of the eleven labels failed on screen.
+      // The seam band is `h-16` at the section's top edge, so what is behind it is the wash over
+      // the gradient at its peak, not the gradient-plus-glow stack the body copy sits on: the glow
+      // blob is `top: 10%` and 120px-blurred, and the standing line is inside it while the seam is
+      // above it. Two different backdrops, two different measurements.
+      const seamRuns = inlineColouredText(
+        detach([container.querySelector<HTMLElement>('[data-testid="team-seam"]')!]),
+      );
+      const runs = inlineColouredText(stack);
+      const backdrop = sectionSurfaceBackdrop(team.color);
+      const seamBackdrop = seamStackBackdrop(team.color);
+
+      // One team-coloured run in each regime — the seam label, and the standing line. The counts
+      // are pinned rather than treated as floors: if either stops being painted this way the
+      // matching ratio loop below would have nothing left to measure and pass silently.
       // `.slice(0, 32)` because both walkers truncate the text they report — it is a failure
       // message, not a payload — and "Visa Cash App Racing Bulls F1 Team" is longer than that.
-      expect(runs.map((r) => r.text)).toEqual([
-        team.name.slice(0, 32),
-        expect.stringContaining('PTS'),
-      ]);
+      expect(seamRuns.map((r) => r.text)).toEqual([team.name.slice(0, 32)]);
+      expect(runs.map((r) => r.text)).toEqual([expect.stringContaining('PTS')]);
+
+      for (const { hex, text } of seamRuns) {
+        expect(
+          contrastRatio(hex, seamBackdrop),
+          `${team.id}: seam ${hex} on "${text}" over ${seamBackdrop}`,
+        ).toBeGreaterThanOrEqual(MIN_CONTRAST);
+      }
       for (const { hex, text } of runs) {
         expect(
           contrastRatio(hex, backdrop),
@@ -331,6 +372,59 @@ describe('TeamSection', () => {
         ).toBeGreaterThanOrEqual(MIN_CONTRAST);
       }
       cleanup();
+    }
+  });
+
+  /**
+   * The regression guard for the omission above, stated as a property of the rendered label rather
+   * than of the helper.
+   *
+   * Measured with the gradient layer left out of `seamLabelBackdrop`, nine of the eleven labels sit
+   * under 4.5:1 against the backdrop they really have — Alpine 3.98, Audi 4.05, McLaren 4.11,
+   * Cadillac 4.15, Ferrari 4.19, Williams 4.20, Red Bull 4.24, Aston Martin 4.27, Racing Bulls
+   * 4.38; only Mercedes (4.59) and Haas (5.83) clear it. `seamLabelColor` is `liftUntilContrast`,
+   * which stops at the *first* lightness step clearing the bar, so it has zero headroom by
+   * construction and any layer the backdrop forgets comes straight off the ratio.
+   */
+  it('keeps every seam label above AA on the backdrop the seam band really has', () => {
+    for (const team of TEAMS) {
+      const { container } = render(
+        <TeamSection team={team} index={0} isActive onInspect={vi.fn()} reducedMotion={false} />,
+      );
+      const runs = inlineColouredText(
+        detach([container.querySelector<HTMLElement>('[data-testid="team-seam"]')!]),
+      );
+      const backdrop = seamStackBackdrop(team.color);
+
+      expect(runs.length, `${team.id} paints no seam label at all`).toBe(1);
+      expect(
+        contrastRatio(runs[0]!.hex, backdrop),
+        `${team.id}: seam label ${runs[0]!.hex} over ${backdrop}`,
+      ).toBeGreaterThanOrEqual(MIN_CONTRAST);
+      cleanup();
+    }
+  });
+
+  /**
+   * …and the layer itself, pinned, so it cannot be quietly dropped again.
+   *
+   * The test above would still pass if `seamLabelBackdrop` composed *some* extra layer of any
+   * strength; this says it is the section gradient at `SECTION_GRADIENT_PEAK_ALPHA`, and that the
+   * result is strictly lighter than the wash alone — i.e. strictly harder for light text, which is
+   * why leaving it out failed in the safe-looking direction. `contrastRatio(x, DARK_BG)` stands in
+   * for relative luminance here: every livery is lighter than `#09090b`, so both composites are
+   * too, and the ratio is monotone in luminance over that range.
+   */
+  it('composes the section gradient into the seam backdrop, not the wash alone', () => {
+    for (const team of TEAMS) {
+      const washOnly = blendOver(team.color, SEAM_WASH_ALPHA, DARK_BG);
+      const composed = seamStackBackdrop(team.color);
+
+      expect(seamLabelBackdrop(team.color), `${team.id} seam backdrop`).toBe(composed);
+      expect(
+        contrastRatio(composed, DARK_BG),
+        `${team.id}: the gradient layer makes no difference to the composite`,
+      ).toBeGreaterThan(contrastRatio(washOnly, DARK_BG));
     }
   });
 

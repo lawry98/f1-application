@@ -241,6 +241,120 @@ describe('BriefingCircuitBand', () => {
     });
   });
 
+  describe('the band reserves its box instead of growing into it', () => {
+    /*
+     * The defect this group exists for, measured in Chromium on the real stream before it was
+     * fixed: **totalCLS 0.0651 at 1440×1400, of which 0.05393 was this band alone** — one shift
+     * 3.2 s into a run, pushing the loader 222 px down the page, on a surface whose spec success
+     * criterion is CLS 0. Two causes: the band was mounted only once `race_info` landed, and its
+     * root then flipped from one column to two when the geometry chunk resolved, moving the data
+     * column sideways and adding the CIRCUIT row underneath it.
+     *
+     * **jsdom lays nothing out, so none of this can be asserted as geometry.** What jsdom *can*
+     * see is the structural cause: whether the boxes exist before their contents do, and whether
+     * the root's layout classes change between the two states. The pixel figures are re-measured
+     * in a browser; these are the guards that fail if the structure regresses.
+     */
+
+    it('reserves the outline box while the chunk is still in flight', async () => {
+      // The `race-selector.tsx` precedent, 40 lines away, spelled out for the same reason: an
+      // empty box is not a placeholder shape — nothing is drawn, which is the spec's rule for a
+      // miss — and reserving it is what stops the outline's arrival growing the band.
+      load.mockImplementation(() => new Promise<CircuitGeometry | null>(() => {}));
+
+      const { container } = render(<BriefingCircuitBand raceInfo={MONZA_RACE} round={16} />);
+      await act(async () => {});
+
+      expect(container.querySelector('svg'), 'an outline was drawn before it loaded').toBeNull();
+      expect(
+        container.querySelector('[data-circuit-slot]'),
+        'the outline column was not reserved',
+      ).not.toBeNull();
+    });
+
+    it('keeps the reserved box on a miss rather than collapsing the column', async () => {
+      /*
+       * The trade this makes, deliberately. The band previously collapsed to a single column for
+       * a circuit with no geometry, on the grounds that an empty gutter is a kind of placeholder.
+       * But the collapse cannot happen until the chunk has resolved, so it *is* the layout shift
+       * — and `race-selector.tsx` had already settled the question the other way for its own
+       * 48 px outline. A miss now leaves an empty box and draws nothing in it.
+       */
+      load.mockResolvedValue(null);
+
+      const { container } = await renderBand(
+        <BriefingCircuitBand raceInfo={MONZA_RACE} round={16} />,
+      );
+
+      expect(container.querySelector('svg')).toBeNull();
+      expect(container.querySelector('[data-circuit-slot]')).not.toBeNull();
+    });
+
+    it('does not change the root’s layout classes when the geometry lands', async () => {
+      /*
+       * The direct guard on the second shift, written without naming a single class: whatever the
+       * root's layout is, it must be the *same* string before and after the chunk resolves. A
+       * `geometry && 'sm:grid-cols-[…]'` conditional — which is what shipped — fails here
+       * immediately, and so does any future variant of it, including ones using different class
+       * names than today's.
+       */
+      let resolveGeometry: (value: CircuitGeometry | null) => void = () => {};
+      load.mockImplementation(
+        () =>
+          new Promise<CircuitGeometry | null>((resolve) => {
+            resolveGeometry = resolve;
+          }),
+      );
+
+      const { container } = render(<BriefingCircuitBand raceInfo={MONZA_RACE} round={16} />);
+      await act(async () => {});
+      const beforeLoad = container.firstElementChild?.className;
+
+      await act(async () => {
+        resolveGeometry(MONZA_GEOMETRY);
+      });
+
+      expect(screen.getByText('Autodromo Nazionale Monza')).toBeInTheDocument();
+      expect(container.firstElementChild?.className).toBe(beforeLoad);
+    });
+
+    it('renders its shell, with no rows at all, before the stream has resolved a race', async () => {
+      /*
+       * The first shift's cause. `race_info` lands 2–4 s into a run, and the band used to mount
+       * only then — above a loader that was already on screen, so the whole page below it moved.
+       * A shell from submit time holds the space instead. It carries **no rows**: every row is a
+       * real field and there are none yet, so a placeholder row here would break the same rule
+       * the null-round and unparseable-date branches obey.
+       */
+      const { container } = await renderBand(<BriefingCircuitBand raceInfo={null} round={null} />);
+
+      expect(container.querySelectorAll('dt')).toHaveLength(0);
+      expect(container.querySelectorAll('dd')).toHaveLength(0);
+      expect(container.querySelector('svg')).toBeNull();
+      // The box is still there — that is the entire point of rendering it.
+      expect(container.querySelector('[data-circuit-slot]')).not.toBeNull();
+      // And no circuit is fetched for a race that does not exist yet.
+      expect(load).not.toHaveBeenCalled();
+    });
+
+    it('reserves the row column’s height so a later row cannot grow the band', async () => {
+      /*
+       * The rows arrive in three waves — LOCATION and DATE with `race_info`, ROUND as soon as the
+       * calendar join resolves, CIRCUIT when the chunk lands — so the list's height is what is
+       * left growing once the outline column is reserved. A floor on the list holds it.
+       *
+       * The class is asserted, never the height: jsdom applies no stylesheet, so the *value* can
+       * only be checked in a browser, which is where it was measured — the same standing as
+       * `SKELETON_HEIGHT` in `race-selector.tsx`. `\b` cannot bound an arbitrary-value Tailwind
+       * class (`[` and `]` are non-word characters), hence the explicit boundaries.
+       */
+      const { container } = await renderBand(<BriefingCircuitBand raceInfo={null} round={null} />);
+
+      const list = container.querySelector('dl');
+      expect(list?.className).toMatch(/(^|\s)min-h-\[[^\]]+\](\s|$)/);
+    });
+  });
+
   describe('the CIRCUIT row names the track, not the Grand Prix', () => {
     it('shows the loaded geometry name and never the event-derived circuit_id', async () => {
       // The trap this file exists to catch. `RaceInfo.circuit_id` is derived from the *event*

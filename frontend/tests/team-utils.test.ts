@@ -201,18 +201,34 @@ describe('the seam label', () => {
     return `#${channels.map((c) => c.toString(16).padStart(2, '0')).join('')}`;
   }
 
+  /**
+   * The whole stack behind the label: the seam wash over the section's per-team gradient over the
+   * page. **Two liveries, not one** — and leaving the gradient out is the defect these assertions
+   * now exist to catch.
+   *
+   * `sectionGradient` ramps away across the section's upper half and peaks at its **top edge**,
+   * which is precisely where the `h-16` seam band sits, so the label is over the ramp's strongest
+   * point. Composed independently of `seamLabelBackdrop` on purpose: `seamLabelColor` lifts against
+   * whatever that helper returns, so asking it for the backdrop and then measuring the colour it
+   * derived from that answer passes by construction whatever it composes — which is exactly how the
+   * missing layer survived a whole-branch review.
+   */
+  function seamStack(hex: string): string {
+    return flatten(seamWash(hex), blendOver(hex, SECTION_GRADIENT_PEAK_ALPHA, DARK_BG));
+  }
+
   it('carries the livery and the authored alpha into the wash', () => {
     expect(seamWash('#dc0000')).toBe('#dc00004d');
     expect(SEAM_WASH_ALPHA).toBeCloseTo(0x4d / 255, 5);
   });
 
-  // The finding this closes. The label sits *on the wash*, not on bare zinc-950, so the
-  // background it must be read against is the wash composited over the page — and judged
-  // there, `readableOnDark` leaves seven of eleven liveries short of AA.
-  it('clears WCAG AA against the composited wash for every team', () => {
+  // The finding this closes. The label sits *on the wash over the section gradient*, not on bare
+  // zinc-950, so the background it must be read against is that whole stack composited over the
+  // page — and judged there, `readableOnDark` leaves nine of eleven liveries short of AA.
+  it('clears WCAG AA against the composited seam stack for every team', () => {
     expect(TEAMS).toHaveLength(11);
     for (const team of TEAMS) {
-      const behind = flatten(seamWash(team.color), DARK_BG);
+      const behind = seamStack(team.color);
       const label = seamLabelColor(team.color);
       expect(
         contrastRatio(label, behind),
@@ -223,16 +239,37 @@ describe('the seam label', () => {
 
   // Without this, the test above could be satisfied by `readableOnDark` and the fix would
   // look unnecessary. It is not: this pins the failure the seam actually had.
+  //
+  // The list grew from six to nine when the section gradient was composed into the backdrop, which
+  // is the measurement behind that change: Mercedes (4.59) and Haas (5.83) are the only two
+  // liveries whose `readableOnDark` value survives the real stack, and McLaren — which cleared the
+  // wash alone at 4.90 — drops to 4.11 once the gradient under it is counted.
   it('is a real lift over readableOnDark, which fails on that same background', () => {
-    const failing = ['audi', 'williams', 'aston-martin', 'cadillac', 'ferrari', 'red-bull'];
+    const failing = [
+      'audi',
+      'williams',
+      'aston-martin',
+      'cadillac',
+      'ferrari',
+      'red-bull',
+      'mclaren',
+      'alpine',
+      'racing-bulls',
+    ];
     for (const id of failing) {
       const team = TEAM_MAP[id]!;
-      const behind = flatten(seamWash(team.color), DARK_BG);
+      const behind = seamStack(team.color);
       expect(
         contrastRatio(readableOnDark(team.color), behind),
         `${team.shortName} would have passed untreated`,
       ).toBeLessThan(MIN_CONTRAST);
     }
+    // Pinned as a set, not a floor: a livery quietly dropping off this list means the seam stopped
+    // being a special case for it, which is a change to argue for rather than to discover later.
+    const measured = TEAMS.filter(
+      (t) => contrastRatio(readableOnDark(t.color), seamStack(t.color)) < MIN_CONTRAST,
+    ).map((t) => t.id);
+    expect(measured.sort()).toEqual([...failing].sort());
   });
 
   // The seam exists to announce the incoming team, so the fix had to move the label rather
@@ -253,9 +290,27 @@ describe('the seam label', () => {
     }
   });
 
-  it('agrees with blendOver on what sits behind the label', () => {
+  /**
+   * The layer that was missing, pinned.
+   *
+   * This assertion used to read `blendOver(team.color, SEAM_WASH_ALPHA, DARK_BG)` — the wash alone —
+   * and so pinned the defect rather than the fix: `seamLabelColor` lifts against whatever this
+   * helper returns, so every ratio assertion above it stayed green while nine of the eleven labels
+   * failed on screen. Both halves are needed here. The equality says the gradient is composed at
+   * `SECTION_GRADIENT_PEAK_ALPHA`; the inequality says that layer is doing something, i.e. the
+   * stack is strictly lighter than the wash alone and therefore strictly harder for light text —
+   * which is why omitting it failed in the direction that looks safe.
+   */
+  it('composes the section gradient under the wash, not the wash alone', () => {
     for (const team of TEAMS) {
-      expect(seamLabelBackdrop(team.color)).toBe(blendOver(team.color, SEAM_WASH_ALPHA, DARK_BG));
+      const washOnly = blendOver(team.color, SEAM_WASH_ALPHA, DARK_BG);
+      expect(seamLabelBackdrop(team.color), team.shortName).toBe(seamStack(team.color));
+      // `contrastRatio(x, DARK_BG)` stands in for relative luminance: every livery is lighter than
+      // `#09090b`, so both composites are too, and the ratio is monotone in luminance there.
+      expect(
+        contrastRatio(seamLabelBackdrop(team.color), DARK_BG),
+        `${team.shortName}: the gradient layer makes no difference`,
+      ).toBeGreaterThan(contrastRatio(washOnly, DARK_BG));
     }
   });
 });

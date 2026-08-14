@@ -1,8 +1,9 @@
 'use client';
 
-import { useReducedMotion, motion } from 'motion/react';
+import { motion } from 'motion/react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 
+import { useReducedMotionSafe } from '@/hooks/use-reduced-motion-safe';
 import { BlurFade } from '@/components/ui/blur-fade';
 import { TextAnimate } from '@/components/ui/text-animate';
 import { Badge } from '@/components/ui/badge';
@@ -18,7 +19,21 @@ interface TeamsHeroProps {
 }
 
 export function TeamsHero({ onSelectTeam }: TeamsHeroProps) {
-  const reducedMotion = useReducedMotion();
+  // `useReducedMotionSafe`, not motion's own `useReducedMotion`, and this is a fix for a
+  // **confirmed** hydration error rather than a precaution. motion's hook answers `null` on the
+  // server and the user's real preference on the client's *first* render, and this value reaches
+  // both the livery columns' `initial` and the scroll cue's `{!reducedMotion && …}` — so under
+  // emulated reduce-motion in Chromium the two passes disagreed:
+  //
+  //     Warning: Prop `style` did not match.
+  //       Server: "…;opacity:0;transform:scaleY(0)"  Client: "…;opacity:1"
+  //         at MotionDOMComponent … at TeamsHero
+  //
+  // This hero reads the preference itself and is not fed by `TeamsPageClient`, so fixing the
+  // parent leaves this untouched — both call sites had to move. The wrapper reports `false` on the
+  // server and on the first client render, then flips in a layout effect (before paint, so the
+  // un-reduced frame is never shown). See `hooks/use-reduced-motion-safe.ts`.
+  const reducedMotion = useReducedMotionSafe();
 
   return (
     // `min-h-[calc(100vh-3.5rem)]`, not `min-h-screen`. The 3.5rem site nav sits above this
@@ -35,10 +50,18 @@ export function TeamsHero({ onSelectTeam }: TeamsHeroProps) {
       {/* Ambient glow — below `lg` only, where the livery wall is hidden (eleven columns
           at ~34px each is unusable) so the hero would otherwise be flat colour-less
           DotPattern behind the mobile logo grid. A single blurred layer, gated off at
-          `lg` so it never stacks with the wall's own colour wash. */}
+          `lg` so it never stacks with the wall's own colour wash.
+
+          `bg-f1-red`, not the `#dc2626` this used to hardcode. That hex is the pre-spec red, from
+          before the branch moved `f1-red` to `#E10600`, and it survived the sweep because it was
+          an inline style rather than a class — a grep for the token never saw it. The role is
+          unchanged: a 600px blob at 7% behind a 120px blur is decoration, so no contrast rule
+          reaches it. What changes is that it is the *same* red as the rest of the page, and that
+          `grep f1-red` now finds it, which is the stated reason `tailwind.config.ts` keeps one
+          canonical token. The blur stays inline because there is no Tailwind utility for it. */}
       <div
-        className="pointer-events-none absolute -bottom-32 -left-32 h-[600px] w-[600px] rounded-full opacity-[0.07] lg:hidden"
-        style={{ background: '#dc2626', filter: 'blur(120px)' }}
+        className="pointer-events-none absolute -bottom-32 -left-32 h-[600px] w-[600px] rounded-full bg-f1-red opacity-[0.07] lg:hidden"
+        style={{ filter: 'blur(120px)' }}
         aria-hidden="true"
       />
 

@@ -1,8 +1,27 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { renderToString } from 'react-dom/server';
 
 import { TeamsPageClient } from '@/components/teams/teams-page-client';
 import { TEAMS } from '@/data/teams-data';
+
+/**
+ * The reduced-motion recipe, verbatim — `useReducedMotion()` cannot be driven through
+ * `window.matchMedia`, because motion caches the preference in a module global on the first call
+ * and queries `(prefers-reduced-motion)` rather than `(prefers-reduced-motion: reduce)`. Spreading
+ * `actual` leaves every real `motion` element, `useInView` and `AnimatePresence` on this page
+ * working, which all eleven sections and the nav rail need.
+ */
+let reduceMotion = false;
+
+vi.mock('motion/react', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('motion/react')>();
+  return { ...actual, useReducedMotion: () => reduceMotion };
+});
+
+beforeEach(() => {
+  reduceMotion = false;
+});
 
 const originalMatchMedia = window.matchMedia;
 
@@ -146,6 +165,41 @@ describe('TeamsPageClient', () => {
 
     expect(scrollIntoView).toHaveBeenCalled();
     expect(window.location.hash).toBe('#team-ferrari');
+  });
+
+  /**
+   * The second call site of the `/teams` hydration bug, and the one the console does *not* name.
+   *
+   * This component is the source of the `reducedMotion` prop every column below it takes, and two
+   * of them branch on it in ways that reach the SSR markup: `TeamsNavRail`'s rows switch between
+   * `initial={hidden}` and `initial={false}` — a different `style` attribute — and
+   * `TeamsComparisonGrid`'s value cell switches between a `<NumberTicker>` and a bare numeral, a
+   * different *element*. With motion's own hook the server rendered the un-reduced form of both and
+   * the client's first pass rendered the reduced form, which is a mismatch on structure as well as
+   * on style.
+   *
+   * `useReducedMotionSafe` is `false` on the server and on the first client render whatever the
+   * preference says, so this asserts the un-reduced tree survives a server render with the
+   * preference turned **on**. jsdom cannot observe the contract any other way: a client `render()`
+   * runs the hook's layout effect inside `act`, so the flipped value is the only one it ever sees.
+   */
+  it('renders the un-reduced tree on the server, whatever the preference says', () => {
+    reduceMotion = true;
+    // React logs "useLayoutEffect does nothing on the server" for the hook's isomorphic effect,
+    // which is the deliberate cost of committing the flip before paint. Not this test's business.
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const html = renderToString(<TeamsPageClient />);
+
+      // `hidden` is the rail rows' un-reduced `initial` — `{ opacity: 0, x: -8 }`. Under
+      // `initial={false}` motion mounts straight at `animate` and writes neither.
+      expect(html).toContain('translateX(-8px)');
+      // The hero is on this page too, and its own call site has to have moved as well: this is the
+      // livery columns' un-reduced `initial`.
+      expect(html).toMatch(/scaleY\(0\)/);
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 
   /** True when `a` comes before `b` in document order. */

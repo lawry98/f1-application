@@ -23,7 +23,14 @@ export default function BriefingPage() {
             AI Agent
           </p>
           <h1 className="mt-1 text-2xl font-bold text-ink">Race Weekend Briefing</h1>
-          <p className="mt-1 text-sm text-zinc-500">
+          {/*
+            `zinc-400`, and the backdrop it is measured against is **bare `zinc-950`** — this band
+            is a sibling *above* the topo container below, so nothing is layered over it. That
+            makes it the one strip on the route where the page's `#212124` composite does not
+            apply, in the generous direction: `zinc-500` is 4.12:1 here against 3.31:1 one section
+            down. Still under the 4.5:1 small-text bar either way. `zinc-400` is 7.76:1.
+          */}
+          <p className="mt-1 text-sm text-zinc-400">
             Enter any Grand Prix name and receive a comprehensive AI-generated briefing.
           </p>
         </div>

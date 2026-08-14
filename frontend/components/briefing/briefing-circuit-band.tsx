@@ -29,8 +29,12 @@ import type { RaceInfo } from '@/types';
  * missing its decorative track map is still a complete briefing.
  */
 export interface BriefingCircuitBandProps {
-  /** The resolved race, straight off the `race_info` stream event. */
-  raceInfo: RaceInfo;
+  /**
+   * The resolved race, straight off the `race_info` stream event — or `null` for the window
+   * between submitting and that event landing, during which the band renders its shell and no
+   * rows. See {@link ROWS_MIN_HEIGHT} for why the shell exists.
+   */
+  raceInfo: RaceInfo | null;
   /**
    * The calendar round, joined by the parent from the `/api/races/{year}` list — `RaceInfo` does
    * not carry it. Null for a race not on the current calendar (a typed historical query), and a
@@ -52,6 +56,42 @@ const ROW_STAGGER_S = 0.09;
 
 /** One row's own fade, inside the 500–900 ms band the motion rules set. */
 const ROW_DURATION_S = 0.6;
+
+/**
+ * The reserved height of the row column, **measured in Chromium at 1440 rather than derived** —
+ * the same standing, and the same reason, as `SKELETON_HEIGHT` in `race-selector.tsx`.
+ *
+ * This band fills in over the course of a run rather than arriving with the result: the shell
+ * mounts at submit, LOCATION and DATE arrive with `race_info` 2–4 s in, ROUND the moment the
+ * calendar join resolves, and CIRCUIT when the geometry chunk lands. Every one of those is a row
+ * appearing *above* a loader the user is already watching, and the spec's success criteria put
+ * this page's CLS budget at **0**. Measured on the real stream before this floor existed:
+ * totalCLS 0.0651, of which 0.05393 was this band alone, shifting the loader 222 px down 3.2 s
+ * into the run.
+ *
+ * So the column's height is claimed up front at what four rows actually occupy — the ROUND
+ * numeral's 30 px line, LOCATION's 20 px, DATE's and CIRCUIT's 14 px, each in `py-3`, plus the
+ * three hairline dividers. A band with fewer rows sits inside the same box with slack rather than
+ * growing into it later. It is a **floor, not a cap**: a circuit name long enough to wrap at a
+ * narrow width still exceeds it, which is a shift this cannot prevent without truncating a real
+ * field. Deriving the number instead of measuring it is what got `SKELETON_HEIGHT` wrong by 17 px.
+ */
+const ROWS_MIN_HEIGHT = 'min-h-[190px]';
+
+/**
+ * The band's layout, held constant across every state it passes through.
+ *
+ * **Two columns whether or not there is an outline to put in the first one**, which reverses this
+ * component's original rule. The reasoning for collapsing to one column on a geometry miss was
+ * that an empty 11 rem gutter is a kind of placeholder — but the collapse cannot happen until the
+ * chunk has resolved, so the collapse *is* the layout shift, and it fires on every briefing rather
+ * than only on a miss. `race-selector.tsx` had already settled the same question the other way for
+ * its 48 px outline, 40 lines from here: an empty box is not a placeholder shape, because nothing
+ * is drawn in it, which is exactly what the spec's "a miss hides the visual entirely" rule asks
+ * for. The cost is real and is accepted knowingly — a circuit this repo has no geometry for now
+ * renders an empty square beside its rows.
+ */
+const BAND_LAYOUT = 'grid items-center gap-6 sm:grid-cols-[11rem_minmax(0,1fr)] sm:gap-8';
 
 /**
  * Month abbreviations for the date row, in the mono-caps register the rest of the band's labels
@@ -106,24 +146,29 @@ function formatBandDate(raw: string): string | null {
  * cosmetic glitch. Clearing to `null` synchronously when the location changes closes the other
  * half of the same window, where the old geometry stays on screen next to the new race's rows.
  */
-function useCircuitGeometry(location: string): CircuitGeometry | null {
+function useCircuitGeometry(location: string | null): CircuitGeometry | null {
   const [geometry, setGeometry] = useState<CircuitGeometry | null>(null);
 
   useEffect(() => {
     let active = true;
     setGeometry(null);
 
-    void loadCircuitByLocation(location).then(
-      (loaded) => {
-        if (active) setGeometry(loaded);
-      },
-      // A rejected load is a miss, and a miss hides the visual entirely — no placeholder shape, no
-      // error banner, and deliberately no `console.warn` either. Nothing on this band is worth
-      // interrupting a briefing for.
-      () => {
-        if (active) setGeometry(null);
-      },
-    );
+    // A `null` location is the shell: the stream has not said which race this is yet, so there is
+    // nothing to look up. Guarded rather than early-returned so the cleanup below stays on the
+    // one path every branch shares.
+    if (location !== null) {
+      void loadCircuitByLocation(location).then(
+        (loaded) => {
+          if (active) setGeometry(loaded);
+        },
+        // A rejected load is a miss, and a miss hides the visual entirely — no placeholder shape,
+        // no error banner, and deliberately no `console.warn` either. Nothing on this band is
+        // worth interrupting a briefing for.
+        () => {
+          if (active) setGeometry(null);
+        },
+      );
+    }
 
     return () => {
       active = false;
@@ -147,14 +192,14 @@ interface BandRow {
 }
 
 export function BriefingCircuitBand({ raceInfo, round, className }: BriefingCircuitBandProps) {
-  const geometry = useCircuitGeometry(raceInfo.location);
+  const geometry = useCircuitGeometry(raceInfo?.location ?? null);
   const reducedMotion = useReducedMotionSafe();
 
-  const date = formatBandDate(raceInfo.date);
+  const date = raceInfo ? formatBandDate(raceInfo.date) : null;
 
   const rows: BandRow[] = [];
 
-  if (round !== null) {
+  if (raceInfo && round !== null) {
     rows.push({
       label: 'ROUND',
       // Zero-padded to two digits, matching the `RND.08` kicker idiom the landing hero's preview
@@ -166,11 +211,13 @@ export function BriefingCircuitBand({ raceInfo, round, className }: BriefingCirc
     });
   }
 
-  rows.push({
-    label: 'LOCATION',
-    value: raceInfo.location,
-    valueClassName: 'font-display text-xl uppercase leading-none tracking-tight text-ink',
-  });
+  if (raceInfo) {
+    rows.push({
+      label: 'LOCATION',
+      value: raceInfo.location,
+      valueClassName: 'font-display text-xl uppercase leading-none tracking-tight text-ink',
+    });
+  }
 
   if (date) {
     rows.push({
@@ -193,37 +240,33 @@ export function BriefingCircuitBand({ raceInfo, round, className }: BriefingCirc
   }
 
   return (
-    <div
-      className={cn(
-        'grid items-center gap-6',
-        // Two columns only when there is an outline to put in the first one. A fixed
-        // `sm:grid-cols-[…]` would leave an empty 11rem gutter on every circuit this repo has no
-        // geometry for, which is the placeholder the spec's "a miss hides the visual entirely"
-        // rule exists to prevent — an invisible one, but it still pushes the data column across.
-        geometry && 'sm:grid-cols-[11rem_minmax(0,1fr)] sm:gap-8',
-        className,
-      )}
-    >
-      {geometry && (
-        // `aspect-square` because `CircuitGlow`'s user space is square and it letterboxes with
-        // `xMidYMid meet` — a non-square box draws the lap smaller with dead space either side
-        // rather than filling, so the wrapper is what makes it read tight. No `corners`: the
-        // vendored set is outlines only, and there is no real corner data to pass.
-        <div className="mx-auto aspect-square w-full max-w-[11rem] sm:mx-0">
-          {/*
-           * `draw="immediate"`, not `"onView"`. This band appears at the top of a result the user
-           * has just asked for and is already looking at; a viewport-triggered draw on a surface
-           * that streams in would either fire instantly anyway or, worse, wait for a scroll that
-           * never comes. `onView` is for static page sections.
-           *
-           * `geometry.points` is already `Point[]` and comes straight out of state, so its
-           * identity is stable across re-renders — `CircuitGlow` memoises its scaling and its path
-           * string on `points`, and rebuilding the array in render would invalidate both on every
-           * parent render. `toPoints` is for the static-JSON call sites, not this one.
-           */}
-          <CircuitGlow points={geometry.points} draw="immediate" />
-        </div>
-      )}
+    <div className={cn(BAND_LAYOUT, className)}>
+      {/*
+       * The outline's box, **always rendered, drawn into only once a chunk resolves**. Geometry
+       * arrives asynchronously and per-circuit, so a box that only exists once it lands grows the
+       * band mid-run; an empty one is not a placeholder shape, because nothing is drawn in it.
+       * The `data-circuit-slot` hook exists for the test that pins that reservation — jsdom lays
+       * nothing out, so the box's *presence* is the only part of it a test can see.
+       *
+       * `aspect-square` because `CircuitGlow`'s user space is square and it letterboxes with
+       * `xMidYMid meet` — a non-square box draws the lap smaller with dead space either side
+       * rather than filling, so the wrapper is what makes it read tight. No `corners`: the
+       * vendored set is outlines only, and there is no real corner data to pass.
+       */}
+      <div data-circuit-slot className="mx-auto aspect-square w-full max-w-[11rem] sm:mx-0">
+        {/*
+         * `draw="immediate"`, not `"onView"`. This band appears at the top of a result the user
+         * has just asked for and is already looking at; a viewport-triggered draw on a surface
+         * that streams in would either fire instantly anyway or, worse, wait for a scroll that
+         * never comes. `onView` is for static page sections.
+         *
+         * `geometry.points` is already `Point[]` and comes straight out of state, so its identity
+         * is stable across re-renders — `CircuitGlow` memoises its scaling and its path string on
+         * `points`, and rebuilding the array in render would invalidate both on every parent
+         * render. `toPoints` is for the static-JSON call sites, not this one.
+         */}
+        {geometry && <CircuitGlow points={geometry.points} draw="immediate" />}
+      </div>
 
       {/*
        * A description list, because that is what four label/value pairs are: `dt`/`dd` gives a
@@ -231,7 +274,7 @@ export function BriefingCircuitBand({ raceInfo, round, className }: BriefingCirc
        * `div` wrappers around each pair are valid inside a `dl` in HTML5 and are what let one row
        * be a single motion element.
        */}
-      <dl className="min-w-0 divide-y divide-white/10">
+      <dl className={cn('min-w-0 divide-y divide-white/10', ROWS_MIN_HEIGHT)}>
         {rows.map((row, index) => (
           <motion.div
             key={row.label}

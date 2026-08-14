@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import type { ToolResult } from '@/types';
 import { LaurelFlourish } from '@/components/candy/laurel-flourish';
 import { toolLabel } from '@/lib/constants';
@@ -115,6 +115,12 @@ export interface ToolTraceProps {
  */
 export function ToolTrace({ tools, complete = false }: ToolTraceProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  /**
+   * `useId` rather than a hand-made string: `/briefing` can hold only one trace today, but an id
+   * that is unique by construction cannot collide with a second one later, and it is stable
+   * across hydration, which a counter or a random value is not.
+   */
+  const listId = useId();
 
   if (tools.length === 0) return null;
 
@@ -133,6 +139,13 @@ export function ToolTrace({ tools, complete = false }: ToolTraceProps) {
         onClick={() => setIsExpanded(!isExpanded)}
         className="flex w-full items-center justify-between gap-4 px-4 py-3 text-left transition-colors hover:bg-white/[0.06]"
         aria-expanded={isExpanded}
+        /*
+         * The rows this opens, named rather than merely adjacent. The id points at an element
+         * that only exists while expanded — which is the normal disclosure shape and what
+         * `aria-expanded="false"` already tells a reader to expect; the alternative, keeping the
+         * list mounted and hidden, would put every row's text in the DOM of a collapsed panel.
+         */
+        aria-controls={listId}
       >
         {complete ? (
           /*
@@ -161,11 +174,20 @@ export function ToolTrace({ tools, complete = false }: ToolTraceProps) {
           // element is neither a state nor final.
           heading
         )}
-        <span className="shrink-0 text-zinc-400">{isExpanded ? '▼' : '▶'}</span>
+        {/*
+         * `aria-hidden` because the glyph is a *picture* of `aria-expanded`. Left in the
+         * accessible tree it appends itself to the button's name — "Agent Tool Trace (6 tools
+         * executed) ▶" — announcing the state twice, the second time as a character a screen
+         * reader either spells out or drops. Same rule as the row marks below: text that carries
+         * meaning stays accessible, marks that restate it are hidden.
+         */}
+        <span className="shrink-0 text-zinc-400" aria-hidden="true">
+          {isExpanded ? '▼' : '▶'}
+        </span>
       </button>
 
       {isExpanded && (
-        <ul className="space-y-2 border-t border-white/10 p-4">
+        <ul id={listId} className="space-y-2 border-t border-white/10 p-4">
           {tools.map((tool) => (
             <li
               key={tool.tool}

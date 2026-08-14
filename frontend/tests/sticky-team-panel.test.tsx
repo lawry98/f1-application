@@ -363,6 +363,56 @@ describe('StickyTeamPanel', () => {
     }
   });
 
+  /**
+   * The hoist, pinned. `MegaStat` used to sit **inside** the `AnimatePresence mode="wait"` subtree
+   * keyed on `activeTeam.id`, so every team change remounted it and restarted its spring from 0 —
+   * one scroll of the page fired eleven count-ups on the single number this rail exists to show.
+   * `MegaStat`'s own `ONCE_IN_VIEW` comment says the once-ness exists to stop exactly that; a
+   * remount defeats it, because `useInView(once: true)` is per-instance and a new instance starts
+   * over. Hoisted out, `value` changes on the same instance and the spring animates *between*
+   * figures instead.
+   *
+   * Two assertions, and both are needed. Node identity is the no-remount half. The updated
+   * `aria-label` is what proves the numeral is genuinely outside the keyed subtree rather than
+   * merely frozen with it: under jsdom `mode="wait"` holds the incoming child behind an exit
+   * animation that never resolves, so everything still inside the swap keeps the *old* team's
+   * content — which is why the logo assertion below reads Ferrari after a rerender to Mercedes.
+   * That contrast is the partition the brief asks for: the logo/meta block keeps its swap, the
+   * stat does not take part in it.
+   *
+   * **Two mid-table teams, and not the championship leader, for a reason worth writing down.**
+   * `MegaStat` wraps its counting box in `<Scribble>` only when a `scribble` prop is passed, and
+   * this panel passes one iff `position === 1` — so a swap *to or from* Mercedes changes the shape
+   * of the tree above the numeral and React remounts it whatever this component does. That is a
+   * residual one team-change in eleven still restarts the count from 0; the hoist removes the other
+   * ten. Fixing it would mean rendering `Scribble` unconditionally inside `MegaStat`
+   * (`components/candy/`, not this file), which is a change to argue for on its own.
+   */
+  it('keeps the points numeral mounted across a team change instead of re-counting from zero', () => {
+    const mclaren = TEAM_MAP['mclaren']!;
+    const { container, rerender } = render(
+      <StickyTeamPanel activeTeam={ferrari} onInspect={vi.fn()} />,
+    );
+
+    // `MegaStat`'s counting box — the element carrying `useInView` and the spring's accessible
+    // name. `inline-grid` is its own marker; nothing else in this panel is one.
+    const box = () => container.querySelector<HTMLElement>('span.inline-grid');
+    const before = box();
+    expect(before, 'no MegaStat counting box in the panel').not.toBeNull();
+    expect(before).toHaveAttribute('aria-label', String(ferrari.points));
+
+    rerender(<StickyTeamPanel activeTeam={mclaren} onInspect={vi.fn()} />);
+
+    expect(box(), 'the points numeral remounted on the team change').toBe(before);
+    expect(box(), 'the points numeral is still inside the keyed swap').toHaveAttribute(
+      'aria-label',
+      String(mclaren.points),
+    );
+    // …while the block that *is* meant to swap still holds the outgoing team, i.e. the
+    // `AnimatePresence` is still there and still wrapping the logo lockup.
+    expect(screen.getByRole('img', { name: /ferrari logo/i })).toBeInTheDocument();
+  });
+
   it('renders the final points with no count-up under reduced motion', () => {
     reduceMotion = true;
     render(<StickyTeamPanel activeTeam={ferrari} onInspect={vi.fn()} />);

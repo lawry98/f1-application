@@ -5,6 +5,7 @@ import { CircuitGlow } from '@/components/candy/circuit-glow';
 import { TicketCard } from '@/components/candy/ticket-card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { loadCircuitByLocation } from '@/lib/circuit-geometry';
+import { parseRaceDate } from '@/lib/race-date';
 import type { Point } from '@/lib/svg-path';
 import { cn } from '@/lib/utils';
 import type { Race } from '@/types';
@@ -43,48 +44,20 @@ const SKELETON_HEIGHT = 'h-[177px]';
 const SKELETON_COUNT = 6;
 
 /**
- * Month abbreviations, indexed by `month - 1`.
- *
- * Hand-rolled rather than `toLocaleDateString`, for the same reason the date is never fed to
- * `Date` at all below: `Intl` output is locale- and ICU-version-dependent, so the same card would
- * read "08 MAR" for one user and "08 mars" for another, inside a row whose whole register is
- * mono caps. There is no date library in this repo and this is not the feature that earns one.
- */
-const MONTHS = [
-  'JAN',
-  'FEB',
-  'MAR',
-  'APR',
-  'MAY',
-  'JUN',
-  'JUL',
-  'AUG',
-  'SEP',
-  'OCT',
-  'NOV',
-  'DEC',
-] as const;
-
-/**
  * `"2026-03-08 00:00:00"` → `"08 MAR"`, and `""` for anything this cannot read.
  *
- * **The backend's `date` is space-separated, not ISO-T.** `new Date("2026-03-08 00:00:00")` happens
- * to parse in V8 and in jsdom, but that form is not in the ECMAScript grammar — it is
- * implementation-defined, and Safari has historically returned `Invalid Date` for it. Formatting
- * straight off the string parts avoids the question entirely, and as a bonus it cannot drift by a
- * day: `new Date("2026-03-08")` *is* spec'd, as **UTC** midnight, so a browser west of Greenwich
- * would render it as 07 MAR.
+ * The parse itself lives in `lib/race-date.ts` — the reasoning for never feeding the backend's
+ * string to `new Date()` is written down once there, and this file, `briefing-circuit-band.tsx`
+ * and `hooks/use-races.ts` had each grown their own answer to it. All this adds is the card's
+ * register: day and month, no year, because the row only ever shows the next six events.
  *
  * Returns an empty string rather than throwing on a shape it does not recognise, and the caller
  * omits the line. A card with no date is still a usable control; a crash inside the quick-select
  * row would take the whole briefing form down with it.
  */
 function formatRaceDate(date: string): string {
-  const [datePart = ''] = date.split(' ');
-  const [, month, day] = datePart.split('-');
-  if (!month || !day) return '';
-  const label = MONTHS[Number(month) - 1];
-  return label ? `${day} ${label}` : '';
+  const parsed = parseRaceDate(date);
+  return parsed ? `${parsed.day} ${parsed.monthAbbr}` : '';
 }
 
 export interface RaceSelectorProps {
