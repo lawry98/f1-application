@@ -283,6 +283,49 @@ describe('other events', () => {
     ]);
   });
 
+  it('keeps the whole race_info payload, not only its name', async () => {
+    // The circuit band joins on `location` — `circuit_id` is derived from the *event* name
+    // (`italian_grand_prix`) and names a Grand Prix rather than a track, so it misses most of the
+    // calendar. Before this, the hook read `.name` and dropped the rest of the event, which made
+    // the band impossible to build without a second request for data already on the wire.
+    const feed = new ChunkFeed();
+    const { result, submit } = start(feed);
+    await submit('Monza');
+
+    const payload = {
+      name: 'Italian Grand Prix',
+      year: 2026,
+      circuit_id: 'italian_grand_prix',
+      location: 'Monza',
+      country: 'Italy',
+      date: '2026-09-06 00:00:00',
+      is_upcoming: true,
+      historical_year: 2025,
+    };
+    feed.push(frame('race_info', payload));
+    await settle();
+
+    expect(result.current.raceInfo).toEqual(payload);
+    // `race` is kept alongside rather than derived: every existing consumer expects `''`, not
+    // `null`, before the event lands.
+    expect(result.current.race).toBe('Italian Grand Prix');
+  });
+
+  it('clears the previous run’s race_info when a new briefing is submitted', async () => {
+    // A stale band under a fresh run would draw the wrong circuit for as long as the resolver
+    // takes — several seconds — and look like a resolution bug rather than a reset one.
+    const first = new ChunkFeed();
+    const second = new ChunkFeed();
+    const { result, submit } = start(first, second);
+    await submit('Monza');
+    first.push(frame('race_info', { name: 'Italian Grand Prix', location: 'Monza' }));
+    await settle();
+    expect(result.current.raceInfo).not.toBeNull();
+
+    await submit('Spa');
+    expect(result.current.raceInfo).toBeNull();
+  });
+
   it('surfaces an error event without inventing a briefing', async () => {
     const feed = new ChunkFeed();
     const { result, submit } = start(feed);

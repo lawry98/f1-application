@@ -472,9 +472,15 @@ describe('TeamSection', () => {
     expect(heading.closest('.text-ink'), 'nothing above the heading declares ink').not.toBeNull();
 
     // The column-scoped size, verbatim. `.text-mega`'s `clamp(4rem, 14vw, 12rem)` is measured
-    // against the viewport, and this column is ~420px at 1440 — `MERCEDES` at the 192px cap is
-    // ≈845px and gets clipped by the section's own `overflow-hidden`.
-    expect(heading.classList.contains('text-[clamp(2.5rem,6vw,5rem)]')).toBe(true);
+    // against the viewport, and the heading's row is 724px at 1440 — `MERCEDES` at the 192px cap
+    // is ≈1136px and gets clipped by the section's own `overflow-hidden`.
+    //
+    // The 5.25rem cap is pinned rather than merely "some clamp": it was measured in Chromium
+    // across all eleven names, and 84px is the last size at which `ASTON MARTIN` — the widest,
+    // which is not the longest *word* — still clears the column with margin. At 92px it wraps to
+    // two lines, and a taller section changes what `use-scroll-spy` measures. jsdom cannot see
+    // any of that, so the string is the only thing guarding it.
+    expect(heading.classList.contains('text-[clamp(2.5rem,6vw,5.25rem)]')).toBe(true);
     expect(heading.classList.contains('text-mega')).toBe(false);
   });
 

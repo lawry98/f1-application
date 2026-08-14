@@ -208,13 +208,33 @@ export function TeamSection({ team, index, isActive, onInspect, reducedMotion }:
             {/* The mega *treatment* at a column-scoped size, which is deliberately not
                   `.text-mega`. `.text-mega` is `clamp(4rem, 14vw, 12rem)` measured against the
                   **viewport**, and `/teams` is a three-column page: measured in Chromium at
-                  1440x1000 with the rail and dossier mounted, a team section is 840px and this
-                  left content column is ~420px, so `MERCEDES` at the 192px cap is ≈845px wide and
-                  the section's own `overflow-hidden` clips it. The clamp below resolves to 80px at
-                  1440 (`MERCEDES` ≈ 397px, inside the column) and to its 40px floor at 390.
-                  `leading-[0.85]` and `tracking-[-0.035em]` are `.text-mega`'s own metrics, copied
-                  verbatim so the treatment still matches the rest of the branch — this is the part
-                  someone "tidies" back into `text-mega` and clips the widest four teams.
+                  1440x1000 with the rail and dossier mounted, a team section is 840px and the
+                  heading's own row 744px, of which the red rule and its gap take 20px — so the
+                  heading has **724px**. At `.text-mega`'s 192px cap `MERCEDES` is ≈1136px and the
+                  section's own `overflow-hidden` clips it. `leading-[0.85]` and
+                  `tracking-[-0.035em]` are `.text-mega`'s own metrics, copied verbatim so the
+                  treatment still matches the rest of the branch — this is the part someone
+                  "tidies" back into `text-mega` and clips the widest four teams.
+
+                  **The cap is set by `ASTON MARTIN`, not by `MERCEDES`.** Every candidate size was
+                  measured in Chromium against all eleven names rather than reasoned about, because
+                  the binding constraint is not the longest word but the widest rendered string:
+
+                  | size | widest (`ASTON MARTIN`) | headroom in 724px | wraps |
+                  |------|------|------|------|
+                  | 80px | 645px | 79px | — |
+                  | **84px** | **677px** | **47px** | **—** |
+                  | 88px | 709px | 15px | — |
+                  | 92px | 724px | 0 | `ASTON MARTIN` |
+                  | 96px | 724px | 0 | + `RACING BULLS` |
+
+                  84px is the last size with real margin. 88px fits but leaves 2% of the column,
+                  which is not enough to survive a font-metric difference or a future longer name;
+                  92px is where a name goes to two lines, and a two-line heading changes the
+                  section's height, which is what `hooks/use-scroll-spy.ts` measures — so growing
+                  past 84px is a scroll-spy change, not a type change. The cap therefore moves
+                  `5rem` → `5.25rem` and nothing else does: below a ~1400px viewport the `6vw` term
+                  still governs and the floor is still 40px at 390.
 
                   `RedactedReveal` renders one `inline-block` element per child and no outer
                   wrapper, so a single child produces exactly one `<h2>`. That is the h2 the page's
@@ -223,7 +243,7 @@ export function TeamSection({ team, index, isActive, onInspect, reducedMotion }:
               variant="ink"
               as="h2"
               delay={reducedMotion ? 0 : 0.1}
-              className="font-display text-[clamp(2.5rem,6vw,5rem)] font-black uppercase leading-[0.85] tracking-[-0.035em]"
+              className="font-display text-[clamp(2.5rem,6vw,5.25rem)] font-black uppercase leading-[0.85] tracking-[-0.035em]"
             >
               {team.shortName}
             </RedactedReveal>

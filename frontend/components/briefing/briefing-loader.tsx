@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Check } from 'lucide-react';
+import { MegaStat } from '@/components/candy/mega-stat';
 import { toolLabel } from '@/lib/constants';
 import { cn } from '@/lib/utils';
 import type { ToolResult } from '@/types';
@@ -141,17 +142,41 @@ export function BriefingLoader({
           <div className="h-px w-1/4 animate-sweep bg-gradient-to-r from-transparent via-f1-red to-transparent motion-reduce:animate-none" />
         </div>
 
-        <div className="flex items-start justify-between gap-4 border-b border-zinc-800 px-5 py-4">
-          <div className="min-w-0">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-f1-red">
-              Generating briefing
-            </p>
-            <h3 className="truncate font-semibold text-ink">{race || 'Resolving race…'}</h3>
-          </div>
-          <p className="shrink-0 pt-1 font-mono text-sm tabular-nums text-zinc-400">
-            <span className="sr-only">Elapsed </span>
-            {formatElapsed(elapsed)}
+        {/*
+          A stacked block, not the `flex items-start justify-between` row this used to be, and the
+          restructure is what keeps the display-scale timer from mugging the race name.
+
+          `MegaStat`'s `mid` scale is `clamp(2.5rem, 6vw, 4.5rem)`: at 1440 the `6vw` term is 86.4px
+          so it caps at **72px**, and `formatElapsed` produces five to six tabular glyphs — roughly
+          250–300px of unbreakable numeral. In the old flex row that width became the item's
+          min-content width and the *other* column paid for it; `/teams` has the measured precedent,
+          where a mega heading silently shrank its neighbour from ~420px to 203px. `min-w-0` does not
+          fix that, it only permits overflow. Giving the stat a full-width row of its own removes the
+          competition entirely rather than arbitrating it, so the race name gets the whole
+          `max-w-4xl` column back and its `truncate` means what it says. At 390 the clamp floors at
+          40px, which was never the problem.
+        */}
+        <div className="border-b border-zinc-800 px-5 py-4">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-f1-red">
+            Generating briefing
           </p>
+          <h3 className="truncate font-semibold text-ink">{race || 'Resolving race…'}</h3>
+          {/*
+            The elapsed timer is `/briefing`'s one numeric callout, so it is the "stat callouts
+            render at MegaStat mid scale" line of the spec.
+
+            No `sr-only` "Elapsed" prefix any more, and no `tone`: `MegaStat`'s own `label` renders a
+            real, visible `zinc-400` small-caps run immediately above the numeral, so a screen reader
+            already reaches "Elapsed" then the value in reading order. Adding the old prefix back
+            would announce the word twice.
+
+            The whole `M:SS.d` string is the `value`, deliberately not split into `value="0:12"` +
+            `sup=".4"` (the branch's `1:12^.909` idiom): the split is a real change to what the
+            rendered string is, and `formatElapsed`'s output is asserted verbatim by the suite that
+            guards this panel. A string `value` also means no count-up spring runs — right, for a
+            clock that is already counting on its own.
+          */}
+          <MegaStat value={formatElapsed(elapsed)} label="Elapsed" scale="mid" className="mt-3" />
         </div>
 
         <ol className="px-5 py-4" aria-hidden="true">
@@ -187,27 +212,39 @@ export function BriefingLoader({
                   )}
                 </div>
                 <div className={cn(!isLast && 'pb-4')}>
+                  {/* A pending stage used to be `zinc-600` — 2.60:1 on this page's backdrop, and it
+                      names a real upcoming stage rather than decorating one, so dimness was not
+                      free. `zinc-400` (6.24:1) is the branch floor and every state now sits on or
+                      above it; "not yet reached" is carried by the marker shape (empty ring vs
+                      check vs pulsing dot) and by `data-state`, which is the channel that was
+                      always meant to be authoritative. The marker *colours* are deliberately left
+                      alone: the done ring composites to about 2.5:1, so lifting the pending ring to
+                      the 3:1 non-text bar would make the un-reached stage the brightest mark in the
+                      column and invert the hierarchy. */}
                   <p
                     className={cn(
                       'text-sm',
                       state === 'done' && 'text-zinc-400',
                       state === 'active' && 'font-medium text-white',
-                      state === 'pending' && 'text-zinc-600',
+                      state === 'pending' && 'text-zinc-400',
                     )}
                   >
                     {label}
                   </p>
                   {state === 'active' && (
                     <>
+                      {/* zinc-400, not the zinc-500 these two shipped at: at 11px they are small
+                          text held to 4.5:1, and zinc-500 measures 4.11:1 on bare base and 3.32:1
+                          once the page's topo texture lightens the backdrop to rgb(33, 33, 36). */}
                       {stageStep === 'gathering' && (
-                        <p className="mt-0.5 text-[11px] tabular-nums text-zinc-500">
+                        <p className="mt-0.5 text-[11px] tabular-nums text-zinc-400">
                           {toolPlan.length > 0
                             ? `${returned} of ${toolPlan.length} tools returned`
                             : `${returned} ${returned === 1 ? 'tool' : 'tools'} returned`}
                         </p>
                       )}
                       {stageElapsed >= STAGE_HINT_AFTER_MS && (
-                        <p className="mt-0.5 text-[11px] tabular-nums text-zinc-500">
+                        <p className="mt-0.5 text-[11px] tabular-nums text-zinc-400">
                           {Math.floor(stageElapsed / 1000)}s in this stage
                         </p>
                       )}
@@ -221,7 +258,9 @@ export function BriefingLoader({
 
         {chips.length > 0 && (
           <div className="border-t border-zinc-800 bg-zinc-950/50 px-5 py-3">
-            <p className="mb-2.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+            {/* zinc-400 for the same reason as the sub-lines above: a 10px kicker is small text and
+                zinc-500 does not clear 4.5:1 anywhere on this page. */}
+            <p className="mb-2.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-400">
               Agent tool trace
             </p>
             <ul className="grid grid-cols-2 gap-x-3 gap-y-2">
@@ -242,12 +281,11 @@ export function BriefingLoader({
                       <span className="h-1.5 w-1.5 rounded-full border border-zinc-700" />
                     )}
                   </span>
-                  <span
-                    className={cn(
-                      'truncate text-[11px]',
-                      state === 'pending' ? 'text-zinc-600' : 'text-zinc-400',
-                    )}
-                  >
+                  {/* A pending chip names a tool the agent is about to run, which is information,
+                      so it cannot be dimmed below the floor either — `zinc-600` measured 2.60:1.
+                      Every chip label is now `zinc-400` and the hollow-vs-filled dot above, plus
+                      `data-state`, carries which have landed. */}
+                  <span className="truncate text-[11px] text-zinc-400">
                     {toolLabel(tool)}
                     {state === 'failed' && <span className="sr-only"> failed</span>}
                   </span>

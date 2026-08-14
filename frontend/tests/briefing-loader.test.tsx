@@ -12,7 +12,9 @@
 import { act, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BriefingLoader } from '@/components/briefing/briefing-loader';
+import { DARK_BG, blendOver, contrastRatio } from '@/lib/team-utils';
 import type { ToolResult } from '@/types';
+import { ZINC, restingTextNeutrals } from './zinc';
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -49,6 +51,24 @@ function renderLoader(
 /** The row a stage label sits in, so its `data-state` can be read. */
 function stageState(label: string): string | null | undefined {
   return screen.getByText(label).closest('li')?.getAttribute('data-state');
+}
+
+/**
+ * The painted copy of the elapsed value — the one a reader actually gets.
+ *
+ * The timer now renders through `MegaStat`, which reserves the final value's width from the first
+ * frame by putting the value in the DOM **twice**: an `invisible aria-hidden` twin sized to the
+ * finished string, and the live copy in the same grid cell. A bare `getByText(/0:03\.0/)` therefore
+ * matches two nodes and throws, which is why every elapsed assertion below goes through here
+ * instead. This is a query change, not a weakening: filtering to the copy outside any `aria-hidden`
+ * subtree measures the same thing the old single `<p>` did, and pinning it to exactly one match is
+ * itself a guard — if the accessible copy ever became hidden too, the run time would be announced
+ * nowhere and this would fail rather than quietly pass on the invisible twin.
+ */
+function elapsedRun(pattern: RegExp): HTMLElement {
+  const painted = screen.getAllByText(pattern).filter((el) => !el.closest('[aria-hidden="true"]'));
+  expect(painted).toHaveLength(1);
+  return painted[0]!;
 }
 
 /** The footer's own chips, scoped to its container so these order checks do not
@@ -109,7 +129,7 @@ describe('the elapsed timer', () => {
   it('reads from startedAt, not from mount time', () => {
     renderLoader({ startedAt: Date.now() - 3000 });
 
-    expect(screen.getByText(/0:03\.0/)).toBeInTheDocument();
+    expect(elapsedRun(/0:03\.0/)).toBeInTheDocument();
   });
 
   it('ticks while the run continues', () => {
@@ -119,13 +139,13 @@ describe('the elapsed timer', () => {
       vi.advanceTimersByTime(1500);
     });
 
-    expect(screen.getByText(/0:01\.5/)).toBeInTheDocument();
+    expect(elapsedRun(/0:01\.5/)).toBeInTheDocument();
   });
 
   it('rolls into minutes', () => {
     renderLoader({ startedAt: Date.now() - 64_200 });
 
-    expect(screen.getByText(/1:04\.2/)).toBeInTheDocument();
+    expect(elapsedRun(/1:04\.2/)).toBeInTheDocument();
   });
 
   it('restarts from a fresh startedAt without a remount', () => {
@@ -143,7 +163,7 @@ describe('the elapsed timer', () => {
       />,
     );
 
-    expect(screen.getByText(/0:30\.0/)).toBeInTheDocument();
+    expect(elapsedRun(/0:30\.0/)).toBeInTheDocument();
 
     rerender(
       <BriefingLoader
@@ -156,7 +176,7 @@ describe('the elapsed timer', () => {
       />,
     );
 
-    expect(screen.getByText(/0:00\.0/)).toBeInTheDocument();
+    expect(elapsedRun(/0:00\.0/)).toBeInTheDocument();
   });
 
   it('stops ticking after unmount', () => {
@@ -171,6 +191,51 @@ describe('the elapsed timer', () => {
       });
     }).not.toThrow();
     expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+describe('the elapsed stat callout', () => {
+  /**
+   * `MegaStat`'s `mid` scale, verbatim. Pinned as a string because it *is* the spec's requirement
+   * for this phase ("stat callouts render at MegaStat mid scale") — jsdom applies no stylesheet, so
+   * the class name is the only evidence a test can reach, and the alternative (asserting the
+   * component rendered at all) would pass just as happily at `mega`, which would overflow the card.
+   */
+  const MID_SCALE_CLASS = 'text-[clamp(2.5rem,6vw,4.5rem)]';
+
+  /** Exact class-token match. `\b` cannot bound an arbitrary-value Tailwind class — `[`, `]` and
+   *  `,` are all non-word characters — so this splits on whitespace instead of using a regex. */
+  function withClass(container: HTMLElement, token: string): HTMLElement[] {
+    return Array.from(container.querySelectorAll<HTMLElement>('*')).filter((el) =>
+      (el.getAttribute('class') ?? '').split(/\s+/).includes(token),
+    );
+  }
+
+  it('renders the run time at the mid display scale, not as body text', () => {
+    const { container } = renderLoader({ startedAt: Date.now() - 3000 });
+
+    const sized = withClass(container, MID_SCALE_CLASS);
+
+    // Exactly one: `/briefing` has a single numeric callout, and a second one appearing would mean
+    // some other run had been promoted to display scale inside an 896px card.
+    expect(sized).toHaveLength(1);
+    expect(sized[0]!).toHaveTextContent('0:03.0');
+  });
+
+  it('still tells a screen reader the number is an elapsed time', () => {
+    // Asserted through accessible text rather than a class, because the label moved: the old
+    // `sr-only "Elapsed "` prefix was dropped in favour of `MegaStat`'s own visible `label`, and
+    // what has to survive that swap is the *reading order*, not any particular element.
+    const { container } = renderLoader({ startedAt: Date.now() - 3000 });
+
+    const accessible = container.cloneNode(true) as HTMLElement;
+    accessible.querySelectorAll('[aria-hidden="true"]').forEach((el) => el.remove());
+    const text = accessible.textContent ?? '';
+
+    expect(text.replace(/\s+/g, ' ')).toMatch(/Elapsed\s*0:03\.0/);
+    // And exactly once. `MegaStat`'s width-reserving twin holds a second copy of the same string;
+    // if it ever stopped being `aria-hidden`, the timer would be announced twice per tick.
+    expect(text.match(/0:03\.0/g)).toHaveLength(1);
   });
 });
 
@@ -462,5 +527,97 @@ describe('accessibility', () => {
       'aria-hidden',
       'true',
     );
+  });
+});
+
+describe('contrast', () => {
+  /**
+   * What is actually behind this panel's text.
+   *
+   * `/briefing` paints `bg-zinc-950` under a `<TopoBackground className="text-zinc-300" />` at the
+   * texture's built-in `opacity-[0.12]`, so the page backdrop is **not** `#09090b` — it composites
+   * to `rgb(33, 33, 36)`, and every ratio in the phase brief starts there. Measuring against the
+   * bare page would report every run optimistically, which is the one contrast mistake this repo
+   * records shipping twice: the right colour against the wrong background.
+   *
+   * The loader's own card (`bg-zinc-900/95`) and its footer (`bg-zinc-950/50`) both composite
+   * *darker* than this, so a run that clears the bar here clears it on the card too — this backdrop
+   * is the conservative bound for the whole component, not an approximation of one.
+   */
+  const PAGE_BACKDROP = blendOver(ZINC['300']!, 0.12, DARK_BG);
+
+  /** WCAG AA for small text. Every run this panel paints is 14px or under. */
+  const MIN_CONTRAST = 4.5;
+
+  function renderFullPanel() {
+    const rendered = renderLoader({
+      step: 'gathering',
+      toolPlan: ['get_track_info', 'get_race_weather', 'search_f1_news'],
+      tools: [{ tool: 'get_track_info', success: true }],
+    });
+
+    // Past STAGE_HINT_AFTER_MS, so the stage hint is on screen and gets measured with everything
+    // else — it was one of the zinc-500 runs this phase raised.
+    act(() => {
+      vi.advanceTimersByTime(15_000);
+    });
+
+    return rendered;
+  }
+
+  it('keeps every resting neutral run above the small-text floor', () => {
+    const { container } = renderFullPanel();
+
+    const neutrals = restingTextNeutrals(container);
+
+    // Non-vacuity. A helper that finds nothing passes every ratio assertion below in silence.
+    expect(neutrals.length).toBeGreaterThan(0);
+    for (const { hex, text } of neutrals) {
+      expect(contrastRatio(hex, PAGE_BACKDROP), `${hex} on "${text}"`).toBeGreaterThanOrEqual(
+        MIN_CONTRAST,
+      );
+    }
+  });
+
+  it('measures the runs that used to be too dim, and the count does not drift', () => {
+    // The loop above only proves what it can see. These are the specific runs the restyle raised —
+    // three were `zinc-500` (3.32:1 on this backdrop) and two `zinc-600` (2.14:1) — so naming them
+    // is what stops the ratio loop passing because a run stopped being reported rather than because
+    // it got brighter.
+    const { container } = renderFullPanel();
+
+    const texts = restingTextNeutrals(container).map((run) => run.text);
+
+    expect(texts).toContain('Synthesize briefing'); // pending stage label, was zinc-600
+    expect(texts).toContain('News search'); // pending chip label, was zinc-600
+    expect(texts).toContain('Agent tool trace'); // footer kicker, was zinc-500
+    expect(texts).toContain('1 of 3 tools returned'); // was zinc-500
+    // '15 s …', with a space: that line is `{n}s in this stage`, i.e. two sibling text nodes, and
+    // `restingTextNeutrals` joins an element's own text children with a space. The gap is an
+    // artefact of the helper's keying, not of the rendered copy — `getByText('15s in this stage')`
+    // above still matches the paint.
+    expect(texts).toContain('15 s in this stage'); // was zinc-500
+    expect(texts).toContain('Elapsed'); // MegaStat's own label
+
+    // Pinned: three stage labels (the active one is `text-white`, not a zinc class, so the helper
+    // correctly reports nothing for it), the two active sub-lines, the footer kicker, three chip
+    // labels, and the stat label. A drop here means a run lost its colour source and went
+    // unmeasured; a rise means new text arrived that nobody has judged.
+    expect(texts).toHaveLength(10);
+  });
+
+  it('does not measure the red kicker, because it is not a zinc run at all', () => {
+    // `restingTextNeutrals` reads `text-zinc-N` classes, so `text-f1-red` is outside its remit —
+    // confirmed here rather than assumed, and pinned at zero so this exclusion cannot silently
+    // widen into "the helper stopped seeing things". The kicker is a settled branch-wide idiom
+    // (3.22:1) that the parent has logged; it is deliberately not changed in this file.
+    const { container } = renderFullPanel();
+
+    const kickerRuns = restingTextNeutrals(container).filter((run) =>
+      /Generating briefing/.test(run.text),
+    );
+
+    expect(kickerRuns).toHaveLength(0);
+    expect(screen.getByText('Generating briefing')).toHaveClass('text-f1-red');
   });
 });
