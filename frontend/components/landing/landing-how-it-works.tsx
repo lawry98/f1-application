@@ -54,6 +54,24 @@ const NUMERAL_COLUMN = 'w-12'; // 3rem
 const CONNECTOR_LEFT = 'left-[1.5rem]'; // 3rem / 2 — derived from NUMERAL_COLUMN, never set alone
 
 /**
+ * The numeral's backdrop, and the third number in this file that cannot be set on its own.
+ *
+ * The numeral is not a tile and wants no chrome; this opaque patch exists only to mask the
+ * connector line where it would otherwise run through the gaps *between* the two digits. So it has
+ * to be **exactly the colour of the section behind it**, and since Phase 7 that colour is not
+ * `base` any more: `app/page.tsx` assigns this section the `base-warm` tone. Leaving this at
+ * `bg-base` would paint a cold rectangle on a warm slab at every step — the single most visible
+ * way this section can look broken, and one that no test asserting classes on the *section* would
+ * catch. `tests/landing-page.test.tsx` pins the pair instead.
+ *
+ * The one moment the two disagree is while the wrapper is mid-transition, or before it has warmed
+ * at all: the numeral is warm and the section is still `base`. That is 11 levels of red on
+ * near-black across a 48 px patch, and the wrapper's `rootMargin` means it only ever happens while
+ * the section is outside the middle 60% of the viewport — where these numerals are not on screen.
+ */
+const NUMERAL_MASK = 'bg-base-warm';
+
+/**
  * ── Scroll tuning, kept together so it is easy to find and retune ─────────────────────────────
  *
  * `SCROLL_OFFSET` is the window over which the line draws, expressed as
@@ -99,7 +117,10 @@ export function LandingHowItWorks() {
   const drawnScaleY = useTransform(scrollYProgress, [0, SCROLL_COMPLETE_AT], [0, 1]);
 
   return (
-    <section id="how-it-works" className="bg-base py-24" aria-labelledby="how-it-works-heading">
+    // No `bg-*`: `app/page.tsx` wraps every landing section in a `LandingSectionTheme` that owns
+    // the surface colour, and a background here would paint over it. This section's tone is
+    // `base-warm` — see `NUMERAL_MASK` above, which has to be the same colour.
+    <section id="how-it-works" className="py-24" aria-labelledby="how-it-works-heading">
       <div className="container mx-auto max-w-7xl px-4">
         {/* Section header */}
         <BlurFadeReduced inView delay={0} direction="up">
@@ -171,8 +192,8 @@ export function LandingHowItWorks() {
                      * reading is the one the spec asks for — "timeline steps 01–04 in display at
                      * 2rem" describes type, not a component — and a tile at 2rem would be a small
                      * box holding small type, which is neither the old design nor the new one. The
-                     * only chrome that survives is the `bg-base` backdrop, which exists purely to
-                     * mask the connector line where it would otherwise run straight through the
+                     * only chrome that survives is the `NUMERAL_MASK` backdrop, which exists purely
+                     * to mask the connector line where it would otherwise run straight through the
                      * glyphs; `relative` is load-bearing with it, because the line is absolutely
                      * positioned and would paint over a statically positioned numeral.
                      *
@@ -183,7 +204,8 @@ export function LandingHowItWorks() {
                      */}
                     <div
                       className={cn(
-                        'relative flex justify-center bg-base py-1 font-display text-[2rem] tabular-nums leading-none tracking-tight',
+                        'relative flex justify-center py-1 font-display text-[2rem] tabular-nums leading-none tracking-tight',
+                        NUMERAL_MASK,
                         NUMERAL_COLUMN,
                         i === 0 ? 'text-f1-red' : 'text-zinc-600',
                       )}

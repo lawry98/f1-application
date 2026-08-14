@@ -13,6 +13,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BriefingChat } from '@/components/briefing/briefing-chat';
+import { focusRing, focusRingOnRedFill } from '@/lib/focus';
 import { blendOver, contrastRatio, MIN_CONTRAST } from '@/lib/team-utils';
 import { ChunkFeed, frame } from './sse';
 import { placeholderNeutrals, restingTextNeutrals, ZINC } from './zinc';
@@ -150,6 +151,53 @@ describe('BriefingChat wiring', () => {
  * its final block while that block is still being written (spec rule 3 — the strobe), and the
  * trace would never draw its laurel. Nothing but a wiring test catches either.
  */
+/**
+ * The form's two controls, asserted against `lib/focus.ts`'s exports rather than against copies of
+ * their class strings — a literal here would let the shared token move while this form silently
+ * kept the old shape, which is the drift the shared file exists to close.
+ *
+ * Both rings are painted on the **form card**, `bg-zinc-900`, not on either control's own fill and
+ * not on the page: a Tailwind ring is an outer box-shadow, so it lands outside the control's border
+ * box. Red measures 3.57:1 there, over WCAG 2.4.11's 3:1 non-text bar — which is why the input's
+ * ring stays red and flush, and why the Generate button's does not: that button is filled with
+ * `f1-red`, and red on red is 1.00:1.
+ */
+describe('BriefingChat focus rings', () => {
+  beforeEach(() => {
+    // Neither assertion needs the calendar; an unstubbed fetch would still be called by useRaces.
+    stubFetch(new ChunkFeed());
+  });
+
+  it('gives the circuit input the branch ring, flush', async () => {
+    render(<BriefingChat />);
+    await settle();
+
+    const input = screen.getByLabelText('Circuit name');
+
+    for (const token of focusRing.split(' ')) {
+      expect(input.classList.contains(token), `${token} missing from the input`).toBe(true);
+    }
+    // The vendored `components/ui/input.tsx` ships `ring-1`; the token restates `ring-2` so that
+    // twMerge drops it. If the merge ever stopped winning, this is where it shows.
+    expect(input.classList.contains('focus-visible:ring-1')).toBe(false);
+    expect(input.className).not.toMatch(/ring-offset/);
+  });
+
+  it('gives the red Generate button the inverse ring, offset in the card colour', async () => {
+    render(<BriefingChat />);
+    await settle();
+
+    const button = screen.getByRole('button', { name: /generate/i });
+
+    for (const token of focusRingOnRedFill.split(' ')) {
+      expect(button.classList.contains(token), `${token} missing from Generate`).toBe(true);
+    }
+    // Without an explicit offset colour Tailwind's default is white, which would paint a white
+    // band around a red pill on a near-black card.
+    expect(button.classList.contains('focus-visible:ring-offset-zinc-900')).toBe(true);
+  });
+});
+
 describe('BriefingChat empty state and reveal wiring', () => {
   it('replaces the car emoji with a display heading and keeps the instruction verbatim', async () => {
     stubFetch(new ChunkFeed());

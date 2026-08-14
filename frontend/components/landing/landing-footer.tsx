@@ -2,24 +2,20 @@ import Link from 'next/link';
 
 import { RedactedReveal } from '@/components/candy/redacted-reveal';
 import { TopoBackground } from '@/components/candy/topo-background';
+import { focusRingOffsetBaseWarm } from '@/lib/focus';
 
 import { NAV_LINKS } from './links';
 
 /**
- * Shared link chrome.
+ * Shared link chrome. The ring rule and its measurements are in `lib/focus.ts`.
  *
- * Every link in the footer carries the same focus ring, including the two outbound attribution
- * links, which previously had none — a keyboard user tabbing through the legal line had no
- * visible focus at all. A red *ring* is a decorative stroke rather than text, so the 4.5:1
- * small-text floor does not apply to it; that is the only reason `f1-red` is allowed on an
- * 11px control here when `text-f1-red` would not be.
- *
- * The offset colour is `base-warm`, not `zinc-950`: the ring's offset gap is painted in the
- * offset colour, so naming the page background while the card underneath is `#140B0B` draws a
- * visible dark halo around every focused link.
+ * Every link in the footer carries the same one, including the two outbound attribution links,
+ * which before this branch had none — a keyboard user tabbing through the legal line had no
+ * visible focus at all. `base-warm` and not `base` because the card these links sit on is
+ * `#140B0B`; the offset gap is painted in the colour it names, so naming the page background
+ * would draw a visible cold halo around every focused link.
  */
-const FOCUS_RING =
-  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-f1-red focus-visible:ring-offset-2 focus-visible:ring-offset-base-warm';
+const FOCUS_RING = focusRingOffsetBaseWarm;
 
 /**
  * The sign-off's type scale, shared by both lines so the display and serif runs sit on one

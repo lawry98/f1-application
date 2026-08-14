@@ -161,23 +161,39 @@ describe('StickyTeamPanel', () => {
     expect(screen.getByRole('img', { name: 'Championship position 1' })).toBeInTheDocument();
   });
 
-  // "the championship leader alone gets Scribble type='p1'". The failure this catches is the mark
-  // becoming unconditional, which reads as every team being P1 and is invisible in a single-team
-  // test — so it iterates the grid and counts.
-  it('draws the P1 scribble for the championship leader and for nobody else', () => {
-    let marked = 0;
+  /*
+   * "the championship leader alone gets `Scribble type='p1'`". The failure this catches is the mark
+   * becoming unconditional, which reads as every team being P1 and is invisible in a single-team
+   * test — so it iterates the grid.
+   *
+   * **Counting `svg` elements no longer expresses that.** Phase 7 made `MegaStat` mount `Scribble`
+   * unconditionally, because letting a prop decide the element *type* above the counting box made
+   * React rebuild the box on every team swap and drop the numeral back to `0`. All eleven teams now
+   * render the svg; only the leader's is painted, the rest are withheld with `display: none`.
+   *
+   * So the assertion moves from presence to **paintedness**, and it has to stay a real guard: if the
+   * withholding class is ever dropped, ten constructors start wearing a P1 mark, and a test that
+   * merely counted svgs would pass all the way through that. jsdom computes no Tailwind, so the
+   * class is the honest proxy for visibility here.
+   */
+  it('paints the P1 scribble for the championship leader and withholds it from everyone else', () => {
+    let painted = 0;
     for (const team of TEAMS) {
       const { container, unmount } = render(
         <StickyTeamPanel activeTeam={team} onInspect={vi.fn()} />,
       );
-      const marks = container.querySelectorAll(`svg[viewBox="${P1_SCRIBBLE_VIEWBOX}"]`);
-      expect(marks.length, `${team.shortName} (P${team.position})`).toBe(
-        team.position === 1 ? 1 : 0,
-      );
-      marked += marks.length;
+
+      const mark = container.querySelector(`svg[viewBox="${P1_SCRIBBLE_VIEWBOX}"]`);
+      expect(mark, `${team.shortName}: the element is always mounted`).not.toBeNull();
+
+      // Withheld iff this constructor is not the leader.
+      const withheld = container.querySelector('.\\[\\&_svg\\]\\:hidden') !== null;
+      expect(withheld, `${team.shortName} (P${team.position}) withheld?`).toBe(team.position !== 1);
+
+      if (!withheld) painted += 1;
       unmount();
     }
-    expect(marked, 'exactly one constructor leads the championship').toBe(1);
+    expect(painted, 'exactly one constructor leads the championship').toBe(1);
   });
 
   /**

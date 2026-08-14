@@ -22,6 +22,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RaceSelector } from '@/components/briefing/race-selector';
+import { focusRing } from '@/lib/focus';
 import {
   blendOver,
   cardSurfaceBackdrop,
@@ -176,6 +177,41 @@ describe('RaceSelector', () => {
       fireEvent.click(screen.getByRole('button', { name: /chinese/i }));
 
       expect(onSelectRace).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('the focus ring', () => {
+    it('takes the branch-wide token rather than restating one', async () => {
+      /*
+       * The class list is compared against `lib/focus.ts`'s own export, not against a copy of the
+       * string: a literal here would let the shared token move while this row silently kept the
+       * old shape, which is precisely the drift Phase 7 exists to close. The file used to carry
+       * `ring-1` "so as not to invent a third shape until Phase 7 unifies the rings" — this is
+       * that unification.
+       */
+      await renderSelector();
+
+      const chip = screen.getByRole('button', { name: /australian/i });
+
+      for (const token of focusRing.split(' ')) {
+        expect(chip.classList.contains(token), `${token} missing from the chip`).toBe(true);
+      }
+    });
+
+    it('carries no ring offset', async () => {
+      /*
+       * The measured reason, and it is the opposite of what the chip's surface suggests. A ring is
+       * an *outer* box-shadow, so it is painted outside the button's border box and never lands on
+       * the `TicketCard` fill inside it — where red would measure 2.96:1 and fail. What it is
+       * actually painted on is the `bg-zinc-900` form card this whole row sits in: 3.57:1, over
+       * WCAG 2.4.11's 3:1 non-text bar. An offset band would insert a strip of some *other*
+       * colour between the two, and neither offset token names `zinc-900`.
+       */
+      await renderSelector();
+
+      const chip = screen.getByRole('button', { name: /australian/i });
+
+      expect(chip.className).not.toMatch(/ring-offset/);
     });
   });
 

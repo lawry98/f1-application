@@ -4,6 +4,7 @@ import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 import CreditsPage from '@/app/credits/page';
+import { focusRing, focusRingOnRedFill } from '@/lib/focus';
 import { contrastRatio, DARK_BG, MIN_CONTRAST } from '@/lib/team-utils';
 import { restingTextNeutrals } from './zinc';
 
@@ -102,5 +103,51 @@ describe('/credits', () => {
         MIN_CONTRAST,
       );
     }
+  });
+
+  /**
+   * The focus treatment, asserted against `lib/focus.ts`'s exports rather than against copies of
+   * their strings — a literal here would let the shared token move while this page silently kept
+   * the old one, which is the drift the shared file exists to close.
+   *
+   * This page shipped two *different* off-branch rings: `ring-zinc-500` on every prose link and
+   * `ring-zinc-300` on the red pill at the foot.
+   */
+  describe('the focus rings', () => {
+    it('gives every prose link the branch ring', () => {
+      const { container } = render(<CreditsPage />);
+
+      // The pill is excluded: it is a filled red control and takes the inverse ring below.
+      const links = Array.from(container.querySelectorAll('a')).filter(
+        (a) => !a.className.includes('bg-f1-red'),
+      );
+      expect(links.length, 'no prose links found').toBeGreaterThan(0);
+
+      for (const link of links) {
+        for (const token of focusRing.split(' ')) {
+          expect(link.classList.contains(token), `${token} missing from "${link.textContent}"`).toBe(
+            true,
+          );
+        }
+      }
+    });
+
+    it('gives the red pill the inverse ring, offset in the page colour', () => {
+      /*
+       * Red on an `f1-red` fill is 1.00:1 — not a weak indicator, an absent one. `ink` on that
+       * fill is 4.50:1. The offset has to name the colour actually behind the pill, which on this
+       * page is bare `bg-zinc-950`, i.e. `base`; `focusRingOnRedFill` deliberately ships without
+       * one so the call site cannot inherit the wrong page's band.
+       */
+      const { container } = render(<CreditsPage />);
+
+      const pill = container.querySelector('a[class*="bg-f1-red"]');
+      expect(pill, 'the back-to-briefing pill is gone').not.toBeNull();
+
+      for (const token of focusRingOnRedFill.split(' ')) {
+        expect(pill!.classList.contains(token), `${token} missing from the pill`).toBe(true);
+      }
+      expect(pill!.classList.contains('focus-visible:ring-offset-base')).toBe(true);
+    });
   });
 });

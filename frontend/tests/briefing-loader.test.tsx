@@ -508,6 +508,80 @@ describe('the stage elapsed hint', () => {
   });
 });
 
+/**
+ * The stage list's status line — the row under each stage label that carries the tool count and
+ * the stage clock.
+ *
+ * **This is a layout-shift guard, and jsdom cannot see the thing it guards.** Measured in Chromium
+ * at 1440x1600 against the fake stream, the line arriving at 3s into a stage and leaving when the
+ * stage changed scored 0.001064 + 0.000983 = 0.002047 of layout shift, moving three stage rows and
+ * the tool-trace footer with it — on a page whose spec success criterion is CLS 0. So the slot is
+ * now unconditional: every stage row renders it, empty or not, at a fixed height.
+ *
+ * What is asserted here is therefore the *structure* that makes the height constant — one status
+ * line per row, always, whatever the run is doing — not the height itself, which no jsdom test can
+ * read. The browser measurement is the real evidence and it is recorded above.
+ */
+describe('the status line slot', () => {
+  /** The stage rows. `getAllByRole('listitem')` cannot see them — the `<ol>` is `aria-hidden`. */
+  const stageRows = (container: HTMLElement): Element[] =>
+    Array.from(container.querySelectorAll('ol > li'));
+
+  /** Label line + status line. Two `<p>` per row is the invariant; the count is the assertion. */
+  const paragraphsPerRow = (container: HTMLElement): number[] =>
+    stageRows(container).map((li) => li.querySelectorAll('p').length);
+
+  it('renders one on every row when no stage has anything to report', () => {
+    const { container } = renderLoader({ step: 'resolving', toolPlan: [], tools: [] });
+
+    expect(paragraphsPerRow(container)).toEqual([2, 2, 2, 2]);
+  });
+
+  it('still renders one on every row once the hint has arrived', () => {
+    const { container } = renderLoader({ step: 'gathering', toolPlan: ['get_track_info'] });
+
+    act(() => {
+      vi.advanceTimersByTime(15_000);
+    });
+    // Non-vacuity: without this the row count below would pass on a panel showing no hint at all.
+    expect(screen.getByText('15s in this stage')).toBeInTheDocument();
+
+    expect(paragraphsPerRow(container)).toEqual([2, 2, 2, 2]);
+  });
+
+  it('still renders one on every row after the pipeline advances and the hint disappears', () => {
+    // The 5.2s shift in the browser trace: the stage moved on, the hint went with it, and every
+    // row below moved up. The count has to be identical on both sides of that transition.
+    const { container, rerender, props } = renderLoader({ step: 'gathering' });
+
+    act(() => {
+      vi.advanceTimersByTime(15_000);
+    });
+    rerender(<BriefingLoader {...props} step="synthesizing" />);
+
+    expect(screen.queryByText('15s in this stage')).not.toBeInTheDocument();
+    expect(paragraphsPerRow(container)).toEqual([2, 2, 2, 2]);
+  });
+
+  it('pins the slot to a fixed height rather than letting its content size it', () => {
+    /*
+     * The one class assertion in this file, and it earns the exception: the height *is* the fix,
+     * and jsdom applies no stylesheet, so there is nothing else to read. `h-4` with `leading-4`
+     * means the box is 16px whether it holds nothing, one run or two, and `truncate` is what stops
+     * a long composite line wrapping to a second one at a narrow width — the other way the row
+     * could still change height.
+     */
+    const { container } = renderLoader({ step: 'gathering' });
+
+    for (const row of stageRows(container)) {
+      const status = row.querySelectorAll('p')[1]!;
+      expect(status.className).toContain('h-4');
+      expect(status.className).toContain('leading-4');
+      expect(status.className).toContain('truncate');
+    }
+  });
+});
+
 describe('accessibility', () => {
   it('announces the backend status message through a live region', () => {
     renderLoader({ statusMessage: 'Gathering race data...' });
@@ -598,12 +672,17 @@ describe('contrast', () => {
     // above still matches the paint.
     expect(texts).toContain('15 s in this stage'); // was zinc-500
     expect(texts).toContain('Elapsed'); // MegaStat's own label
+    // The separator between the two active sub-lines, now that they share one fixed-height line.
+    // It is painted text like any other and takes the same `zinc-400` from the line it sits in.
+    expect(texts).toContain('·');
 
     // Pinned: three stage labels (the active one is `text-white`, not a zinc class, so the helper
-    // correctly reports nothing for it), the two active sub-lines, the footer kicker, three chip
-    // labels, and the stat label. A drop here means a run lost its colour source and went
-    // unmeasured; a rise means new text arrived that nobody has judged.
-    expect(texts).toHaveLength(10);
+    // correctly reports nothing for it), the two active sub-lines and the separator between them,
+    // the footer kicker, three chip labels, and the stat label. A drop here means a run lost its
+    // colour source and went unmeasured; a rise means new text arrived that nobody has judged.
+    // The three *empty* status lines on the inactive rows are correctly absent: they hold no text
+    // node at all, which is the whole point of them.
+    expect(texts).toHaveLength(11);
   });
 
   it('does not measure the red kicker, because it is not a zinc run at all', () => {

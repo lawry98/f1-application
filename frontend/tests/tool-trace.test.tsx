@@ -75,6 +75,32 @@ const ROW_BACKDROP = blendOver('#ffffff', 0.02, PANEL_BACKDROP);
 /** WCAG AA for body-sized text. Everything the trace renders is under 19px. */
 const MIN_CONTRAST = 4.5;
 
+/**
+ * Every id the backend can actually put on the wire — one per `@tool` function, read off
+ * `backend/tools/` rather than off a trace we happened to watch.
+ *
+ * The list is spelled out here, and not derived from `TOOL_LABELS` itself, because a map
+ * checked against its own keys cannot fail. `get_championship_standings` shipped unmapped for a
+ * whole phase precisely because the only check was "the ones we remembered to write down": it
+ * is in `DEFAULT_TOOLS` in `backend/agent/prompts.py`, so it runs on *every* briefing whose
+ * planner falls back, and it rendered as `get championship standings` beside `Driver form`.
+ */
+const BACKEND_TOOL_IDS = [
+  // backend/tools/fastf1_tools.py
+  'get_track_info',
+  'get_recent_race_results',
+  'get_driver_form',
+  // backend/tools/f1_data_tools.py
+  'get_recent_top_finishers',
+  'get_circuit_winners',
+  // backend/tools/standings_tools.py
+  'get_championship_standings',
+  // backend/tools/weather_tools.py
+  'get_race_weather',
+  // backend/tools/search_tools.py
+  'search_f1_news',
+] as const;
+
 describe('toolLabel', () => {
   it('maps every backend tool to prose', () => {
     expect(toolLabel('get_track_info')).toBe('Track profile');
@@ -82,8 +108,21 @@ describe('toolLabel', () => {
     expect(toolLabel('get_driver_form')).toBe('Driver form');
     expect(toolLabel('get_recent_top_finishers')).toBe('Top finishers');
     expect(toolLabel('get_circuit_winners')).toBe('Circuit winners');
+    expect(toolLabel('get_championship_standings')).toBe('Championship standings');
     expect(toolLabel('get_race_weather')).toBe('Weather forecast');
     expect(toolLabel('search_f1_news')).toBe('News search');
+  });
+
+  it('leaves no backend tool falling through to its raw id', () => {
+    /*
+     * The regression guard for the inconsistency itself, not for any one label: the fallback is
+     * the *only* observable difference between a mapped and an unmapped tool, so a label that is
+     * merely the de-underscored id means the map missed that tool. It reads as prose beside real
+     * prose and nothing else catches it.
+     */
+    for (const id of BACKEND_TOOL_IDS) {
+      expect(toolLabel(id), `${id} has no display label`).not.toBe(id.replace(/_/g, ' '));
+    }
   });
 
   it('degrades an unmapped name to something readable rather than blank', () => {

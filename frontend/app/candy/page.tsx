@@ -58,7 +58,15 @@ const DEMO_CORNERS = [
 
 const SECTION = 'border-t border-white/10 px-6 py-16 md:px-12';
 const SECTION_LABEL = 'mb-10 text-[11px] uppercase tracking-[0.2em] text-zinc-400';
-const CAPTION = 'mt-3 text-xs text-zinc-500';
+/**
+ * `zinc-400`, not the `zinc-500` this shipped as.
+ *
+ * These captions are the styleguide's API notes — real text a reader is meant to read — so they
+ * are held to the same 4.5:1 small-text bar as every other resting neutral on the branch, not to
+ * the decorative exemption. `zinc-500` measured 4.12:1 on `base` and was the last cluster axe
+ * still reported on this route (20 nodes); `zinc-400` is 7.76:1.
+ */
+const CAPTION = 'mt-3 text-xs text-zinc-400';
 /** A cell that names the variant it holds, so a screenshot is self-describing. */
 const CELL = 'rounded-lg border border-white/5 bg-white/[0.02] p-6';
 

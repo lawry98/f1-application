@@ -28,6 +28,36 @@ vi.mock('@/components/landing/landing-nav', () => ({
   LandingNav: () => <nav aria-label="Main navigation" />,
 }));
 
+describe('the /briefing landmarks', () => {
+  /*
+   * axe reported `landmark-one-main` plus five orphaned `region` nodes on this route — the header
+   * band, the quick-select label, the circuit input, the empty state's heading and its
+   * instruction, none of them inside any landmark. `/teams` and `/credits` were already clean and
+   * both do the same thing: everything below the nav lives in one `<main>`. This route now
+   * matches them rather than inventing a structure.
+   *
+   * A structural assertion, not a geometric one — jsdom lays nothing out, so the column layout
+   * that `<main>` now has to carry (`flex flex-1 flex-col`, so the textured section can still
+   * claim the leftover viewport height) is only checkable in a browser and is checked there.
+   */
+  it('puts every content section inside one main landmark', () => {
+    const { getAllByRole, getByTestId } = render(<BriefingPage />);
+
+    const mains = getAllByRole('main');
+    expect(mains).toHaveLength(1);
+    expect(mains[0]).toContainElement(getByTestId('briefing-chat'));
+  });
+
+  it('leaves the nav outside it, so the two landmarks stay siblings', () => {
+    // A `<nav>` nested inside `<main>` still passes `region`, but it stops being a top-level
+    // navigation landmark for anyone jumping between them.
+    const { getByRole } = render(<BriefingPage />);
+
+    expect(getByRole('navigation')).not.toContainElement(getByRole('main'));
+    expect(getByRole('main')).not.toContainElement(getByRole('navigation'));
+  });
+});
+
 describe('the /briefing header band', () => {
   it('keeps its copy, verbatim', () => {
     // The sentence under the title is the page's only description of what it does. It survives

@@ -6,6 +6,7 @@ import { Expand } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { MegaStat } from '@/components/candy/mega-stat';
 import { cn } from '@/lib/utils';
+import { focusRingOffsetBase } from '@/lib/focus';
 import {
   teamColorButtonStyle,
   seasonsSince,
@@ -183,9 +184,9 @@ export function StickyTeamPanel({ activeTeam, onInspect }: StickyTeamPanelProps)
         lockstep.
 
         The layout is preserved by hoisting these children into the panel's own flex column, which
-        is the same `flex h-full flex-col` the removed wrapper was: the stat block keeps `flex-1
-        min-h-0` and both swap blocks are `flex-shrink-0`, exactly the distribution they had one
-        level down. jsdom lays nothing out, so no test in this file can confirm that — it is a
+        is the same `flex h-full flex-col` the removed wrapper was. All three are `flex-shrink-0`
+        and none of them grows — see the note on the championship block for why the stat no longer
+        takes `flex-1`. jsdom lays nothing out, so no test in this file can confirm that — it is a
         browser check.
       */}
       <AnimatePresence mode="wait">
@@ -222,8 +223,25 @@ export function StickyTeamPanel({ activeTeam, onInspect }: StickyTeamPanelProps)
       {/* Championship standing — brief item 10. The dossier carried none of this before,
               which left the one always-visible panel silent about the season it describes.
 
-              Deliberately outside the swap above: see the block comment on it. */}
-      <div className="flex min-h-0 flex-1 flex-col justify-center border-t border-zinc-800/60 px-4 py-4">
+              Deliberately outside the swap above: see the block comment on it.
+
+              **`flex-shrink-0`, not `flex-1 justify-center`, and the numbers are the argument.**
+              The dossier is `h-[calc(100vh-3.5rem)]` — 844px at 1440×900 — while its three blocks
+              only want 528px. As the column's one growing child this block absorbed all 316px of
+              that slack and then centred 124px of content inside 442px of padding box, so the
+              points stat sat in the middle of two 159px holes (measured in Chromium at 1440;
+              1280 is the same block in a 300px column and behaves identically). Not growing is
+              what closes them: a flex column's default `justify-content` is flex-start, so the
+              three blocks now pack from the top and the whole 316px falls below the CTA, where it
+              is the rail simply ending rather than a gap punched through the middle of it.
+
+              The two alternatives were tried in the browser and both only move the hole: giving
+              the *bottom* block the growth instead pins the CTA to the floor and opens the same
+              316px between the points bar and the `All-time` rule, and splitting the growth
+              between them reproduces the original two-void layout a block lower. `h-full` and
+              `overflow-hidden` stay on the panel root so a viewport short enough to under-run
+              528px still clips rather than spilling out of the sticky column. */}
+      <div className="flex flex-shrink-0 flex-col border-t border-zinc-800/60 px-4 py-4">
         {/* **No tick above this label, and that is a decision made from a screenshot.** The
                 first version put one here as well, to match the `All-time` block — but the
                 `MegaStat` immediately below brings its own tick above its own `POINTS` label, so
@@ -322,10 +340,18 @@ export function StickyTeamPanel({ activeTeam, onInspect }: StickyTeamPanelProps)
           </div>
 
           <div className="flex-shrink-0 px-4 pb-4">
+            {/* `focusRingOffsetBase`, because this button is *filled* — with the livery, or with
+                `#27272a` once `needsDamping` steps a bright one down — and a ring drawn hard
+                against a livery fill takes its contrast from that fill rather than from the page
+                (measured: red on Alpine's `#008bf6` is 1.42:1). The 2px `base` band separates the
+                two, and it is genuinely invisible here: sampled either side of this control the
+                dossier's backdrop reads `#09090b`, i.e. `base` itself, which is the condition
+                `lib/focus.ts` rule 3 attaches to using an offset at all. */}
             <Button
               onClick={onInspect}
               className={cn(
                 'w-full gap-2 text-xs font-medium transition-[opacity,transform] hover:opacity-90 active:scale-[0.96]',
+                focusRingOffsetBase,
                 ctaStyle.className,
               )}
               style={ctaStyle.style}

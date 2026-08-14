@@ -6,6 +6,11 @@ import { motion } from 'motion/react';
 import { X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+/* Both controls in this dialog are `variant="ghost"` — no fill — on a `bg-zinc-950` panel, which
+   is `base`. That is exactly the flush default's case: red is 4.01:1 straight against it and an
+   offset band would separate the ring from nothing. */
+import { focusRing } from '@/lib/focus';
 import { type Team } from '@/data/teams-data';
 
 const F1HeroScene = dynamic(() => import('@/components/3d/f1-hero-scene'), {
@@ -113,7 +118,7 @@ export function InspectModal({ team, onClose }: InspectModalProps) {
             size="icon"
             onClick={onClose}
             autoFocus
-            className="h-8 w-8 text-zinc-400 hover:text-white"
+            className={cn('h-8 w-8 text-zinc-400 hover:text-white', focusRing)}
             aria-label="Close inspector"
           >
             <X size={16} />
@@ -144,7 +149,7 @@ export function InspectModal({ team, onClose }: InspectModalProps) {
             variant="ghost"
             size="sm"
             onClick={onClose}
-            className="text-xs text-zinc-400 hover:text-zinc-200"
+            className={cn('text-xs text-zinc-400 hover:text-zinc-200', focusRing)}
           >
             Close
           </Button>

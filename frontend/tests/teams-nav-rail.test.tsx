@@ -16,6 +16,9 @@ import {
 import { TEAMS } from '@/data/teams-data';
 import { detach, inlineColouredText, restingTextNeutrals } from './zinc';
 
+/** `f1-red` from `tailwind.config.ts`. The ring colour the whole branch now uses. */
+const F1_RED = '#E10600';
+
 /** jsdom normalises any inline colour to `rgb(r, g, b)`; contrastRatio wants hex. */
 function rgbToHex(value: string): string {
   const parts = value.match(/\d+/g);
@@ -121,20 +124,69 @@ describe('TeamsNavRail', () => {
     }
   });
 
-  // Brief item 13 names focus indicators specifically. Tailwind's ring is a box-shadow that
-  // reads --tw-ring-color, so a team-derived ring has to set that property — an outlineColor
-  // would silently do nothing and leave the ring at Tailwind's default translucent blue.
-  it('gives every row a team-derived focus ring that clears non-text contrast', () => {
+  /*
+   * Phase 7 replaced this row's per-team `--tw-ring-color` with the branch-wide red ring, because
+   * `ring-mixed` settles red as *the* focus colour and eleven differently-coloured rings reopen the
+   * "which of these is the signal?" problem the rail's red selection marker already answers.
+   *
+   * **The offset is the part worth guarding, and it is the reason this test still exists.** The
+   * active row paints `bg-zinc-800/60` edge to edge, and `f1-red` on that fill measures exactly
+   * 3.00:1 — WCAG 2.4.11's floor with nothing left over. Flush, the indicator is one nudge to the
+   * highlight away from failing silently. The 2px band holds the ring off the fill and puts it
+   * against the page, where red is 4.01:1.
+   *
+   * So this asserts the offset explicitly rather than only the ring: dropping
+   * `focus-visible:ring-offset-2` is the regression that would not otherwise show up, and it is a
+   * one-token edit away at all times.
+   */
+  it('gives every row the branch focus ring, held off the active highlight by an offset', () => {
     expect(TEAMS).toHaveLength(11);
     renderRail();
+
     for (const team of TEAMS) {
       const link = screen.getByRole('link', { name: new RegExp(team.shortName, 'i') });
-      const ring = link.style.getPropertyValue('--tw-ring-color');
-      expect(ring, `${team.shortName} has no --tw-ring-color`).not.toBe('');
-      expect(contrastRatio(ring, DARK_BG), `${team.shortName} ring ${ring}`).toBeGreaterThanOrEqual(
-        MIN_RING_CONTRAST,
-      );
+      const label = `${team.shortName} row`;
+
+      expect(link.className, `${label} ring width`).toContain('focus-visible:ring-2');
+      expect(link.className, `${label} ring colour`).toContain('focus-visible:ring-f1-red');
+      expect(link.className, `${label} ring offset`).toContain('focus-visible:ring-offset-2');
+      expect(link.className, `${label} offset colour`).toContain('focus-visible:ring-offset-base');
+
+      // The team colour must not come back as a ring: that is the design this replaced, and a
+      // stray inline property would override the class and quietly reinstate it.
+      expect(link.style.getPropertyValue('--tw-ring-color'), `${label} inline ring`).toBe('');
     }
+  });
+
+  /*
+   * The premise behind the offset, asserted rather than left in a comment — and it is *not* the
+   * "exactly 3.00, no headroom" story it is easy to tell here.
+   *
+   * 3.00 is red against **pure `zinc-800`**, and the rail never paints that. The active row is
+   * `bg-zinc-800/60` over the page, which composites to `#1b1b1e`, and red on *that* is **3.46** —
+   * over the bar with 0.46 to spare. Measuring the fill's own token instead of the composite is
+   * the "right colour, wrong background" mistake `CLAUDE.md` records shipping three times; it lands
+   * in the safe direction here, but it is still the wrong number.
+   *
+   * So the offset is defence in depth rather than a rescue: it lifts 3.46 to 4.01, and it is free
+   * because the rail genuinely sits on `base`, so the band is invisible. Both figures are pinned —
+   * if the flush value ever drops under the bar, the offset stops being optional and this comment
+   * is wrong.
+   */
+  it('pins the margin the ring has flush, and the margin the offset buys', () => {
+    const highlight = railStandingBackdrop();
+    expect(highlight, 'the highlight is a composite, not the raw token').not.toBe(RAIL_ACTIVE_FILL);
+
+    const flush = contrastRatio(F1_RED, highlight);
+    const offset = contrastRatio(F1_RED, DARK_BG);
+
+    expect(flush, `red on ${highlight}`).toBeGreaterThanOrEqual(MIN_RING_CONTRAST);
+    expect(offset, 'red on the page').toBeGreaterThan(flush);
+    expect(offset).toBeGreaterThanOrEqual(MIN_RING_CONTRAST);
+
+    // The raw token is the number a reader will reach for by mistake. Pin that it is the stricter
+    // one, so nobody "corrects" the composite figure back to it.
+    expect(contrastRatio(F1_RED, RAIL_ACTIVE_FILL)).toBeLessThan(flush);
   });
 
   // This assertion used to read `contrastRatio(..., DARK_BG)` and passed for all eleven teams

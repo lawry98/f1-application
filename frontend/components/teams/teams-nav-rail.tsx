@@ -5,7 +5,8 @@ import { motion, useInView } from 'motion/react';
 
 import { TEAMS, STANDINGS_AS_OF, type Team } from '@/data/teams-data';
 import { cn } from '@/lib/utils';
-import { railStandingColor, ringOnDark } from '@/lib/team-utils';
+import { focusRingOffsetBase } from '@/lib/focus';
+import { railStandingColor } from '@/lib/team-utils';
 import { TeamMonogramTile } from './team-monogram-tile';
 
 interface TeamsNavRailProps {
@@ -89,20 +90,33 @@ function NavLink({
       className={cn(
         // `group` exists for the left rule below, which reveals on hover as well as on selection.
         'group relative flex w-full items-center gap-2.5 rounded-r-md px-4 py-2.5 text-left text-sm no-underline transition-colors duration-200',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950',
+        // **`focusRingOffsetBase`, and the offset is the whole decision.** The branch-wide rule is
+        // a flush red ring (`focusRing`); this row is the one surface with enough behind it to be
+        // worth the band. The active row paints `bg-zinc-800/60` edge to edge, which composites to
+        // `#1b1b1e`, and `f1-red` there is **3.46:1** — over WCAG 2.4.11's bar, but the thinnest
+        // margin any ring on this branch has. The 2px band lifts it to 4.01:1 against the page.
+        //
+        // Note the number that is *not* the justification: red on **pure `zinc-800`** is 3.00:1,
+        // and it is tempting to quote because the class says `zinc-800`. The rail never paints
+        // that colour — the fill is 60% over the page. Measuring a translucent surface by its own
+        // token is the "right colour, wrong background" error `CLAUDE.md` records shipping three
+        // times. `teams-nav-rail.test.tsx` pins both figures so neither drifts.
+        //
+        // `base` is the right offset colour because the rail genuinely sits on it: sampled either
+        // side of a row the backdrop reads `#09090b`, not the `#212124` topo composite that makes
+        // an offset band a visible halo elsewhere (see rule 3 in `lib/focus.ts`). So the band is
+        // invisible here and the separation is free.
+        //
+        // The per-team `--tw-ring-color` this used to carry is gone with it. `ring-mixed` settles
+        // red as the branch's ring, and eleven differently-coloured rings were the same "which of
+        // these is the signal?" problem the red selection rule below already fixed for the rail's
+        // resting state.
+        focusRingOffsetBase,
         // `zinc-400`, not `zinc-500`: the 500 rung is 4.12:1 on this page background, so every
         // inactive row was under AA. There is no rung between it and 400's 7.44:1, which is why
         // the row's own hierarchy is carried by size and weight rather than by a dimmer tone.
         isActive ? 'text-white' : 'text-zinc-400 hover:text-zinc-200',
       )}
-      // A team-derived focus ring, held to non-text contrast rather than the text bar so it
-      // still reads as the livery instead of a lightened wash of it.
-      //
-      // Tailwind's `ring-*` utilities are box-shadow, not outline, and take their colour from
-      // the `--tw-ring-color` custom property. Setting `outlineColor` here would do nothing
-      // and would leave the ring at Tailwind's default translucent blue, because there is no
-      // `ring-<color>` class on this element any more.
-      style={{ '--tw-ring-color': ringOnDark(team.color) } as React.CSSProperties}
       // `initial={false}` under reduced motion, not `initial={hidden}` with a zero duration:
       // the latter still commits `opacity: 0` to the DOM for one frame before motion overwrites
       // it, and on the page's primary navigation a frame of invisible links is worth avoiding.

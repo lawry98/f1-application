@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DotPattern } from '@/components/ui/dot-pattern';
 import { cn } from '@/lib/utils';
+import { focusRing, focusRingOnRedFill } from '@/lib/focus';
 import { TEAMS } from '@/data/teams-data';
 import { TeamLogo } from './team-logo';
 import { TeamMonogramTile } from './team-monogram-tile';
@@ -146,9 +147,19 @@ export function TeamsHero({ onSelectTeam }: TeamsHeroProps) {
           {/* `pointer-events-auto`: the only interactive child of a wrapper that just turned
               pointer events off for the whole content block. Without it the hero's primary CTA
               becomes the twelfth casualty of the fix for the other eleven. */}
+          {/* `focusRingOnRedFill`, because this pill *is* an `f1-red` fill: a red ring on it is
+              1.00:1 — not a weak indicator, an absent one — while `ink` on the same fill is
+              4.50:1. The offset takes `base`; sampled around this button the hero backdrop reads
+              between `#0c0e12` and `#19191b`, so the band is a faint dark halo at worst (1.24:1
+              against the lightest of those) rather than a visible border, which is the trade
+              `lib/focus.ts` names for a red-filled control. */}
           <Button
             size="lg"
-            className="pointer-events-auto mt-4 gap-2 bg-f1-red text-white hover:bg-f1-red/90"
+            className={cn(
+              'pointer-events-auto mt-4 gap-2 bg-f1-red text-white hover:bg-f1-red/90',
+              focusRingOnRedFill,
+              'focus-visible:ring-offset-base',
+            )}
             onClick={() =>
               document.getElementById(`team-${TEAMS[0]!.id}`)?.scrollIntoView({
                 behavior: reducedMotion ? 'auto' : 'smooth',
@@ -207,7 +218,21 @@ export function TeamsHero({ onSelectTeam }: TeamsHeroProps) {
             aria-label={`Jump to ${team.shortName}`}
             className={cn(
               'group relative transition-transform duration-150 active:scale-[0.96]',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 lg:focus-visible:ring-inset',
+              // `focusRing` — the flush default. These buttons carry no fill of their own (the
+              // hover wash is a separate absolutely-positioned span), so there is nothing for a
+              // ring to be dropped onto and nothing an offset would buy; sampled around a column
+              // the hero backdrop runs `#09090b`–`#0b0e20`, where red is 3.85–4.01:1. This
+              // replaces `ring-zinc-400`, which was never the branch's ring colour.
+              focusRing,
+              // **`ring-inset` at `lg` is kept, and it is a geometry constraint rather than a
+              // fourth ring shape.** Below `lg` these are 11 logo tiles in a grid and an outset
+              // ring sits in the gaps between them. At `lg` the same button becomes a full-height
+              // livery column inside an `absolute inset-0` container, flush against its
+              // neighbours and against the hero's own edges — an outset ring there is drawn on
+              // top of the adjacent columns and clipped at the hero's top and bottom, i.e. a ring
+              // on three sides. Inset keeps all four. The colour and width still come from
+              // `focusRing`, so this is that ring painted inside, not a different one.
+              'lg:focus-visible:ring-inset',
               'lg:h-full lg:flex-1 lg:active:scale-100',
             )}
           >

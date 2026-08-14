@@ -211,7 +211,13 @@ export function BriefingLoader({
                     />
                   )}
                 </div>
-                <div className={cn(!isLast && 'pb-4')}>
+                {/*
+                  No `pb-4` any more: the status line below **is** the gap. Reserving it costs
+                  18px (a 2px `mt-0.5` over a 16px box) where the padding it replaces was 16, so
+                  the rows sit where they always did — the sub-line now renders *into* the gap
+                  instead of adding to it.
+                */}
+                <div>
                   {/* A pending stage used to be `zinc-600` — 2.60:1 on this page's backdrop, and it
                       names a real upcoming stage rather than decorating one, so dimness was not
                       free. `zinc-400` (6.24:1) is the branch floor and every state now sits on or
@@ -231,25 +237,48 @@ export function BriefingLoader({
                   >
                     {label}
                   </p>
-                  {state === 'active' && (
-                    <>
-                      {/* zinc-400, not the zinc-500 these two shipped at: at 11px they are small
-                          text held to 4.5:1, and zinc-500 measures 4.11:1 on bare base and 3.32:1
-                          once the page's topo texture lightens the backdrop to rgb(33, 33, 36). */}
-                      {stageStep === 'gathering' && (
-                        <p className="mt-0.5 text-[11px] tabular-nums text-zinc-400">
-                          {toolPlan.length > 0
-                            ? `${returned} of ${toolPlan.length} tools returned`
-                            : `${returned} ${returned === 1 ? 'tool' : 'tools'} returned`}
-                        </p>
-                      )}
-                      {stageElapsed >= STAGE_HINT_AFTER_MS && (
-                        <p className="mt-0.5 text-[11px] tabular-nums text-zinc-400">
-                          {Math.floor(stageElapsed / 1000)}s in this stage
-                        </p>
-                      )}
-                    </>
-                  )}
+                  {/*
+                    **The status line is unconditional, and that is the whole fix.** It used to be
+                    two `<p>`s that mounted and unmounted as the run progressed, and measured in
+                    Chromium at 1440x1600 against the fake stream that cost 0.001064 at 4.34s (the
+                    stage hint crossing its 3s threshold) and 0.000983 at 5.21s (the stage moving
+                    on and taking the hint with it) — 0.002047 of layout shift, moving three stage
+                    rows and the tool-trace footer, on a page whose spec criterion is CLS 0.
+
+                    So the box exists on every row from first render and never changes size:
+                    `h-4` with `leading-4` is 16px whether it holds nothing, one run or two, and
+                    `truncate` is what stops the composite line wrapping to a second one at a
+                    narrow width — the remaining way the row could still have changed height.
+
+                    Reserving it on *every* row, not just the active one, is deliberate. With the
+                    slot on the active row alone the list height stays constant, but the row that
+                    *becomes* active still jumps up by the slot as the row above it gives it back.
+                    Unconditional is the only shape with no moving parts at all.
+
+                    Both runs on one line rather than stacked, joined by a separator, because two
+                    lines would mean reserving two — 36px of mostly-empty column on four rows. The
+                    strings themselves are untouched, and each stays its own element so a reader
+                    (and the assertions that shipped with them) still finds them separately.
+
+                    zinc-400, not the zinc-500 these shipped at: at 11px they are small text held
+                    to 4.5:1, and zinc-500 measures 4.11:1 on bare base and 3.32:1 once the page's
+                    topo texture lightens the backdrop to rgb(33, 33, 36).
+                  */}
+                  <p className="mt-0.5 h-4 truncate text-[11px] leading-4 tabular-nums text-zinc-400">
+                    {state === 'active' && stageStep === 'gathering' && (
+                      <span>
+                        {toolPlan.length > 0
+                          ? `${returned} of ${toolPlan.length} tools returned`
+                          : `${returned} ${returned === 1 ? 'tool' : 'tools'} returned`}
+                      </span>
+                    )}
+                    {state === 'active' &&
+                      stageStep === 'gathering' &&
+                      stageElapsed >= STAGE_HINT_AFTER_MS && <span> · </span>}
+                    {state === 'active' && stageElapsed >= STAGE_HINT_AFTER_MS && (
+                      <span>{Math.floor(stageElapsed / 1000)}s in this stage</span>
+                    )}
+                  </p>
                 </div>
               </li>
             );

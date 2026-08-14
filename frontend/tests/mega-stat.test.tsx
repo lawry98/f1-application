@@ -146,10 +146,41 @@ describe('MegaStat', () => {
     expect(svg?.closest('[aria-hidden="true"]')).not.toBeNull();
   });
 
-  it('renders no Scribble overlay by default', () => {
+  /*
+   * Phase 7 made `Scribble` **always mounted**, so "no overlay" can no longer mean "no `svg`".
+   *
+   * The element has to stay in the tree because its presence is what keeps the tree *shape*
+   * constant: when it was `scribble ? <Scribble>{box}</Scribble> : box`, a call site that toggles
+   * the mark (`/teams` gives it to the championship leader alone) changed the element type above
+   * the counting box on every swap, so React rebuilt the box and the numeral dropped back to its
+   * literal `0`. That was the whole bug.
+   *
+   * So what must hold now is that the mark is *withheld*, and the withholding is `display: none`
+   * rather than transparency — an invisible-but-laid-out svg still intersects the viewport, and
+   * `Scribble`'s `whileInView` is `once`, so it would burn its single draw while hidden and a stat
+   * that later became the leader would show an already-finished mark.
+   *
+   * jsdom computes no Tailwind, so `toBeVisible()` cannot see any of that; the class is the only
+   * honest thing to assert here, and it is exactly the token whose removal reinstates the bug.
+   */
+  it('withholds the Scribble mark by default while keeping its element mounted', () => {
     const { container } = render(<MegaStat value={1} label="Position" />);
 
-    expect(container.querySelector('svg')).not.toBeInTheDocument();
+    const svg = container.querySelector('svg');
+    expect(svg, 'the element stays mounted so the tree shape never changes').toBeInTheDocument();
+
+    expect(
+      container.querySelector('.\\[\\&_svg\\]\\:hidden'),
+      'the mark must be withheld with display:none, not merely made transparent',
+    ).not.toBeNull();
+  });
+
+  it('paints the Scribble mark when one is asked for', () => {
+    // The other half of the pair above: withholding must be conditional, not permanent.
+    const { container } = render(<MegaStat value={1} label="Position" scribble="p1" />);
+
+    expect(container.querySelector('svg')).toBeInTheDocument();
+    expect(container.querySelector('.\\[\\&_svg\\]\\:hidden')).toBeNull();
   });
 
   it('scopes the Scribble overlay to the counted value only, not the ordinal or the label', () => {

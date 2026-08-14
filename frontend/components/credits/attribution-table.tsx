@@ -1,6 +1,7 @@
 import Image from 'next/image';
 
 import { cn } from '@/lib/utils';
+import { focusRing } from '@/lib/focus';
 import { type CreditRow } from '@/lib/credits';
 
 /**
@@ -24,9 +25,18 @@ const LABEL = 'text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-40
  */
 const CELL = 'border-t border-zinc-800 py-2 pr-2 align-middle text-zinc-300';
 const SMALL_CELL = cn(CELL, 'text-[10px] sm:text-xs');
-/** The link treatment /teams' credits footer already uses. */
-const LINK =
-  'rounded text-zinc-300 underline decoration-zinc-700 underline-offset-2 transition-colors duration-200 hover:text-white hover:decoration-zinc-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500';
+/**
+ * The link treatment /teams' credits footer already uses.
+ *
+ * The ring comes from `lib/focus.ts` rather than being restated, and it is red rather than the
+ * `ring-zinc-500` this shipped with: red measures 4.01:1 on `/credits`' bare `bg-zinc-950`, over
+ * WCAG 2.4.11's 3:1 non-text bar. Flush — a table cell link is not a filled control, so there is
+ * nothing for an offset band to hold the ring off.
+ */
+const LINK = cn(
+  'rounded text-zinc-300 underline decoration-zinc-700 underline-offset-2 transition-colors duration-200 hover:text-white hover:decoration-zinc-400',
+  focusRing,
+);
 
 /**
  * Photographs are square crops, so a square box is right. Logos are horizontal lockups running

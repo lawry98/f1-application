@@ -90,6 +90,25 @@ const config: Config = {
         /** Expo-out. The house easing for every reveal. */
         'out-expo': 'cubic-bezier(0.16, 1, 0.3, 1)',
       },
+      transitionDuration: {
+        /**
+         * The landing page's section-tone crossfade, which the spec names as "a 600 ms
+         * `background-color` transition on a wrapper".
+         *
+         * **A real token because the arbitrary form does not work in this project.** The first
+         * version of this shipped as `duration-[600ms]` and rendered at **150 ms**: the class was
+         * on the element, but no rule containing `600ms` existed in any of the 780 generated
+         * rules, so the element fell through to the 150 ms that `transition-[background-color]`
+         * sets for itself. Tailwind here emits the standard steps (`duration-150` … `duration-700`)
+         * and does **not** emit arbitrary durations, so the utility was silently inert. Surviving a
+         * clean `.next` wipe and a full rebuild is what ruled out a stale JIT cache.
+         *
+         * The failure is invisible from jsdom, which computes no CSS, and invisible from a
+         * screenshot, which cannot see a duration — it took reading `transitionDuration` off the
+         * live element. Adding the step here makes the number greppable and generated.
+         */
+        600: '600ms',
+      },
       borderRadius: {
         lg: 'var(--radius)',
         md: 'calc(var(--radius) - 2px)',

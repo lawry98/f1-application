@@ -11,7 +11,10 @@ const TECH_STACK = [
 
 export function LandingBuiltWith() {
   return (
-    <section className="border-y border-zinc-800/60 bg-zinc-950 py-12" aria-label="Built with">
+    // No `bg-*`: `app/page.tsx` wraps every landing section in a `LandingSectionTheme` that owns
+    // the surface colour, and a background here would paint over it. This strip's tone is `base`,
+    // which is the same #09090B the `bg-zinc-950` here used to paint — a rename, not a change.
+    <section className="border-y border-zinc-800/60 py-12" aria-label="Built with">
       <div className="container mx-auto max-w-7xl px-4">
         <BlurFadeReduced inView delay={0} direction="up">
           <p className="mb-8 text-center text-xs font-semibold uppercase tracking-widest text-zinc-400">

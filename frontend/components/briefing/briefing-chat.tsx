@@ -4,9 +4,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { CircuitGlow } from '@/components/candy/circuit-glow';
 import { RedactedReveal } from '@/components/candy/redacted-reveal';
+import { focusRing, focusRingOnRedFill } from '@/lib/focus';
 import { useBriefing } from '@/hooks/use-briefing';
 import { useRaces, roundFor } from '@/hooks/use-races';
 import { toPoints } from '@/lib/circuit-geometry';
+import { cn } from '@/lib/utils';
 import monaco from '@/data/circuits/mc-1929.json';
 import { BriefingCard } from './briefing-card';
 import { BriefingCircuitBand } from './briefing-circuit-band';
@@ -80,14 +82,48 @@ export function BriefingChat() {
              * is a variant class, so `restingTextNeutrals` reports nothing about it.
              * `placeholderNeutrals` in `tests/zinc.ts` exists for exactly this run.
              */
-            className="flex-1 border-zinc-700 bg-zinc-800 text-white placeholder:text-zinc-400 focus-visible:ring-f1-red"
+            className={cn(
+              'flex-1 border-zinc-700 bg-zinc-800 text-white placeholder:text-zinc-400',
+              /*
+               * The branch's shared ring, from `lib/focus.ts` — this line used to name the colour
+               * and inherit `components/ui/input.tsx`'s `ring-1`, which was the only 1px ring left
+               * on the branch. `cn()` is what makes the swap work: the token restates `ring-2`, so
+               * twMerge drops the vendored `ring-1` on order rather than needing the vendored file
+               * edited.
+               *
+               * Flush, no offset, for the same measured reason as the quick-select chips directly
+               * above: a ring is an outer box-shadow, so it is painted outside the field's border
+               * box and lands not on the field's own `bg-zinc-800` fill but on the `bg-zinc-900`
+               * form card holding both controls — 3.57:1, over WCAG 2.4.11's 3:1 non-text bar.
+               * Neither offset token names `zinc-900`, and a band of some other colour there is a
+               * halo rather than a separator.
+               */
+              focusRing,
+            )}
             disabled={loading}
             aria-label="Circuit name"
           />
           <Button
             onClick={() => submit()}
             disabled={loading || !query.trim()}
-            className="bg-f1-red font-semibold text-white hover:bg-red-700 disabled:bg-zinc-700"
+            className={cn(
+              'bg-f1-red font-semibold text-white hover:bg-red-700 disabled:bg-zinc-700',
+              /*
+               * The inverse ring, because this control is **filled with `f1-red`**: a red ring on
+               * a red fill is 1.00:1, an absent indicator rather than a weak one, where `ink` on
+               * that fill is 4.50:1. It replaces `components/ui/button.tsx`'s vendored
+               * `ring-1 ring-ring`, which resolves to a light grey — visible, but the only
+               * off-branch ring left on the page.
+               *
+               * The offset colour has to name what is really behind the button, and here that is
+               * neither `base` nor `base-warm` but the form card's own `bg-zinc-900`, so it is
+               * named at the call site — the same thing `/credits` does with `ring-offset-base`.
+               * `focusRingOnRedFill` ships without an offset colour precisely so this cannot be
+               * inherited wrong; leaving it unset would fall back to Tailwind's default white.
+               */
+              focusRingOnRedFill,
+              'focus-visible:ring-offset-zinc-900',
+            )}
           >
             {loading ? 'Generating...' : 'Generate'}
           </Button>

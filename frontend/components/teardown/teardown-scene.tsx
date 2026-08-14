@@ -11,6 +11,7 @@ import { ChevronDown } from 'lucide-react';
 import { motion, useReducedMotion, useScroll, useTransform } from 'motion/react';
 import { useReducedMotionSafe } from '@/hooks/use-reduced-motion-safe';
 import { cn } from '@/lib/utils';
+import { focusRing } from '@/lib/focus';
 import { LaurelFlourish } from '@/components/candy/laurel-flourish';
 import { RedactedReveal } from '@/components/candy/redacted-reveal';
 import { TeardownOutro } from '@/components/teardown/teardown-outro';
@@ -408,36 +409,6 @@ export function TeardownScene() {
   // ── Main scene ─────────────────────────────────────────────────────────────
   return (
     <div className="bg-zinc-950">
-      {/*
-       * The loading screen is an overlay, not an early return, and that is load-bearing rather than
-       * cosmetic. `useScroll({ target: containerRef })` resolves its target in a layout effect keyed
-       * on the ref *object*, whose identity never changes — verified in
-       * framer-motion/dist/es/value/use-scroll.mjs, where the effect's dep array is `[start]` and
-       * `start` closes over `[container, target, offset]`. A ref that is null when that effect runs
-       * and attaches on some later render is never re-read; motion logs "Target ref is defined but
-       * not hydrated" once and the progress value stays pinned at 0 forever. Returning a loading
-       * screen instead of the scroll container did exactly that — the container mounted only after
-       * 192 images resolved, long after the effect had given up.
-       */}
-      {!isLoaded && (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-0 bg-zinc-950">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-zinc-400">
-            Loading frames
-          </p>
-          <p className="mb-6 font-mono text-5xl font-bold tabular-nums text-ink">
-            {loadedCount}
-            <span className="text-zinc-400">/{FRAME_COUNT}</span>
-          </p>
-          {/* Progress bar */}
-          <div className="h-[3px] w-72 overflow-hidden rounded-full bg-zinc-800">
-            <div
-              className="h-full rounded-full bg-f1-red"
-              style={{ width: `${loadPct}%`, transition: 'width 80ms linear' }}
-            />
-          </div>
-          <p className="mt-5 text-xs text-zinc-400">Preparing teardown sequence…</p>
-        </div>
-      )}
       {/* ── Header ──
        * `bg-zinc-950/95`, not the `/80` this shipped with, and the change is a contrast one. At /80
        * nothing scrolled under the header but the dark frame sequence; the outro below it puts
@@ -450,7 +421,14 @@ export function TeardownScene() {
         <div className="container mx-auto flex items-center gap-3 px-4 py-2.5 sm:gap-4">
           <Link
             href="/"
-            className="flex-shrink-0 text-xs text-zinc-400 transition-colors hover:text-zinc-300"
+            /* The page's only other focusable, and it had no `focus-visible` treatment at all —
+               it fell through to the UA outline. Unfilled text on the header's `bg-zinc-950/95`
+               band, so the flush default: red is 4.01:1 against `#09090B` and there is no fill
+               here for an offset to hold it off. */
+            className={cn(
+              'flex-shrink-0 text-xs text-zinc-400 transition-colors hover:text-zinc-300',
+              focusRing,
+            )}
           >
             {/* The label is hidden rather than shortened below `sm`: at 390px the 24px title, the
                 divider and the 120px slot already fill the row, and a wrapped header is the exact
@@ -539,235 +517,294 @@ export function TeardownScene() {
         </div>
       </header>
 
-      {/* ── Scroll container (500vh gives ~192 frames of range) ── */}
-      <div ref={containerRef} style={{ height: `${SCROLL_CONTAINER_VH}vh` }}>
-        {/* Sticky viewport — stays in place as user scrolls */}
-        <div className="sticky top-0 h-screen">
-          {/*
-           * The car sits in its own absolutely-positioned layer rather than in the sticky element's
-           * flex flow, and the scroll hint sits in a second one, because the FLIP maths needs a box
-           * whose rect is pure layout — see `measureDock`.
-           *
-           * This layer never becomes `position: fixed`. It does not need to: what persists over the
-           * outro is the still in the header slot, and the header is already fixed. An earlier cut
-           * did switch this layer to `fixed` at the end, which worked but bought nothing once the
-           * still existed.
-           *
-           * z-40 puts the flying car above the z-30 header, which is what "docks *into* the header"
-           * means: it lands on top of the header's own backdrop rather than sliding behind it.
-           */}
-          <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center">
+      {/*
+       * ── `<main>` ──
+       *
+       * Everything below the header is one landmark. Before it, axe reported a single `region`
+       * violation on this page with **16 nodes**: the page's only landmarks were this component's
+       * `<header>` and the outro's own `<section>`, so the loading overlay, the canvas, all four
+       * callout blocks, the scroll hint and the progress bar were content belonging to no landmark
+       * at all — the failure the rule exists to catch, since a screen-reader user navigating by
+       * landmark could reach the title and the outro and nothing in between.
+       *
+       * It is added here rather than in `app/teardown/page.tsx` — where `/`, `/teams` and
+       * `/credits` each put theirs — because that file renders this component through a
+       * `next/dynamic` boundary whose `loading` fallback would then sit *outside* the landmark it
+       * is meant to be inside. Nothing is renamed, removed or relabelled to add it: the `<header>`
+       * stays a sibling (inside `<main>` it would stop being a `banner`), the outro keeps its
+       * `region` and its `aria-labelledby`, and the progressbar keeps its name.
+       *
+       * `<main>` is a plain static block box, so it creates no stacking context and no containing
+       * block: the fixed header, the fixed progress readout and the `sticky top-0` viewport below
+       * all resolve exactly as they did, and the `z-50`/`z-40`/`z-30` ordering still compares in
+       * the root stacking context. Verified in Chromium at 1440 and 390.
+       */}
+      <main>
+        {/*
+         * The loading screen is an overlay, not an early return, and that is load-bearing rather
+         * than cosmetic. `useScroll({ target: containerRef })` resolves its target in a layout
+         * effect keyed on the ref *object*, whose identity never changes — verified in
+         * framer-motion/dist/es/value/use-scroll.mjs, where the effect's dep array is `[start]`
+         * and `start` closes over `[container, target, offset]`. A ref that is null when that
+         * effect runs and attaches on some later render is never re-read; motion logs "Target ref
+         * is defined but not hydrated" once and the progress value stays pinned at 0 forever.
+         * Returning a loading screen instead of the scroll container did exactly that — the
+         * container mounted only after 192 images resolved, long after the effect had given up.
+         *
+         * It moved from before the `<header>` to here as part of adding the landmark, and the move
+         * is inert: it is `fixed inset-0 z-50`, so its position in the document affects neither its
+         * box nor its paint order against the `z-30` header.
+         */}
+        {!isLoaded && (
+          <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-0 bg-zinc-950">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-zinc-400">
+              Loading frames
+            </p>
+            <p className="mb-6 font-mono text-5xl font-bold tabular-nums text-ink">
+              {loadedCount}
+              <span className="text-zinc-400">/{FRAME_COUNT}</span>
+            </p>
+            {/* Progress bar */}
+            <div className="h-[3px] w-72 overflow-hidden rounded-full bg-zinc-800">
+              <div
+                className="h-full rounded-full bg-f1-red"
+                style={{ width: `${loadPct}%`, transition: 'width 80ms linear' }}
+              />
+            </div>
+            <p className="mt-5 text-xs text-zinc-400">Preparing teardown sequence…</p>
+          </div>
+        )}
+
+        {/* ── Scroll container (500vh gives ~192 frames of range) ── */}
+        <div ref={containerRef} style={{ height: `${SCROLL_CONTAINER_VH}vh` }}>
+          {/* Sticky viewport — stays in place as user scrolls */}
+          <div className="sticky top-0 h-screen">
             {/*
-             * Canvas wrapper: sized to preserve 800×420 aspect ratio while respecting
-             * both 92vw (width) and 82vh (height) constraints simultaneously.
-             * `min(92vw, calc(82vh * 800 / 420))` picks whichever constraint binds first.
-             * `mt-12` keeps the resting car clear of the fixed header, as before.
+             * The car sits in its own absolutely-positioned layer rather than in the sticky element's
+             * flex flow, and the scroll hint sits in a second one, because the FLIP maths needs a box
+             * whose rect is pure layout — see `measureDock`.
+             *
+             * This layer never becomes `position: fixed`. It does not need to: what persists over the
+             * outro is the still in the header slot, and the header is already fixed. An earlier cut
+             * did switch this layer to `fixed` at the end, which worked but bought nothing once the
+             * still existed.
+             *
+             * z-40 puts the flying car above the z-30 header, which is what "docks *into* the header"
+             * means: it lands on top of the header's own backdrop rather than sliding behind it.
              */}
-            <div
-              ref={carBoxRef}
-              className="relative mt-12"
-              style={{
-                width: 'min(92vw, calc(82vh * 800 / 420))',
-                aspectRatio: '800 / 420',
-              }}
-            >
-              <motion.div
-                className="absolute inset-0"
+            <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center">
+              {/*
+               * Canvas wrapper: sized to preserve 800×420 aspect ratio while respecting
+               * both 92vw (width) and 82vh (height) constraints simultaneously.
+               * `min(92vw, calc(82vh * 800 / 420))` picks whichever constraint binds first.
+               * `mt-12` keeps the resting car clear of the fixed header, as before.
+               */}
+              <div
+                ref={carBoxRef}
+                className="relative mt-12"
                 style={{
-                  transform: carTransform,
-                  opacity: canvasOpacity,
-                  // Centre origin is what makes the FLIP maths a plain centre-to-centre delta —
-                  // with any other origin the translate would have to compensate for the scale.
-                  transformOrigin: 'center center',
-                  // Under reduced motion `dockProgress` and `canvasOpacity` both step rather than
-                  // ramp, so this transition is what turns the step into the "simple fade into the
-                  // slot at the end" the spec asks for. Under normal motion both are continuous and
-                  // a transition would fight the scrub, so it is not applied.
-                  //
-                  // The safe hook, unlike the two `useTransform`s above: this is a rendered `style`
-                  // entry, and motion's own hook would emit it on the client's first render but not
-                  // on the server's, which React reports as a mismatched `style` attribute.
-                  transition: prefersReducedMotionSafe ? 'opacity 400ms ease' : undefined,
+                  width: 'min(92vw, calc(82vh * 800 / 420))',
+                  aspectRatio: '800 / 420',
                 }}
               >
-                {/* Canvas — fills the wrapper exactly */}
-                <canvas
-                  ref={canvasRef}
-                  width={800}
-                  height={420}
-                  className="absolute inset-0 h-full w-full"
-                />
+                <motion.div
+                  className="absolute inset-0"
+                  style={{
+                    transform: carTransform,
+                    opacity: canvasOpacity,
+                    // Centre origin is what makes the FLIP maths a plain centre-to-centre delta —
+                    // with any other origin the translate would have to compensate for the scale.
+                    transformOrigin: 'center center',
+                    // Under reduced motion `dockProgress` and `canvasOpacity` both step rather than
+                    // ramp, so this transition is what turns the step into the "simple fade into the
+                    // slot at the end" the spec asks for. Under normal motion both are continuous and
+                    // a transition would fight the scrub, so it is not applied.
+                    //
+                    // The safe hook, unlike the two `useTransform`s above: this is a rendered `style`
+                    // entry, and motion's own hook would emit it on the client's first render but not
+                    // on the server's, which React reports as a mismatched `style` attribute.
+                    transition: prefersReducedMotionSafe ? 'opacity 400ms ease' : undefined,
+                  }}
+                >
+                  {/* Canvas — fills the wrapper exactly */}
+                  <canvas
+                    ref={canvasRef}
+                    width={800}
+                    height={420}
+                    className="absolute inset-0 h-full w-full"
+                  />
 
-                {/* ── Corner-marker callouts ── */}
-                {LABELS.map((label, i) => {
-                  const visible = scrollPct >= label.showFromPct && scrollPct <= label.showToPct;
-                  const isLeft = label.side === 'left';
-                  return (
-                    <div
-                      key={label.id}
-                      className={cn(
-                        'pointer-events-none absolute flex items-start gap-2',
-                        // The mirrored variant. `flex-row-reverse` alone would reverse the visual
-                        // order but leave the box growing rightward from `left: x%`, so the dot
-                        // would end up at the far end of the marker instead of on the part it
-                        // annotates. Pulling the whole box back by its own width is what keeps the
-                        // dot exactly on `x%` in both directions — which matters because `x` is
-                        // documented as the *dot's* position, and the anchors were measured off the
-                        // frames on that basis.
-                        isLeft && 'flex-row-reverse text-right',
-                      )}
-                      style={{
-                        left: `${label.x}%`,
-                        top: `${label.y}%`,
-                        opacity: visible ? 1 : 0,
-                        // `translateX` is layout, not motion — it is what keeps a mirrored marker's
-                        // dot on `x%` — so it is in both branches. The 10px lift and the transition
-                        // are the animation, and under reduced motion the callout simply is where it
-                        // ends up, appearing and disappearing without travel. This is a rendered
-                        // `style` attribute, so it takes the hydration-safe hook, not motion's.
-                        transform: prefersReducedMotionSafe
-                          ? `translateX(${isLeft ? '-100%' : '0'})`
-                          : `translateX(${isLeft ? '-100%' : '0'}) translateY(${visible ? 0 : 10}px)`,
-                        transition: prefersReducedMotionSafe
-                          ? undefined
-                          : 'opacity 0.45s ease, transform 0.45s ease',
-                      }}
-                    >
-                      {/* Marker: 3px red dot, then a hairline leader out to the text. Both stay
+                  {/* ── Corner-marker callouts ── */}
+                  {LABELS.map((label, i) => {
+                    const visible = scrollPct >= label.showFromPct && scrollPct <= label.showToPct;
+                    const isLeft = label.side === 'left';
+                    return (
+                      <div
+                        key={label.id}
+                        className={cn(
+                          'pointer-events-none absolute flex items-start gap-2',
+                          // The mirrored variant. `flex-row-reverse` alone would reverse the visual
+                          // order but leave the box growing rightward from `left: x%`, so the dot
+                          // would end up at the far end of the marker instead of on the part it
+                          // annotates. Pulling the whole box back by its own width is what keeps the
+                          // dot exactly on `x%` in both directions — which matters because `x` is
+                          // documented as the *dot's* position, and the anchors were measured off the
+                          // frames on that basis.
+                          isLeft && 'flex-row-reverse text-right',
+                        )}
+                        style={{
+                          left: `${label.x}%`,
+                          top: `${label.y}%`,
+                          opacity: visible ? 1 : 0,
+                          // `translateX` is layout, not motion — it is what keeps a mirrored marker's
+                          // dot on `x%` — so it is in both branches. The 10px lift and the transition
+                          // are the animation, and under reduced motion the callout simply is where it
+                          // ends up, appearing and disappearing without travel. This is a rendered
+                          // `style` attribute, so it takes the hydration-safe hook, not motion's.
+                          transform: prefersReducedMotionSafe
+                            ? `translateX(${isLeft ? '-100%' : '0'})`
+                            : `translateX(${isLeft ? '-100%' : '0'}) translateY(${visible ? 0 : 10}px)`,
+                          transition: prefersReducedMotionSafe
+                            ? undefined
+                            : 'opacity 0.45s ease, transform 0.45s ease',
+                        }}
+                      >
+                        {/* Marker: 3px red dot, then a hairline leader out to the text. Both stay
                           bare over the frame — no scrim, no border — which is the whole difference
                           between this and the bordered card it replaced: the marker touches the
                           drawing, only the copy below sits on a backdrop. */}
-                      <span
-                        aria-hidden="true"
-                        className="mt-[7px] block h-[3px] w-[3px] flex-shrink-0 rounded-full bg-f1-red"
-                      />
-                      <span
-                        aria-hidden="true"
-                        className="mt-[8px] block h-px w-6 flex-shrink-0 bg-zinc-500"
-                      />
-                      {/*
-                       * Narrower below `sm`, because a corner marker runs *outward* from its anchor
-                       * rather than being centred on it the way the old label card was. The card
-                       * carried `translateX(-50%)`, so its 180px sat half either side of the anchor
-                       * and could never overflow; a marker's text starts at the end of its leader
-                       * line. Measured at 390px: the anchor landed at x=202, the dot, gaps and 24px
-                       * leader put the text at x=245, and 180px of it ran to 425 — a 35px
-                       * horizontal scrollbar on the whole page.
-                       */}
-                      {/*
-                       * The scrim, and it is the *text block only* that carries it — the dot and the
-                       * leader line above stay bare, so the marker still annotates the drawing
-                       * rather than covering it the way the old bordered card did.
-                       *
-                       * Without it these glyphs sit directly on a rendered car frame, which is not
-                       * the background their colours were chosen against. Decoding the shipped PNGs
-                       * and compositing over `#09090B`: 35.4% of callout 02's text box is under
-                       * 4.5:1 at frame 64, 19.6% of 04's at frame 158, and the brightest pixel under
-                       * any of them is `rgb(249,245,242)`, where `ink` reads 1.02:1. Confirmed in
-                       * Chromium at 1440. At `zinc-950/85` that worst case composites to
-                       * `rgb(45,44,46)`, where `ink` is 12.6:1 and `zinc-400` 5.4:1 — both clear.
-                       *
-                       * `px-2` costs no width. Tailwind's preflight sets `box-sizing: border-box`,
-                       * so the padding comes out of the 130px rather than adding to it and the
-                       * marker stays the ~173px at 390 that the `side` mirroring is sized against.
-                       * Do not swap the clamp for a `max-w`, which would let it grow.
-                       */}
-                      <div className="w-[130px] rounded bg-zinc-950/85 px-2 py-1 backdrop-blur-sm sm:w-[180px]">
-                        {/* zinc-400, not zinc-500. On this scrim zinc-400's worst case is 5.4:1 and
+                        <span
+                          aria-hidden="true"
+                          className="mt-[7px] block h-[3px] w-[3px] flex-shrink-0 rounded-full bg-f1-red"
+                        />
+                        <span
+                          aria-hidden="true"
+                          className="mt-[8px] block h-px w-6 flex-shrink-0 bg-zinc-500"
+                        />
+                        {/*
+                         * Narrower below `sm`, because a corner marker runs *outward* from its anchor
+                         * rather than being centred on it the way the old label card was. The card
+                         * carried `translateX(-50%)`, so its 180px sat half either side of the anchor
+                         * and could never overflow; a marker's text starts at the end of its leader
+                         * line. Measured at 390px: the anchor landed at x=202, the dot, gaps and 24px
+                         * leader put the text at x=245, and 180px of it ran to 425 — a 35px
+                         * horizontal scrollbar on the whole page.
+                         */}
+                        {/*
+                         * The scrim, and it is the *text block only* that carries it — the dot and the
+                         * leader line above stay bare, so the marker still annotates the drawing
+                         * rather than covering it the way the old bordered card did.
+                         *
+                         * Without it these glyphs sit directly on a rendered car frame, which is not
+                         * the background their colours were chosen against. Decoding the shipped PNGs
+                         * and compositing over `#09090B`: 35.4% of callout 02's text box is under
+                         * 4.5:1 at frame 64, 19.6% of 04's at frame 158, and the brightest pixel under
+                         * any of them is `rgb(249,245,242)`, where `ink` reads 1.02:1. Confirmed in
+                         * Chromium at 1440. At `zinc-950/85` that worst case composites to
+                         * `rgb(45,44,46)`, where `ink` is 12.6:1 and `zinc-400` 5.4:1 — both clear.
+                         *
+                         * `px-2` costs no width. Tailwind's preflight sets `box-sizing: border-box`,
+                         * so the padding comes out of the 130px rather than adding to it and the
+                         * marker stays the ~173px at 390 that the `side` mirroring is sized against.
+                         * Do not swap the clamp for a `max-w`, which would let it grow.
+                         */}
+                        <div className="w-[130px] rounded bg-zinc-950/85 px-2 py-1 backdrop-blur-sm sm:w-[180px]">
+                          {/* zinc-400, not zinc-500. On this scrim zinc-400's worst case is 5.4:1 and
                             zinc-500's is 2.9:1, which fails outright; on bare zinc-950 the two are
                             7.76:1 and 4.11:1. The scrim's ratio is the one that governs — these
                             glyphs are never on bare zinc-950. */}
-                        <span className="block font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-400">
-                          {String(i + 1).padStart(2, '0')}
-                        </span>
-                        {/* Keyed on visibility so the reveal re-mounts — and therefore re-fires —
+                          <span className="block font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-400">
+                            {String(i + 1).padStart(2, '0')}
+                          </span>
+                          {/* Keyed on visibility so the reveal re-mounts — and therefore re-fires —
                             each time the callout's frame range activates. `trigger="immediate"`
                             fires on mount, and without the key the bar would wipe once on page load,
                             behind an invisible callout, and never again. The text itself is outside
                             the key'd subtree's control: it is a child either way, so it is in the
                             DOM from first render regardless of the bar's state. */}
-                        <RedactedReveal
-                          key={visible ? 'active' : 'idle'}
-                          variant="ink"
-                          trigger="immediate"
-                          className="mt-0.5"
-                        >
-                          <span className="text-xs font-semibold leading-snug text-ink">
-                            {label.name}
-                          </span>
-                        </RedactedReveal>
-                        <p className="mt-1 text-[10px] leading-relaxed text-zinc-400">
-                          {label.detail}
-                        </p>
+                          <RedactedReveal
+                            key={visible ? 'active' : 'idle'}
+                            variant="ink"
+                            trigger="immediate"
+                            className="mt-0.5"
+                          >
+                            <span className="text-xs font-semibold leading-snug text-ink">
+                              {label.name}
+                            </span>
+                          </RedactedReveal>
+                          <p className="mt-1 text-[10px] leading-relaxed text-zinc-400">
+                            {label.detail}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </motion.div>
+                    );
+                  })}
+                </motion.div>
+              </div>
+            </div>
+
+            {/* ── Scroll hint ── */}
+            <div
+              className="pointer-events-none absolute inset-x-0 bottom-[8vh] z-20 flex flex-col items-center gap-1.5"
+              style={{
+                opacity: hasScrolled ? 0 : 1,
+                transition: 'opacity 0.6s ease',
+              }}
+            >
+              <p className="text-xs uppercase tracking-[0.18em] text-zinc-400">Scroll to begin</p>
+              <ChevronDown className="h-4 w-4 animate-bounce text-zinc-600" />
             </div>
           </div>
-
-          {/* ── Scroll hint ── */}
-          <div
-            className="pointer-events-none absolute inset-x-0 bottom-[8vh] z-20 flex flex-col items-center gap-1.5"
-            style={{
-              opacity: hasScrolled ? 0 : 1,
-              transition: 'opacity 0.6s ease',
-            }}
-          >
-            <p className="text-xs uppercase tracking-[0.18em] text-zinc-400">Scroll to begin</p>
-            <ChevronDown className="h-4 w-4 animate-bounce text-zinc-600" />
-          </div>
         </div>
-      </div>
 
-      {/* ── Outro ── */}
-      <TeardownOutro />
+        {/* ── Outro ── */}
+        <TeardownOutro />
 
-      {/*
-       * Progress readout: a display numeral bottom-left at 15% opacity. `aria-hidden` because at 15%
-       * opacity it is texture, not a readout — the accessible progress lives on the bar below,
-       * which carries the real `role="progressbar"` and `aria-valuenow`. Fixed and behind the
-       * content (z-10) so it reads as a watermark under the outro rather than a label on it.
-       */}
-      <div
-        aria-hidden="true"
-        // `bottom-1.5`, not `bottom-0`: the red progress bar is pinned at `bottom-0` and
-        // `leading-[0.75]` leaves the numeral no descender space, so at zero the glyphs sit
-        // directly on the bar and read as clipped.
-        className="pointer-events-none fixed bottom-1.5 left-2 z-10 select-none"
-        style={{
-          // Fades out as the car lands rather than sitting at a flat 15% forever. The readout is
-          // pinned bottom-left and so is the outro's closing paragraph, and it has nothing left to
-          // report once the scrub is finished, so it leaves rather than sitting across the copy.
-          opacity: isArriving ? 0 : 0.15,
-          transition: 'opacity 400ms ease',
-        }}
-      >
         {/*
-         * Deliberately **not** `.text-mega`, which the spec's "font-display mega numeral" wording
-         * would suggest and which this first shipped as. `.text-mega` is `clamp(4rem, 14vw, 12rem)`
-         * — 192px tall at 1440, 64px at 390 — and reviewed in a browser it read as a competing
-         * headline in the corner rather than as a watermark under the sequence. This clamp tops out
-         * at 56px, about a third of the height. Same display face, same tight leading and negative
-         * tracking, so it is the same object, just no longer shouting.
+         * Progress readout: a display numeral bottom-left at 15% opacity. `aria-hidden` because at 15%
+         * opacity it is texture, not a readout — the accessible progress lives on the bar below,
+         * which carries the real `role="progressbar"` and `aria-valuenow`. Fixed and behind the
+         * content (z-10) so it reads as a watermark under the outro rather than a label on it.
          */}
-        <span className="font-display text-[clamp(2rem,4vw,3.5rem)] leading-[0.75] tracking-tight text-ink">
-          {scrollPct}
-          <sup className="align-super text-[0.35em]">%</sup>
-        </span>
-      </div>
+        <div
+          aria-hidden="true"
+          // `bottom-1.5`, not `bottom-0`: the red progress bar is pinned at `bottom-0` and
+          // `leading-[0.75]` leaves the numeral no descender space, so at zero the glyphs sit
+          // directly on the bar and read as clipped.
+          className="pointer-events-none fixed bottom-1.5 left-2 z-10 select-none"
+          style={{
+            // Fades out as the car lands rather than sitting at a flat 15% forever. The readout is
+            // pinned bottom-left and so is the outro's closing paragraph, and it has nothing left to
+            // report once the scrub is finished, so it leaves rather than sitting across the copy.
+            opacity: isArriving ? 0 : 0.15,
+            transition: 'opacity 400ms ease',
+          }}
+        >
+          {/*
+           * Deliberately **not** `.text-mega`, which the spec's "font-display mega numeral" wording
+           * would suggest and which this first shipped as. `.text-mega` is `clamp(4rem, 14vw, 12rem)`
+           * — 192px tall at 1440, 64px at 390 — and reviewed in a browser it read as a competing
+           * headline in the corner rather than as a watermark under the sequence. This clamp tops out
+           * at 56px, about a third of the height. Same display face, same tight leading and negative
+           * tracking, so it is the same object, just no longer shouting.
+           */}
+          <span className="font-display text-[clamp(2rem,4vw,3.5rem)] leading-[0.75] tracking-tight text-ink">
+            {scrollPct}
+            <sup className="align-super text-[0.35em]">%</sup>
+          </span>
+        </div>
 
-      {/* ── Bottom scroll progress bar ── */}
-      <div
-        role="progressbar"
-        aria-label="Teardown sequence progress"
-        aria-valuenow={scrollPct}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        className="fixed bottom-0 left-0 z-30 h-0.5 bg-f1-red"
-        style={{ width: `${scrollPct}%` }}
-      />
+        {/* ── Bottom scroll progress bar ── */}
+        <div
+          role="progressbar"
+          aria-label="Teardown sequence progress"
+          aria-valuenow={scrollPct}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          className="fixed bottom-0 left-0 z-30 h-0.5 bg-f1-red"
+          style={{ width: `${scrollPct}%` }}
+        />
+      </main>
     </div>
   );
 }

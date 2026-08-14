@@ -10,6 +10,7 @@ import { TopoBackground } from '@/components/candy/topo-background';
 import { NumberTicker } from '@/components/ui/number-ticker';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { focusRingOffsetBase } from '@/lib/focus';
 import {
   teamColorButtonStyle,
   seamWash,
@@ -309,9 +310,17 @@ export function TeamSection({ team, index, isActive, onInspect, reducedMotion }:
 
             {/* Mobile/laptop-only inspect button — visible when sticky car viewer is hidden */}
             <BlurFadeReduced delay={reducedMotion ? 0 : 0.25} inView className="xl:hidden">
+              {/* Same call as the dossier's copy of this button: it is filled with the livery (or
+                  with `#27272a` where `needsDamping` steps a bright one down), and a flush ring
+                  would take its contrast from that fill — measured 1.42:1 for red on Alpine's
+                  `#008bf6`. The offset colour is safe despite this being a topo section: sampled
+                  either side of this control the backdrop reads `#09090b` (Ferrari) and `#090f17`
+                  (Alpine, the strongest glow on the grid), so the `base` band composites to
+                  within ~1.02:1 of what is actually behind it rather than painting the halo
+                  `lib/focus.ts` rule 3 warns about. */}
               <Button
                 onClick={onInspect}
-                className={cn('gap-2 font-medium', ctaStyle.className)}
+                className={cn('gap-2 font-medium', focusRingOffsetBase, ctaStyle.className)}
                 style={ctaStyle.style}
               >
                 <Expand className="h-4 w-4" />

@@ -37,9 +37,10 @@ export function LandingMarqueeBand() {
      * exists only because the styleguide page pads its sections — would push the marquee past the
      * viewport edges and defeat the `overflow-hidden` above.
      *
-     * `bg-base` (#09090B) continues the page rather than alternating: Phase 7 owns section
-     * theming, and a `base-warm` strip here would pre-empt a decision that has to be made across
-     * all sections at once.
+     * No background of its own any more. Phase 7's section theming moved that decision to
+     * `app/page.tsx`, which wraps this band in a `LandingSectionTheme` — this band is one of the
+     * `base-warm` ones. A `bg-base` here would simply paint over the wrapper, and the alternation
+     * would silently do nothing on this section.
      *
      * Rhythm: `py-16 md:py-24`. The marquee is two 7vw lines at `leading-[0.85]`, so it is already
      * ~12vw of ink; a full `py-28` (what the CTA band uses) would make this decorative strip the
@@ -47,7 +48,7 @@ export function LandingMarqueeBand() {
      * top padding, which is what makes the band read as its own beat rather than as a strip glued
      * to the bottom of the hero.
      */
-    <div className="relative overflow-hidden bg-base py-16 md:py-24">
+    <div className="relative overflow-hidden py-16 md:py-24">
       {/*
        * Soft red glow, in the same idiom as `landing-hero.tsx` and `landing-cta-band.tsx`:
        * an absolutely positioned, `blur-3xl`, very low-alpha red disc. Absolute positioning is

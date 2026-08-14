@@ -6,14 +6,30 @@ import { cn } from '@/lib/utils';
 /**
  * Shared type sizing and line-height for both rows.
  *
- * `text-[7vw]` matches the spec's "~7vw" for both lines. At that size the font's default
- * line-height leaves visible daylight between the two rows — enough that they read as two
- * unrelated headlines stacked by accident rather than one two-line statement ("lights out" /
- * "AND AWAY WE GO" belong together). `leading-[0.85]` pulls them back into a pair without
- * clipping either line's ascenders/descenders, which `leading-none` (1) started to do on the
- * serif italic's descenders.
+ * The spec asks for two sizes, not one: "~7vw" for the band in general and "marquee ~12vw" in the
+ * 390 px pass. A flat `text-[7vw]` satisfies the first and fails the second — measured at a 390
+ * viewport it renders 27.3 px, exactly 7.00vw, where the mobile pass wants ~46.8 px. So the size
+ * ramps with the viewport instead of stepping at a breakpoint:
+ *
+ *     max(7vw, calc(1.671rem + 5.1429vw))
+ *
+ * The `calc` is the straight line through the two points the spec names — 12vw at a 390 viewport
+ * (46.8 px) and 7vw at 1440 (100.8 px) — and the two expressions cross at exactly 1440, so `max`
+ * hands over to a plain `7vw` from there up. **At and above 1440 this is byte-for-byte the old
+ * behaviour**, including the wide desktops where `7vw` keeps growing; only viewports narrower than
+ * 1440 change, and they change continuously rather than jumping at a breakpoint. A `md:` step
+ * would have dropped the line from 92 px to 54 px across one pixel of resize.
+ *
+ * Tailwind's arbitrary-value scanner drops a value containing literal spaces, so the `calc`'s
+ * mandatory whitespace around `+` is written as `_` (which Tailwind substitutes back).
+ *
+ * `leading-[0.85]` is unchanged and stays unchanged: at the font's default line-height these two
+ * rows read as two unrelated headlines stacked by accident rather than one two-line statement
+ * ("lights out" / "AND AWAY WE GO" belong together), while `leading-none` (1) started clipping the
+ * serif italic's descenders. It is a *ratio*, so the size ramp above scales the line box with the
+ * glyphs and leaves that balance exactly where it was — verified at 390 and 1440.
  */
-const LINE_SIZE = 'text-[7vw] leading-[0.85]';
+const LINE_SIZE = 'text-[max(7vw,calc(1.671rem_+_5.1429vw))] leading-[0.85]';
 
 /**
  * The animation classes come from `tailwind.config.ts` and must not be redefined here.

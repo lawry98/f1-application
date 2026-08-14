@@ -87,10 +87,34 @@ describe('LandingHero', () => {
   });
 
   describe('briefing preview card', () => {
-    it('keeps the event title', () => {
+    it('keeps the event title, and keeps it out of the document outline', () => {
+      // The string is the part that must survive — that has not changed and must not. What changed
+      // is the element carrying it: it was an `h3` under the page's only `h1`, which is an axe
+      // `heading-order` violation (H1 → H3) and, worse, put a *mocked* race name into the page
+      // outline as a peer of the real section headings. So the assertion now finds it by text and
+      // pins both halves of the fix: the words are still rendered, and they are no longer a
+      // heading at any level. `hidden: true` matters — the default heading query already skips
+      // `aria-hidden` subtrees, so without it this would pass on a hidden `h3` too.
       render(<LandingHero />);
 
-      expect(screen.getByRole('heading', { name: 'Monaco Grand Prix' })).toBeInTheDocument();
+      const title = screen.getByText('Monaco Grand Prix');
+      expect(title).toBeInTheDocument();
+      expect(title.tagName).toBe('P');
+      expect(
+        screen.queryAllByRole('heading', { name: 'Monaco Grand Prix', hidden: true }),
+      ).toHaveLength(0);
+    });
+
+    it('leaves the hero with exactly one heading, so the outline cannot skip a level', () => {
+      // The generalisation of the assertion above: the hero contributes an `h1` and nothing else,
+      // so no descendant heading can be at the wrong level relative to it. This is what fails if
+      // someone "fixes" the preview card back into a heading — at *any* level, including a
+      // technically-legal `h2`, which would still put demo data in the outline.
+      render(<LandingHero />);
+
+      const headings = screen.getAllByRole('heading', { hidden: true });
+      expect(headings).toHaveLength(1);
+      expect(headings[0]?.tagName).toBe('H1');
     });
 
     it('keeps the ready chip', () => {
@@ -183,18 +207,34 @@ describe('LandingHero', () => {
       expect(surfaces).toHaveLength(3);
 
       /*
-       * The one settled exclusion in this section, excluded explicitly rather than by silence.
+       * This test used to carry an exclusion here, and it does not any more.
        *
-       * `PreviewRow`'s secondary line is `text-sm text-zinc-500` — #71717a on the card's
-       * `cardSurfaceBackdrop()` measures ~3.9:1, under the 4.5:1 small-text bar. It predates this
-       * branch and the user deliberately left it alone, so this test must neither raise its
-       * threshold nor quietly stop covering the rows around it. Asserting the count first is what
-       * keeps the exclusion honest: if these four rows ever disappear, or a fifth `zinc-500` run
-       * appears in the card, this line fails instead of widening the hole.
+       * `PreviewRow`'s secondary line was `text-sm text-zinc-500`, which the exclusion described
+       * as ~3.9:1 against the card and left alone. Phase 7 measured it off a real 1440 screenshot
+       * with those four runs' glyphs hidden — modal backdrop **#111113**, worst pixel **#251416**
+       * — and got **3.90:1** and **3.65:1** for `zinc-500`, against a 4.5:1 bar for 14 px text.
+       * The colour moved to `zinc-400` (**7.36:1** and **6.88:1**), so there is nothing left to
+       * exclude and every run in the card is now measured by the loop below.
+       *
+       * The count assertion survives the exclusion it used to guard, inverted: four secondary rows
+       * exist, all four are `zinc-400`, and no `zinc-500` remains anywhere in this section. Losing
+       * the rows or regressing the shade both fail here rather than silently shrinking what the
+       * loop covers — which is the failure the old exclusion was written to prevent.
        */
-      const excluded = Array.from(container.querySelectorAll('p.text-zinc-500'));
-      expect(excluded).toHaveLength(4);
-      excluded.forEach((el) => el.remove());
+      const secondaries = Array.from(container.querySelectorAll('p.text-zinc-400.text-sm'));
+      expect(secondaries).toHaveLength(4);
+
+      /*
+       * Scoped to runs that actually carry text, and deliberately not to every `.text-zinc-500` in
+       * the subtree: one `aria-hidden` decorative `svg` in this section strokes `currentColor` off
+       * that class. It is a graphic, held to the 3:1 non-text bar rather than 4.5:1, and sweeping
+       * it up here would either fail this test for a colour that is fine or push someone to lighten
+       * a decorative stroke to satisfy a text rule.
+       */
+      const zinc500TextRuns = Array.from(container.querySelectorAll('.text-zinc-500')).filter(
+        (el) => el.textContent?.trim() && el.closest('[aria-hidden="true"]') === null,
+      );
+      expect(zinc500TextRuns.map((el) => el.textContent?.trim())).toEqual([]);
 
       const backdrop = cardSurfaceBackdrop();
       const neutrals = restingTextNeutrals(detach(surfaces));

@@ -8,6 +8,7 @@ import {
   readLogoCredits,
   readMarqueNotes,
 } from '@/lib/credits';
+import { focusRing, focusRingOnRedFill } from '@/lib/focus';
 import { cn } from '@/lib/utils';
 
 export const metadata: Metadata = {
@@ -22,9 +23,18 @@ export const metadata: Metadata = {
 // from a loud CI failure into a request-time 500 on a public page.
 export const dynamic = 'force-static';
 
-/** The link treatment /teams uses. */
-const LINK =
-  'rounded text-zinc-300 underline decoration-zinc-700 underline-offset-2 transition-colors duration-200 hover:text-white hover:decoration-zinc-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500';
+/**
+ * The link treatment /teams uses.
+ *
+ * The ring is `lib/focus.ts`'s shared token, not the `ring-zinc-500` this shipped with: the branch
+ * ring is red, and red measures 4.01:1 on this page's bare `bg-zinc-950` — comfortably over WCAG
+ * 2.4.11's 3:1 non-text bar. Flush, with no offset band, because a link is not a filled control
+ * and there is nothing between the glyphs and the page for a band to separate.
+ */
+const LINK = cn(
+  'rounded text-zinc-300 underline decoration-zinc-700 underline-offset-2 transition-colors duration-200 hover:text-white hover:decoration-zinc-400',
+  focusRing,
+);
 const LABEL = 'text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-400';
 const PROSE = 'max-w-3xl text-sm leading-relaxed text-zinc-400';
 /** f1-red is 4.12:1 on zinc-950 — text-2xl and up only. */
@@ -292,7 +302,19 @@ export default function CreditsPage() {
         <div className="border-t border-zinc-800 pt-10 text-center">
           <Link
             href="/"
-            className="inline-block rounded-lg bg-f1-red px-6 py-3 text-base font-semibold text-white transition-colors hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
+            className={cn(
+              'inline-block rounded-lg bg-f1-red px-6 py-3 text-base font-semibold text-white transition-colors hover:bg-red-700',
+              /*
+               * The inverse ring, because this control is filled with `f1-red`: a red ring on a red
+               * fill is 1.00:1 — an absent indicator, not a weak one — where `ink` on that fill is
+               * 4.50:1. The offset names the colour really behind the pill, `base`, which on this
+               * page is what `bg-zinc-950` paints; `focusRingOnRedFill` ships without an offset
+               * colour precisely so a call site cannot inherit the wrong page's band. This
+               * replaces a `ring-zinc-300` that predates the shared token.
+               */
+              focusRingOnRedFill,
+              'focus-visible:ring-offset-base',
+            )}
           >
             ← Back to Briefing Agent
           </Link>

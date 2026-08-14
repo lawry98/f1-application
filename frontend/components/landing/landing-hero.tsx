@@ -9,6 +9,7 @@ import { TicketCard } from '@/components/candy/ticket-card';
 import { TopoBackground } from '@/components/candy/topo-background';
 import monaco from '@/data/circuits/mc-1929.json';
 import { toPoints } from '@/lib/circuit-geometry';
+import { focusRingOffsetBase, focusRingOnRedFill } from '@/lib/focus';
 import { cn } from '@/lib/utils';
 
 /**
@@ -42,7 +43,10 @@ const LINE_GAP = ' ';
 
 export function LandingHero() {
   return (
-    <section className="relative flex min-h-[calc(100vh-3.5rem)] items-center overflow-hidden bg-base pt-14">
+    // No background here: `app/page.tsx` wraps every landing section in a `LandingSectionTheme`
+    // that owns the surface colour, and a `bg-*` on the section would paint over it. The hero's
+    // tone is `base`, which is why the bottom fade below still reads `from-base`.
+    <section className="relative flex min-h-[calc(100vh-3.5rem)] items-center overflow-hidden pt-14">
       {/*
        * The contour texture positions and hides itself — `absolute inset-0` and `aria-hidden` live
        * inside the component — so the `relative` on the section above is what its `inset-0`
@@ -158,27 +162,18 @@ export function LandingHero() {
               </p>
             </div>
 
-            {/*
-             * The focus rings are the one part of this pill pair that cannot be chosen by eye.
-             *
-             * `components/ui/button.tsx` ships `focus-visible:ring-1 focus-visible:ring-ring` and
-             * **no ring-offset**, so an override only names a colour and the ring is painted flush
-             * against the button's own fill. WCAG 2.4.11 wants 3:1 between the indicator and what
-             * it sits against, and the obvious choices both fail that against the adjacent colour:
-             * `ring-f1-red` on `bg-f1-red` is 1.00:1 — a red ring on a red button, i.e. invisible —
-             * and `ring-zinc-600` on the outline pill's `bg-white/[0.02]` over `base` is 2.57:1.
-             *
-             * So each ring takes the *other* pill's colour and an explicit offset, which puts a
-             * 2px band of page background between ring and fill and gives the ring a background it
-             * actually contrasts with. `landing-cta-band.tsx` and `teardown-outro.tsx` carry the
-             * identical strings; `landing-footer.tsx` is the same shape with `ring-offset-base-warm`
-             * because its links sit on the warm card, not on `base`.
-             */}
+            {/* Focus rings: the rule and every measurement behind it live in `lib/focus.ts`. Both
+                pills are filled and this section is `base`, so the red pill takes the inverse ring
+                and each takes a `base` offset. */}
             <div className="flex flex-wrap items-center gap-3">
               <Button
                 asChild
                 size="lg"
-                className="rounded-full bg-f1-red px-7 text-[12px] font-bold uppercase tracking-[0.14em] text-white transition-colors hover:bg-[#B80500] focus-visible:ring-ink focus-visible:ring-offset-2 focus-visible:ring-offset-base"
+                className={cn(
+                  'rounded-full bg-f1-red px-7 text-[12px] font-bold uppercase tracking-[0.14em] text-white transition-colors hover:bg-[#B80500]',
+                  focusRingOnRedFill,
+                  'focus-visible:ring-offset-base',
+                )}
               >
                 <Link href="/briefing">
                   Generate a Briefing
@@ -189,7 +184,10 @@ export function LandingHero() {
                 asChild
                 variant="outline"
                 size="lg"
-                className="rounded-full border-white/15 bg-white/[0.02] px-7 text-[12px] font-bold uppercase tracking-[0.14em] text-zinc-300 transition-colors hover:border-white/25 hover:bg-white/[0.06] hover:text-ink focus-visible:ring-f1-red focus-visible:ring-offset-2 focus-visible:ring-offset-base"
+                className={cn(
+                  'rounded-full border-white/15 bg-white/[0.02] px-7 text-[12px] font-bold uppercase tracking-[0.14em] text-zinc-300 transition-colors hover:border-white/25 hover:bg-white/[0.06] hover:text-ink',
+                  focusRingOffsetBase,
+                )}
               >
                 <Link href="/teardown">Explore Car Anatomy</Link>
               </Button>
@@ -279,9 +277,29 @@ function HeroBriefingPreview() {
             <CircuitGlow points={MONACO_POINTS} variant="plain" />
           </div>
           <div className="min-w-0">
-            <h3 className="font-display text-lg uppercase leading-tight tracking-tight text-ink">
+            {/*
+             * A `p`, not the `h3` this was — and deliberately not an `h2` either.
+             *
+             * axe flagged `heading-order` (moderate) on `/`: the document went **H1 → H3**, because
+             * this was the only other heading in the hero. Promoting it to `h2` would silence axe
+             * and be wrong. A heading declares "here begins a section of this document", and this
+             * card declares nothing of the kind: it is a mocked-up sample of the product, one of
+             * whose rows is a *fictional* championship table, sitting in a `hidden lg:block` column
+             * as an illustration beside the real copy. Making it an `h2` would put "Monaco Grand
+             * Prix" into the page outline as a peer of "Everything for a complete race weekend
+             * picture" and "From query to briefing in seconds", so a screen-reader user navigating
+             * by heading would land on demo data and reasonably conclude the page was about the
+             * Monaco Grand Prix.
+             *
+             * So the fix is the level *below* zero: the string, its styling and its place in the
+             * reading order are unchanged, and only its participation in the outline is removed.
+             * The whole card is left in the accessibility tree rather than `aria-hidden` — it is
+             * legible sample content, not decoration, and hiding four rows of readable text from
+             * one class of user is a bigger change than the defect.
+             */}
+            <p className="font-display text-lg uppercase leading-tight tracking-tight text-ink">
               Monaco Grand Prix
-            </h3>
+            </p>
             <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-green-500/10 px-2.5 py-1 text-[11px] font-medium text-green-400">
               <span className="h-1.5 w-1.5 rounded-full bg-green-400" aria-hidden="true" />
               Ready
@@ -345,7 +363,23 @@ function PreviewRow({
     <div className="px-4 py-3">
       <p className="mb-1 text-[11px] uppercase tracking-[0.2em] text-zinc-400">{label}</p>
       <p className="text-sm text-zinc-200">{primary}</p>
-      <p className="text-sm text-zinc-500">{secondary}</p>
+      {/*
+       * `zinc-400`, not the `zinc-500` this shipped with, and the number is measured rather than
+       * assumed. The backdrop was sampled off a real 1440 screenshot with these four runs' glyphs
+       * hidden: the modal pixel behind them is **#111113** (37% of the run's box), and the lightest
+       * pixel present in any quantity is **#251416** (2%, the card's red outer glow bleeding
+       * through the wash). `zinc-500` measures **3.90:1** on the first and **3.65:1** on the
+       * second — 14 px text, so the bar is 4.5:1 and it failed on both. `zinc-400` measures
+       * **7.36:1** and **6.88:1**.
+       *
+       * Worth recording what the backdrop is *not*: the hero carries a `TopoBackground`, and the
+       * topo composite on this branch is #212124 — judging this run against that would have been
+       * the wrong-background mistake `lib/team-utils.ts`'s docblock exists to prevent. The
+       * measurement lands within one unit per channel of `cardSurfaceBackdrop()` (#101012), i.e.
+       * the ticket card's own `bg-white/[0.03]` over `base`, because the card is opaque over the
+       * texture. The contours never reach these glyphs.
+       */}
+      <p className="text-sm text-zinc-400">{secondary}</p>
     </div>
   );
 }

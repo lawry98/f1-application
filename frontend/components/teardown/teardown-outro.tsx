@@ -5,6 +5,8 @@ import { MegaStat } from '@/components/candy/mega-stat';
 import { TicketCard } from '@/components/candy/ticket-card';
 import { TopoBackground } from '@/components/candy/topo-background';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+import { focusRingOnRedFill } from '@/lib/focus';
 
 /**
  * 2026-regulation figures, cited verbatim in the task brief and (per that brief) in the parent's
@@ -379,17 +381,18 @@ function TeardownOutroSection(): React.JSX.Element {
               `div`, not folded into the `Button`'s own `className`, so that string stays an
               exact, diffable copy of the shared pill's markup.
 
-              The focus ring is `ring-ink` with a `ring-offset-base`, not the `ring-f1-red` this
-              originally carried: `components/ui/button.tsx` supplies `focus-visible:ring-1` with
-              no ring-offset, so a red ring drawn hard against a red fill is 1.00:1 against the
-              colour adjacent to it, against WCAG 2.4.11's 3:1 floor for a focus indicator. The
-              offset separates the ring from the fill, and `base` is the correct offset colour
-              because this section's `bg-zinc-950` is that same `#09090B`. */}
+              The focus ring is `focusRingOnRedFill` from `lib/focus.ts` — the branch's ring rule
+              and its measurements now live there. The offset is `base` because this section's
+              `bg-zinc-950` is that same `#09090B`. */}
           <div className="mt-6">
             <Button
               asChild
               size="lg"
-              className="rounded-full bg-f1-red px-7 text-[12px] font-bold uppercase tracking-[0.14em] text-white transition-colors hover:bg-[#B80500] focus-visible:ring-ink focus-visible:ring-offset-2 focus-visible:ring-offset-base"
+              className={cn(
+                'rounded-full bg-f1-red px-7 text-[12px] font-bold uppercase tracking-[0.14em] text-white transition-colors hover:bg-[#B80500]',
+                focusRingOnRedFill,
+                'focus-visible:ring-offset-base',
+              )}
             >
               <Link href="/briefing">
                 Generate a Briefing

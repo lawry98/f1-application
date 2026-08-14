@@ -5,6 +5,7 @@ import { CircuitGlow } from '@/components/candy/circuit-glow';
 import { TicketCard } from '@/components/candy/ticket-card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { loadCircuitByLocation } from '@/lib/circuit-geometry';
+import { focusRing } from '@/lib/focus';
 import { parseRaceDate } from '@/lib/race-date';
 import type { Point } from '@/lib/svg-path';
 import { cn } from '@/lib/utils';
@@ -244,13 +245,16 @@ function RaceChip({ race, points, active, disabled, onSelect }: RaceChipProps) {
         'shrink-0 snap-start rounded-xl text-left',
         CARD_WIDTH,
         /*
-         * `components/ui/button.tsx`'s own focus treatment — `outline-none` plus a 1px ring, no
-         * offset — with the branch's red. Phase 7 unifies the rings, so this deliberately does not
-         * invent a third shape. No ring-offset here, unlike the landing hero's pills: there the
-         * red ring sat flush on a red fill at 1.00:1, whereas this ring is painted against the
-         * page backdrop at 3.22:1, over the 3:1 that WCAG 2.4.11 asks of a non-text indicator.
+         * The branch's shared ring — the reasoning and the measured table live in `lib/focus.ts`.
+         *
+         * The flush variant, and the reason is worth one line here because the chip's own surface
+         * argues for the opposite. A ring is an *outer* box-shadow, painted outside the button's
+         * border box, so it never lands on the `TicketCard` fill inside it — where red measures
+         * 2.96:1 and would fail. It is painted on the `bg-zinc-900` form card this row sits in:
+         * 3.57:1, clear of WCAG 2.4.11's 3:1 non-text bar. No offset, because neither offset token
+         * names `zinc-900` and a band of some other colour is a halo, not a separator.
          */
-        'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-f1-red',
+        focusRing,
         // The disabled look, copied from `buttonVariants` so a locked chip reads the same as every
         // other locked control on the page.
         'disabled:pointer-events-none disabled:opacity-50',

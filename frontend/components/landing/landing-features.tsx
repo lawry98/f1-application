@@ -55,9 +55,12 @@ const TICK = 'h-1.5 w-5 flex-shrink-0 bg-f1-red';
 
 export function LandingFeatures() {
   return (
+    // No `bg-*`: `app/page.tsx` wraps every landing section in a `LandingSectionTheme` that owns
+    // the surface colour, and a background here would paint over it. This section's tone is `base`.
+    // The `border-t` stays — it separates this grid from the marquee band above, which is warm.
     <section
       id="features"
-      className="border-t border-white/10 bg-base py-24"
+      className="border-t border-white/10 py-24"
       aria-labelledby="features-heading"
     >
       <div className="container mx-auto max-w-7xl px-4">

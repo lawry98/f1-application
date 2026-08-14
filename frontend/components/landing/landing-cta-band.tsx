@@ -4,6 +4,8 @@ import { Button } from '@/components/ui/button';
 import { BlurFadeReduced } from '@/components/candy/blur-fade-reduced';
 import { Scribble } from '@/components/candy/scribble';
 import { TopoBackground } from '@/components/candy/topo-background';
+import { focusRingOffsetBaseWarm, focusRingOnRedFill } from '@/lib/focus';
+import { cn } from '@/lib/utils';
 
 /**
  * Why the Scribble's `delay` is 0.45 s and not 0.
@@ -23,7 +25,10 @@ const SCRIBBLE_DELAY_SECONDS = 0.45;
 
 export function LandingCtaBand() {
   return (
-    <section className="relative overflow-hidden bg-base py-28" aria-labelledby="cta-heading">
+    // No `bg-*`: `app/page.tsx` wraps every landing section in a `LandingSectionTheme` that owns
+    // the surface colour, and a background here would paint over it. This band's tone is
+    // `base-warm`, which is what the focus-ring offsets below are matched to.
+    <section className="relative overflow-hidden py-28" aria-labelledby="cta-heading">
       {/*
        * Background. Both classes are load-bearing.
        *
@@ -111,19 +116,22 @@ export function LandingCtaBand() {
            * `hover:bg-red-700`: Tailwind's red-700 (#B91C1C) is a different hue from the brand red
            * and reads as the button changing colour instead of darkening.
            *
-           * The focus rings are measured, not chosen. `components/ui/button.tsx` ships
-           * `focus-visible:ring-1 focus-visible:ring-ring` with **no ring-offset**, so an override
-           * that only names a colour paints the ring flush against the fill: `ring-f1-red` on
-           * `bg-f1-red` is 1.00:1 and `ring-zinc-600` on the outline pill's `bg-white/[0.02]` over
-           * `base` is 2.57:1, both under WCAG 2.4.11's 3:1. Each ring therefore takes the *other*
-           * pill's colour plus an explicit offset, so a 2px band of page background separates ring
-           * from fill. `landing-hero.tsx` and `teardown-outro.tsx` carry these strings verbatim.
+           * Focus rings: the rule and every measurement behind it live in `lib/focus.ts`. The
+           * offsets are `base-warm` and not `base` here — this is one of the alternating warm
+           * sections (`components/landing/landing-section-theme.tsx`), and the offset band is
+           * painted in the colour it names, so a `base` band on a warm section draws a visible cold
+           * halo. A ring is only ever seen while its control is focused, which means the section is
+           * on screen, which means `LandingSectionTheme` has already settled it to warm.
            */}
           <div className="flex flex-wrap items-center justify-center gap-4">
             <Button
               asChild
               size="lg"
-              className="rounded-full bg-f1-red px-7 text-[12px] font-bold uppercase tracking-[0.14em] text-white transition-colors hover:bg-[#B80500] focus-visible:ring-ink focus-visible:ring-offset-2 focus-visible:ring-offset-base"
+              className={cn(
+                'rounded-full bg-f1-red px-7 text-[12px] font-bold uppercase tracking-[0.14em] text-white transition-colors hover:bg-[#B80500]',
+                focusRingOnRedFill,
+                'focus-visible:ring-offset-base-warm',
+              )}
             >
               <Link href="/briefing">
                 Generate a Briefing
@@ -134,7 +142,10 @@ export function LandingCtaBand() {
               asChild
               variant="outline"
               size="lg"
-              className="rounded-full border-white/15 bg-white/[0.02] px-7 text-[12px] font-bold uppercase tracking-[0.14em] text-zinc-300 transition-colors hover:border-white/25 hover:bg-white/[0.06] hover:text-ink focus-visible:ring-f1-red focus-visible:ring-offset-2 focus-visible:ring-offset-base"
+              className={cn(
+                'rounded-full border-white/15 bg-white/[0.02] px-7 text-[12px] font-bold uppercase tracking-[0.14em] text-zinc-300 transition-colors hover:border-white/25 hover:bg-white/[0.06] hover:text-ink',
+                focusRingOffsetBaseWarm,
+              )}
             >
               <Link href="/teardown">Explore Car Anatomy</Link>
             </Button>

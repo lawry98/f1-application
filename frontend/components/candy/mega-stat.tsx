@@ -24,6 +24,34 @@ const COUNT_SPRING = { damping: 40, stiffness: 90, mass: 1 } as const;
 const ONCE_IN_VIEW = { once: true, margin: '-15% 0px' } as const;
 
 /**
+ * The `type` the always-mounted `Scribble` carries when there is no mark to draw.
+ *
+ * `Scribble`'s `type` is required, and the wrapper is now rendered unconditionally (see the
+ * counting-box call site), so an unmarked stat still has to name one. `p1` rather than an arbitrary
+ * pick: it is the only type any call site passes on a *toggling* prop — `/teams` turns the mark on
+ * for the championship leader and off for the other ten — so choosing it means `type` never
+ * actually changes there, and the `motion.path` elements keyed off it never remount either. Nothing
+ * about the choice is visible: when `scribble` is undefined the mark is withheld, so no geometry
+ * from this shape is ever painted.
+ */
+const SCRIBBLE_PLACEHOLDER: ScribbleType = 'p1';
+
+/**
+ * Withholds the mark itself while leaving `Scribble`'s element in the tree.
+ *
+ * `display: none` rather than `opacity-0`: an invisible-but-laid-out SVG still intersects the
+ * viewport, so `Scribble`'s `whileInView` would fire and its `viewport={{ once: true }}` would
+ * consume the one draw the mark gets — a stat that later *became* the leader would then show a
+ * mark that was already finished, never one being made. A display-none element has no box and
+ * therefore never intersects, so the draw is still waiting when the mark is wanted.
+ *
+ * `[&_svg]:` is the same descendant hook `scribbleClassName` documents for recolouring, and the
+ * only one that reaches inside `Scribble` from here: `[&>span]` would also match the counting box,
+ * which is `Scribble`'s other child.
+ */
+const SCRIBBLE_WITHHELD = '[&_svg]:hidden';
+
+/**
  * Why this isn't built on `components/ui/number-ticker.tsx`, even though it does a spring count-up
  * over the same `useMotionValue`/`useSpring` primitives:
  *
@@ -252,14 +280,28 @@ export function MegaStat({
               also the *narrowest correct* choice for another reason: it is exactly the box whose
               width is already reserved for the final value (see the comment above it), so handing
               it to `Scribble` can never introduce a second, competing box whose size might shift
-              independently of the CLS guard already in place. */}
-          {scribble ? (
-            <Scribble type={scribble} className={scribbleClassName}>
-              {countingBox}
-            </Scribble>
-          ) : (
-            countingBox
-          )}
+              independently of the CLS guard already in place.
+
+              **`Scribble` is rendered unconditionally, and that is a fix rather than a
+              simplification.** It used to be `scribble ? <Scribble>{box}</Scribble> : box`, which
+              makes the element *type* at this position depend on a prop — so a call site that
+              turns the mark on and off (`/teams` gives it to the championship leader alone)
+              changes the tree shape above `countingBox` on every swap, and React unmounts and
+              rebuilds the box rather than updating it. The rebuilt painted span re-renders with
+              its literal `0` child, so the numeral this component exists to show drops to zero
+              mid-swap while the spring — which lives on `MegaStat` itself and never remounted —
+              carries on from the old total. That is the same defect the panel's `hoist` fixed for
+              the other ten transitions, surviving on the eleventh through this ternary.
+
+              Rendering the element always makes the shape constant; `SCRIBBLE_WITHHELD` is what
+              keeps the *mark* conditional, so no non-leader gains a scribble and the leader's is
+              untouched. */}
+          <Scribble
+            type={scribble ?? SCRIBBLE_PLACEHOLDER}
+            className={cn(scribbleClassName, !scribble && SCRIBBLE_WITHHELD)}
+          >
+            {countingBox}
+          </Scribble>
           {/* Superscripts sit outside the counting box entirely, as siblings sharing the
               parent's font-size — so a re-render of the counting digits above can never touch
               them, and their `em` sizing resolves against the numeral's own giant font-size
