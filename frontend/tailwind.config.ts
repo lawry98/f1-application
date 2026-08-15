@@ -3,7 +3,25 @@ import defaultTheme from 'tailwindcss/defaultTheme';
 
 const config: Config = {
   darkMode: ['class'],
-  content: ['./components/**/*.{js,ts,jsx,tsx,mdx}', './app/**/*.{js,ts,jsx,tsx,mdx}'],
+  /**
+   * `./lib/**` is in here for one reason and it is not tidiness: `lib/focus.ts` is the only place
+   * `focus-visible:ring-f1-red` and `focus-visible:ring-ink` are written, and Tailwind generates a
+   * utility only if it reads that string somewhere in `content`. Without this entry those two rules
+   * are never emitted, so every control built from `focusRing` / `focusRingOffsetBase` /
+   * `focusRingOnRedFill` keeps `ring-2` and falls back to Tailwind's **default blue**
+   * `--tw-ring-color` — measured at `rgb(59 130 246 / 0.5)` on a live focused control.
+   *
+   * That failure is invisible to everything except a browser: the class really is on the element,
+   * jsdom computes no CSS so the tests asserting the class pass, and a screenshot cannot see a ring
+   * that only paints on `:focus-visible`. Same family as the `duration-[600ms]` class that produced
+   * no rule and silently ran at 150ms. Any new module outside `components/`/`app/` that authors a
+   * class string needs adding here too.
+   */
+  content: [
+    './components/**/*.{js,ts,jsx,tsx,mdx}',
+    './app/**/*.{js,ts,jsx,tsx,mdx}',
+    './lib/**/*.{js,ts}',
+  ],
   theme: {
     extend: {
       colors: {
