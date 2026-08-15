@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { renderToString } from 'react-dom/server';
 
-import { TeamsHero } from '@/components/teams/teams-hero';
+import { TeamsHero, HERO_TIMING } from '@/components/teams/teams-hero';
 import { TEAMS } from '@/data/teams-data';
 import { monogram } from '@/components/teams/team-monogram-tile';
 
@@ -58,9 +58,12 @@ describe('TeamsHero', () => {
     }
   });
 
+  // This test's job is tab order, not copy — the number in the CTA is pinned by "says how many
+  // constructors the page holds" below, which derives it from TEAMS.length. Duplicating that
+  // assertion here would make an unrelated test fail every time the grid size changes.
   it('reaches the Explore Constructors CTA before any livery column in tab order', () => {
     render(<TeamsHero onSelectTeam={vi.fn()} />);
-    const cta = screen.getByRole('button', { name: /explore constructors/i });
+    const cta = screen.getByRole('button', { name: /explore \d+ constructors/i });
     const firstColumn = screen.getAllByRole('button', { name: /jump to /i })[0]!;
 
     // DOCUMENT_POSITION_FOLLOWING (4) means firstColumn comes after cta in the DOM,
@@ -221,7 +224,9 @@ describe('TeamsHero', () => {
   it('lets pointer events through the headline block while keeping the CTA clickable', () => {
     render(<TeamsHero onSelectTeam={vi.fn()} />);
 
-    const cta = screen.getByRole('button', { name: /explore constructors/i });
+    // The count is main's — the CTA reads "Explore 11 Constructors" and counts `TEAMS` rather
+    // than hardcoding. Matched loosely so this test guards pointer events, not the wording.
+    const cta = screen.getByRole('button', { name: /explore \d+ constructors/i });
     const content = cta.closest('div.z-10');
     expect(content, 'the CTA must still live inside the z-10 content block').not.toBeNull();
 
@@ -230,5 +235,50 @@ describe('TeamsHero', () => {
 
     // Non-vacuity: the block really does contain the wide headline the columns were losing to.
     expect(content!.querySelector('h1')).not.toBeNull();
+  });
+
+  it('says how many constructors the page holds, and counts them rather than asserting', () => {
+    render(<TeamsHero onSelectTeam={vi.fn()} />);
+    expect(
+      screen.getByRole('button', { name: `Explore ${TEAMS.length} Constructors` }),
+    ).toBeInTheDocument();
+  });
+
+  // Item 8 is "tighten the existing stagger", which is only meaningful as a number. The last
+  // thing to arrive is the scroll cue, and it now arrives inside a second — before this it was
+  // 1.4s in, by which point a visitor who scrolled has already left.
+  it('starts every element’s entrance inside a second', () => {
+    expect(HERO_TIMING.cue).toBeLessThan(1);
+    expect(HERO_TIMING.badge).toBeLessThan(HERO_TIMING.subtitleDelay);
+    expect(HERO_TIMING.subtitleDelay).toBeLessThan(HERO_TIMING.cta);
+    expect(HERO_TIMING.cta).toBeLessThan(HERO_TIMING.cue);
+  });
+
+  // wallDuration and cueDuration are the two "tightened" values that are durations rather than
+  // delays, so they don't slot into the ordering above — a duration doesn't arrive at a point in
+  // time, it describes how long something already arriving takes to settle. What they must do
+  // instead: the wall (last column's delay plus its own settle time) has to be fully in place
+  // at-or-before the cue starts appearing, so the two elements never overlap mid-animation. (Note
+  // cue + cueDuration is 1.3s, past the 1s ceiling above — that ceiling is about when the last
+  // element *starts* arriving, which is what a visitor who is about to scroll actually sees; the
+  // cue's own 0.4s fade completing slightly later doesn't change that.)
+  it('settles the livery wall before the scroll cue starts arriving', () => {
+    expect(
+      HERO_TIMING.wallStep * (TEAMS.length - 1) + HERO_TIMING.wallDuration,
+    ).toBeLessThanOrEqual(HERO_TIMING.cue);
+  });
+
+  // Both durations are the tightened numbers from the same pass that took the wall's per-column
+  // spring from 0.6s to its current value and the cue's fade from 0.6s to its current value —
+  // guarding that keeps either from drifting back up unnoticed.
+  it('keeps both settle durations tightened from their pre-refactor 0.6s', () => {
+    expect(HERO_TIMING.wallDuration).toBeLessThan(0.6);
+    expect(HERO_TIMING.cueDuration).toBeLessThan(0.6);
+  });
+
+  // Eleven columns at the old 0.06 step put the last livery 0.6s behind the first, which reads
+  // as a queue rather than a wall arriving.
+  it('lands the whole livery wall before the CTA does', () => {
+    expect(HERO_TIMING.wallStep * (TEAMS.length - 1)).toBeLessThan(HERO_TIMING.cta);
   });
 });

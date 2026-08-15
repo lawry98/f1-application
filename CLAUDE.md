@@ -199,6 +199,24 @@ made rather than silently fallen through.
 **`gltf.scene.clone()` must stay inside `useMemo`** — without it Three.js re-clones the scene on
 every render.
 
+**The 3D scene's `frameloop` is state, and `demand` is not the default for a reason.** `f1-hero-scene.tsx`
+is reached from exactly one place — the teams page's Inspect modal — and the right rail deliberately
+has no canvas, which is what keeps `three` / `@react-three/fiber` out of the page-load bundle. The
+loop is `never` while `document.visibilityState` is not `visible`, `demand` under
+`prefers-reduced-motion`, and `always` otherwise. Setting `demand` unconditionally looks like the
+obvious optimisation and freezes the car: `RealCar`'s rotation and float run through `useFrame`,
+which under `demand` fires only on invalidation. An `Invalidator` component sits inside the
+`Canvas` for a narrower reason than it looks: R3F's reconciler already auto-invalidates on any
+scene-graph mutation, so the Suspense swap when the GLB resolves needs no help. What actually
+requires `Invalidator` is `RealCar`'s imperative `material.color.set(teamColor)`, which mutates an
+existing Three.js object outside R3F's prop diffing and so is never auto-invalidated — without it,
+a livery change under `demand` would show the wrong colour until the next invalidation. That
+recolour call is dormant today, though: `f1-car-model.tsx`'s material filter matches names
+containing `body`/`Body`/`paint`, but the committed GLB's materials are named `Livery`, `RearLight`,
+`Wheels` and `WheelCovers`, so `bodyMaterials` is empty and `material.color.set()` never runs on
+anything — `Invalidator` currently invalidates for a colour change that never happens, and becomes
+load-bearing the moment that filter is fixed.
+
 **The landing page composes, it doesn't contain.** `app/page.tsx` is seven imports from
 `components/landing/`; the hero, features, and footer markup are not inline.
 
@@ -251,13 +269,14 @@ for all eleven teams, so a new team with an unreadable colour fails CI rather th
 
 **`readableOnDark` is only correct on bare `zinc-950`, and it has zero headroom by
 construction** — it stops at the first lightness step clearing 4.5:1, so *any* translucent layer
-between the glyphs and the page pushes it under. Three call sites sit on something lighter and
-each needs its own backdrop variant, all built from `blendOver` + `liftUntilContrast`:
-`seamLabelColor` for the seam wash, `railStandingColor` for the active rail row's
-`bg-zinc-800/60` highlight (`readableOnDark` measured 4.02:1 there), and `sectionStandingColor`
-for the section glow. The mistake looks identical every time and the tests reproduced it twice:
-an assertion that measures the right *colour* against the wrong *background* passes while the
-rendered page fails. If you add team-coloured text, ask what is behind it first.
+between the glyphs and the page pushes it under. Five call sites sit on something lighter and each
+needs its own backdrop variant, all built from `blendOver` + `liftUntilContrast`: `seamLabelColor`
+for the seam wash, `railStandingColor` for the active rail row's `bg-zinc-800/60` highlight
+(`readableOnDark` measured 4.02:1 there), `sectionStandingColor` for the section glow,
+`portraitCaptionColor` for the caption scrim over a photograph, and `trayValueColor` for the compare
+tray's `bg-zinc-900/60` card (4.23:1 there). The mistake looks identical every time and the tests
+reproduced it twice: an assertion that measures the right *colour* against the wrong *background*
+passes while the rendered page fails. If you add team-coloured text, ask what is behind it first.
 
 **The section glow's peak opacity is a contrast constraint, not a taste one.** A `40vw` blob with
 a 120px blur is wider than the margin of an 840px-wide section, so its core lands on the content

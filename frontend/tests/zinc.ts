@@ -48,6 +48,12 @@ function zincClass(el: Element): string | null {
  * Text runs only. An icon wrapper coloured `text-zinc-500` carries no text node, is judged
  * against WCAG's 3:1 non-text bar rather than 4.5:1, and is correctly left alone — the hero's
  * scroll-cue chevron is exactly that case.
+ *
+ * This function only enumerates; it does not choose what to judge the neutrals against. Callers
+ * that pass `DARK_BG` are applying a deliberate one-directional lower bound — `zinc-950` is the
+ * most permissive surface on the page, so passing it can only ever *undercount* failures. A
+ * component whose neutrals actually sit on a lighter composite (a card, a wash) should judge them
+ * against that composite instead, which is stricter, not against this function's signature.
  */
 export function restingTextNeutrals(root: ParentNode): RestingNeutral[] {
   const out: RestingNeutral[] = [];

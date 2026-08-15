@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, within, fireEvent } from '@testing-library/react';
+import { render, screen, within, fireEvent, waitFor } from '@testing-library/react';
 
 import { TeamsComparisonGrid } from '@/components/teams/teams-comparison-grid';
-import { TEAMS } from '@/data/teams-data';
+import { TEAMS, TEAM_MAP } from '@/data/teams-data';
 import { contrastRatio, DARK_BG, MIN_CONTRAST } from '@/lib/team-utils';
 import { restingTextNeutrals } from './zinc';
 
@@ -149,5 +149,133 @@ describe('TeamsComparisonGrid', () => {
         MIN_CONTRAST,
       );
     }
+  });
+
+  describe('the two-slot comparison', () => {
+    it('shows no tray until two constructors are chosen', () => {
+      renderGrid();
+      expect(screen.queryByTestId('compare-tray')).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: /compare Mercedes/i }));
+      expect(screen.queryByTestId('compare-tray')).not.toBeInTheDocument();
+    });
+
+    it('says what it is waiting for after one pick', () => {
+      renderGrid();
+      fireEvent.click(screen.getByRole('button', { name: /compare Mercedes/i }));
+      expect(screen.getByText(/select one more/i)).toBeInTheDocument();
+    });
+
+    it('opens the tray on the second pick', () => {
+      renderGrid();
+      fireEvent.click(screen.getByRole('button', { name: /compare Mercedes/i }));
+      fireEvent.click(screen.getByRole('button', { name: /compare Ferrari/i }));
+
+      const tray = screen.getByTestId('compare-tray');
+      expect(within(tray).getByText('Power Unit')).toBeInTheDocument();
+      expect(within(tray).getByText(TEAM_MAP['ferrari']!.base)).toBeInTheDocument();
+    });
+
+    it('reports each row’s slot state to assistive tech', () => {
+      renderGrid();
+      const mercedes = screen.getByRole('button', { name: /compare Mercedes/i });
+      expect(mercedes).toHaveAttribute('aria-pressed', 'false');
+      fireEvent.click(mercedes);
+      expect(mercedes).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    // Async, and the disappearance is awaited: TeamsCompareTray (Task 2, unchangeable here)
+    // carries its own `exit` transition — a real `{ type: 'spring', duration: 0.3, bounce: 0 }`
+    // — and AnimatePresence holds the outgoing tray mounted in jsdom for that real elapsed time
+    // before removing it. A synchronous assertion right after the click sees the tray still
+    // there; `waitFor` is the correct way to observe an animated unmount, not a weaker check.
+    it('lets a chosen constructor be unchosen', async () => {
+      renderGrid();
+      const mercedes = screen.getByRole('button', { name: /compare Mercedes/i });
+      fireEvent.click(mercedes);
+      fireEvent.click(screen.getByRole('button', { name: /compare Ferrari/i }));
+      expect(screen.getByTestId('compare-tray')).toBeInTheDocument();
+
+      fireEvent.click(mercedes);
+      await waitFor(() => expect(screen.queryByTestId('compare-tray')).not.toBeInTheDocument());
+      expect(mercedes).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    // The cap is two. A third pick drops the older of the two rather than being silently
+    // ignored — a control that visibly does nothing is worse than one that does something
+    // predictable.
+    it('caps the comparison at two, dropping the older pick', () => {
+      renderGrid();
+      fireEvent.click(screen.getByRole('button', { name: /compare Mercedes/i }));
+      fireEvent.click(screen.getByRole('button', { name: /compare Ferrari/i }));
+      fireEvent.click(screen.getByRole('button', { name: /compare McLaren/i }));
+
+      expect(screen.getByRole('button', { name: /compare Mercedes/i })).toHaveAttribute(
+        'aria-pressed',
+        'false',
+      );
+      expect(screen.getByRole('button', { name: /compare Ferrari/i })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+      expect(screen.getByRole('button', { name: /compare McLaren/i })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+    });
+
+    it('keeps the picks in the order they were made', () => {
+      renderGrid();
+      fireEvent.click(screen.getByRole('button', { name: /compare Ferrari/i }));
+      fireEvent.click(screen.getByRole('button', { name: /compare Mercedes/i }));
+
+      const row = screen.getByTestId('compare-row-championship');
+      expect(within(row).getByTestId('compare-value-0').textContent).toMatch(/Ferrari/);
+      expect(within(row).getByTestId('compare-value-1').textContent).toMatch(/Mercedes/);
+    });
+
+    // See the note on 'lets a chosen constructor be unchosen' — the tray's own exit transition
+    // means jsdom needs `waitFor`, not an immediate assertion, to observe the unmount.
+    it('clears both slots from the tray', async () => {
+      renderGrid();
+      fireEvent.click(screen.getByRole('button', { name: /compare Mercedes/i }));
+      fireEvent.click(screen.getByRole('button', { name: /compare Ferrari/i }));
+      fireEvent.click(screen.getByRole('button', { name: /clear comparison/i }));
+
+      await waitFor(() => expect(screen.queryByTestId('compare-tray')).not.toBeInTheDocument());
+      expect(screen.getByRole('button', { name: /compare Mercedes/i })).toHaveAttribute(
+        'aria-pressed',
+        'false',
+      );
+    });
+
+    // The row's anchor and its compare toggle are siblings, not nested. A button inside an
+    // anchor is invalid HTML and the browser's behaviour on click is undefined.
+    it('keeps the compare toggle outside the jump link', () => {
+      renderGrid();
+      const link = screen.getByRole('link', { name: /jump to Ferrari/i });
+      expect(link.querySelector('button')).toBeNull();
+    });
+
+    it('does not navigate when a constructor is picked for comparison', () => {
+      const onSelectTeam = vi.fn();
+      renderGrid(onSelectTeam);
+      fireEvent.click(screen.getByRole('button', { name: /compare Ferrari/i }));
+      expect(onSelectTeam).not.toHaveBeenCalled();
+    });
+
+    // The sort tabs stay at three. The tray is what answers the brief's demand that power unit,
+    // base and drivers be comparable; adding tabs for them would add controls without adding
+    // information.
+    it('still offers exactly three orderings', () => {
+      renderGrid();
+      for (const label of ['Points', 'Titles', 'Since']) {
+        expect(screen.getByRole('button', { name: label })).toBeInTheDocument();
+      }
+      const tabs = screen
+        .getAllByRole('button')
+        .filter((b) => b.getAttribute('aria-pressed') !== null && !/compare /i.test(b.getAttribute('aria-label') ?? ''));
+      expect(tabs).toHaveLength(3);
+    });
   });
 });
