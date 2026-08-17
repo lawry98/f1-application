@@ -87,22 +87,28 @@ function rgbToHsl([r8, g8, b8]: [number, number, number]): [number, number, numb
   const d = max - min;
   if (d === 0) return [0, 0, l];
   const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-  const h = max === r ? ((g - b) / d + (g < b ? 6 : 0)) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  const h =
+    max === r ? (g - b) / d + (g < b ? 6 : 0) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
   return [h * 60, s, l];
 }
 
 function hslToRgb(h: number, s: number, l: number): [number, number, number] {
   const c = (1 - Math.abs(2 * l - 1)) * s;
-  const hp = ((h % 360) + 360) % 360 / 60;
+  const hp = (((h % 360) + 360) % 360) / 60;
   const x = c * (1 - Math.abs((hp % 2) - 1));
   const m = l - c / 2;
   const [r, g, b] =
-    hp < 1 ? [c, x, 0]
-    : hp < 2 ? [x, c, 0]
-    : hp < 3 ? [0, c, x]
-    : hp < 4 ? [0, x, c]
-    : hp < 5 ? [x, 0, c]
-    : [c, 0, x];
+    hp < 1
+      ? [c, x, 0]
+      : hp < 2
+        ? [x, c, 0]
+        : hp < 3
+          ? [0, c, x]
+          : hp < 4
+            ? [0, x, c]
+            : hp < 5
+              ? [x, 0, c]
+              : [c, 0, x];
   return [(r + m) * 255, (g + m) * 255, (b + m) * 255];
 }
 
@@ -195,24 +201,51 @@ export function seamWash(hex: string): string {
 }
 
 /**
- * The opaque colour behind the seam label. The label sits *inside* the wash, so `zinc-950`
- * is not what is behind it — the wash over `zinc-950` is.
+ * The opaque colour behind the seam label: the seam wash over the section's own per-team
+ * gradient over `zinc-950`. Two translucent liveries, not one.
  *
- * Sampled at full `SEAM_WASH_ALPHA` rather than at the label's own y-position. The wash only
- * fades going down, so judging against its strongest point holds the label readable anywhere
- * in the band, and spares this from depending on the label's exact offset and font size.
+ * **The gradient belongs here because of where the seam sits.** `sectionGradient` is painted under
+ * the whole section and ramps away across its upper half, peaking at
+ * `SECTION_GRADIENT_PEAK_ALPHA` along the **top edge** — and the seam is an `h-16` band at exactly
+ * that edge, so the label is over the ramp's strongest point rather than somewhere on its tail.
+ * `sectionSurfaceBackdrop` was updated to compose the gradient when it was introduced and this was
+ * not, which left this describing only half of what is really behind the glyphs.
+ *
+ * That omission is not a rounding error, because `seamLabelColor` is `liftUntilContrast` and
+ * therefore has **zero headroom by construction** — it stops at the first lightness step clearing
+ * 4.5:1, so a forgotten layer comes straight off the ratio. Measured against the real backdrop with
+ * the gradient left out, nine of the eleven liveries failed AA: Alpine 3.98, Audi 4.05, McLaren
+ * 4.11, Cadillac 4.15, Ferrari 4.19, Williams 4.20, Red Bull 4.24, Aston Martin 4.27, Racing Bulls
+ * 4.38, against Mercedes' 4.59 and Haas's 5.83. Composed, all eleven clear it (4.51–5.83). It is
+ * the "right colour, wrong background" failure `CLAUDE.md` records this page shipping twice, and
+ * the test that should have caught it measured the seam run against `sectionSurfaceBackdrop` —
+ * lighter than this helper assumed, but still darker than reality, so it erred safe and passed.
+ *
+ * Both layers are sampled at full alpha rather than at the label's own y-position. Each only fades
+ * going down, so judging against their strongest point holds the label readable anywhere in the
+ * band, and spares this from depending on the label's exact offset and font size.
+ *
+ * The glow blob is deliberately **not** in this stack, unlike `sectionSurfaceBackdrop`'s: it is
+ * positioned at `top: 10%` of a section hundreds of pixels tall, so it starts well below a 64px
+ * band at the top edge.
  */
 export function seamLabelBackdrop(hex: string): string {
-  return blendOver(hex, SEAM_WASH_ALPHA, DARK_BG);
+  return blendOver(hex, SEAM_WASH_ALPHA, blendOver(hex, SECTION_GRADIENT_PEAK_ALPHA, DARK_BG));
 }
 
 /**
  * A team colour lifted far enough to clear WCAG AA as the seam's small caps label.
  *
- * Judged against the background the label really has, `readableOnDark` leaves seven of the
- * eleven liveries between 3.58 and 4.03 — Audi at 3.58, Williams 3.60, Aston Martin 3.63,
- * Cadillac 3.70, Ferrari 3.75, Red Bull 3.80, Racing Bulls 3.98. The wash is what the seam
- * exists for, so the wash keeps its authored strength and the *label* moves instead.
+ * Judged against the background the label really has — the wash over the section gradient, see
+ * `seamLabelBackdrop` — `readableOnDark` leaves **nine** of the eleven liveries between 3.23 and
+ * 4.11: Audi 3.23, Williams 3.28, Aston Martin 3.35, Cadillac 3.42, Ferrari 3.43, Alpine 3.49,
+ * Red Bull 3.53, Racing Bulls 3.82, McLaren 4.11. Only Mercedes (4.59) and Haas (5.83) survive it.
+ * The wash is what the seam exists for, so the wash keeps its authored strength and the *label*
+ * moves instead.
+ *
+ * (It was seven, between 3.58 and 4.03, while `seamLabelBackdrop` still described the wash alone.
+ * Composing the gradient it sits on moved two more teams under the bar and dropped the worst case
+ * by a third of a point — which is the size of the error a forgotten layer is worth here.)
  */
 export function seamLabelColor(hex: string): string {
   return liftUntilContrast(hex, MIN_CONTRAST, seamLabelBackdrop(hex));
@@ -269,9 +302,96 @@ export function railStandingColor(hex: string): string {
  */
 export const GLOW_PEAK_OPACITY = 0.18;
 
-/** The opaque colour the glow leaves behind the section's standing line. */
+/**
+ * Peak alpha of the per-team gradient a section paints beneath everything else, and — same rule
+ * as `GLOW_PEAK_OPACITY` — the alpha its composite is judged at.
+ *
+ * The spec's Phase 5 line is "`TopoBackground` at 4% over each team-colour gradient", and the
+ * gradient is the part with a contrast cost. It is a *ramp*, fading to transparent well before the
+ * section ends, so judging every run in the section at the ramp's peak is the conservative side of
+ * the real number for all but the topmost line.
+ *
+ * **0.1 was chosen by measurement, and it is what forces the section's neutral floor up a rung.**
+ * The gradient does not replace the glow, it stacks under it, so the worst case behind a line of
+ * section copy is the livery at 0.1 and then again at `GLOW_PEAK_OPACITY`. On Haas's `#ffffff`
+ * that composites to `#4a4a4b`, where `zinc-400` measures **3.45:1** — under AA. Notably it was
+ * already marginal without any gradient at all: glow-only composites to `#353537`, where
+ * `zinc-400` is **4.78:1**, i.e. 0.28 of headroom, and *any* gradient above 0.02 spends it.
+ *
+ * So the rung moves rather than the design: inside a team section every resting neutral is
+ * `zinc-300` or lighter, which measures **5.99:1** on that same worst case and **5.54:1** through
+ * a `TicketCard`'s wash on top of it. Raising this constant without re-measuring both numbers is
+ * the mistake `CLAUDE.md` records the team pages shipping twice.
+ */
+export const SECTION_GRADIENT_PEAK_ALPHA = 0.1;
+
+/**
+ * The section's team-colour gradient: the livery at `SECTION_GRADIENT_PEAK_ALPHA` along the top
+ * edge, ramping to nothing across the section's upper half.
+ *
+ * `rgba()` rather than an `#RRGGBBAA` suffix because jsdom's CSS parser drops the eight-digit hex
+ * form inside a gradient, which would make the declaration unobservable in a test — the same class
+ * of parser gap `portraitScrim` documents for `calc()`.
+ */
+export function sectionGradient(hex: string): string {
+  const [r, g, b] = parseHex(hex);
+  return `linear-gradient(to bottom, rgba(${r}, ${g}, ${b}, ${SECTION_GRADIENT_PEAK_ALPHA}), rgba(${r}, ${g}, ${b}, 0) 60%)`;
+}
+
+/**
+ * The worst opaque colour a line of section copy can sit on: the gradient at its peak, with the
+ * glow blob at *its* peak on top of that.
+ *
+ * Both layers are full-section and both are decorative, so any given glyph may have one, the
+ * other, or neither behind it. Composing both is the only bound that holds everywhere.
+ *
+ * **The section's `TopoBackground` is deliberately not a third layer here, and this is the reason
+ * rather than an oversight.** `/briefing` does treat topo as a uniform wash — its page backdrop is
+ * `#212124`, not `#09090b`, precisely because of one — but that instance is the component's own
+ * `opacity-[0.12]` default over a flat page, where a uniform model is close enough to the truth to
+ * be worth the pessimism. This one is the spec's 4% (`text-ink opacity-[0.04]`), and at that
+ * strength the composite it produces is a **per-pixel worst case, not a uniform one**: the texture
+ * is 1px contour strokes with most of the tile empty, so the great majority of glyph pixels have
+ * no stroke behind them at all. Averaging it into the backdrop would raise the floor for a
+ * background that is mostly not there.
+ *
+ * The cost of the alternative, measured rather than asserted, is what settles it. Composing ink at
+ * 0.04 over this stack pushes every livery this module already lifts back under AA:
+ *
+ *   - the section standing line — **8 of 11** lifted liveries land between **4.06** (Alpine) and
+ *     **4.22** (Ferrari, Cadillac);
+ *   - the seam label — **10 of 11** land between **4.05** (McLaren) and **4.25** (Ferrari), Haas
+ *     alone clearing it.
+ *
+ * Recovering those means lifting ten of the eleven brand colours further than they already are,
+ * and `liftUntilContrast` walks HSL lightness, so "further" is visible: these are wordmark
+ * colours, and a livery wall painted in lightened brand colours stops being a livery wall. The
+ * neutrals are unaffected either way — `zinc-300` still measures 5.37–10.86 with topo composed —
+ * so the whole trade is about team-coloured text.
+ *
+ * `topo-exempt` is therefore a decision, and today's colours are what it decides for. If the
+ * texture's opacity ever rises materially, or it stops being sparse strokes, re-run the numbers
+ * above before assuming the exemption still holds.
+ */
+export function sectionSurfaceBackdrop(hex: string): string {
+  return blendOver(hex, GLOW_PEAK_OPACITY, blendOver(hex, SECTION_GRADIENT_PEAK_ALPHA, DARK_BG));
+}
+
+/** The same stack with a `TicketCard`'s `bg-white/[0.03]` wash on top — driver cards sit here. */
+export function sectionCardBackdrop(hex: string): string {
+  return cardSurfaceBackdrop(sectionSurfaceBackdrop(hex));
+}
+
+/**
+ * The opaque colour the section's decorative layers leave behind its standing line.
+ *
+ * This used to be the glow alone. It is the whole stack now, because the gradient sits under the
+ * glow and lightens it further — leaving this describing only half of what is really there would
+ * make `sectionStandingColor` lift against a background lighter than the one it measured, which is
+ * precisely the "right colour, wrong background" failure this module exists to prevent.
+ */
 export function sectionStandingBackdrop(hex: string): string {
-  return blendOver(hex, GLOW_PEAK_OPACITY, DARK_BG);
+  return sectionSurfaceBackdrop(hex);
 }
 
 /**
@@ -284,6 +404,34 @@ export function sectionStandingBackdrop(hex: string): string {
  */
 export function sectionStandingColor(hex: string): string {
   return liftUntilContrast(hex, MIN_CONTRAST, sectionStandingBackdrop(hex));
+}
+
+/**
+ * The `bg-white/[0.03]` card surface `TicketCard` paints, as an opaque colour.
+ *
+ * This is the fourth backdrop variant, and it exists because the candy kit introduced a surface
+ * the other three do not describe. `readableOnDark`, `seamLabelColor`, `railStandingColor` and
+ * `sectionStandingColor` all answer "what colour must this text be"; this one answers the prior
+ * question — "what is actually behind it" — for a neutral that was chosen against bare `base` and
+ * then rendered on a card.
+ *
+ * The distinction is not academic and it is the reason this is a helper rather than a number
+ * inlined in a test. A translucent white surface *lightens* the background, which lifts a
+ * neutral's contrast against the page but lowers it against the surface: `zinc-500` measures
+ * 4.12:1 on bare `base` and 3.93:1 here. A test that measures a card's text against `DARK_BG`
+ * therefore reports the wrong number in the *safe* direction, passes, and leaves the rendered
+ * page failing — which is exactly the trap `CLAUDE.md` records the team pages hitting twice.
+ *
+ * The default covers both pages that use the card today: tailwind's `base` and this module's
+ * `DARK_BG` are the same colour (`#09090B`), so a `TicketCard` on the landing page and one on
+ * `/teardown`'s `bg-zinc-950` composite identically. Pass an explicit `bg` only for a card on
+ * something else — `base-warm`, or a team-colour gradient in Phase 5.
+ */
+export const CARD_SURFACE_ALPHA = 0.03;
+
+/** The opaque colour behind text inside a `TicketCard` on `bg` (default: `base` / `zinc-950`). */
+export function cardSurfaceBackdrop(bg: string = DARK_BG): string {
+  return blendOver('#ffffff', CARD_SURFACE_ALPHA, bg);
 }
 
 /**

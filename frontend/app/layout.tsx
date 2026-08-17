@@ -1,8 +1,32 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
+import { Archivo, Instrument_Serif, Inter } from 'next/font/google';
 import './globals.css';
+import { SmoothScroll } from '@/components/candy/smooth-scroll';
 
-const inter = Inter({ subsets: ['latin'], display: 'swap' });
+const inter = Inter({ subsets: ['latin'], display: 'swap', variable: '--font-inter' });
+
+/**
+ * Display face for ALL-CAPS headlines. `Archivo`, not `Archivo Black`: Archivo Black is a
+ * static 400-only face, so it cannot reach the heavy-and-condensed setting the headlines
+ * are drawn at. Archivo variable carries both a weight and a width axis, and `wdth` has to
+ * be requested explicitly — next/font only ships the axes you name.
+ */
+const archivo = Archivo({
+  subsets: ['latin'],
+  display: 'swap',
+  weight: 'variable',
+  axes: ['wdth'],
+  variable: '--font-archivo',
+});
+
+/** Italic serif for the accent words inside a display headline, and for pull-quotes. */
+const instrumentSerif = Instrument_Serif({
+  subsets: ['latin'],
+  display: 'swap',
+  weight: '400',
+  style: 'italic',
+  variable: '--font-instrument-serif',
+});
 
 export const metadata: Metadata = {
   title: {
@@ -27,8 +51,13 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="dark">
-      <body className={inter.className}>{children}</body>
+    <html
+      lang="en"
+      className={`dark ${inter.variable} ${archivo.variable} ${instrumentSerif.variable}`}
+    >
+      <body className="font-sans antialiased">
+        <SmoothScroll>{children}</SmoothScroll>
+      </body>
     </html>
   );
 }

@@ -1,9 +1,27 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { renderToString } from 'react-dom/server';
 
 import { TeamsHero, HERO_TIMING } from '@/components/teams/teams-hero';
 import { TEAMS } from '@/data/teams-data';
 import { monogram } from '@/components/teams/team-monogram-tile';
+
+/**
+ * The reduced-motion recipe, verbatim: `useReducedMotion()` cannot be driven through
+ * `window.matchMedia` — motion caches the preference in a module global on the first call and
+ * queries `(prefers-reduced-motion)` rather than `(prefers-reduced-motion: reduce)`. Spreading
+ * `actual` keeps the real `motion` elements the livery wall and the scroll cue are built from.
+ */
+let reduceMotion = false;
+
+vi.mock('motion/react', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('motion/react')>();
+  return { ...actual, useReducedMotion: () => reduceMotion };
+});
+
+beforeEach(() => {
+  reduceMotion = false;
+});
 
 /**
  * The livery wall's interactive layer. Identified by its `lg:flex` column layout rather than a
@@ -65,9 +83,7 @@ describe('TeamsHero', () => {
     const tokens = columnLayer(container).className.split(/\s+/);
 
     expect(tokens).toContain('lg:inset-0');
-    const unsetsBlockEdge = tokens.filter((t) =>
-      /^lg:(top|bottom|inset-y)-auto$/.test(t),
-    );
+    const unsetsBlockEdge = tokens.filter((t) => /^lg:(top|bottom|inset-y)-auto$/.test(t));
     expect(unsetsBlockEdge).toEqual([]);
   });
 
@@ -116,6 +132,109 @@ describe('TeamsHero', () => {
     expect(reveal!.querySelector('img')).toHaveAttribute('alt', 'Ferrari logo');
     // Hidden below lg so the two marks never both show.
     expect(reveal!.className).toMatch(/\bhidden\b/);
+  });
+
+  /*
+   * The content block sits `z-10` over the `z-0` livery columns, and "THE GRID" at
+   * `clamp(3.5rem,12vw,9rem)` is wide enough that the block covered seven of the eleven. Verified
+   * by hit-testing every column's centre with `document.elementsFromPoint` in Chromium at
+   * 1440x1000: McLaren, Red Bull, Haas, Racing Bulls, Audi, Alpine and Williams all resolved to
+   * this wrapper rather than to their own button, before and only before the fix.
+   *
+   * **jsdom cannot reproduce that** — it lays nothing out, so `elementFromPoint` is meaningless
+   * here and no test in this file could have caught the original bug. What this pins instead is
+   * the *mechanism*: `pointer-events` is inherited, so the whole block being `none` with exactly
+   * the CTA opting back in is the shape of the fix, and either half going missing is a regression
+   * that puts the hero back to seven dead columns (or, if the `auto` is lost, to a dead CTA).
+   */
+  /**
+   * The regression guard for a **confirmed** hydration error, reproduced in Chromium on `/teams`
+   * with reduced motion emulated:
+   *
+   *     Warning: Prop `style` did not match.
+   *       Server: "…;opacity:0;transform:scaleY(0)"  Client: "…;opacity:1"
+   *         at MotionDOMComponent … at TeamsHero
+   *
+   * motion's own `useReducedMotion()` answers `null` during SSR and the user's *real* preference on
+   * the client's first render, and this hero feeds that answer straight into `initial` — so the
+   * server seeded the livery columns from the un-reduced initial while the client's hydrating pass
+   * seeded them from `animate`. `useReducedMotionSafe` fixes it by contract: `false` on the server
+   * and on the first client render whatever the preference says, then a layout effect flips it
+   * before paint.
+   *
+   * This hero calls the hook **itself** — it is not fed by `TeamsPageClient` — so fixing the parent
+   * alone leaves the error exactly where the console found it, which is why this test renders the
+   * component in isolation.
+   *
+   * The server string is the only place jsdom can observe the contract: a client `render()` runs
+   * the layout effect inside `act`, so the flipped value is all it can ever see.
+   */
+  it('seeds the livery columns from the un-reduced initial on the server, whatever the preference', () => {
+    reduceMotion = true;
+    // React logs "useLayoutEffect does nothing on the server" for the hook's isomorphic effect.
+    // That is the deliberate cost of committing the flip before paint — see
+    // `hooks/use-reduced-motion-safe.ts` — not something this test should fail on.
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const html = renderToString(<TeamsHero onSelectTeam={vi.fn()} />);
+
+      // The un-reduced `initial`, which is what the client's first render will also produce.
+      // Under motion's own hook the server emitted this and the client emitted `opacity:1`.
+      expect(html).toMatch(/scaleY\(0\)/);
+      // The scroll cue is the structural half of the same branch — `{!reducedMotion && …}` — so a
+      // server tree that has dropped it is the element-level version of the same mismatch.
+      // `bottom-10` is the cue's own wrapper class; nothing else in the hero uses it.
+      expect(html).toContain('bottom-10');
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  /**
+   * The below-`lg` ambient glow was a hardcoded `#dc2626` — the pre-spec red, from before the
+   * branch moved `f1-red` to `#E10600`. It stayed decorative (a 600px blob at 7% behind a 120px
+   * blur, so no contrast rule reaches it); what changed is that it is now the *same* red as
+   * everything else on the page instead of a near-miss nobody would spot side by side.
+   *
+   * Asserted as the class rather than as a hex, because `bg-f1-red` is the branch's canonical
+   * token — `tailwind.config.ts` says so explicitly, and one grep for `f1-red` finding every red on
+   * the site is the point of it. jsdom applies no stylesheet, so the class can only be named, never
+   * measured.
+   *
+   * The "no inline background at all" half is the assertion that actually holds the line, and the
+   * literal-hex check alone would not: React normalises `style={{ background: '#dc2626' }}` to
+   * `rgb(220, 38, 38)`, so a grep of the markup for `dc2626` passes with the old value still
+   * painted. Requiring the token to arrive through a class is what makes it greppable.
+   */
+  it('paints the ambient glow in the branch red rather than the pre-spec #dc2626', () => {
+    const { container } = render(<TeamsHero onSelectTeam={vi.fn()} />);
+    const glow = container.querySelector<HTMLElement>('div.rounded-full.lg\\:hidden');
+
+    expect(glow, 'the below-lg ambient glow is no longer identifiable').not.toBeNull();
+    expect(glow!.classList.contains('bg-f1-red')).toBe(true);
+    expect(glow!.style.background, 'the glow paints its own background again').toBe('');
+    expect(glow!.style.backgroundColor).toBe('');
+    // Catches the other way a stale literal comes back — an arbitrary `bg-[#dc2626]` class.
+    expect(container.innerHTML, 'a pre-spec #dc2626 survives in the hero').not.toMatch(/dc2626/i);
+    // Still a blurred blob and still decorative — the fix is the colour token and nothing else.
+    expect(glow!.style.filter).toBe('blur(120px)');
+    expect(glow).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('lets pointer events through the headline block while keeping the CTA clickable', () => {
+    render(<TeamsHero onSelectTeam={vi.fn()} />);
+
+    // The count is main's — the CTA reads "Explore 11 Constructors" and counts `TEAMS` rather
+    // than hardcoding. Matched loosely so this test guards pointer events, not the wording.
+    const cta = screen.getByRole('button', { name: /explore \d+ constructors/i });
+    const content = cta.closest('div.z-10');
+    expect(content, 'the CTA must still live inside the z-10 content block').not.toBeNull();
+
+    expect(content!.className).toMatch(/\bpointer-events-none\b/);
+    expect(cta.className).toMatch(/\bpointer-events-auto\b/);
+
+    // Non-vacuity: the block really does contain the wide headline the columns were losing to.
+    expect(content!.querySelector('h1')).not.toBeNull();
   });
 
   it('says how many constructors the page holds, and counts them rather than asserting', () => {

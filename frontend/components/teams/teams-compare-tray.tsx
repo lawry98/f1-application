@@ -3,6 +3,7 @@
 import { motion } from 'motion/react';
 
 import { cn } from '@/lib/utils';
+import { focusRing } from '@/lib/focus';
 import { trayValueColor } from '@/lib/team-utils';
 import { type Team } from '@/data/teams-data';
 import { TeamMonogramTile } from './team-monogram-tile';
@@ -125,7 +126,13 @@ export function TeamsCompareTray({ teams: [left, right], reducedMotion, onClear 
           type="button"
           onClick={onClear}
           aria-label="Clear comparison"
-          className="flex-shrink-0 rounded border border-zinc-800 px-3 py-1.5 text-[10px] uppercase tracking-[0.12em] text-zinc-400 transition-colors duration-200 hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 active:scale-[0.96]"
+          // Flush red, no offset: the tray is `bg-zinc-900/60`, which composites to `#121215` —
+          // not a token an offset band could name. Red measures 3.76:1 there, over the 3:1
+          // non-text bar. See `lib/focus.ts` for the whole rule.
+          className={cn(
+            'flex-shrink-0 rounded border border-zinc-800 px-3 py-1.5 text-[10px] uppercase tracking-[0.12em] text-zinc-400 transition-colors duration-200 hover:text-zinc-200 active:scale-[0.96]',
+            focusRing,
+          )}
         >
           Clear
         </button>

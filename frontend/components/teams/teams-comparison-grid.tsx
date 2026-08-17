@@ -7,7 +7,7 @@ import { Check, Plus } from 'lucide-react';
 import { TextAnimate } from '@/components/ui/text-animate';
 import { NumberTicker } from '@/components/ui/number-ticker';
 import { cn } from '@/lib/utils';
-import { ringOnDark } from '@/lib/team-utils';
+import { focusRing, focusRingOffsetBase } from '@/lib/focus';
 import { STANDINGS_AS_OF, type Team } from '@/data/teams-data';
 import { TeamMonogramTile } from './team-monogram-tile';
 import { TeamsCompareTray } from './teams-compare-tray';
@@ -107,7 +107,7 @@ export function TeamsComparisonGrid({
             by="word"
             startOnView
             once
-            className="text-3xl font-black uppercase tracking-tight text-white md:text-4xl"
+            className="text-3xl font-black uppercase tracking-tight text-ink md:text-4xl"
           >
             Constructors&apos; Championship
           </TextAnimate>
@@ -125,7 +125,10 @@ export function TeamsComparisonGrid({
             aria-pressed={sort === key}
             className={cn(
               'rounded px-3 py-1.5 text-[10px] uppercase tracking-[0.12em] transition-[background-color,color,border-color] duration-200 active:scale-[0.96]',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500',
+              // The selected tab is a `bg-zinc-800` fill, so this takes the offset variant for the
+              // same reason the nav rail's active row does — red flush on `zinc-800` is 3.00:1,
+              // exactly at the bar. The old `ring-zinc-500` was 1.83:1 against that fill.
+              focusRingOffsetBase,
               sort === key
                 ? 'bg-zinc-800 text-white'
                 : 'border border-zinc-800 text-zinc-400 hover:text-zinc-200',
@@ -158,6 +161,9 @@ export function TeamsComparisonGrid({
                 reducedMotion ? { duration: 0 } : { type: 'spring', duration: 0.3, bounce: 0 }
               }
               className={cn(
+                // No focus ring here: this is a plain container now, and the two things inside it
+                // that actually take focus — the jump anchor and the compare toggle — carry their
+                // own.
                 'flex items-center gap-2 rounded px-2 py-2 transition-colors duration-200',
                 team.id === activeTeamId ? 'bg-zinc-900/60' : 'hover:bg-zinc-900/30',
               )}
@@ -171,11 +177,11 @@ export function TeamsComparisonGrid({
                   ranked.length
                 }, ${metricPhrase(sort, team)}`}
                 className={cn(
-                  'flex min-w-0 flex-1 items-center gap-3 text-left no-underline',
-                  'rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950',
+                  'flex min-w-0 flex-1 items-center gap-3 rounded text-left no-underline',
+                  // The row is filled when active (`bg-zinc-900/60`) and washed on hover, so the
+                  // offset variant. The per-team `--tw-ring-color` is gone: `ring-mixed` settles red.
+                  focusRingOffsetBase,
                 )}
-                // `--tw-ring-color`, not `outlineColor` — Tailwind's ring is a box-shadow.
-                style={{ '--tw-ring-color': ringOnDark(team.color) } as React.CSSProperties}
               >
                 <span className="w-5 flex-shrink-0 font-mono text-[11px] text-zinc-400">
                   {i + 1}
@@ -219,12 +225,11 @@ export function TeamsComparisonGrid({
                 aria-label={`Compare ${team.shortName}`}
                 className={cn(
                   'flex h-6 w-6 flex-shrink-0 items-center justify-center rounded border transition-colors duration-200 active:scale-[0.96]',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950',
+                  focusRingOffsetBase,
                   compared.includes(team.id)
                     ? 'border-zinc-500 bg-zinc-800 text-white'
                     : 'border-zinc-800 text-zinc-400 hover:text-zinc-200',
                 )}
-                style={{ '--tw-ring-color': ringOnDark(team.color) } as React.CSSProperties}
               >
                 {compared.includes(team.id) ? (
                   <Check size={12} aria-hidden="true" />
@@ -275,7 +280,13 @@ export function TeamsComparisonGrid({
           resized and transcoded from the originals.{' '}
           <a
             href="/credits#driver-photographs"
-            className="rounded text-zinc-300 underline decoration-zinc-700 underline-offset-2 transition-colors duration-200 hover:text-white hover:decoration-zinc-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500"
+            /* The one unfilled control in this file, so it takes the flush default rather than the
+               offset variant: there is no fill for a ring to be dropped onto, and red sits
+               straight on `base` at 4.01:1. */
+            className={cn(
+              'rounded text-zinc-300 underline decoration-zinc-700 underline-offset-2 transition-colors duration-200 hover:text-white hover:decoration-zinc-400',
+              focusRing,
+            )}
           >
             Full attribution and licence details
           </a>

@@ -15,7 +15,7 @@ export default function Error({ error, reset }: ErrorProps) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-zinc-950">
       <div className="max-w-md px-4 text-center">
-        <h2 className="mb-4 text-2xl font-bold text-white">Something went wrong</h2>
+        <h2 className="mb-4 text-2xl font-bold text-ink">Something went wrong</h2>
         <p className="mb-6 text-zinc-400">{error.message}</p>
         <button
           onClick={reset}

@@ -189,8 +189,9 @@ describe('AttributionTable', () => {
     }
   });
 
-  // f1-red is 4.12:1 on zinc-950 — it passes only the large-text bar, and nothing in a table is
-  // large text.
+  // f1-red is 4.01:1 on zinc-950 — it passes only the large-text bar, and nothing in a table is
+  // large text. (It was 4.12:1 as #dc2626; the brand red is now #E10600, which is marginally
+  // darker and so marginally worse. Still clear of the 3:1 bar, still short of 4.5:1.)
   it('puts no f1-red anywhere in the table', () => {
     const { container } = renderDrivers();
     expect(container.querySelectorAll('[class*="text-f1-red"]')).toHaveLength(0);

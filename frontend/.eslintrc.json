@@ -12,6 +12,12 @@
   },
   "overrides": [
     {
+      "files": ["scripts/**/*.mjs", "scripts/**/*.js"],
+      "rules": {
+        "no-console": "off"
+      }
+    },
+    {
       "files": ["components/ui/**/*.tsx", "components/ui/**/*.ts"],
       "rules": {
         "@typescript-eslint/no-unused-vars": "off",

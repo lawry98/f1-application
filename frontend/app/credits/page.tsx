@@ -8,6 +8,7 @@ import {
   readLogoCredits,
   readMarqueNotes,
 } from '@/lib/credits';
+import { focusRing, focusRingOnRedFill } from '@/lib/focus';
 import { cn } from '@/lib/utils';
 
 export const metadata: Metadata = {
@@ -22,9 +23,18 @@ export const metadata: Metadata = {
 // from a loud CI failure into a request-time 500 on a public page.
 export const dynamic = 'force-static';
 
-/** The link treatment /teams uses. */
-const LINK =
-  'rounded text-zinc-300 underline decoration-zinc-700 underline-offset-2 transition-colors duration-200 hover:text-white hover:decoration-zinc-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500';
+/**
+ * The link treatment /teams uses.
+ *
+ * The ring is `lib/focus.ts`'s shared token, not the `ring-zinc-500` this shipped with: the branch
+ * ring is red, and red measures 4.01:1 on this page's bare `bg-zinc-950` — comfortably over WCAG
+ * 2.4.11's 3:1 non-text bar. Flush, with no offset band, because a link is not a filled control
+ * and there is nothing between the glyphs and the page for a band to separate.
+ */
+const LINK = cn(
+  'rounded text-zinc-300 underline decoration-zinc-700 underline-offset-2 transition-colors duration-200 hover:text-white hover:decoration-zinc-400',
+  focusRing,
+);
 const LABEL = 'text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-400';
 const PROSE = 'max-w-3xl text-sm leading-relaxed text-zinc-400';
 /** f1-red is 4.12:1 on zinc-950 — text-2xl and up only. */
@@ -148,6 +158,56 @@ export default function CreditsPage() {
           </p>
         </section>
 
+        {/*
+         * Circuit geometry. This section exists because the data started shipping to browsers:
+         * `landing-hero.tsx` statically imports `data/circuits/mc-1929.json`, so MIT-licensed
+         * derivative data is now in the `/` client bundle for every visitor. MIT obliges the
+         * copyright and permission notice to travel with it, and until this section landed the
+         * only copy was `data/circuits/CREDITS.md` — a repo file, outside `public/`, unreachable
+         * by anyone using the site.
+         *
+         * Unlike the two tables above, the notice is written inline rather than linked. Those
+         * link to `/drivers/CREDITS.md` and `/logos/CREDITS.md`, which Next serves because they
+         * sit in `public/`; `data/circuits/CREDITS.md` does not and is not servable, so a link
+         * would 404 and discharge nothing. One source, one row of prose — a table would be a
+         * table with a single row.
+         */}
+        <section className="mb-16">
+          <h2 className={cn('mb-3', HEADING)}>Circuit geometry</h2>
+          <div className={RULE} />
+          <p className={PROSE}>
+            The track outlines drawn on this site are derived from{' '}
+            <a
+              href="https://github.com/bacinger/f1-circuits"
+              target="_blank"
+              rel="noopener noreferrer"
+              className={LINK}
+            >
+              bacinger/f1-circuits
+            </a>
+            , a set of surveyed Formula 1 circuit centre lines in GeoJSON, &copy; 2019&ndash;2025
+            Tomislav Bacinger and used under the{' '}
+            <a
+              href="https://opensource.org/license/mit"
+              target="_blank"
+              rel="noopener noreferrer"
+              className={LINK}
+            >
+              MIT licence
+            </a>
+            . The files here are not the upstream data verbatim: each circuit is reprojected from
+            WGS84 into a normalised box &mdash; longitude scaled by the cosine of mean latitude, the
+            y axis flipped for SVG, aspect ratio preserved &mdash; and downsampled to at most 240
+            points.
+          </p>
+          <p className={cn('mt-4', PROSE)}>
+            The MIT licence permits use, copying, modification and distribution provided its
+            copyright notice and permission notice travel with the software. Both are reproduced in
+            full in <code>frontend/data/circuits/CREDITS.md</code>, alongside the three sources that
+            were evaluated and rejected.
+          </p>
+        </section>
+
         <section className="mb-16">
           <h2 className={cn('mb-3', HEADING)}>3D model</h2>
           <div className={RULE} />
@@ -242,7 +302,19 @@ export default function CreditsPage() {
         <div className="border-t border-zinc-800 pt-10 text-center">
           <Link
             href="/"
-            className="inline-block rounded-lg bg-f1-red px-6 py-3 text-base font-semibold text-white transition-colors hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
+            className={cn(
+              'inline-block rounded-lg bg-f1-red px-6 py-3 text-base font-semibold text-white transition-colors hover:bg-red-700',
+              /*
+               * The inverse ring, because this control is filled with `f1-red`: a red ring on a red
+               * fill is 1.00:1 — an absent indicator, not a weak one — where `ink` on that fill is
+               * 4.50:1. The offset names the colour really behind the pill, `base`, which on this
+               * page is what `bg-zinc-950` paints; `focusRingOnRedFill` ships without an offset
+               * colour precisely so a call site cannot inherit the wrong page's band. This
+               * replaces a `ring-zinc-300` that predates the shared token.
+               */
+              focusRingOnRedFill,
+              'focus-visible:ring-offset-base',
+            )}
           >
             ← Back to Briefing Agent
           </Link>
