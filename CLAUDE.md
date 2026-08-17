@@ -105,6 +105,18 @@ can see neither a duration nor a ring that only paints on `:focus-visible`. Read
 is the guard, and it asserts the glob rather than the colour for exactly that reason. Any new
 module outside `components/`/`app/` that authors a class string needs adding to `content`.
 
+**`text-base` is a *colour* in this theme, and at a responsive variant it silently repaints
+text.** `tailwind.config.ts` defines a colour token named `base` (`#09090B`), which collides with
+Tailwind's built-in `text-base` font-size utility. Which one applies is decided by source order in
+the generated sheet, not by the order you wrote the classes: a **bare** `text-base` is harmless
+because every colour utility is emitted after it (`text-base leading-relaxed text-zinc-300` on
+`/teams` measures `rgb(212,212,216)`, verified live), but **`sm:text-base` is emitted after all
+unprefixed utilities**, so its colour beats the `text-zinc-300` you wrote and the text is painted
+`#09090b` — invisible on the `#09090b` page. It looks exactly like text that failed to render.
+Use `sm:text-[1rem]` (or `text-[15px]`, as `landing-features.tsx` already does) for any
+breakpoint-scoped body size. Neither `pnpm test` nor a type check can see this; jsdom computes no
+CSS, and the class string reads correctly.
+
 **The graph is not a flat pipeline.** It has four nodes, but `resolver` sits behind a
 conditional edge: when `state["current_step"] == "error"` it routes straight to `END`, skipping
 planner, tools, and synthesizer. Anything assuming the synthesizer always runs is wrong.

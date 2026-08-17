@@ -90,7 +90,10 @@ export function DirectionPZero({ compound }: DirectionProps) {
                           {compoundLetter(c)}
                         </span>
                         <span className="min-w-0">
-                          <span className="block text-sm font-bold text-f1-red sm:text-base">
+                          {/* `sm:text-[1rem]`, not `sm:text-base` — `base` is a colour token in
+                              this theme, and at a responsive variant the colour beats the
+                              earlier `text-f1-red`. */}
+                          <span className="block text-sm font-bold text-f1-red sm:text-[1rem]">
                             {c.name}
                           </span>
                           <span className="block truncate text-xs text-zinc-600">{c.tagline}</span>

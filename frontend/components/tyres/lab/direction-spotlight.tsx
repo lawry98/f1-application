@@ -219,7 +219,9 @@ export function DirectionSpotlight({ compound, thermal = 'optimal', wear = 0.2 }
           </p>
         </div>
         <div className="flex items-end justify-between gap-6">
-          <p className="max-w-[22ch] text-sm leading-snug text-zinc-300 sm:text-base">
+          {/* `sm:text-[1rem]`, not `sm:text-base`: `base` is a colour token here, so at a
+              responsive variant `text-base` paints `#09090b` over `text-zinc-300`. */}
+          <p className="max-w-[22ch] text-sm leading-snug text-zinc-300 sm:text-[1rem]">
             {compound.tagline}
           </p>
           <p className="shrink-0 font-mono text-[10px] uppercase tracking-[0.24em] text-zinc-400">
