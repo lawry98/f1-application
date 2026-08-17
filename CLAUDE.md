@@ -16,12 +16,12 @@ backend/
 frontend/
   app/           App Router, one directory per route
   components/
-    <feature>/   Page sections: landing/, briefing/, teams/, teardown/
+    <feature>/   Page sections: landing/, briefing/, teams/, teardown/, tyres/
     3d/          Three.js — only ever loaded via dynamic import, ssr: false
     ui/          shadcn/ui + vendored Magic UI — do not hand-edit
-  data/          Static domain data (TEAMS) and the Team/Driver types
+  data/          Static domain data (TEAMS, tyre compounds) and the types describing it
   hooks/         Custom hooks, use- prefix
-  lib/           api.ts (typed client), utils.ts, team-utils.ts
+  lib/           api.ts (typed client), utils.ts, team-utils.ts, tyre-utils.ts
   types/         Shared types, re-exported through types/index.ts
   tests/         Vitest — flat, not mirroring the source tree; fixtures/ holds real SSE bytes
 ```
@@ -219,6 +219,57 @@ load-bearing the moment that filter is fixed.
 
 **The landing page composes, it doesn't contain.** `app/page.tsx` is seven imports from
 `components/landing/`; the hero, features, and footer markup are not inline.
+
+**`/tyres` keeps the numbered compounds and the race labels in different shapes, and that is
+the whole point of the page.** Pirelli builds a numbered dry range for a season (C1–C5 in 2026 —
+five, not six; the C6 existed in 2025 only) and nominates three of them per Grand Prix, where they
+become Hard, Medium and Soft. The same number is the Hard at one race and the Soft at another, so
+`data/tyres-data.ts` gives `RaceCompound` no compound-number field and `DryCompoundNumber` no label
+field; the join exists only inside a dated `WeekendAllocation`, and `ALLOCATION_EXAMPLES` always
+renders as several. That is why the **explorer shows the five colour-owning tyres, not C1–C5**: only
+a label owns a colour, and a coloured `C3` chip would assert the mapping the page exists to deny.
+The numbered range renders in graphite for the same reason. `tyres-page.test.tsx` asserts the range
+has five entries and that no `C6` reaches the allocation section.
+
+**Facts on `/tyres` are frozen to `TYRES_CONTENT_AS_OF` and every claim carries a `SourceRef`.**
+Qualitative behaviour is prose; ordinals are labelled relative and compared only *within*
+`comparisonGroup` (a full wet's grip is about standing water, where no slick has any). Four things
+are deliberately absent because no Pirelli/F1/FIA publication supports them — per-compound
+operating temperature windows, any recycled-content percentage for an F1 tyre, ISCC PLUS on one,
+and front/rear attribution of camber limits. `LIFECYCLE_UNSUPPORTED_CLAIMS` records them so nobody
+re-researches them.
+
+**`lib/tyre-utils.ts` has a backdrop helper per surface, and it needed five before the page
+shipped.** `compoundTextOnGlow` / `OnCard` / `OnTab` / `OnTrackedRow` each judge a compound colour
+against the composite genuinely behind it. Two shipped wrong and were caught separately: the
+active tab used a bare-`zinc-950` helper while sitting on `bg-zinc-800/80`, and the allocation
+section's highlighted row used the *card* helper while sitting on a further `bg-zinc-800/70` on top
+of the card — Soft measured 4.60:1 against the card and **3.95:1** where the glyphs actually sit,
+at 12px. If you add compound-coloured text, the first question is what is behind it; the second is
+whether a helper already describes that composite. `tyre-utils.test.ts` asserts one surface per
+helper *and* that the weaker helper genuinely falls short on it, so a redundant helper cannot
+survive — there is no `compoundTextOnPage`, because it was byte-identical to `readableOnDark`.
+`liftUntilContrast` is exported from `team-utils.ts` for this; it is the shared mechanism, not
+team-specific.
+
+**Three `/tyres` defects were invisible to jsdom and are worth knowing before touching the
+explorer.** A `-z-10` decorative layer paints *behind its own section's `bg-zinc-950`* unless the
+wrapper carries `isolate` — both the accent glow and the background wordmark shipped invisible
+this way. A motion **variant** setting `opacity` overrides an `opacity-[…]` class, so
+`WORDMARK_OPACITY` is carried by the variant. And a 520px glow centred on a 390px viewport scrolls
+the whole page sideways, so it lives inside an `overflow-hidden` wrapper.
+
+**Reduced motion on `/tyres` must not change the rendered tree.** `useReducedMotion()` is
+necessarily `false` during SSR, so rendering a different element for the reduced branch is a
+hydration mismatch by construction — it produced a real "Expected server HTML to contain a
+matching `<span>`" in the browser. The drag wrapper is therefore always mounted with `drag="x"`
+and only `dragElasticFor()` changes; the cursor affordance is dropped by a `motion-reduce:` CSS
+variant. Swipe stays available under `reduce` with zero displacement, because a gesture the user is
+performing is not the autonomous motion `reduce` is asking to be spared.
+
+**`BlurFade` renders a `motion.div`, so it cannot wrap an `<li>` or a `<dl>` group.** Wrapping list
+items put a `div` directly inside `<ol>` and broke list semantics for assistive technology; axe
+found it, no unit test did. Put the `<li>` outside and `BlurFade` inside it.
 
 **The credit tables are matched by their header row, never by a filename scan.** `lib/credits.ts`
 parses `public/drivers/CREDITS.md` and `public/logos/CREDITS.md` at build time for `/credits`, and

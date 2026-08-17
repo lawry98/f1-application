@@ -104,8 +104,8 @@ export default function CreditsPage() {
 
           <h3 className={cn('mb-2 mt-12', LABEL)}>Marque marks standing in for team lockups</h3>
           <p className={cn('mb-4', PROSE)}>
-            Four files are an authentic public-domain mark of the correct company, but narrower
-            than the full Formula 1 team lockup, for which no free vector exists.
+            Four files are an authentic public-domain mark of the correct company, but narrower than
+            the full Formula 1 team lockup, for which no free vector exists.
           </p>
           <table className="w-full table-fixed border-collapse text-left text-xs">
             <caption className="sr-only">
@@ -182,6 +182,29 @@ export default function CreditsPage() {
           </p>
         </section>
 
+        {/*
+         * Prose, not an `AttributionTable`. The tables in `lib/credits.ts` are keyed to files
+         * in `public/drivers` and `public/logos` and require a Commons `https://` link per row;
+         * the tyre artwork is neither a file nor externally sourced, so a table for it would be
+         * an empty ritual. What is worth recording is the provenance itself.
+         */}
+        <section id="tyre-artwork" className="mb-16 scroll-mt-24">
+          <h2 className={cn('mb-3', HEADING)}>Tyre artwork</h2>
+          <div className={RULE} />
+          <p className={PROSE}>
+            The tyres on{' '}
+            <Link href="/tyres" className={LINK}>
+              /tyres
+            </Link>{' '}
+            are original artwork, drawn as inline SVG in this repository (
+            <code>components/tyres/tyre-visual.tsx</code>) and recoloured per compound from the
+            page&rsquo;s own palette. No photograph, render or vector was taken from Pirelli,
+            Formula 1 or any other source, so nothing on that page is owed attribution. The compound
+            colours are chosen to read as the familiar sidewall bands on a dark background; they are
+            not a claim to be anyone&rsquo;s exact brand values.
+          </p>
+        </section>
+
         <section className="mb-16">
           <h2 className={cn('mb-3', HEADING)}>Technologies</h2>
           <div className={RULE} />
@@ -225,6 +248,16 @@ export default function CreditsPage() {
               <dt className="inline font-semibold text-zinc-300">OpenWeather — </dt>
               <dd className="inline">weather forecasts for race locations</dd>
             </div>
+            <div>
+              <dt className="inline font-semibold text-zinc-300">Pirelli, Formula 1, FIA — </dt>
+              <dd className="inline">
+                tyre compounds, weekend allocations, regulations and strategy on{' '}
+                <Link href="/tyres" className={LINK}>
+                  /tyres
+                </Link>
+                , each claim cited on the page itself
+              </dd>
+            </div>
           </dl>
         </section>
 
@@ -233,9 +266,9 @@ export default function CreditsPage() {
           <div className={RULE} />
           <p className={cn('mb-3', PROSE)}>This project is licensed under the MIT License.</p>
           <p className={PROSE}>
-            The third-party assets are not: the 3D model is CC BY 4.0, the driver photographs are
-            CC BY, CC BY-SA, CC0 or OGL 3 as listed above, and the team logos are public-domain
-            marks that remain registered trademarks of their owners.
+            The third-party assets are not: the 3D model is CC BY 4.0, the driver photographs are CC
+            BY, CC BY-SA, CC0 or OGL 3 as listed above, and the team logos are public-domain marks
+            that remain registered trademarks of their owners.
           </p>
         </section>
 

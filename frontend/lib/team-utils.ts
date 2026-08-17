@@ -131,8 +131,12 @@ const liftCache = new Map<string, string>();
  *
  * Lightness is raised in HSL rather than blended toward white so hue and saturation survive —
  * the result still reads as the brand colour instead of washing out to grey.
+ *
+ * Exported because `lib/tyre-utils.ts` needs the same mechanism against its own four backdrops.
+ * It is not team-specific — it takes three plain values and knows nothing about a `Team` — and
+ * duplicating the HSL walk in a second module to keep this private would be the worse trade.
  */
-function liftUntilContrast(hex: string, target: number, bg: string): string {
+export function liftUntilContrast(hex: string, target: number, bg: string): string {
   const key = `${bg}:${target}:${hex}`;
   const cached = liftCache.get(key);
   if (cached) return cached;
