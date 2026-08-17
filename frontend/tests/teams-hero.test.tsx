@@ -65,9 +65,7 @@ describe('TeamsHero', () => {
     const tokens = columnLayer(container).className.split(/\s+/);
 
     expect(tokens).toContain('lg:inset-0');
-    const unsetsBlockEdge = tokens.filter((t) =>
-      /^lg:(top|bottom|inset-y)-auto$/.test(t),
-    );
+    const unsetsBlockEdge = tokens.filter((t) => /^lg:(top|bottom|inset-y)-auto$/.test(t));
     expect(unsetsBlockEdge).toEqual([]);
   });
 

@@ -84,7 +84,11 @@ interface TeamsCompareTrayProps {
  * instead would put two of every field in the DOM under jsdom, where no media query applies, and
  * every `getByText` here would throw on multiple matches.
  */
-export function TeamsCompareTray({ teams: [left, right], reducedMotion, onClear }: TeamsCompareTrayProps) {
+export function TeamsCompareTray({
+  teams: [left, right],
+  reducedMotion,
+  onClear,
+}: TeamsCompareTrayProps) {
   const columns: [Team, Team] = [left, right];
 
   return (
@@ -102,9 +106,7 @@ export function TeamsCompareTray({ teams: [left, right], reducedMotion, onClear 
         <div className="hidden flex-1 gap-6 lg:flex">
           {columns.map((team, i) => (
             <div key={team.id} className={cn('flex-1', i === 0 && 'text-right')}>
-              <div
-                className={cn('flex items-center gap-2', i === 0 && 'flex-row-reverse')}
-              >
+              <div className={cn('flex items-center gap-2', i === 0 && 'flex-row-reverse')}>
                 <TeamMonogramTile team={team} size={20} />
                 <span className="truncate text-sm font-bold uppercase tracking-wider text-white">
                   {team.shortName}

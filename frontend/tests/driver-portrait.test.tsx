@@ -52,9 +52,7 @@ describe('DriverPortrait', () => {
   });
 
   it('marks the first team’s portraits as priority to avoid a blank rail on arrival', () => {
-    const { container } = render(
-      <DriverPortrait driver={leclerc} team={ferrari} priority />,
-    );
+    const { container } = render(<DriverPortrait driver={leclerc} team={ferrari} priority />);
     expect(container.querySelector('img')).toHaveAttribute('fetchpriority', 'high');
   });
 

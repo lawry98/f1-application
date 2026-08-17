@@ -1,3 +1,11 @@
 .next
 node_modules
 pnpm-lock.yaml
+
+# Machine-read data, not prose. lib/credits.ts parses these tables at build
+# time and throws on any row whose source cell is not a [title](https://…)
+# link. Commons URLs carry literal parentheses, and prettier rewrites those to
+# CommonMark's angle-bracket form — [title](<https://…(cropped).jpg>) — which
+# the parser rejects, failing `pnpm build` and 27 tests.
+public/drivers/CREDITS.md
+public/logos/CREDITS.md

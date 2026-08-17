@@ -145,7 +145,8 @@ describe('credit table parsing failures', () => {
   });
 
   it('throws when the file cell is not a backticked asset name', () => {
-    const bad = '| a.png | A | [t](https://commons.wikimedia.org/wiki/File:t.jpg) | Author | CC BY 4.0 |';
+    const bad =
+      '| a.png | A | [t](https://commons.wikimedia.org/wiki/File:t.jpg) | Author | CC BY 4.0 |';
     expect(() => parseCreditRows(md(bad), header, 'x.md')).toThrow(/backticked/);
   });
 

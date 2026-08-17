@@ -82,7 +82,12 @@ export default function F1HeroScene({
         className ?? 'h-[600px]',
       )}
     >
-      <Canvas camera={{ position: [5, 2.5, 5], fov: 45 }} dpr={[1, 2]} shadows frameloop={frameloop}>
+      <Canvas
+        camera={{ position: [5, 2.5, 5], fov: 45 }}
+        dpr={[1, 2]}
+        shadows
+        frameloop={frameloop}
+      >
         <Invalidator teamColor={teamColor} />
         <color attach="background" args={['#09090b']} />
         <fog attach="fog" args={['#09090b', 5, 15]} />

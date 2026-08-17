@@ -100,9 +100,7 @@ export function StickyTeamPanel({ activeTeam, onInspect }: StickyTeamPanelProps)
               >
                 {`P${activeTeam.position}`}
               </span>
-              <span className="font-mono text-xs text-zinc-300">
-                {`${activeTeam.points} PTS`}
-              </span>
+              <span className="font-mono text-xs text-zinc-300">{`${activeTeam.points} PTS`}</span>
             </div>
             <span className="mt-2 h-[7px] overflow-hidden bg-zinc-800">
               <span
@@ -117,9 +115,7 @@ export function StickyTeamPanel({ activeTeam, onInspect }: StickyTeamPanelProps)
 
           {/* Broadcast stat block */}
           <div className="flex-shrink-0 border-t border-zinc-800/60 px-4 py-3">
-            <p className="text-[9px] uppercase tracking-[0.18em] text-zinc-400">
-              All-time
-            </p>
+            <p className="text-[9px] uppercase tracking-[0.18em] text-zinc-400">All-time</p>
             <div className="mt-1 flex items-center gap-2">
               <span
                 data-testid="championship-count"

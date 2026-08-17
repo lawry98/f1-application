@@ -26,7 +26,6 @@ function rgbToHex(value: string): string {
     .join('')}`;
 }
 
-
 function renderRail({
   activeTeamId = 'ferrari',
   onSelectTeam = vi.fn(),
@@ -127,10 +126,9 @@ describe('TeamsNavRail', () => {
       const link = screen.getByRole('link', { name: new RegExp(team.shortName, 'i') });
       const ring = link.style.getPropertyValue('--tw-ring-color');
       expect(ring, `${team.shortName} has no --tw-ring-color`).not.toBe('');
-      expect(
-        contrastRatio(ring, DARK_BG),
-        `${team.shortName} ring ${ring}`,
-      ).toBeGreaterThanOrEqual(MIN_RING_CONTRAST);
+      expect(contrastRatio(ring, DARK_BG), `${team.shortName} ring ${ring}`).toBeGreaterThanOrEqual(
+        MIN_RING_CONTRAST,
+      );
     }
   });
 

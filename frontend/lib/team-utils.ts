@@ -87,22 +87,28 @@ function rgbToHsl([r8, g8, b8]: [number, number, number]): [number, number, numb
   const d = max - min;
   if (d === 0) return [0, 0, l];
   const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-  const h = max === r ? ((g - b) / d + (g < b ? 6 : 0)) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  const h =
+    max === r ? (g - b) / d + (g < b ? 6 : 0) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
   return [h * 60, s, l];
 }
 
 function hslToRgb(h: number, s: number, l: number): [number, number, number] {
   const c = (1 - Math.abs(2 * l - 1)) * s;
-  const hp = ((h % 360) + 360) % 360 / 60;
+  const hp = (((h % 360) + 360) % 360) / 60;
   const x = c * (1 - Math.abs((hp % 2) - 1));
   const m = l - c / 2;
   const [r, g, b] =
-    hp < 1 ? [c, x, 0]
-    : hp < 2 ? [x, c, 0]
-    : hp < 3 ? [0, c, x]
-    : hp < 4 ? [0, x, c]
-    : hp < 5 ? [x, 0, c]
-    : [c, 0, x];
+    hp < 1
+      ? [c, x, 0]
+      : hp < 2
+        ? [x, c, 0]
+        : hp < 3
+          ? [0, c, x]
+          : hp < 4
+            ? [0, x, c]
+            : hp < 5
+              ? [x, 0, c]
+              : [c, 0, x];
   return [(r + m) * 255, (g + m) * 255, (b + m) * 255];
 }
 

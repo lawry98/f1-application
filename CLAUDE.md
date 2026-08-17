@@ -286,6 +286,13 @@ the driver rows say `CC0` where the licence-terms table says `CC0 1.0`, so that 
 renders unlinked, and Commons source URLs carry literal parentheses, which is why the link
 pattern is greedy rather than `[^)]+`.
 
+**Both `CREDITS.md` files are in `.prettierignore`, and must stay there.** Those literal
+parentheses are also why: prettier rewrites a markdown link whose URL contains them into
+CommonMark's angle-bracket form — `[title](<https://…(cropped).jpg>)` — which `LINK_CELL` does
+not match, so a single `prettier --write` over `public/` throws at build time and reds 27 tests.
+They are a machine-read data source with a parser contract, not prose to be formatted. Reformat
+the tables by hand if you must, never with the formatter.
+
 **The teams page's scroll spy measures rects on a frame; `IntersectionObserver` cannot do this
 job.** `hooks/use-scroll-spy.ts` picks the section covering most of a narrow band near the top of
 the viewport, ties going to document order. The observer version of exactly that — one observer,

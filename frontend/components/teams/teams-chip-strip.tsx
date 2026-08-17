@@ -20,11 +20,7 @@ interface TeamsChipStripProps {
  * view, and the container carries overflow fades — so the shared component was two
  * components wearing one name.
  */
-export function TeamsChipStrip({
-  activeTeamId,
-  onSelectTeam,
-  reducedMotion,
-}: TeamsChipStripProps) {
+export function TeamsChipStrip({ activeTeamId, onSelectTeam, reducedMotion }: TeamsChipStripProps) {
   const activeRef = useRef<HTMLAnchorElement>(null);
 
   // Eleven chips overflow every phone, so the active chip is routinely off screen and the

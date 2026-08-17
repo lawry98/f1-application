@@ -256,9 +256,7 @@ describe('the seam label', () => {
 
   it('agrees with blendOver on what sits behind the label', () => {
     for (const team of TEAMS) {
-      expect(seamLabelBackdrop(team.color)).toBe(
-        blendOver(team.color, SEAM_WASH_ALPHA, DARK_BG),
-      );
+      expect(seamLabelBackdrop(team.color)).toBe(blendOver(team.color, SEAM_WASH_ALPHA, DARK_BG));
     }
   });
 });
@@ -288,7 +286,15 @@ describe('the active rail row’s standings line', () => {
   // the fix would look unnecessary. Seven of the eleven fail on the highlight — Ferrari at
   // 4.02, which is the number the browser reported for the shipped code.
   it('is a real lift over readableOnDark, which fails on that same highlight', () => {
-    const failing = ['ferrari', 'red-bull', 'racing-bulls', 'audi', 'williams', 'cadillac', 'aston-martin'];
+    const failing = [
+      'ferrari',
+      'red-bull',
+      'racing-bulls',
+      'audi',
+      'williams',
+      'cadillac',
+      'aston-martin',
+    ];
     for (const id of failing) {
       const team = TEAM_MAP[id]!;
       expect(
@@ -412,8 +418,7 @@ describe('the portrait caption', () => {
 
   it('is a real lift over readableOnDark, which fails on that same backdrop', () => {
     const failing = TEAMS.filter(
-      (team) =>
-        contrastRatio(readableOnDark(team.color), portraitCaptionBackdrop()) < MIN_CONTRAST,
+      (team) => contrastRatio(readableOnDark(team.color), portraitCaptionBackdrop()) < MIN_CONTRAST,
     );
     expect(failing.map((team) => team.id)).toContain('ferrari');
     expect(failing.length).toBeGreaterThan(4);
@@ -441,8 +446,9 @@ describe('the portrait caption', () => {
     const scrim = portraitScrim();
     // One transparent stop at the top edge, then two at full strength — the flat zone the
     // guarantee depends on. A single full-strength stop would be a fade all the way down.
-    expect(scrim.match(new RegExp(`rgba\\(9, 9, 11, ${PORTRAIT_SCRIM_ALPHA}\\)`, 'g')) ?? [])
-      .toHaveLength(2);
+    expect(
+      scrim.match(new RegExp(`rgba\\(9, 9, 11, ${PORTRAIT_SCRIM_ALPHA}\\)`, 'g')) ?? [],
+    ).toHaveLength(2);
     expect(scrim).toContain(`${PORTRAIT_SCRIM_FADE_PX}px`);
     expect(scrim).toContain('rgba(9, 9, 11, 0) 0px');
   });

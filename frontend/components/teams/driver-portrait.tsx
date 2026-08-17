@@ -106,16 +106,11 @@ export function DriverPortrait({ driver, team, priority, className }: DriverPort
         className="absolute bottom-0 left-0 right-0 px-3 pb-3"
         style={{ background: portraitScrim(), paddingTop: PORTRAIT_SCRIM_TEXT_INSET }}
       >
-        <p
-          className="text-[10px] uppercase tracking-[0.2em]"
-          style={{ color: duotone.keyline }}
-        >
+        <p className="text-[10px] uppercase tracking-[0.2em]" style={{ color: duotone.keyline }}>
           {driver.nationality}
         </p>
         <p className="mt-0.5 text-sm font-bold leading-tight text-white">{driver.name}</p>
-        <p className="text-[10px] uppercase tracking-[0.15em] text-zinc-400">
-          {driver.shortCode}
-        </p>
+        <p className="text-[10px] uppercase tracking-[0.15em] text-zinc-400">{driver.shortCode}</p>
       </div>
 
       {/* Screen-reader-visible number; the ghost numeral above is decorative. */}

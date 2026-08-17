@@ -8,24 +8,64 @@ describe('pickActive', () => {
   const ids = ['a', 'b', 'c'];
 
   it('picks the id covering most of the band', () => {
-    expect(pickActive(ids, new Map([['a', 10], ['b', 90]]))).toBe('b');
+    expect(
+      pickActive(
+        ids,
+        new Map([
+          ['a', 10],
+          ['b', 90],
+        ]),
+      ),
+    ).toBe('b');
   });
 
   it('returns null when nothing covers the band', () => {
     expect(pickActive(ids, new Map())).toBeNull();
-    expect(pickActive(ids, new Map([['a', 0], ['b', 0]]))).toBeNull();
+    expect(
+      pickActive(
+        ids,
+        new Map([
+          ['a', 0],
+          ['b', 0],
+        ]),
+      ),
+    ).toBeNull();
   });
 
   // Two adjacent sections taller than the viewport cover the band equally at the exact
   // boundary. Without a deterministic tiebreak that is the flicker the old per-section
   // observers produced.
   it('breaks ties by document order', () => {
-    expect(pickActive(ids, new Map([['b', 50], ['c', 50]]))).toBe('b');
-    expect(pickActive(['c', 'b', 'a'], new Map([['b', 50], ['c', 50]]))).toBe('c');
+    expect(
+      pickActive(
+        ids,
+        new Map([
+          ['b', 50],
+          ['c', 50],
+        ]),
+      ),
+    ).toBe('b');
+    expect(
+      pickActive(
+        ['c', 'b', 'a'],
+        new Map([
+          ['b', 50],
+          ['c', 50],
+        ]),
+      ),
+    ).toBe('c');
   });
 
   it('ignores ids it was not given', () => {
-    expect(pickActive(ids, new Map([['zzz', 999], ['a', 1]]))).toBe('a');
+    expect(
+      pickActive(
+        ids,
+        new Map([
+          ['zzz', 999],
+          ['a', 1],
+        ]),
+      ),
+    ).toBe('a');
   });
 });
 

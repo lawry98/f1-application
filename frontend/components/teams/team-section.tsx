@@ -38,7 +38,7 @@ export function TeamSection({ team, index, isActive, onInspect, reducedMotion }:
   return (
     <section
       id={`team-${team.id}`}
-      className="relative overflow-hidden bg-zinc-950 scroll-mt-[var(--teams-scroll-offset)]"
+      className="relative scroll-mt-[var(--teams-scroll-offset)] overflow-hidden bg-zinc-950"
     >
       {/*
         The seam. This used to be a 1px rule in *this* team's colour at this section's top

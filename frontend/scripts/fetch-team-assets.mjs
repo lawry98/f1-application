@@ -105,8 +105,7 @@ const LOGOS = {
   williams:
     'https://upload.wikimedia.org/wikipedia/commons/1/12/Atlassian_Williams_F1_Team_logo.svg',
   cadillac: 'https://upload.wikimedia.org/wikipedia/commons/7/7f/Cadillac_Logo_2021.svg',
-  'aston-martin':
-    'https://upload.wikimedia.org/wikipedia/commons/b/b7/Aston_Martin_wordmark.svg',
+  'aston-martin': 'https://upload.wikimedia.org/wikipedia/commons/b/b7/Aston_Martin_wordmark.svg',
 };
 
 /**
