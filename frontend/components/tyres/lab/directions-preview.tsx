@@ -7,32 +7,32 @@ import { focusRing, focusRingOffsetBase } from '@/lib/focus';
 import { compoundTextOnTab } from '@/lib/tyre-utils';
 import { cn } from '@/lib/utils';
 
-import { DirectionBlueprint } from './direction-blueprint';
-import { DirectionSpotlight } from './direction-spotlight';
-import { DirectionThermal } from './direction-thermal';
+import { DirectionPitWall } from './direction-pitwall';
+import { DirectionPZero } from './direction-pzero';
+import { DirectionRack } from './direction-rack';
 import type { ThermalState } from './tyre-geometry';
 
 const DIRECTIONS = [
   {
-    id: 'spotlight',
-    label: 'A · Garage spotlight',
+    id: 'pzero',
+    label: 'D · P Zero',
     blurb:
-      'Photographic. One hard key light, deep falloff, compound-coloured light pooling on the floor. Instrumentation is a thin layer on top of a lit object.',
-    Component: DirectionSpotlight,
+      'The light inversion. Off-white ground, red as structural ink rather than accent, an oversized red compound letter, and the outlined pill-row with a split arrow cell — the source page’s most recognisable device. Makes /tyres a light island in a dark app.',
+    Component: DirectionPZero,
   },
   {
-    id: 'thermal',
-    label: 'B · Thermal telemetry',
+    id: 'pitwall',
+    label: 'E · Pit wall',
     blurb:
-      'Scientific. Measurement grid, isotherm field, a temperature scale that is genuinely the image’s own ramp. The tyre is a specimen being scanned.',
-    Component: DirectionThermal,
+      'The render at broadcast scale, cropped by the frame, with the compound name set big enough that the tyre occludes it. Keeps the app’s dark ground; the vector layer stops drawing a tyre and becomes instrumentation — rules, ticks, a corner bracket, a measured baseline.',
+    Component: DirectionPitWall,
   },
   {
-    id: 'blueprint',
-    label: 'C · Swiss blueprint',
+    id: 'rack',
+    label: 'F · The rack',
     blurb:
-      'Editorial. The tyre taken apart along its axis into four numbered plates with leader lines, dimensions and a title block. Type does most of the work.',
-    Component: DirectionBlueprint,
+      'All five compounds on screen permanently, hung off a red rail like a garage tyre rack. The selected plate takes space from its neighbours via animated grid columns, so comparison is the layout rather than something you reconstruct from memory.',
+    Component: DirectionRack,
   },
 ] as const;
 
