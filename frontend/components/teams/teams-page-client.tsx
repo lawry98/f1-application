@@ -2,9 +2,10 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { AnimatePresence, useReducedMotion } from 'motion/react';
+import { AnimatePresence } from 'motion/react';
 
 import { TEAMS, TEAM_MAP } from '@/data/teams-data';
+import { useReducedMotionSafe } from '@/hooks/use-reduced-motion-safe';
 import { useScrollSpy } from '@/hooks/use-scroll-spy';
 import { useTeamNavigation } from '@/hooks/use-team-navigation';
 import { useMediaQuery } from '@/hooks/use-media-query';
@@ -31,7 +32,16 @@ const InspectModal = dynamic(
 const DOSSIER_QUERY = '(min-width: 1280px)';
 
 export function TeamsPageClient() {
-  const reducedMotion = useReducedMotion() ?? false;
+  // `useReducedMotionSafe`, not `useReducedMotion() ?? false`. The `?? false` reads like it makes
+  // motion's hook safe and does not: the `null` it coalesces is the *server's* answer, so the
+  // server still gets `false` while the client's first render gets the real preference — which is
+  // precisely the mismatch. Two of this page's columns branch on the value in ways that reach the
+  // markup: `TeamsNavRail`'s rows swap `initial={hidden}` for `initial={false}` (a different
+  // `style` attribute) and `TeamsComparisonGrid`'s value cell swaps a `<NumberTicker>` for a bare
+  // numeral (a different element). `TeamsHero` had the same bug independently — it calls the hook
+  // itself rather than taking this prop, and it is the one Chromium's console names — so both had
+  // to move.
+  const reducedMotion = useReducedMotionSafe();
   const [inspectOpen, setInspectOpen] = useState(false);
 
   const ids = useMemo(() => TEAMS.map((t) => t.id), []);

@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react';
 
 import { TEAMS } from '@/data/teams-data';
 import { cn } from '@/lib/utils';
-import { ringOnDark } from '@/lib/team-utils';
+import { focusRingOffsetBase } from '@/lib/focus';
 
 interface TeamsChipStripProps {
   activeTeamId: string;
@@ -48,22 +48,21 @@ export function TeamsChipStrip({ activeTeamId, onSelectTeam, reducedMotion }: Te
               aria-current={isActive ? 'location' : undefined}
               className={cn(
                 'relative flex-shrink-0 rounded-full px-3 py-1.5 text-xs font-medium uppercase tracking-widest no-underline transition-colors duration-200',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950',
+                // Matches the desktop rail: `focusRingOffsetBase`, because the active chip is a
+                // *filled* control (a `team.color` wash at 0x33 inside a livery border) and a
+                // flush ring would take its contrast from that wash rather than from the page.
+                // The strip's own backdrop is `bg-zinc-950/90` over `base`, so the 2px `base`
+                // band is invisible and red clears 4.01:1 against it. The per-team
+                // `--tw-ring-color` went with it — `ring-mixed` settles red as the branch's ring.
+                focusRingOffsetBase,
                 // `zinc-400`, matching the rail: `zinc-500` is 4.12:1 on this background, and
                 // this strip is the only navigation below `lg`, so it is the one a phone gets.
                 isActive ? 'text-white' : 'text-zinc-400 hover:text-zinc-200',
               )}
-              // `--tw-ring-color`, not `outlineColor`: Tailwind's ring is a box-shadow and
-              // reads its colour from that custom property. Cast through `unknown` first —
-              // the branches' object shapes don't overlap enough for TS to allow a direct
-              // `CSSProperties` cast on the union.
               style={
-                {
-                  '--tw-ring-color': ringOnDark(team.color),
-                  ...(isActive
-                    ? { backgroundColor: `${team.color}33`, border: `1px solid ${team.color}` }
-                    : { border: '1px solid transparent' }),
-                } as unknown as React.CSSProperties
+                isActive
+                  ? { backgroundColor: `${team.color}33`, border: `1px solid ${team.color}` }
+                  : { border: '1px solid transparent' }
               }
             >
               {team.shortName}

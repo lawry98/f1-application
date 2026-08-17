@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { streamBriefing } from '@/lib/api';
 import { GENERIC_BRIEFING_ERROR } from '@/lib/constants';
-import type { ToolResult } from '@/types';
+import type { RaceInfo, ToolResult } from '@/types';
 
 /**
  * How long deltas pile up in the buffer before the accumulated prose is painted.
@@ -21,6 +21,16 @@ export interface BriefingState {
   query: string;
   loading: boolean;
   race: string;
+  /**
+   * The whole `race_info` payload, not just its name.
+   *
+   * `race` is kept alongside it rather than derived from it because every existing consumer
+   * reads `race` and expects `''` — not `null` — before the event lands, and because the two
+   * answer different questions: `race` is "what am I generating", which the loader shows from
+   * the moment it resolves, while `raceInfo` is the record the circuit band draws from and is
+   * meaningless in part.
+   */
+  raceInfo: RaceInfo | null;
   briefing: string;
   /** Whether synthesis stopped partway, leaving `briefing` unfinished. */
   truncated: boolean;
@@ -44,6 +54,7 @@ export function useBriefing(): UseBriefingReturn {
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [race, setRace] = useState('');
+  const [raceInfo, setRaceInfo] = useState<RaceInfo | null>(null);
   const [briefing, setBriefing] = useState('');
   const [truncated, setTruncated] = useState(false);
   const [toolTrace, setToolTrace] = useState<ToolResult[]>([]);
@@ -87,6 +98,7 @@ export function useBriefing(): UseBriefingReturn {
       setBriefing('');
       setTruncated(false);
       setRace('');
+      setRaceInfo(null);
       setToolTrace([]);
       setToolPlan([]);
       setStatusMessage('');
@@ -109,6 +121,7 @@ export function useBriefing(): UseBriefingReturn {
             setStep(event.data.step);
           } else if (event.type === 'race_info') {
             setRace(event.data.name);
+            setRaceInfo(event.data);
           } else if (event.type === 'tool_plan') {
             setToolPlan(event.data.tools);
           } else if (event.type === 'tool_result') {
@@ -164,6 +177,7 @@ export function useBriefing(): UseBriefingReturn {
     query,
     loading,
     race,
+    raceInfo,
     briefing,
     truncated,
     toolTrace,

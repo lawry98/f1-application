@@ -1,14 +1,16 @@
 'use client';
 
-import { useReducedMotion, motion } from 'motion/react';
+import { motion } from 'motion/react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 
+import { useReducedMotionSafe } from '@/hooks/use-reduced-motion-safe';
 import { BlurFade } from '@/components/ui/blur-fade';
 import { TextAnimate } from '@/components/ui/text-animate';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DotPattern } from '@/components/ui/dot-pattern';
 import { cn } from '@/lib/utils';
+import { focusRing, focusRingOnRedFill } from '@/lib/focus';
 import { TEAMS } from '@/data/teams-data';
 import { TeamLogo } from './team-logo';
 import { TeamMonogramTile } from './team-monogram-tile';
@@ -42,7 +44,21 @@ interface TeamsHeroProps {
 }
 
 export function TeamsHero({ onSelectTeam }: TeamsHeroProps) {
-  const reducedMotion = useReducedMotion();
+  // `useReducedMotionSafe`, not motion's own `useReducedMotion`, and this is a fix for a
+  // **confirmed** hydration error rather than a precaution. motion's hook answers `null` on the
+  // server and the user's real preference on the client's *first* render, and this value reaches
+  // both the livery columns' `initial` and the scroll cue's `{!reducedMotion && …}` — so under
+  // emulated reduce-motion in Chromium the two passes disagreed:
+  //
+  //     Warning: Prop `style` did not match.
+  //       Server: "…;opacity:0;transform:scaleY(0)"  Client: "…;opacity:1"
+  //         at MotionDOMComponent … at TeamsHero
+  //
+  // This hero reads the preference itself and is not fed by `TeamsPageClient`, so fixing the
+  // parent leaves this untouched — both call sites had to move. The wrapper reports `false` on the
+  // server and on the first client render, then flips in a layout effect (before paint, so the
+  // un-reduced frame is never shown). See `hooks/use-reduced-motion-safe.ts`.
+  const reducedMotion = useReducedMotionSafe();
 
   return (
     // `min-h-[calc(100vh-3.5rem)]`, not `min-h-screen`. The 3.5rem site nav sits above this
@@ -59,10 +75,18 @@ export function TeamsHero({ onSelectTeam }: TeamsHeroProps) {
       {/* Ambient glow — below `lg` only, where the livery wall is hidden (eleven columns
           at ~34px each is unusable) so the hero would otherwise be flat colour-less
           DotPattern behind the mobile logo grid. A single blurred layer, gated off at
-          `lg` so it never stacks with the wall's own colour wash. */}
+          `lg` so it never stacks with the wall's own colour wash.
+
+          `bg-f1-red`, not the `#dc2626` this used to hardcode. That hex is the pre-spec red, from
+          before the branch moved `f1-red` to `#E10600`, and it survived the sweep because it was
+          an inline style rather than a class — a grep for the token never saw it. The role is
+          unchanged: a 600px blob at 7% behind a 120px blur is decoration, so no contrast rule
+          reaches it. What changes is that it is the *same* red as the rest of the page, and that
+          `grep f1-red` now finds it, which is the stated reason `tailwind.config.ts` keeps one
+          canonical token. The blur stays inline because there is no Tailwind utility for it. */}
       <div
-        className="pointer-events-none absolute -bottom-32 -left-32 h-[600px] w-[600px] rounded-full opacity-[0.07] lg:hidden"
-        style={{ background: '#dc2626', filter: 'blur(120px)' }}
+        className="pointer-events-none absolute -bottom-32 -left-32 h-[600px] w-[600px] rounded-full bg-f1-red opacity-[0.07] lg:hidden"
+        style={{ filter: 'blur(120px)' }}
         aria-hidden="true"
       />
 
@@ -97,8 +121,26 @@ export function TeamsHero({ onSelectTeam }: TeamsHeroProps) {
         ))}
       </div>
 
-      {/* Content */}
-      <div className="relative z-10 flex flex-col items-center gap-6 px-6 text-center">
+      {/* Content
+       *
+       * `pointer-events-none`, and it is a bug fix rather than a style: **seven of the eleven
+       * livery columns below were unclickable.** This block is `z-10` and the columns are `z-0`,
+       * and although the block is only as wide as its widest child, "THE GRID" at
+       * `clamp(3.5rem,12vw,9rem)` spans roughly 900px of a 1440px hero — so it sat over columns 3
+       * through 9. Hit-tested in Chromium with `document.elementsFromPoint` at each column's
+       * centre: Mercedes, Ferrari, Cadillac and Aston Martin resolved to their own button, and
+       * McLaren, Red Bull, Haas, Racing Bulls, Audi, Alpine and Williams all resolved to this div.
+       *
+       * The first attempt was `pointer-events-none` on the `TextAnimate` heading alone, because
+       * the topmost node in the stack was one of its per-character `inline-block whitespace-pre`
+       * spans. That made it **worse** — nine columns dead instead of seven — because the click
+       * then landed on this wrapper one layer down. The wrapper is the actual blocker; the span
+       * was only what happened to be on top.
+       *
+       * `pointer-events` is an inherited property, so this one declaration frees the badge, the
+       * headline and the sub-heading, and the CTA below opts back in with `pointer-events-auto`.
+       * Re-hit-tested after the change: zero columns covered, CTA still reachable. */}
+      <div className="pointer-events-none relative z-10 flex flex-col items-center gap-6 px-6 text-center">
         <BlurFade delay={HERO_TIMING.badge} inView>
           <Badge variant="outline" className="border-zinc-600 text-zinc-400">
             2026 Season · 11 Constructors
@@ -112,7 +154,7 @@ export function TeamsHero({ onSelectTeam }: TeamsHeroProps) {
           duration={HERO_TIMING.titleDuration}
           startOnView
           once
-          className="text-[clamp(3.5rem,12vw,9rem)] font-black uppercase leading-none tracking-[0.15em] text-white"
+          className="text-[clamp(3.5rem,12vw,9rem)] font-black uppercase leading-none tracking-[0.15em] text-ink"
         >
           THE GRID
         </TextAnimate>
@@ -131,9 +173,22 @@ export function TeamsHero({ onSelectTeam }: TeamsHeroProps) {
         </TextAnimate>
 
         <BlurFade delay={reducedMotion ? 0 : HERO_TIMING.cta} inView>
+          {/* `pointer-events-auto`: the only interactive child of a wrapper that just turned
+              pointer events off for the whole content block. Without it the hero's primary CTA
+              becomes the twelfth casualty of the fix for the other eleven. */}
+          {/* `focusRingOnRedFill`, because this pill *is* an `f1-red` fill: a red ring on it is
+              1.00:1 — not a weak indicator, an absent one — while `ink` on the same fill is
+              4.50:1. The offset takes `base`; sampled around this button the hero backdrop reads
+              between `#0c0e12` and `#19191b`, so the band is a faint dark halo at worst (1.24:1
+              against the lightest of those) rather than a visible border, which is the trade
+              `lib/focus.ts` names for a red-filled control. */}
           <Button
             size="lg"
-            className="mt-4 gap-2 bg-f1-red text-white hover:bg-f1-red/90"
+            className={cn(
+              'pointer-events-auto mt-4 gap-2 bg-f1-red text-white hover:bg-f1-red/90',
+              focusRingOnRedFill,
+              'focus-visible:ring-offset-base',
+            )}
             onClick={() =>
               document.getElementById(`team-${TEAMS[0]!.id}`)?.scrollIntoView({
                 behavior: reducedMotion ? 'auto' : 'smooth',
@@ -192,7 +247,21 @@ export function TeamsHero({ onSelectTeam }: TeamsHeroProps) {
             aria-label={`Jump to ${team.shortName}`}
             className={cn(
               'group relative transition-transform duration-150 active:scale-[0.96]',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 lg:focus-visible:ring-inset',
+              // `focusRing` — the flush default. These buttons carry no fill of their own (the
+              // hover wash is a separate absolutely-positioned span), so there is nothing for a
+              // ring to be dropped onto and nothing an offset would buy; sampled around a column
+              // the hero backdrop runs `#09090b`–`#0b0e20`, where red is 3.85–4.01:1. This
+              // replaces `ring-zinc-400`, which was never the branch's ring colour.
+              focusRing,
+              // **`ring-inset` at `lg` is kept, and it is a geometry constraint rather than a
+              // fourth ring shape.** Below `lg` these are 11 logo tiles in a grid and an outset
+              // ring sits in the gaps between them. At `lg` the same button becomes a full-height
+              // livery column inside an `absolute inset-0` container, flush against its
+              // neighbours and against the hero's own edges — an outset ring there is drawn on
+              // top of the adjacent columns and clipped at the hero's top and bottom, i.e. a ring
+              // on three sides. Inset keeps all four. The colour and width still come from
+              // `focusRing`, so this is that ring painted inside, not a different one.
+              'lg:focus-visible:ring-inset',
               'lg:h-full lg:flex-1 lg:active:scale-100',
             )}
           >

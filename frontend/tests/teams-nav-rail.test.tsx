@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
-import { TeamsNavRail } from '@/components/teams/teams-nav-rail';
+import { RAIL_ROW_STAGGER_S, railRowDelay, TeamsNavRail } from '@/components/teams/teams-nav-rail';
 import { monogram } from '@/components/teams/team-monogram-tile';
 import {
   contrastRatio,
@@ -14,7 +14,10 @@ import {
   railStandingColor,
 } from '@/lib/team-utils';
 import { TEAMS } from '@/data/teams-data';
-import { restingTextNeutrals } from './zinc';
+import { detach, inlineColouredText, restingTextNeutrals } from './zinc';
+
+/** `f1-red` from `tailwind.config.ts`. The ring colour the whole branch now uses. */
+const F1_RED = '#E10600';
 
 /** jsdom normalises any inline colour to `rgb(r, g, b)`; contrastRatio wants hex. */
 function rgbToHex(value: string): string {
@@ -42,6 +45,11 @@ function renderRail({
       reducedMotion={reducedMotion}
     />,
   );
+}
+
+/** Every row's left selection rule, in document order. */
+function selectionRules(container: HTMLElement): HTMLElement[] {
+  return Array.from(container.querySelectorAll<HTMLElement>('a > span.bg-f1-red'));
 }
 
 /** The progress track's fill — the element whose transform the active index drives. */
@@ -116,20 +124,69 @@ describe('TeamsNavRail', () => {
     }
   });
 
-  // Brief item 13 names focus indicators specifically. Tailwind's ring is a box-shadow that
-  // reads --tw-ring-color, so a team-derived ring has to set that property — an outlineColor
-  // would silently do nothing and leave the ring at Tailwind's default translucent blue.
-  it('gives every row a team-derived focus ring that clears non-text contrast', () => {
+  /*
+   * Phase 7 replaced this row's per-team `--tw-ring-color` with the branch-wide red ring, because
+   * `ring-mixed` settles red as *the* focus colour and eleven differently-coloured rings reopen the
+   * "which of these is the signal?" problem the rail's red selection marker already answers.
+   *
+   * **The offset is the part worth guarding, and it is the reason this test still exists.** The
+   * active row paints `bg-zinc-800/60` edge to edge, and `f1-red` on that fill measures exactly
+   * 3.00:1 — WCAG 2.4.11's floor with nothing left over. Flush, the indicator is one nudge to the
+   * highlight away from failing silently. The 2px band holds the ring off the fill and puts it
+   * against the page, where red is 4.01:1.
+   *
+   * So this asserts the offset explicitly rather than only the ring: dropping
+   * `focus-visible:ring-offset-2` is the regression that would not otherwise show up, and it is a
+   * one-token edit away at all times.
+   */
+  it('gives every row the branch focus ring, held off the active highlight by an offset', () => {
     expect(TEAMS).toHaveLength(11);
     renderRail();
+
     for (const team of TEAMS) {
       const link = screen.getByRole('link', { name: new RegExp(team.shortName, 'i') });
-      const ring = link.style.getPropertyValue('--tw-ring-color');
-      expect(ring, `${team.shortName} has no --tw-ring-color`).not.toBe('');
-      expect(contrastRatio(ring, DARK_BG), `${team.shortName} ring ${ring}`).toBeGreaterThanOrEqual(
-        MIN_RING_CONTRAST,
-      );
+      const label = `${team.shortName} row`;
+
+      expect(link.className, `${label} ring width`).toContain('focus-visible:ring-2');
+      expect(link.className, `${label} ring colour`).toContain('focus-visible:ring-f1-red');
+      expect(link.className, `${label} ring offset`).toContain('focus-visible:ring-offset-2');
+      expect(link.className, `${label} offset colour`).toContain('focus-visible:ring-offset-base');
+
+      // The team colour must not come back as a ring: that is the design this replaced, and a
+      // stray inline property would override the class and quietly reinstate it.
+      expect(link.style.getPropertyValue('--tw-ring-color'), `${label} inline ring`).toBe('');
     }
+  });
+
+  /*
+   * The premise behind the offset, asserted rather than left in a comment — and it is *not* the
+   * "exactly 3.00, no headroom" story it is easy to tell here.
+   *
+   * 3.00 is red against **pure `zinc-800`**, and the rail never paints that. The active row is
+   * `bg-zinc-800/60` over the page, which composites to `#1b1b1e`, and red on *that* is **3.46** —
+   * over the bar with 0.46 to spare. Measuring the fill's own token instead of the composite is
+   * the "right colour, wrong background" mistake `CLAUDE.md` records shipping three times; it lands
+   * in the safe direction here, but it is still the wrong number.
+   *
+   * So the offset is defence in depth rather than a rescue: it lifts 3.46 to 4.01, and it is free
+   * because the rail genuinely sits on `base`, so the band is invisible. Both figures are pinned —
+   * if the flush value ever drops under the bar, the offset stops being optional and this comment
+   * is wrong.
+   */
+  it('pins the margin the ring has flush, and the margin the offset buys', () => {
+    const highlight = railStandingBackdrop();
+    expect(highlight, 'the highlight is a composite, not the raw token').not.toBe(RAIL_ACTIVE_FILL);
+
+    const flush = contrastRatio(F1_RED, highlight);
+    const offset = contrastRatio(F1_RED, DARK_BG);
+
+    expect(flush, `red on ${highlight}`).toBeGreaterThanOrEqual(MIN_RING_CONTRAST);
+    expect(offset, 'red on the page').toBeGreaterThan(flush);
+    expect(offset).toBeGreaterThanOrEqual(MIN_RING_CONTRAST);
+
+    // The raw token is the number a reader will reach for by mistake. Pin that it is the stricter
+    // one, so nobody "corrects" the composite figure back to it.
+    expect(contrastRatio(F1_RED, RAIL_ACTIVE_FILL)).toBeLessThan(flush);
   });
 
   // This assertion used to read `contrastRatio(..., DARK_BG)` and passed for all eleven teams
@@ -216,5 +273,174 @@ describe('TeamsNavRail', () => {
     const fill = progressFill(container);
     expect(fill.className).not.toMatch(/transition-transform/);
     expect(fill.style.transform).toBe(`scaleY(${2 / TEAMS.length})`);
+  });
+
+  // The rule used to be `backgroundColor: team.color`, which lit eleven liveries at once and made
+  // the active row hard to pick out — the thing the rule exists to do. One red rule per row, and
+  // the count is pinned so a rule that stopped rendering (or started rendering twice, once per
+  // state) fails here rather than in a screenshot nobody takes.
+  it('gives every row exactly one red selection rule', () => {
+    const { container } = renderRail();
+    const rules = selectionRules(container);
+    expect(rules).toHaveLength(TEAMS.length);
+    for (const rule of rules) {
+      // Red is a *fill*, so it is outside the 4.5:1 text bar that `f1-red`'s 4.01:1 fails.
+      expect(rule.className).toMatch(/\bbg-f1-red\b/);
+      // `\b` cannot follow a `]` — both sides are non-word characters — so arbitrary-value
+      // Tailwind classes have to be bounded by whitespace instead.
+      expect(rule.className).toMatch(/(^|\s)w-\[2px\](\s|$)/);
+      // Decoration duplicating `aria-current`; a screen reader must not meet it twice.
+      expect(rule).toHaveAttribute('aria-hidden', 'true');
+      // The livery must not come back on this element — that is the regression, and an inline
+      // backgroundColor is the exact shape it had.
+      expect(rule.style.backgroundColor).toBe('');
+    }
+  });
+
+  // jsdom applies no stylesheet and cannot evaluate `:hover`, so there is no computed style to
+  // read and `fireEvent.mouseOver` changes nothing observable. The class string is therefore the
+  // strongest available proof that the rule reveals on hover: `group` on the anchor is what makes
+  // `group-hover:` on the child resolve at all, and asserting one without the other passes while
+  // the pair is broken. The parent verifies the rendered hover in a browser.
+  it('reveals the rule on hover as well as on selection', () => {
+    const { container } = renderRail({ activeTeamId: 'ferrari' });
+    const anchors = Array.from(container.querySelectorAll('a'));
+    expect(anchors).toHaveLength(TEAMS.length);
+    for (const anchor of anchors) {
+      expect(anchor.className).toMatch(/(^|\s)group(\s|$)/);
+    }
+    for (const rule of selectionRules(container)) {
+      expect(rule.className).toMatch(/\bgroup-hover:opacity-100\b/);
+    }
+  });
+
+  // `cn` merges through tailwind-merge: `opacity-0` and `opacity-100` are the same key, so the
+  // active row must end up with 100 and only 100. A version that emitted both would render at
+  // whichever Tailwind ordered last and look correct exactly half the time.
+  it('rests the rule hidden and shows it on the selected row', () => {
+    const { container } = renderRail({ activeTeamId: 'ferrari' });
+    const active = screen.getByRole('link', { current: 'location' });
+    const activeRule = active.querySelector('span.bg-f1-red');
+    expect(activeRule).not.toBeNull();
+    expect(activeRule!.className).toMatch(/\bopacity-100\b/);
+    expect(activeRule!.className).not.toMatch(/\bopacity-0\b/);
+
+    const inactive = selectionRules(container).filter((r) => r !== activeRule);
+    expect(inactive).toHaveLength(TEAMS.length - 1);
+    for (const rule of inactive) {
+      expect(rule.className).toMatch(/\bopacity-0\b/);
+      // …but not the resting `opacity-100`; only the hover variant of it.
+      expect(rule.className).not.toMatch(/(^|\s)opacity-100(\s|$)/);
+    }
+  });
+
+  // The spec asks for "points in mono" and the rail already shipped that way, so this pins the
+  // existing state rather than recording a change. It is worth pinning because tabular-looking
+  // numbers in a proportional face is the kind of regression that reads as "slightly off" for
+  // months before anyone names it.
+  it('sets the standings line in mono', () => {
+    const { container } = renderRail();
+    const lines = Array.from(container.querySelectorAll('a span.font-mono'));
+    expect(lines).toHaveLength(TEAMS.length);
+    for (const line of lines) {
+      expect(line.className).toMatch(/(^|\s)text-\[9px\](\s|$)/);
+    }
+  });
+
+  // The spec's 40ms overrides the branch-wide 80–120ms child stagger, and this pins the number
+  // rather than the shape: eleven rows at 120ms would take 1.32s to finish assembling a
+  // navigation control. Asserted on the pure function because reading the delay back off a
+  // rendered motion element would need a stub for `motion.a` and would then be testing the stub.
+  it('staggers the rows 40ms apart, in a ramp', () => {
+    expect(RAIL_ROW_STAGGER_S).toBe(0.04);
+    // The eleventh row — the last one — waits ten steps.
+    expect(railRowDelay(TEAMS.length - 1, false)).toBe(10 * RAIL_ROW_STAGGER_S);
+    expect(railRowDelay(0, false)).toBe(0);
+    for (let i = 1; i < TEAMS.length; i += 1) {
+      expect(railRowDelay(i, false)).toBeGreaterThan(railRowDelay(i - 1, false));
+    }
+  });
+
+  // Reduced motion means *no* cascade, not a faster one — a stagger that still staggers is still
+  // the motion the preference asked to be spared.
+  it('flattens the stagger to zero under reduced motion', () => {
+    for (let i = 0; i < TEAMS.length; i += 1) {
+      expect(railRowDelay(i, true), `row ${i}`).toBe(0);
+    }
+  });
+
+  // The assertion that catches an entrance animation that gates its own content. The rail is the
+  // page's primary navigation: whatever the observer or the motion preference says, all eleven
+  // rows must be real links, with their fragment and their accessible name, from first render.
+  it.each([false, true])(
+    'renders all eleven rows as named links with reducedMotion=%s',
+    (reducedMotion) => {
+      renderRail({ reducedMotion });
+      expect(TEAMS).toHaveLength(11);
+      for (const team of TEAMS) {
+        const link = screen.getByRole('link', { name: new RegExp(team.shortName, 'i') });
+        expect(link).toHaveAttribute('href', `#team-${team.id}`);
+      }
+      expect(screen.getAllByRole('link')).toHaveLength(TEAMS.length);
+    },
+  );
+
+  // `restingTextNeutrals` reads `text-zinc-N` classes and so sees *none* of this rail's
+  // livery-coloured text, which arrives inline from `lib/team-utils.ts`. The two helpers
+  // partition the tree; this is the half the class-reading test above cannot reach, and without
+  // it the rail's most contrast-sensitive runs go unmeasured for all eleven teams.
+  it('holds every inline-coloured run above AA against the background it really has', () => {
+    expect(TEAMS).toHaveLength(11);
+    for (const team of TEAMS) {
+      const { container, unmount } = renderRail({ activeTeamId: team.id });
+
+      // The monogram tiles are inline-coloured text too, but they sit on their *own* livery
+      // fill, not on the page — `onColor` derives their foreground and `tests/team-utils.test.ts`
+      // measures it there. Excluded by property (`role="img"`) with a pinned count, so this hole
+      // is exactly eleven wide and cannot widen without this number changing.
+      const tiles = Array.from(container.querySelectorAll<HTMLElement>('[role="img"]'));
+      expect(tiles).toHaveLength(TEAMS.length);
+      detach(tiles);
+
+      const runs = inlineColouredText(container);
+      // Non-vacuity, and a pin: eleven standings lines and nothing else. An inline colour that
+      // stopped being applied would otherwise make the loop below pass over an empty list.
+      expect(runs, `${team.shortName} inline runs`).toHaveLength(TEAMS.length);
+
+      const activeText = `P${team.position} · ${team.points} PTS`;
+      const onHighlight = runs.filter((r) => r.text === activeText);
+      // Exactly one row is on the `bg-zinc-800/60` highlight; the other ten are on the page.
+      expect(onHighlight, `${team.shortName} active run`).toHaveLength(1);
+
+      for (const { hex, text } of runs) {
+        const isActiveRun = text === activeText;
+        const backdrop = isActiveRun ? railStandingBackdrop() : DARK_BG;
+        expect(
+          contrastRatio(hex, backdrop),
+          `${team.shortName}: "${text}" at ${hex} on ${backdrop}`,
+        ).toBeGreaterThanOrEqual(MIN_CONTRAST);
+      }
+
+      unmount();
+    }
+  });
+
+  // The premise the test above rests on, asserted rather than assumed. `railStandingBackdrop()`
+  // is only the *right* background to judge the active line against if it is also the *stricter*
+  // one — zinc-800 at 60% over the page is lighter than the page, so a light glyph scores lower
+  // there. If that ever inverted (a darker highlight), measuring against it would be the
+  // optimistic choice and this suite would be certifying the wrong number, which is precisely the
+  // failure CLAUDE.md records shipping twice on this page.
+  it('measures the active line against the stricter of its two candidate backgrounds', () => {
+    expect(TEAMS).toHaveLength(11);
+    for (const team of TEAMS) {
+      const { unmount } = renderRail({ activeTeamId: team.id });
+      const hex = rgbToHex(screen.getByText(`P${team.position} · ${team.points} PTS`).style.color);
+      expect(
+        contrastRatio(hex, railStandingBackdrop()),
+        `${team.shortName} ${hex}`,
+      ).toBeLessThanOrEqual(contrastRatio(hex, DARK_BG));
+      unmount();
+    }
   });
 });

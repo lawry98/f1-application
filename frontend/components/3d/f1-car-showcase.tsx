@@ -76,7 +76,11 @@ export default function F1CarShowcase() {
         </div>
 
         <div className="mx-auto max-w-5xl">
-          <h3 className="mb-6 text-center text-2xl font-semibold">Select Team Livery</h3>
+          {/* `h2`, not the `h3` this shipped as: the only other heading on the route is the `h1`
+              above, so an `h3` skipped a level and axe reported `heading-order`. The text, the
+              size and the weight are untouched — the level is an outline fact, not a visual one,
+              and this route inherits tokens only. */}
+          <h2 className="mb-6 text-center text-2xl font-semibold">Select Team Livery</h2>
           <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
             {TEAMS.map((team) => (
               <button
@@ -104,7 +108,10 @@ export default function F1CarShowcase() {
         <div className="mt-12 text-center">
           <Link
             href="/credits"
-            className="text-sm text-zinc-500 transition-colors hover:text-zinc-300"
+            // `zinc-400` (7.76:1 on this page's bare `bg-zinc-950`), not the `zinc-500` this
+            // shipped as — 4.12:1, under the 4.5:1 small-text bar, and the one `color-contrast`
+            // violation axe found on the route. Same floor the rest of the branch holds.
+            className="text-sm text-zinc-400 transition-colors hover:text-zinc-300"
           >
             View Credits &amp; Attributions
           </Link>

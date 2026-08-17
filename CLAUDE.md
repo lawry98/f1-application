@@ -89,6 +89,22 @@ a single unapproved build makes `pnpm typecheck`, `pnpm lint`, and `pnpm build` 
 `frontend/pnpm-workspace.yaml` under `allowBuilds`; the `pnpm` field in `package.json` is
 **ignored** by pnpm 11.
 
+**A Tailwind class that no `content` glob reaches generates no rule, and nothing but a browser
+can tell.** `tailwind.config.ts`'s `content` lists `components/`, `app/` **and `lib/`** — the last
+one because `lib/focus.ts` is the only place `focus-visible:ring-f1-red` and
+`focus-visible:ring-ink` are written. Without it neither rule was emitted, so every control built
+from `focusRing` / `focusRingOffsetBase` / `focusRingOnRedFill` kept its `ring-2` and fell back to
+Tailwind's default blue `--tw-ring-color` (`rgb(59 130 246 / 0.5)`, measured live) — on the
+red-filled CTA, the invisible-indicator case `lib/focus.ts` exists to prevent. The same shape bit
+once before: `duration-[600ms]` is an *ambiguous* arbitrary value here, generated no rule, and the
+crossfade silently ran at the 150ms `transition-[background-color]` sets for itself, which is why
+`transitionDuration: { 600: '600ms' }` is a real token. **Both failures pass every test** — jsdom
+computes no CSS, so an assertion on the class name holds with the rule absent, and a screenshot
+can see neither a duration nor a ring that only paints on `:focus-visible`. Read the rule out of
+`document.styleSheets`, or the computed value off a live element. `tests/tailwind-content.test.ts`
+is the guard, and it asserts the glob rather than the colour for exactly that reason. Any new
+module outside `components/`/`app/` that authors a class string needs adding to `content`.
+
 **The graph is not a flat pipeline.** It has four nodes, but `resolver` sits behind a
 conditional edge: when `state["current_step"] == "error"` it routes straight to `END`, skipping
 planner, tools, and synthesizer. Anything assuming the synthesizer always runs is wrong.

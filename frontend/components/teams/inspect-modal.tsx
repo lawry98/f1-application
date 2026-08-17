@@ -6,6 +6,11 @@ import { motion } from 'motion/react';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+/* Both controls in this dialog are `variant="ghost"` — no fill — on a `bg-zinc-950` panel, which
+   is `base`. That is exactly the flush default's case: red is 4.01:1 straight against it and an
+   offset band would separate the ring from nothing. */
+import { focusRing } from '@/lib/focus';
 import { type Team } from '@/data/teams-data';
 
 const F1HeroScene = dynamic(() => import('@/components/3d/f1-hero-scene'), {
@@ -146,18 +151,20 @@ export function InspectModal({ teams, initialTeamId, onClose }: InspectModalProp
               <p
                 data-testid="inspect-team-name"
                 aria-live="polite"
-                className="text-sm font-bold uppercase tracking-wider text-white"
+                className="text-sm font-bold uppercase tracking-wider text-ink"
               >
                 {team.name}
               </p>
             </div>
           </div>
+          {/* All three header controls take `focusRing` — flush red, no offset. They sit on the
+              modal panel, which is not a nameable token behind them. `ring-mixed`, see lib/focus.ts. */}
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"
               size="icon"
               onClick={() => go(-1)}
-              className="h-8 w-8 text-zinc-400 hover:text-white"
+              className={cn('h-8 w-8 text-zinc-400 hover:text-white', focusRing)}
               aria-label={`Previous constructor, ${previousTeam.shortName}`}
             >
               <ChevronLeft size={16} />
@@ -169,7 +176,7 @@ export function InspectModal({ teams, initialTeamId, onClose }: InspectModalProp
               variant="ghost"
               size="icon"
               onClick={() => go(1)}
-              className="h-8 w-8 text-zinc-400 hover:text-white"
+              className={cn('h-8 w-8 text-zinc-400 hover:text-white', focusRing)}
               aria-label={`Next constructor, ${nextTeam.shortName}`}
             >
               <ChevronRight size={16} />
@@ -179,7 +186,7 @@ export function InspectModal({ teams, initialTeamId, onClose }: InspectModalProp
               size="icon"
               onClick={onClose}
               autoFocus
-              className="ml-2 h-8 w-8 text-zinc-400 hover:text-white"
+              className={cn('ml-2 h-8 w-8 text-zinc-400 hover:text-white', focusRing)}
               aria-label="Close inspector"
             >
               <X size={16} />
@@ -211,7 +218,7 @@ export function InspectModal({ teams, initialTeamId, onClose }: InspectModalProp
             variant="ghost"
             size="sm"
             onClick={onClose}
-            className="text-xs text-zinc-400 hover:text-zinc-200"
+            className={cn('text-xs text-zinc-400 hover:text-zinc-200', focusRing)}
           >
             Close
           </Button>

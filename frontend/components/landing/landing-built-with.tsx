@@ -1,4 +1,4 @@
-import { BlurFade } from '@/components/ui/blur-fade';
+import { BlurFadeReduced } from '@/components/candy/blur-fade-reduced';
 
 const TECH_STACK = [
   { label: 'FastF1', note: 'Telemetry & results' },
@@ -11,10 +11,13 @@ const TECH_STACK = [
 
 export function LandingBuiltWith() {
   return (
-    <section className="border-y border-zinc-800/60 bg-zinc-950 py-12" aria-label="Built with">
+    // No `bg-*`: `app/page.tsx` wraps every landing section in a `LandingSectionTheme` that owns
+    // the surface colour, and a background here would paint over it. This strip's tone is `base`,
+    // which is the same #09090B the `bg-zinc-950` here used to paint — a rename, not a change.
+    <section className="border-y border-zinc-800/60 py-12" aria-label="Built with">
       <div className="container mx-auto max-w-7xl px-4">
-        <BlurFade inView delay={0} direction="up">
-          <p className="mb-8 text-center text-xs font-semibold uppercase tracking-widest text-zinc-600">
+        <BlurFadeReduced inView delay={0} direction="up">
+          <p className="mb-8 text-center text-xs font-semibold uppercase tracking-widest text-zinc-400">
             Built with
           </p>
           <ul
@@ -26,12 +29,12 @@ export function LandingBuiltWith() {
               <li key={label}>
                 <div className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-2">
                   <span className="text-sm font-medium text-zinc-300">{label}</span>
-                  <span className="hidden text-xs text-zinc-600 sm:block">&middot; {note}</span>
+                  <span className="hidden text-xs text-zinc-400 sm:block">&middot; {note}</span>
                 </div>
               </li>
             ))}
           </ul>
-        </BlurFade>
+        </BlurFadeReduced>
       </div>
     </section>
   );
