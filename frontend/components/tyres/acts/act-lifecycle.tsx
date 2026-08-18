@@ -1,64 +1,74 @@
 'use client';
 
-import { useId, useState } from 'react';
+import { useEffect, useRef } from 'react';
+import { useMotionValue, useScroll, useTransform } from 'motion/react';
 
-import { COMPOUND_COLORS, LIFECYCLE_STAGES } from '@/data/tyres-data';
-import { focusRingOffsetBase } from '@/lib/focus';
+import { useLifecycleActiveStage } from '@/hooks/use-lifecycle-active-stage';
+import { useReducedMotionSafe } from '@/hooks/use-reduced-motion-safe';
 import { EYEBROW_RED } from '@/lib/tyre-utils';
-import { cn } from '@/lib/utils';
 
-import { TyreBody } from '../lab/tyre-body';
-import { TyreDefs, makeIdFor } from '../lab/tyre-defs';
-import type { ThermalState } from '../lab/tyre-geometry';
-import { SourceList } from './source-list';
-
-/**
- * What each stage does to the tyre.
- *
- * Keyed by the ids already in `LIFECYCLE_STAGES`. This is the one place the drawn SVG engine
- * earns its keep over the product renders: there is no photograph of a grained tyre or a tyre at
- * 40% wear, and there are eight of these — the whole point of a state-driven tyre is that the
- * eight states cost eight rows of numbers rather than eight assets.
- */
-const STAGE_STATE: Record<string, { wear: number; thermal: ThermalState; note: string }> = {
-  preparation: { wear: 0, thermal: 'cold', note: 'Blanketed, below its working range' },
-  'no-blankets': { wear: 0, thermal: 'cold', note: 'Cold out of the box' },
-  prescriptions: { wear: 0.05, thermal: 'optimal', note: 'Within prescribed limits' },
-  'formation-lap': { wear: 0.1, thermal: 'optimal', note: 'Coming into the window' },
-  stint: { wear: 0.45, thermal: 'hot', note: 'Working, and paying for it' },
-  'pit-stop': { wear: 0.8, thermal: 'hot', note: 'Worn through, surface breaking up' },
-  after: { wear: 1, thermal: 'cold', note: 'Off the car, cooling' },
-  materials: { wear: 1, thermal: 'cold', note: 'Out of the cycle' },
-};
-
-const DEFAULT_STATE = { wear: 0.3, thermal: 'optimal' as ThermalState, note: 'In service' };
+import {
+  LIFECYCLE,
+  LIFECYCLE_COUNT,
+  wearPercent,
+} from '../lifecycle/lifecycle-data';
+import {
+  ROTATION_TOTAL_DEG,
+  WEAR_STOPS,
+  WEAR_VALUES,
+} from '../lifecycle/lifecycle-motion';
+import { LifecycleReadout } from '../lifecycle/lifecycle-readout';
+import { LifecycleStageCard } from '../lifecycle/lifecycle-stage-card';
+import { LifecycleStepper } from '../lifecycle/lifecycle-stepper';
+import { LifecycleTyre } from '../lifecycle/lifecycle-tyre';
 
 /**
- * Act 4 — the life of a tyre.
+ * Act 4 — the life of a tyre, as a guided sticky-scroll story.
  *
- * A stepper rather than a scroll sequence: eight stages is too many to pin, and a reader who
- * wants to compare "graining" against "worn" needs to be able to go back one step, which a
- * scroll-driven version makes into a scroll upwards past other content.
+ * The eight stages live in normal document flow on the right; a single Pirelli photograph stays
+ * pinned on the left and ages as the reader scrolls — heating, wearing, scuffing and cooling
+ * between the stages' own wear values. The active stage is whichever card is nearest the activation
+ * line, and it drives the HUD, the stepper and the discrete heat treatment; the continuous wear and
+ * the rotation are `MotionValue`s off scroll progress, so nothing re-renders per pixel.
  *
- * The tyre is drawn, not photographed, and re-renders per stage from two numbers — see
- * `STAGE_STATE`. Wear shortens and narrows the grooves, dulls the gloss, rakes scuffing across
- * the shoulder and finally sheds marbles; temperature repaints the heat map. Neither is a filter
- * over a photograph, which is why they can be combined freely.
+ * Nothing here scroll-jacks: the page's own scrollbar stays in control, and the cards are complete,
+ * readable content with the full sourced detail behind each one's disclosure even with JavaScript
+ * off. The drawn-SVG tyre engine (`lab/tyre-body`, `lab/tyre-defs`) is no longer used here but is
+ * left intact — `public/tyres/CREDITS.md` keeps it as the licence-clean hero for a public build.
  */
 export function ActLifecycle() {
-  const [step, setStep] = useState(0);
-  const uid = useId();
-  const idFor = makeIdFor(uid);
+  const reduced = useReducedMotionSafe();
+  const { activeIndex, direction, setStageRef, goToStage, announcement } =
+    useLifecycleActiveStage();
 
-  const stage = LIFECYCLE_STAGES[step] ?? LIFECYCLE_STAGES[0];
-  if (!stage) return null;
-  const state = STAGE_STATE[stage.id] ?? DEFAULT_STATE;
-  const total = LIFECYCLE_STAGES.length;
+  const active = LIFECYCLE[activeIndex] ?? LIFECYCLE[0]!;
+
+  // Continuous wear and rotation from scroll progress across the stage track.
+  const trackRef = useRef<HTMLDivElement>(null);
+  const { scrollYProgress } = useScroll({
+    target: trackRef,
+    offset: ['start 55%', 'end 55%'],
+  });
+  const scrollWear = useTransform(scrollYProgress, WEAR_STOPS, WEAR_VALUES);
+  const scrollRotation = useTransform(scrollYProgress, [0, 1], [0, ROTATION_TOTAL_DEG]);
+
+  // Reduced motion swaps the scroll-linked values for discrete ones: wear steps to the active
+  // stage, rotation is held at zero. The rendered tree is identical either way.
+  const discreteWear = useMotionValue(active.visual.wear);
+  const zeroRotation = useMotionValue(0);
+  useEffect(() => {
+    if (reduced) discreteWear.set(active.visual.wear);
+  }, [reduced, active.visual.wear, discreteWear]);
+
+  const wear = reduced ? discreteWear : scrollWear;
+  const rotation = reduced ? zeroRotation : scrollRotation;
+
+  const altText = `Pirelli soft-compound Formula 1 slick, stage ${activeIndex + 1} of ${LIFECYCLE_COUNT}: ${active.stage.name} — ${active.visual.note.toLowerCase()}`;
 
   return (
     <section
       aria-labelledby="lifecycle-heading"
-      className="relative isolate overflow-hidden border-b border-white/10 bg-base"
+      className="relative isolate border-b border-white/10 bg-base"
     >
       <div className="container relative mx-auto max-w-7xl px-4 py-14 sm:py-20">
         <p
@@ -74,124 +84,67 @@ export function ActLifecycle() {
         >
           The life of a tyre
         </h2>
+        <p className="mt-4 max-w-[54ch] text-[15px] leading-relaxed text-zinc-300">
+          Scroll to take one tyre from the blankets to the recycler. It heats, wears and cools as you
+          go — eight quick stops, and any of them opens for the full detail and its source.
+        </p>
 
-        <div className="mt-10 grid gap-10 lg:grid-cols-[0.85fr_1.15fr] lg:items-start lg:gap-14">
-          <div className="relative mx-auto w-full max-w-[20rem] lg:sticky lg:top-24 lg:max-w-[24rem]">
-            <svg
-              viewBox="0 0 400 400"
-              role="img"
-              aria-label={`${stage.name}: ${state.note}`}
-              className="h-auto w-full"
-            >
-              <TyreDefs
-                idFor={idFor}
-                color={COMPOUND_COLORS.soft}
-                thermal={state.thermal}
-                wet={0}
-                heatScale={0.85}
+        <div
+          ref={trackRef}
+          className="mt-10 grid gap-8 lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)] lg:gap-14"
+        >
+          {/* The pinned tyre: a compact band on mobile, a tall sticky column on desktop. */}
+          <div className="sticky top-14 z-20 -mx-4 self-start border-b border-white/10 bg-base px-4 pb-4 pt-2 lg:top-24 lg:mx-0 lg:border-b-0 lg:bg-transparent lg:px-0 lg:pb-0 lg:pt-0">
+            <div className="flex items-center gap-4 lg:flex-col lg:items-stretch lg:gap-5">
+              <LifecycleTyre
+                wear={wear}
+                rotation={rotation}
+                activeIndex={activeIndex}
+                thermal={active.visual.thermal}
+                altText={altText}
+                reduced={reduced}
+                className="w-24 shrink-0 sm:w-28 lg:mx-auto lg:w-full lg:max-w-[18rem]"
               />
-              <TyreBody
-                idFor={idFor}
-                color={COMPOUND_COLORS.soft}
-                tread="slick"
-                wear={state.wear}
-                thermal={state.thermal}
-              />
-            </svg>
-            <p className="mt-3 border-t border-f1-red/25 pt-3 font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-400">
-              {state.note} · wear {Math.round(state.wear * 100)}%
-            </p>
+              <div className="min-w-0 flex-1">
+                <LifecycleReadout
+                  activeIndex={activeIndex}
+                  total={LIFECYCLE_COUNT}
+                  direction={direction}
+                  stageName={active.stage.name}
+                  wearPct={wearPercent(active.visual.wear)}
+                  thermal={active.visual.thermal}
+                  reduced={reduced}
+                />
+              </div>
+            </div>
+            <LifecycleStepper
+              activeIndex={activeIndex}
+              total={LIFECYCLE_COUNT}
+              onSelect={goToStage}
+              reduced={reduced}
+            />
           </div>
 
-          <div className="min-w-0">
-            {/* The stepper. Real buttons in document order, so Tab walks the sequence and the
-                current step is announced rather than only outlined. */}
-            <ol className="flex flex-wrap gap-1.5" role="list">
-              {LIFECYCLE_STAGES.map((s, i) => (
-                <li key={s.id}>
-                  <button
-                    type="button"
-                    onClick={() => setStep(i)}
-                    aria-current={i === step ? 'step' : undefined}
-                    className={cn(
-                      'flex h-9 w-9 items-center justify-center rounded-full border text-xs font-bold transition-colors',
-                      focusRingOffsetBase,
-                      i === step
-                        ? 'border-f1-red bg-f1-red text-white'
-                        : i < step
-                          ? 'border-f1-red/50 text-zinc-300 hover:border-f1-red'
-                          : 'border-white/15 text-zinc-400 hover:border-white/40',
-                    )}
-                  >
-                    <span aria-hidden="true">{i + 1}</span>
-                    <span className="sr-only">{`Step ${i + 1} of ${total}: ${s.name}`}</span>
-                  </button>
-                </li>
-              ))}
-            </ol>
-
-            <div className="mt-7">
-              <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-400">
-                {`Stage ${step + 1} of ${total}`}
-              </p>
-              <h3 className="mt-2 font-display text-2xl font-black uppercase tracking-tight text-ink sm:text-3xl">
-                {stage.name}
-              </h3>
-              <p className="mt-3 max-w-[58ch] text-sm leading-relaxed text-zinc-300">
-                {stage.body}
-              </p>
-              {stage.source && (
-                <div className="mt-5">
-                  <SourceList sources={[stage.source]} label={`Source for ${stage.name}`} />
-                </div>
-              )}
-            </div>
-
-            <div className="mt-8 flex gap-2">
-              <StepButton
-                label="Previous stage"
-                disabled={step === 0}
-                onClick={() => setStep((s) => Math.max(0, s - 1))}
+          {/* The stages, in normal document flow. */}
+          <ol className="space-y-6 sm:space-y-8">
+            {LIFECYCLE.map((entry, i) => (
+              <LifecycleStageCard
+                key={entry.stage.id}
+                entry={entry}
+                index={i}
+                total={LIFECYCLE_COUNT}
+                isActive={i === activeIndex}
+                setRef={setStageRef(i)}
               />
-              <StepButton
-                label="Next stage"
-                disabled={step === total - 1}
-                onClick={() => setStep((s) => Math.min(total - 1, s + 1))}
-                primary
-              />
-            </div>
-          </div>
+            ))}
+          </ol>
         </div>
+
+        {/* Deliberate navigation is announced once, after it settles. Ordinary scrolling is not. */}
+        <p role="status" aria-live="polite" className="sr-only">
+          {announcement}
+        </p>
       </div>
     </section>
-  );
-}
-
-function StepButton({
-  label,
-  onClick,
-  disabled,
-  primary = false,
-}: {
-  label: string;
-  onClick: () => void;
-  disabled: boolean;
-  primary?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={cn(
-        'rounded-lg border px-4 py-2 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40',
-        focusRingOffsetBase,
-        primary
-          ? 'border-f1-red bg-f1-red text-white hover:bg-red-700'
-          : 'border-white/20 text-zinc-300 hover:border-white/40 hover:text-ink',
-      )}
-    >
-      {label}
-    </button>
   );
 }
