@@ -17,13 +17,13 @@ afterEach(() => {
 
 describe('useLifecycleActiveStage', () => {
   it('starts on the first stage, moving forward', () => {
-    const { result } = renderHook(() => useLifecycleActiveStage(false));
+    const { result } = renderHook(() => useLifecycleActiveStage());
     expect(result.current.activeIndex).toBe(0);
     expect(result.current.direction).toBe(1);
   });
 
   it('jumps straight to a selected stage and tracks the travel direction', () => {
-    const { result } = renderHook(() => useLifecycleActiveStage(false));
+    const { result } = renderHook(() => useLifecycleActiveStage());
 
     act(() => result.current.goToStage(4));
     expect(result.current.activeIndex).toBe(4);
@@ -35,7 +35,7 @@ describe('useLifecycleActiveStage', () => {
   });
 
   it('clamps out-of-range selections to the ends', () => {
-    const { result } = renderHook(() => useLifecycleActiveStage(false));
+    const { result } = renderHook(() => useLifecycleActiveStage());
 
     act(() => result.current.goToStage(99));
     expect(result.current.activeIndex).toBe(LIFECYCLE_COUNT - 1);
@@ -46,7 +46,7 @@ describe('useLifecycleActiveStage', () => {
 
   it('announces only the last of a rapid burst, and only after it settles', () => {
     vi.useFakeTimers();
-    const { result } = renderHook(() => useLifecycleActiveStage(false));
+    const { result } = renderHook(() => useLifecycleActiveStage());
 
     act(() => {
       result.current.goToStage(2);

@@ -118,7 +118,7 @@ export function LifecycleTyre({
   const tint = THERMAL_TINT[thermal];
 
   return (
-    <div className={cn('relative aspect-square select-none', className)}>
+    <div className={cn('relative aspect-square select-none overflow-hidden', className)}>
       <div ref={scope} className="absolute inset-0">
         {/* The rolling rig — photograph plus the wear that lives on the rubber. */}
         <motion.div className="absolute inset-0" style={{ rotate: rotation }}>

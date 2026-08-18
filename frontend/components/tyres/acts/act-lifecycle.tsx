@@ -39,7 +39,7 @@ import { LifecycleTyre } from '../lifecycle/lifecycle-tyre';
 export function ActLifecycle() {
   const reduced = useReducedMotionSafe();
   const { activeIndex, direction, setStageRef, goToStage, announcement } =
-    useLifecycleActiveStage(reduced);
+    useLifecycleActiveStage();
 
   const active = LIFECYCLE[activeIndex] ?? LIFECYCLE[0]!;
 
@@ -68,7 +68,7 @@ export function ActLifecycle() {
   return (
     <section
       aria-labelledby="lifecycle-heading"
-      className="relative isolate overflow-hidden border-b border-white/10 bg-base"
+      className="relative isolate border-b border-white/10 bg-base"
     >
       <div className="container relative mx-auto max-w-7xl px-4 py-14 sm:py-20">
         <p
@@ -94,7 +94,7 @@ export function ActLifecycle() {
           className="mt-10 grid gap-8 lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)] lg:gap-14"
         >
           {/* The pinned tyre: a compact band on mobile, a tall sticky column on desktop. */}
-          <div className="sticky top-14 z-20 -mx-4 self-start border-b border-white/10 bg-base/95 px-4 pb-4 pt-2 backdrop-blur-sm lg:top-24 lg:mx-0 lg:border-b-0 lg:bg-transparent lg:px-0 lg:pb-0 lg:pt-0">
+          <div className="sticky top-14 z-20 -mx-4 self-start border-b border-white/10 bg-base px-4 pb-4 pt-2 lg:top-24 lg:mx-0 lg:border-b-0 lg:bg-transparent lg:px-0 lg:pb-0 lg:pt-0">
             <div className="flex items-center gap-4 lg:flex-col lg:items-stretch lg:gap-5">
               <LifecycleTyre
                 wear={wear}

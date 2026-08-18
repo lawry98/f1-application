@@ -52,22 +52,22 @@ export function LifecycleReadout({
         {`Stage ${activeIndex + 1} / ${total}`}
       </p>
 
-      {/* The concise name, swapped with the shared exit-up / enter-below choreography. */}
-      <div className="relative mt-1.5 h-8 sm:h-9">
-        <AnimatePresence initial={false} custom={direction} mode="popLayout">
-          <motion.p
-            key={activeIndex}
-            custom={direction}
-            variants={reduced ? reducedContentVariants : contentVariants}
-            initial="enter"
-            animate="center"
-            exit="exit"
-            transition={contentTransition(reduced, 'enter')}
-            className="absolute inset-x-0 top-0 truncate font-display text-2xl font-black uppercase tracking-tight text-ink sm:text-[1.65rem]"
-          >
-            {stageName}
-          </motion.p>
-        </AnimatePresence>
+      {/* The concise name, entering from below (forward) or above (back) as the stage changes.
+          A keyed re-mount rather than AnimatePresence: the outgoing name is removed the instant the
+          new one mounts, so a fast scroll through several stages can never leave two names stacked —
+          only the newest is ever in the DOM. `overflow-hidden` clips the entering slide. */}
+      <div className="mt-1.5 h-8 overflow-hidden sm:h-9">
+        <motion.p
+          key={activeIndex}
+          custom={direction}
+          variants={reduced ? reducedContentVariants : contentVariants}
+          initial="enter"
+          animate="center"
+          transition={contentTransition(reduced, 'enter')}
+          className="truncate font-display text-2xl font-black uppercase tracking-tight text-ink sm:text-[1.65rem]"
+        >
+          {stageName}
+        </motion.p>
       </div>
 
       {/* Wear meter — the bar eases to width, the counter to its value. */}

@@ -46,7 +46,7 @@ export interface LifecycleActiveStage {
   announcement: string;
 }
 
-export function useLifecycleActiveStage(reduced: boolean): LifecycleActiveStage {
+export function useLifecycleActiveStage(): LifecycleActiveStage {
   const [activeIndex, setActiveIndex] = useState(0);
   const [direction, setDirection] = useState(1);
   const [announcement, setAnnouncement] = useState('');
@@ -135,10 +135,12 @@ export function useLifecycleActiveStage(reduced: boolean): LifecycleActiveStage 
       claimUntil.current = Date.now() + CLAIM_TIMEOUT_MS;
       applyActive(next);
 
-      stageEls.current[next]?.scrollIntoView({
-        behavior: reduced ? 'auto' : 'smooth',
-        block: 'center',
-      });
+      // Instant, not smooth: `scrollIntoView({ behavior: 'smooth' })` is a silent no-op in some
+      // embedded/headless Chromium builds (verified here), which would leave a click updating the
+      // tyre and HUD while the page never moved. A direct jump is reliable everywhere and is what
+      // the spec asks of a large jump anyway; the cinematic motion is the tyre settling, the
+      // content swap and the stepper indicator, not the page scroll.
+      stageEls.current[next]?.scrollIntoView({ behavior: 'auto', block: 'center' });
 
       // Announce the *final* selection once, after rapid clicks have settled — never mid-scroll.
       if (announceTimer.current) clearTimeout(announceTimer.current);
@@ -147,7 +149,7 @@ export function useLifecycleActiveStage(reduced: boolean): LifecycleActiveStage 
         if (entry) setAnnouncement(`Stage ${next + 1} of ${LIFECYCLE_COUNT}: ${entry.stage.name}`);
       }, ANNOUNCE_DELAY_MS);
     },
-    [applyActive, reduced],
+    [applyActive],
   );
 
   return { activeIndex, direction, setStageRef, goToStage, announcement };
