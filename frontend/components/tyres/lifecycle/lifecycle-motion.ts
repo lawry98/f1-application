@@ -13,9 +13,7 @@ import { LIFECYCLE, type ThermalState } from './lifecycle-data';
 export const EASE_OUT_EXPO = [0.16, 1, 0.3, 1] as const;
 
 export const LIFECYCLE_TIMING = {
-  /** Old concise content leaving as the active stage changes. */
-  contentExit: 0.16,
-  /** New concise content settling in. */
+  /** The concise name settling in as the active stage changes. */
   contentEnter: 0.44,
   /** The tyre's scale settle when a stage becomes active. */
   settle: 0.52,
@@ -35,31 +33,29 @@ export function stageDirection(from: number, to: number): 1 | -1 {
 }
 
 /**
- * The concise content swap, as motion variants. `custom` carries the travel direction.
+ * The concise name's entrance, direction-aware via `custom`: forward (dir +1) it rises from below,
+ * backward (dir -1) it drops from above, with a short blur that clears as it settles.
  *
- * Forward (dir +1): the outgoing line leaves upward and the incoming one rises from below.
- * Backward (dir -1): the reverse. Travel is small (12–14px) with a short exit blur, so the swap
- * reads as one line replacing another in place rather than as a slide.
+ * There is deliberately **no `exit` variant**. The readout swaps names by keyed re-mount, so the
+ * outgoing name is removed the instant the new one mounts — which is exactly what stops two names
+ * ever stacking during a fast scroll (see `lifecycle-readout.tsx`). An exit animation would
+ * reintroduce that overlap.
  */
 export const contentVariants: Variants = {
   enter: (dir: number) => ({ opacity: 0, y: 14 * dir, filter: 'blur(6px)' }),
   center: { opacity: 1, y: 0, filter: 'blur(0px)' },
-  exit: (dir: number) => ({ opacity: 0, y: -12 * dir, filter: 'blur(5px)' }),
 };
 
-/** Reduced motion: a crossfade with no displacement or blur. */
+/** Reduced motion: a plain fade-in, no displacement or blur. */
 export const reducedContentVariants: Variants = {
   enter: { opacity: 0 },
   center: { opacity: 1 },
-  exit: { opacity: 0 },
 };
 
-export function contentTransition(reduced: boolean, phase: 'enter' | 'exit') {
-  if (reduced) return { duration: LIFECYCLE_TIMING.reduced, ease: 'linear' as const };
-  return {
-    duration: phase === 'exit' ? LIFECYCLE_TIMING.contentExit : LIFECYCLE_TIMING.contentEnter,
-    ease: EASE_OUT_EXPO,
-  };
+export function contentTransition(reduced: boolean) {
+  return reduced
+    ? { duration: LIFECYCLE_TIMING.reduced, ease: 'linear' as const }
+    : { duration: LIFECYCLE_TIMING.contentEnter, ease: EASE_OUT_EXPO };
 }
 
 /* ------------------------------------------------------------------------- *

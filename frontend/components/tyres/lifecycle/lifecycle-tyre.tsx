@@ -92,7 +92,9 @@ export function LifecycleTyre({
   altText,
   reduced,
   className,
-  sizes = '(max-width: 640px) 45vw, (max-width: 1024px) 32vw, 22rem',
+  // Matches the rendered box: ~w-24/w-28 in the compact mobile band, capped at max-w-[18rem] on
+  // desktop. Kept tight so phones do not fetch a candidate sized for a 45vw image they never show.
+  sizes = '(max-width: 1024px) 112px, 288px',
 }: LifecycleTyreProps) {
   const haze = useTransform(wear, WEAR_OPACITY.haze.input, WEAR_OPACITY.haze.output);
   const scuff = useTransform(wear, WEAR_OPACITY.scuff.input, WEAR_OPACITY.scuff.output);

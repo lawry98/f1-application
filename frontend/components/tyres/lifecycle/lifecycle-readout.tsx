@@ -63,7 +63,7 @@ export function LifecycleReadout({
           variants={reduced ? reducedContentVariants : contentVariants}
           initial="enter"
           animate="center"
-          transition={contentTransition(reduced, 'enter')}
+          transition={contentTransition(reduced)}
           className="truncate font-display text-2xl font-black uppercase tracking-tight text-ink sm:text-[1.65rem]"
         >
           {stageName}
