@@ -102,13 +102,9 @@ describe('TeamsComparisonGrid', () => {
   it('renumbers the announced rank when the sort changes', () => {
     renderGrid();
     // Ferrari is 2nd on points and 1st on championships.
-    expect(screen.getByRole('link', { name: /jump to Ferrari/i })).toHaveAccessibleName(
-      /2 of 11/,
-    );
+    expect(screen.getByRole('link', { name: /jump to Ferrari/i })).toHaveAccessibleName(/2 of 11/);
     fireEvent.click(screen.getByRole('button', { name: 'Titles' }));
-    expect(screen.getByRole('link', { name: /jump to Ferrari/i })).toHaveAccessibleName(
-      /1 of 11/,
-    );
+    expect(screen.getByRole('link', { name: /jump to Ferrari/i })).toHaveAccessibleName(/1 of 11/);
   });
 
   it('still identifies every row by team name so the section stays skimmable', () => {
@@ -274,7 +270,11 @@ describe('TeamsComparisonGrid', () => {
       }
       const tabs = screen
         .getAllByRole('button')
-        .filter((b) => b.getAttribute('aria-pressed') !== null && !/compare /i.test(b.getAttribute('aria-label') ?? ''));
+        .filter(
+          (b) =>
+            b.getAttribute('aria-pressed') !== null &&
+            !/compare /i.test(b.getAttribute('aria-label') ?? ''),
+        );
       expect(tabs).toHaveLength(3);
     });
   });

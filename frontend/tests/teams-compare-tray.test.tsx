@@ -140,9 +140,9 @@ describe('TeamsCompareTray', () => {
     const leader = within(screen.getByTestId('compare-row-championship')).getByTestId(
       'compare-value-0',
     );
-    expect(
-      contrastRatio(rgbToHex(leader.style.color), trayValueBackdrop()),
-    ).toBeGreaterThanOrEqual(MIN_CONTRAST);
+    expect(contrastRatio(rgbToHex(leader.style.color), trayValueBackdrop())).toBeGreaterThanOrEqual(
+      MIN_CONTRAST,
+    );
   });
 
   // The class and the constants are two halves of one number. team-utils.test.ts pins the
@@ -164,10 +164,9 @@ describe('TeamsCompareTray', () => {
     // Stricter: the tray's real composite (`trayValueBackdrop()`) is lighter than the page
     // background, so this is a harder bar than the one above, not a redundant one.
     for (const { hex, text } of neutrals) {
-      expect(
-        contrastRatio(hex, trayValueBackdrop()),
-        `${hex} on "${text}"`,
-      ).toBeGreaterThanOrEqual(MIN_CONTRAST);
+      expect(contrastRatio(hex, trayValueBackdrop()), `${hex} on "${text}"`).toBeGreaterThanOrEqual(
+        MIN_CONTRAST,
+      );
     }
   });
 

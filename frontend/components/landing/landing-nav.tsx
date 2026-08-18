@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { focusRing, focusRingOffsetBase } from '@/lib/focus';
@@ -8,6 +9,22 @@ import { NAV_LINKS } from './links';
 
 export function LandingNav() {
   const pathname = usePathname();
+  const currentRef = useRef<HTMLAnchorElement | null>(null);
+
+  /*
+   * Bring the current page's link into view in the scrolling row.
+   *
+   * Six links overflow a phone, so the row scrolls — and the link for the page you are on can
+   * start off screen, leaving the nav showing no sign of where you are. `teams-chip-strip.tsx`
+   * has the same problem and the same fix.
+   *
+   * `block: 'nearest'` matters: without it this also scrolls the *page* vertically, so arriving
+   * on a route would silently jump you past the top of it. `behavior: 'auto'` because this is an
+   * arrival, not a transition — there is nothing for a smooth scroll to explain.
+   */
+  useEffect(() => {
+    currentRef.current?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'auto' });
+  }, [pathname]);
 
   return (
     <header className="fixed top-0 z-50 w-full border-b border-zinc-800/60 bg-zinc-950/90 backdrop-blur-md">
@@ -37,16 +54,17 @@ export function LandingNav() {
          * Measured at a 390 viewport before this change: the `ul` was **393.3 px wide inside a
          * 390 px viewport**, `Showcase` ended at x=400.6 and `Credits` at x=475.8 — both entirely
          * past the right edge — while `document.documentElement.scrollWidth` stayed at 390, so the
-         * page did not scroll to reach them. Two of five destinations were simply unreachable on a
-         * phone.
+         * page did not scroll to reach them. Two of the then-five destinations were simply
+         * unreachable on a phone, and `/tyres` has since made it a six-link row.
          *
-         * Why scroll and not a smaller type ramp: the five labels plus their gaps measure 432.6 px
-         * at their natural size (measured at 1440), and after the wordmark and the `px-4` gutters
-         * there are ~212 px to put them in. That is a 51% reduction — unreachable by type or
-         * spacing without going to ~7 px text. Why scroll and not a disclosure: `SHARED-P7.md`
-         * requires every link to survive, and a scroller keeps all five reachable with no new
-         * state, no focus trap and no second rendering of the same list. It is also the pattern
-         * this branch already chose for the same problem on `/teams` (`teams-chip-strip.tsx`).
+         * Why scroll and not a smaller type ramp: the labels plus their gaps measure 432.6 px
+         * at their natural size (measured at 1440, before `Tyres`), and after the wordmark and the
+         * `px-4` gutters there are ~212 px to put them in. That is a 51% reduction — unreachable by
+         * type or spacing without going to ~7 px text. Why scroll and not a disclosure:
+         * `SHARED-P7.md` requires every link to survive, and a scroller keeps them all reachable
+         * with no new state, no focus trap and no second rendering of the same list. It is also the
+         * pattern this branch already chose for the same problem on `/teams`
+         * (`teams-chip-strip.tsx`).
          *
          * `min-w-0` is what actually permits the shrink — a flex item's automatic minimum size is
          * its content, so without it the row keeps its 432.6 px and overflows the *header* again
@@ -75,6 +93,9 @@ export function LandingNav() {
             <li key={href} className="flex-shrink-0">
               <Link
                 href={href}
+                ref={pathname === href ? currentRef : undefined}
+                // Exact match, not `startsWith`: `/` would otherwise mark every route.
+                aria-current={pathname === href ? 'page' : undefined}
                 className={cn(
                   'block whitespace-nowrap rounded-md px-3 py-1.5 text-sm transition-colors',
                   // The active row is a *filled* control (`bg-zinc-800`), where a flush red ring

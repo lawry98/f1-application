@@ -145,9 +145,7 @@ export function TeamsComparisonGrid({
         <p className="text-[9px] uppercase tracking-[0.18em] text-zinc-400">
           {`Rank by ${SORTS.find((s) => s.key === sort)!.label.toLowerCase()}`}
         </p>
-        <p className="text-[9px] uppercase tracking-[0.18em] text-zinc-400">
-          Pick two to compare
-        </p>
+        <p className="text-[9px] uppercase tracking-[0.18em] text-zinc-400">Pick two to compare</p>
       </div>
 
       <div className="flex flex-col">
@@ -207,7 +205,11 @@ export function TeamsComparisonGrid({
 
                 <span className="w-10 flex-shrink-0 text-right font-mono text-sm font-bold text-white">
                   {reducedMotion ? (
-                    sort === 'firstEntry' ? team.firstEntry : metric
+                    sort === 'firstEntry' ? (
+                      team.firstEntry
+                    ) : (
+                      metric
+                    )
                   ) : sort === 'firstEntry' ? (
                     team.firstEntry
                   ) : (
@@ -276,8 +278,8 @@ export function TeamsComparisonGrid({
           reachable. */}
       <footer className="mt-14 border-t border-zinc-900 pt-6">
         <p className="max-w-2xl text-[11px] leading-relaxed text-zinc-400">
-          Driver photographs sourced from Wikimedia Commons and used under CC BY / CC BY-SA;
-          resized and transcoded from the originals.{' '}
+          Driver photographs sourced from Wikimedia Commons and used under CC BY / CC BY-SA; resized
+          and transcoded from the originals.{' '}
           <a
             href="/credits#driver-photographs"
             /* The one unfilled control in this file, so it takes the flush default rather than the

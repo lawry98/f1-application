@@ -4,7 +4,10 @@ import { type Team } from '@/data/teams-data';
 
 /** First three alphabetic characters of a team's short name, uppercased. */
 export function monogram(shortName: string): string {
-  return shortName.replace(/[^a-zA-Z]/g, '').slice(0, 3).toUpperCase();
+  return shortName
+    .replace(/[^a-zA-Z]/g, '')
+    .slice(0, 3)
+    .toUpperCase();
 }
 
 /**

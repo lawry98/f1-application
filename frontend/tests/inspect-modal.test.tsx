@@ -70,10 +70,14 @@ describe('InspectModal', () => {
   it('names the constructor each control will reach', () => {
     renderModal('ferrari');
     expect(
-      screen.getByRole('button', { name: new RegExp(`next constructor, ${TEAMS[2]!.shortName}`, 'i') }),
+      screen.getByRole('button', {
+        name: new RegExp(`next constructor, ${TEAMS[2]!.shortName}`, 'i'),
+      }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: new RegExp(`previous constructor, ${TEAMS[0]!.shortName}`, 'i') }),
+      screen.getByRole('button', {
+        name: new RegExp(`previous constructor, ${TEAMS[0]!.shortName}`, 'i'),
+      }),
     ).toBeInTheDocument();
   });
 

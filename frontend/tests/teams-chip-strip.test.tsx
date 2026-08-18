@@ -81,13 +81,9 @@ describe('TeamsChipStrip', () => {
     const { rerender } = renderStrip({ activeTeamId: 'ferrari', reducedMotion: true });
     scrollIntoView.mockClear();
 
-    rerender(
-      <TeamsChipStrip activeTeamId="cadillac" onSelectTeam={vi.fn()} reducedMotion />,
-    );
+    rerender(<TeamsChipStrip activeTeamId="cadillac" onSelectTeam={vi.fn()} reducedMotion />);
 
-    expect(scrollIntoView).toHaveBeenCalledWith(
-      expect.objectContaining({ behavior: 'auto' }),
-    );
+    expect(scrollIntoView).toHaveBeenCalledWith(expect.objectContaining({ behavior: 'auto' }));
   });
 
   it('shows overflow fades that screen readers ignore', () => {

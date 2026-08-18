@@ -59,19 +59,31 @@ describe('LandingFooter', () => {
   });
 
   /*
-   * Derived from NAV_LINKS rather than hardcoded on purpose: the footer nav and the header nav
-   * read the same array, and the failure this guards against is someone adding a route to
-   * `links.ts` and the footer quietly not rendering it. Hardcoding the five current entries
-   * would let exactly that through.
+   * The footer used to render every `NAV_LINKS` entry, which put the complete primary navigation
+   * on screen twice — once in the fixed header that is always visible, and again 30px below it.
+   * These two pin the replacement from both sides: exactly one onward link, and *not* the
+   * header's list. Asserting only the first would pass again the moment someone re-adds the map.
    */
-  it('renders one link per NAV_LINKS entry', () => {
-    render(<LandingFooter />);
-    const nav = screen.getByRole('navigation', { name: 'Footer navigation' });
+  it('offers a single onward link rather than repeating the header nav', () => {
+    render(<LandingFooter next={{ href: '/teardown', label: 'Car Anatomy' }} />);
+    const nav = screen.getByRole('navigation', { name: 'Continue reading' });
 
-    expect(within(nav).getAllByRole('link')).toHaveLength(NAV_LINKS.length);
-    for (const { href, label } of NAV_LINKS) {
-      expect(within(nav).getByRole('link', { name: label })).toHaveAttribute('href', href);
-    }
+    const links = within(nav).getAllByRole('link');
+    expect(links).toHaveLength(1);
+    expect(links[0]).toHaveAttribute('href', '/teardown');
+  });
+
+  it('does not reproduce the primary navigation', () => {
+    render(<LandingFooter />);
+    const footer = screen.getByRole('contentinfo');
+
+    const hrefs = within(footer)
+      .getAllByRole('link')
+      .map((a) => a.getAttribute('href'));
+
+    // `/briefing` is the default `next`, so it is the one destination that legitimately appears.
+    const repeated = NAV_LINKS.filter(({ href }) => hrefs.includes(href)).map((r) => r.href);
+    expect(repeated).toEqual(['/briefing']);
   });
 
   it('stays a labelled contentinfo landmark', () => {

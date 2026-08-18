@@ -1,8 +1,10 @@
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { LandingNav } from '@/components/landing/landing-nav';
 import { NAV_LINKS } from '@/components/landing/links';
+import { contrastRatio, DARK_BG, MIN_CONTRAST } from '@/lib/team-utils';
+import { restingTextNeutrals } from './zinc';
 
 // Static import plus a hoisted `vi.mock`, not a top-level `await`: the latter passes under vitest
 // and fails `pnpm typecheck` with TS1378.
@@ -23,10 +25,23 @@ vi.mock('next/navigation', () => ({ usePathname: () => pathname.current }));
 const DESTINATIONS = [
   ['/briefing', 'Briefing'],
   ['/teardown', 'Car Anatomy'],
+  // The two "how the machine works" experiences belong next to each other, and Briefing — the
+  // thing the app is named for — stays first. The retyped list above is what pins that order.
+  ['/tyres', 'Tyres'],
   ['/teams', 'Teams'],
   ['/showcase', 'Showcase'],
   ['/credits', 'Credits'],
 ] as const;
+
+function renderNav(at = '/') {
+  pathname.current = at;
+  return render(<LandingNav />);
+}
+
+afterEach(() => {
+  pathname.current = '/';
+  vi.restoreAllMocks();
+});
 
 describe('LandingNav', () => {
   it('renders every destination with its label and href', () => {
@@ -144,5 +159,57 @@ describe('LandingNav', () => {
     expect(screen.getByRole('link', { name: 'Teams' })).toHaveClass('bg-zinc-800');
     expect(screen.getByRole('link', { name: 'Briefing' })).not.toHaveClass('bg-zinc-800');
     pathname.current = '/';
+  });
+
+  /*
+   * `pathname === href` is an exact match on purpose — `startsWith` would light up `/teams` while
+   * on a hypothetical `/teams/x`, but it would also light up `/` on every route. The property
+   * worth pinning is therefore that *exactly one* link is ever marked.
+   */
+  it('marks exactly one link as the current page', () => {
+    renderNav('/tyres');
+
+    const current = screen.getAllByRole('link', { current: 'page' });
+    expect(current).toHaveLength(1);
+    expect(current[0]).toHaveAccessibleName('Tyres');
+  });
+
+  it('marks nothing as current on a route that is not in the nav', () => {
+    renderNav('/somewhere-else');
+
+    expect(screen.queryAllByRole('link', { current: 'page' })).toHaveLength(0);
+  });
+
+  /*
+   * Six links do not fit a 390 px viewport, so the row scrolls — which means the link for the page
+   * you are actually on can start off screen, and the nav then shows no sign of where you are.
+   * `teams-chip-strip.tsx` solves the identical problem the identical way.
+   */
+  it('brings the current page into view in the scrolling row', () => {
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
+    renderNav('/credits');
+
+    expect(scrollIntoView).toHaveBeenCalledWith(
+      expect.objectContaining({ inline: 'center', block: 'nearest' }),
+    );
+  });
+
+  it('does not scroll when no nav link is current', () => {
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
+    renderNav('/somewhere-else');
+
+    expect(scrollIntoView).not.toHaveBeenCalled();
+  });
+
+  it('holds every resting neutral above AA on the page background', () => {
+    const { container } = renderNav();
+
+    const neutrals = restingTextNeutrals(container);
+    expect(neutrals.length).toBeGreaterThan(0);
+    for (const { hex, text } of neutrals) {
+      expect(contrastRatio(hex, DARK_BG), `${hex} on "${text}"`).toBeGreaterThanOrEqual(
+        MIN_CONTRAST,
+      );
+    }
   });
 });

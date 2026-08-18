@@ -56,10 +56,7 @@ export function InspectModal({ teams, initialTeamId, onClose }: InspectModalProp
    * than it looks: it is a dependency of the mount effect below, and an effect that re-ran on every
    * page would re-lock the body and restore focus out of the dialog on each arrow press.
    */
-  const go = useCallback(
-    (delta: number) => setIndex((i) => (i + delta + count) % count),
-    [count],
-  );
+  const go = useCallback((delta: number) => setIndex((i) => (i + delta + count) % count), [count]);
 
   const previousTeam = teams[(index - 1 + count) % count]!;
   const nextTeam = teams[(index + 1) % count]!;
