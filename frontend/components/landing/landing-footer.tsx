@@ -4,7 +4,28 @@ import { RedactedReveal } from '@/components/candy/redacted-reveal';
 import { TopoBackground } from '@/components/candy/topo-background';
 import { focusRingOffsetBaseWarm } from '@/lib/focus';
 
-import { NAV_LINKS } from './links';
+export interface FooterNext {
+  href: string;
+  label: string;
+}
+
+export interface LandingFooterProps {
+  /**
+   * The one onward link the footer offers, as "what to read next".
+   *
+   * The footer used to render **every** `NAV_LINKS` entry, which put the complete primary
+   * navigation on screen twice — once in the fixed header that is always visible, and again
+   * 30px below it. The second copy answered no question the first had not: a reader at the foot
+   * of the page can already see the header, and six identical 11px links are a worse answer to
+   * "where now" than one deliberate one.
+   *
+   * Defaults to `/briefing`, the app's primary destination, so the prop is an override rather
+   * than a requirement — a page that forgets it still gets a sensible onward journey.
+   */
+  next?: FooterNext;
+}
+
+const DEFAULT_NEXT: FooterNext = { href: '/briefing', label: 'Race weekend briefing' };
 
 /**
  * Shared link chrome. The ring rule and its measurements are in `lib/focus.ts`.
@@ -29,7 +50,7 @@ const FOCUS_RING = focusRingOffsetBaseWarm;
  */
 const SIGN_OFF_TYPE = 'text-[clamp(2rem,5vw,4.5rem)] leading-[0.9] tracking-tight';
 
-export function LandingFooter() {
+export function LandingFooter({ next = DEFAULT_NEXT }: LandingFooterProps = {}) {
   return (
     /*
      * Two layers on purpose: the `<footer>` landmark carries `bg-base` and the card inside it
@@ -104,21 +125,23 @@ export function LandingFooter() {
               </p>
             </div>
 
-            {/* Nav links — generated from the shared NAV_LINKS, never hand-listed, so the footer
-                cannot drift out of sync with the header nav. */}
-            <nav aria-label="Footer navigation">
-              <ul className="flex flex-wrap gap-x-6 gap-y-3" role="list">
-                {NAV_LINKS.map(({ href, label }) => (
-                  <li key={href}>
-                    <Link
-                      href={href}
-                      className={`text-[11px] uppercase tracking-[0.2em] text-zinc-400 transition-colors hover:text-ink ${FOCUS_RING}`}
-                    >
-                      {label}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
+            {/* One onward link, not a second copy of the header. See `LandingFooterProps.next`. */}
+            <nav aria-label="Continue reading">
+              <Link
+                href={next.href}
+                className={`group inline-flex items-baseline gap-3 ${FOCUS_RING}`}
+              >
+                <span className="text-[11px] uppercase tracking-[0.2em] text-zinc-400">Next</span>
+                <span className="font-display text-lg uppercase tracking-tight text-ink transition-colors group-hover:text-f1-red sm:text-xl">
+                  {next.label}
+                </span>
+                <span
+                  aria-hidden="true"
+                  className="text-f1-red transition-transform duration-300 ease-out-expo group-hover:translate-x-1"
+                >
+                  &rarr;
+                </span>
+              </Link>
             </nav>
           </div>
 

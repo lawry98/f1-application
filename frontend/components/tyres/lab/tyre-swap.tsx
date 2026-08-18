@@ -70,7 +70,12 @@ export interface TyreSwapProps {
   compound: RaceCompound;
   /** +1 when moving towards a softer compound, -1 towards a harder one. */
   direction: number;
-  variant: SwapVariant;
+  /**
+   * Chosen treatment. Defaults to `rack` — the directional one — because it is the only variant
+   * that encodes *position in the range*, and hard-to-soft ordering is the thing this page exists
+   * to teach. The other two stay reachable for a surface where ordering is not the point.
+   */
+  variant?: SwapVariant;
   sizes?: string;
   className?: string;
 }
@@ -90,7 +95,7 @@ export interface TyreSwapProps {
 export function TyreSwap({
   compound,
   direction,
-  variant,
+  variant = 'rack',
   sizes = '(max-width: 768px) 82vw, 40vw',
   className,
 }: TyreSwapProps) {
