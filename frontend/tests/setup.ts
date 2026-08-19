@@ -40,6 +40,20 @@ class ImmediatelyInView implements IntersectionObserver {
 globalThis.IntersectionObserver = ImmediatelyInView;
 
 /**
+ * jsdom ships no ResizeObserver, and the strategy act (`act-strategy.tsx`) constructs one to
+ * smooth its panel height between scenarios. A no-op observer is enough here: jsdom lays nothing
+ * out, so there is no height to report, and the component keeps its content in the DOM regardless.
+ * It is a gap in the environment, not a stand-in for app code.
+ */
+class NoopResizeObserver implements ResizeObserver {
+  observe(): void {}
+  unobserve(): void {}
+  disconnect(): void {}
+}
+
+globalThis.ResizeObserver = NoopResizeObserver;
+
+/**
  * jsdom implements no scrolling and no media queries. The teams page calls all three of
  * these — `scrollIntoView` to centre the active mobile chip, `scrollTo` via anchor
  * navigation, and `matchMedia` to decide whether to mount the sticky dossier at all.
