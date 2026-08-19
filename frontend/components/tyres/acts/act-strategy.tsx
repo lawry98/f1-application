@@ -9,13 +9,17 @@ import { EYEBROW_RED } from '@/lib/tyre-utils';
 import { useReducedMotionSafe } from '@/hooks/use-reduced-motion-safe';
 import { cn } from '@/lib/utils';
 
+import { AnimatedDisclosure } from './animated-disclosure';
 import { SourceList } from './source-list';
+
+type Scenario = (typeof STRATEGY_SCENARIOS)[number];
+type Theme = { tint: string; label: string };
 
 /**
  * Per-scenario environment. Keyed by the ids already in `STRATEGY_SCENARIOS`, so adding a
  * scenario to the data without a theme here degrades to the neutral default rather than throwing.
  */
-const THEME: Record<string, { tint: string; label: string }> = {
+const THEME: Record<string, Theme> = {
   'hot-abrasive': { tint: '#e8382f', label: 'Track temperature high' },
   'safety-car-restart': { tint: '#ffd12e', label: 'Neutralised' },
   'long-first-stint': { tint: '#f4f4f5', label: 'Track position play' },
@@ -24,7 +28,7 @@ const THEME: Record<string, { tint: string; label: string }> = {
   'close-call': { tint: '#a1a1aa', label: 'Marginal' },
 };
 
-const DEFAULT_THEME = { tint: '#a1a1aa', label: 'Scenario' };
+const DEFAULT_THEME: Theme = { tint: '#a1a1aa', label: 'Scenario' };
 
 /**
  * Act 3b — strategy, scenario by scenario.
@@ -39,6 +43,14 @@ const DEFAULT_THEME = { tint: '#a1a1aa', label: 'Scenario' };
  *
  * The copy never says a scenario has one right answer; the field is called `leaning` and it is
  * rendered as a leaning.
+ *
+ * **The section frame is stable; only the panel is keyed.** The eyebrow, heading, scenario tabs
+ * and the background tint stay mounted across a scenario change — the tabs must not move under the
+ * pointer, and the tint animates its colour rather than remounting. The scenario-specific content
+ * is a `ScenarioPanel` keyed by `scenario.id`, so selecting another scenario remounts it: its
+ * `AnimatedDisclosure` starts closed every time, and an explanation opened for one scenario can
+ * never be left showing under another. (A future keyed-transition layer — Step 2 — wraps this same
+ * keyed panel in `AnimatePresence`; the boundary here is drawn for exactly that.)
  */
 export function ActStrategy() {
   const [index, setIndex] = useState(0);
@@ -95,67 +107,60 @@ export function ActStrategy() {
           ))}
         </div>
 
-        <div className="mt-9 max-w-[62rem]">
-          {/* The condition chip names the environment in words, so the scenario is never
-              identified by its tint alone. */}
-          <p className="inline-flex items-center gap-2 rounded-full border border-white/15 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-300">
-            <span
-              aria-hidden="true"
-              className="h-2 w-2 rounded-full"
-              style={{ backgroundColor: theme.tint }}
-            />
-            {theme.label}
-          </p>
-
-          <h3 className="mt-4 font-display text-2xl font-black uppercase tracking-tight text-ink sm:text-3xl">
-            {scenario.situation}
-          </h3>
-          <p className="mt-3 max-w-[58ch] text-sm leading-relaxed text-zinc-300">
-            {scenario.detail}
-          </p>
-
-          <dl className="mt-7 grid gap-4 sm:grid-cols-2">
-            <Outcome kind="Recommendation" value={scenario.advantage} tint={theme.tint} />
-            <Outcome kind="Principal risk" value={scenario.risk} tint="#e8382f" />
-          </dl>
-
-          <details className="group mt-7 border-t border-white/10 pt-4">
-            <summary
-              className={cn(
-                'flex cursor-pointer list-none items-center justify-between gap-4 rounded text-sm font-semibold text-ink',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-f1-red focus-visible:ring-offset-2 focus-visible:ring-offset-base-warm',
-                '[&::-webkit-details-marker]:hidden',
-              )}
-            >
-              What teams lean towards, and why
-              <span
-                aria-hidden="true"
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-f1-red/50 text-f1-red transition-transform duration-300 ease-out-expo group-open:rotate-45"
-              >
-                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M12 5v14M5 12h14" strokeLinecap="round" />
-                </svg>
-              </span>
-            </summary>
-            <div className="mt-4 space-y-5">
-              <p className="max-w-[62ch] text-sm leading-relaxed text-zinc-300">
-                {scenario.leaning}
-              </p>
-              <SourceList sources={scenario.sources} label={`Sources for ${scenario.situation}`} />
-            </div>
-          </details>
-        </div>
+        <ScenarioPanel key={scenario.id} scenario={scenario} theme={theme} />
       </div>
     </section>
+  );
+}
+
+/**
+ * The scenario-specific content. Keyed by `scenario.id` at the call site, so it remounts on every
+ * scenario change — which is what resets `AnimatedDisclosure` to closed and drops the outgoing
+ * scenario's explanation and its source links out of the tree entirely (no stale content, no
+ * lingering tab stops). The disclosure lives inside this keyed boundary on purpose.
+ */
+function ScenarioPanel({ scenario, theme }: { scenario: Scenario; theme: Theme }) {
+  return (
+    <div className="mt-9 max-w-[62rem]">
+      {/* The condition chip names the environment in words, so the scenario is never
+          identified by its tint alone. */}
+      <p className="inline-flex items-center gap-2 rounded-full border border-white/15 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-300">
+        <span
+          aria-hidden="true"
+          className="h-2 w-2 rounded-full"
+          style={{ backgroundColor: theme.tint }}
+        />
+        {theme.label}
+      </p>
+
+      <h3 className="mt-4 font-display text-2xl font-black uppercase tracking-tight text-ink sm:text-3xl">
+        {scenario.situation}
+      </h3>
+      <p className="mt-3 max-w-[58ch] text-sm leading-relaxed text-zinc-300">{scenario.detail}</p>
+
+      <dl className="mt-7 grid gap-4 sm:grid-cols-2">
+        <Outcome kind="Recommendation" value={scenario.advantage} tint={theme.tint} />
+        <Outcome kind="Principal risk" value={scenario.risk} tint="#e8382f" />
+      </dl>
+
+      <AnimatedDisclosure
+        summary="What teams lean towards, and why"
+        surface="base-warm"
+        className="mt-7 border-t border-white/10 pt-4"
+      >
+        <div className="mt-4 space-y-5">
+          <p className="max-w-[62ch] text-sm leading-relaxed text-zinc-300">{scenario.leaning}</p>
+          <SourceList sources={scenario.sources} label={`Sources for ${scenario.situation}`} />
+        </div>
+      </AnimatedDisclosure>
+    </div>
   );
 }
 
 function Outcome({ kind, value, tint }: { kind: string; value: string; tint: string }) {
   return (
     <div className="min-w-0 border-l-2 pl-4" style={{ borderColor: tint }}>
-      <dt className="text-[10px] font-semibold uppercase tracking-[0.22em] text-zinc-400">
-        {kind}
-      </dt>
+      <dt className="text-[10px] font-semibold uppercase tracking-[0.22em] text-zinc-400">{kind}</dt>
       <dd className="mt-1.5 text-sm leading-relaxed text-zinc-200">{value}</dd>
     </div>
   );
