@@ -160,7 +160,7 @@ export function AnimatedDisclosure({
               filter: reduced || open ? undefined : 'blur(3px)',
               transition: reduced
                 ? `opacity ${open ? 140 : 120}ms linear`
-                : `opacity ${open ? 280 : 220}ms ${EXPO}, transform ${open ? 280 : 220}ms ${EXPO}, filter ${open ? 280 : 220}ms ${EXPO}`,
+                : `opacity ${open ? 380 : 220}ms ${EXPO}, transform ${open ? 380 : 220}ms ${EXPO}, filter ${open ? 380 : 220}ms ${EXPO}`,
             }}
           >
             {children}
