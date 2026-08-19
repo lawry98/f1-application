@@ -16,8 +16,9 @@ import { AnimatedDisclosure } from './animated-disclosure';
  * dropped to shorten the page — it was moved to somewhere a reader who wants it can find it, and
  * the citation list is complete rather than representative.
  *
- * Server-rendered, and the answers are in the DOM whether or not a `<details>` is open, so
- * in-page search and a crawler both see them.
+ * Server-rendered, and the answers stay in the DOM whether or not a disclosure is open — the
+ * animated disclosure keeps its content mounted behind a collapsed height rather than removing it —
+ * so a crawler reading the page source still sees every answer.
  *
  * `LIFECYCLE_UNSUPPORTED_CLAIMS` is published rather than kept as a code comment on purpose: a
  * page this heavily cited should say what it deliberately does *not* claim, and it stops the same
