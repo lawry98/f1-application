@@ -1,16 +1,17 @@
-import { focusRingOffsetBase } from '@/lib/focus';
 import { cn } from '@/lib/utils';
 
+import { AnimatedDisclosure } from '../acts/animated-disclosure';
 import { SourceList } from '../acts/source-list';
 import { THERMAL_DOT, THERMAL_LABEL, wearPercent, type LifecycleEntry } from './lifecycle-data';
 
 /**
  * One lifecycle stage, in normal document flow.
  *
- * This is the primary, no-JavaScript-readable content: a real heading, one plain sentence, a state
- * label that never rests on colour alone, and the full sourced detail behind a native `<details>`.
- * The sticky tyre and its HUD are an enhancement layered on top; everything a reader needs is here
- * even with scripting off.
+ * The heading, the one-sentence summary and the wear/thermal state label are primary content in
+ * normal flow — a real heading, plain prose, and a label that never rests on colour alone. The
+ * fuller sourced detail sits behind an `AnimatedDisclosure` (the page's shared APG disclosure): it
+ * is server-rendered into the DOM for crawlers, but like every other disclosure on the page it
+ * needs script to expand. The sticky tyre and its HUD are an enhancement layered on top.
  *
  * The card carries no `aria-current` — that state belongs to the stepper's buttons, the actual
  * controls. The active card is distinguished visually (accent, wash, a small lift) without dimming
@@ -60,32 +61,18 @@ export function LifecycleStageCard({ entry, index, total, isActive, setRef }: Li
           {`Wear ${pct}% · ${THERMAL_LABEL[visual.thermal]}`}
         </p>
 
-        <details className="group mt-5 border-t border-white/10 pt-4">
-          <summary
-            className={cn(
-              'flex cursor-pointer list-none items-center justify-between gap-4 rounded text-sm font-semibold text-ink',
-              focusRingOffsetBase,
-              '[&::-webkit-details-marker]:hidden',
-            )}
-          >
-            Details and source
-            <span
-              aria-hidden="true"
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-f1-red/50 text-f1-red transition-transform duration-300 ease-out-expo group-open:rotate-45"
-            >
-              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 5v14M5 12h14" strokeLinecap="round" />
-              </svg>
-            </span>
-          </summary>
-
+        <AnimatedDisclosure
+          summary="Details and source"
+          surface="base"
+          className="mt-5 border-t border-white/10 pt-4"
+        >
           <div className="mt-4 space-y-4">
             <p className="text-sm leading-relaxed text-zinc-300">{stage.body}</p>
             {stage.source && (
               <SourceList sources={[stage.source]} label={`Source for ${stage.name}`} />
             )}
           </div>
-        </details>
+        </AnimatedDisclosure>
       </article>
     </li>
   );
