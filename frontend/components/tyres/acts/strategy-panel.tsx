@@ -4,8 +4,8 @@ import { forwardRef } from 'react';
 import { motion, type Variants } from 'motion/react';
 
 import type { StrategyScenario } from '@/data/tyres-data';
-import { cn } from '@/lib/utils';
 
+import { AnimatedDisclosure } from './animated-disclosure';
 import { SourceList } from './source-list';
 
 /** The per-scenario environment: the tint that repaints the section, and the condition in words. */
@@ -114,7 +114,8 @@ export interface StrategyPanelProps {
 
 /**
  * The scenario-specific content, keyed by `scenario.id` in the parent so switching scenarios
- * remounts it — which is also what resets the `<details>` disclosure to closed for free.
+ * remounts it — which is also what resets the `AnimatedDisclosure` to closed for free (no
+ * `resetKey` needed, since the keyed remount does it).
  *
  * This is the element `AnimatePresence` animates: its root carries the panel variants, and the four
  * groups inside inherit the enter/center/exit labels to run the staggered settle. The accent line
@@ -180,35 +181,16 @@ export const StrategyPanel = forwardRef<HTMLDivElement, StrategyPanelProps>(func
       </motion.dl>
 
       <motion.div variants={group}>
-        <details className="group mt-7 border-t border-white/10 pt-4">
-          <summary
-            className={cn(
-              'flex cursor-pointer list-none items-center justify-between gap-4 rounded text-sm font-semibold text-ink',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-f1-red focus-visible:ring-offset-2 focus-visible:ring-offset-base-warm',
-              '[&::-webkit-details-marker]:hidden',
-            )}
-          >
-            What teams lean towards, and why
-            <span
-              aria-hidden="true"
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-f1-red/50 text-f1-red transition-transform duration-300 ease-out-expo group-open:rotate-45"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                className="h-4 w-4"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <path d="M12 5v14M5 12h14" strokeLinecap="round" />
-              </svg>
-            </span>
-          </summary>
+        <AnimatedDisclosure
+          summary="What teams lean towards, and why"
+          surface="base-warm"
+          className="mt-7 border-t border-white/10 pt-4"
+        >
           <div className="mt-4 space-y-5">
             <p className="max-w-[62ch] text-sm leading-relaxed text-zinc-300">{scenario.leaning}</p>
             <SourceList sources={scenario.sources} label={`Sources for ${scenario.situation}`} />
           </div>
-        </details>
+        </AnimatedDisclosure>
       </motion.div>
     </motion.div>
   );

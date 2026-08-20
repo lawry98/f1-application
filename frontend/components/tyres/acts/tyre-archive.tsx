@@ -6,6 +6,8 @@ import {
 } from '@/data/tyres-data';
 import { EYEBROW_RED } from '@/lib/tyre-utils';
 
+import { AnimatedDisclosure } from './animated-disclosure';
+
 /**
  * The archive: the questions and the full citation list.
  *
@@ -14,8 +16,9 @@ import { EYEBROW_RED } from '@/lib/tyre-utils';
  * dropped to shorten the page — it was moved to somewhere a reader who wants it can find it, and
  * the citation list is complete rather than representative.
  *
- * Server-rendered, and the answers are in the DOM whether or not a `<details>` is open, so
- * in-page search and a crawler both see them.
+ * Server-rendered, and the answers stay in the DOM whether or not a disclosure is open — the
+ * animated disclosure keeps its content mounted behind a collapsed height rather than removing it —
+ * so a crawler reading the page source still sees every answer.
  *
  * `LIFECYCLE_UNSUPPORTED_CLAIMS` is published rather than kept as a code comment on purpose: a
  * page this heavily cited should say what it deliberately does *not* claim, and it stops the same
@@ -46,24 +49,14 @@ export function TyreArchive() {
           <ul className="space-y-3" role="list">
             {TYRE_FAQ.map((entry) => (
               <li key={entry.id}>
-                <details className="group border-b border-white/10 pb-3">
-                  <summary className="flex cursor-pointer list-none items-start justify-between gap-4 rounded py-1 text-sm font-semibold text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-f1-red focus-visible:ring-offset-2 focus-visible:ring-offset-base-warm [&::-webkit-details-marker]:hidden">
-                    {entry.question}
-                    <span
-                      aria-hidden="true"
-                      className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-f1-red/50 text-f1-red transition-transform duration-300 ease-out-expo group-open:rotate-45"
-                    >
-                      <svg
-                        viewBox="0 0 24 24"
-                        className="h-3.5 w-3.5"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                      >
-                        <path d="M12 5v14M5 12h14" strokeLinecap="round" />
-                      </svg>
-                    </span>
-                  </summary>
+                <AnimatedDisclosure
+                  summary={entry.question}
+                  surface="base-warm"
+                  align="start"
+                  iconSize="sm"
+                  summaryClassName="py-1"
+                  className="border-b border-white/10 pb-3"
+                >
                   <p className="mt-2 max-w-[62ch] text-sm leading-relaxed text-zinc-300">
                     {entry.answer}
                   </p>
@@ -77,7 +70,7 @@ export function TyreArchive() {
                       {`${entry.source.publisher} — ${entry.source.title}`}
                     </a>
                   </p>
-                </details>
+                </AnimatedDisclosure>
               </li>
             ))}
           </ul>
@@ -94,24 +87,11 @@ export function TyreArchive() {
               ))}
             </ul>
 
-            <details className="group mt-8 border-t border-white/10 pt-4">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 rounded text-sm font-semibold text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-f1-red focus-visible:ring-offset-2 focus-visible:ring-offset-base-warm [&::-webkit-details-marker]:hidden">
-                {`All sources (${TYRE_SOURCES.length})`}
-                <span
-                  aria-hidden="true"
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-f1-red/50 text-f1-red transition-transform duration-300 ease-out-expo group-open:rotate-45"
-                >
-                  <svg
-                    viewBox="0 0 24 24"
-                    className="h-4 w-4"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  >
-                    <path d="M12 5v14M5 12h14" strokeLinecap="round" />
-                  </svg>
-                </span>
-              </summary>
+            <AnimatedDisclosure
+              summary={`All sources (${TYRE_SOURCES.length})`}
+              surface="base-warm"
+              className="mt-8 border-t border-white/10 pt-4"
+            >
               <ul className="mt-3 space-y-2" role="list">
                 {TYRE_SOURCES.map((s) => (
                   <li key={s.url}>
@@ -126,7 +106,7 @@ export function TyreArchive() {
                   </li>
                 ))}
               </ul>
-            </details>
+            </AnimatedDisclosure>
 
             <p className="mt-8 text-[11px] leading-relaxed text-zinc-400">
               {`Content current as of ${TYRES_CONTENT_AS_OF}. Tyre renders © Pirelli — see /credits.`}

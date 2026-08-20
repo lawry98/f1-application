@@ -16,6 +16,7 @@ import { EYEBROW_RED } from '@/lib/tyre-utils';
 import { useReducedMotionSafe } from '@/hooks/use-reduced-motion-safe';
 import { cn } from '@/lib/utils';
 
+import { AnimatedDisclosure } from './animated-disclosure';
 import { SourceList } from './source-list';
 
 const LABEL_COLOR = {
@@ -169,25 +170,11 @@ export function ActAllocation() {
         </p>
         <p className="mt-2 max-w-[60ch] text-sm leading-relaxed text-zinc-400">{race.note}</p>
 
-        <details className="group mt-8 border-t border-white/10 pt-4">
-          <summary
-            className={cn(
-              'flex cursor-pointer list-none items-center justify-between gap-4 rounded text-sm font-semibold text-ink',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-f1-red focus-visible:ring-offset-2 focus-visible:ring-offset-base',
-              '[&::-webkit-details-marker]:hidden',
-            )}
-          >
-            {`How the ${ALLOCATION_TRACKED_COMPOUND} moves, and the rules behind it`}
-            <span
-              aria-hidden="true"
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-f1-red/50 text-f1-red transition-transform duration-300 ease-out-expo group-open:rotate-45"
-            >
-              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 5v14M5 12h14" strokeLinecap="round" />
-              </svg>
-            </span>
-          </summary>
-
+        <AnimatedDisclosure
+          summary={`How the ${ALLOCATION_TRACKED_COMPOUND} moves, and the rules behind it`}
+          surface="base"
+          className="mt-8 border-t border-white/10 pt-4"
+        >
           <div className="mt-5 space-y-6">
             <div>
               <h3 className="text-[10px] font-semibold uppercase tracking-[0.22em] text-zinc-400">
@@ -227,7 +214,7 @@ export function ActAllocation() {
               label="Sources for allocation"
             />
           </div>
-        </details>
+        </AnimatedDisclosure>
       </div>
     </section>
   );

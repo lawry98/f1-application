@@ -5,6 +5,7 @@ import { EYEBROW_RED, compoundTextOnCard } from '@/lib/tyre-utils';
 import { cn } from '@/lib/utils';
 
 import { compoundLetter } from '../lab/compound-letter';
+import { AnimatedDisclosure } from './animated-disclosure';
 import { SourceList } from './source-list';
 import type { CompoundSelection } from './use-compound-selection';
 
@@ -121,27 +122,14 @@ export function ActCompoundLab({ compound }: CompoundSelection) {
               <Fact label="Strategic role" value={compound.strategicRole} />
             </dl>
 
-            {/* Progressive disclosure. Native <details>, so it works with no JavaScript, is
-                keyboard-operable for free, and is findable by in-page search when open. */}
-            <details className="group mt-7 border-t border-white/10 pt-4">
-              <summary
-                className={cn(
-                  'flex cursor-pointer list-none items-center justify-between gap-4 rounded text-sm font-semibold text-ink',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-f1-red focus-visible:ring-offset-2 focus-visible:ring-offset-base-warm',
-                  '[&::-webkit-details-marker]:hidden',
-                )}
-              >
-                Technical notes
-                <span
-                  aria-hidden="true"
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-f1-red/50 text-f1-red transition-transform duration-300 ease-out-expo group-open:rotate-45"
-                >
-                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M12 5v14M5 12h14" strokeLinecap="round" />
-                  </svg>
-                </span>
-              </summary>
-
+            {/* Progressive disclosure — the genuinely secondary detail, animated open and closed.
+                The content stays mounted while collapsed, so it is in the DOM for in-page search
+                and crawlers just as the old native <details> was. */}
+            <AnimatedDisclosure
+              summary="Technical notes"
+              surface="base-warm"
+              className="mt-7 border-t border-white/10 pt-4"
+            >
               <div className="mt-4 space-y-5">
                 <Note label="Warm-up" value={compound.warmUpNote} />
                 <Note label="Degradation" value={compound.degradation} />
@@ -158,7 +146,7 @@ export function ActCompoundLab({ compound }: CompoundSelection) {
                   label={`Sources for ${compound.name}`}
                 />
               </div>
-            </details>
+            </AnimatedDisclosure>
           </div>
         </div>
       </div>

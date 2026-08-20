@@ -59,6 +59,22 @@ describe('ActLifecycle — progressive disclosure', () => {
     expect(screen.getAllByText('Details and source')).toHaveLength(total);
   });
 
+  it('toggles a stage’s details open and closed via an accessible button', () => {
+    render(<ActLifecycle />);
+    // Every stage now uses the APG Disclosure pattern — a real toggle button carrying
+    // aria-expanded — so its open state is observable and it toggles on click, unlike the former
+    // native <details> (which jsdom would not toggle on a summary click).
+    const toggles = screen.getAllByRole('button', { name: 'Details and source' });
+    expect(toggles).toHaveLength(total);
+
+    const first = toggles[0]!;
+    expect(first).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(first);
+    expect(first).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(first);
+    expect(first).toHaveAttribute('aria-expanded', 'false');
+  });
+
   it('links each stage’s source safely', () => {
     render(<ActLifecycle />);
     const section = screen.getByRole('region', { name: /The life of a tyre/i });

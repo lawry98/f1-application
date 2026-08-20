@@ -42,6 +42,14 @@ function scenarioButton(situation: string) {
   return screen.getByRole('button', { name: new RegExp(escapeRe(situation)) });
 }
 
+// The disclosure is now the APG Disclosure pattern — a real toggle button carrying aria-expanded,
+// not a native <details> — so a click drives it directly (jsdom actually toggles this one, unlike
+// the old element). Only ever call this when the panel has settled to one, or a lingering exit
+// would make it match two buttons.
+function leanToggle() {
+  return within(section()).getByRole('button', { name: 'What teams lean towards, and why' });
+}
+
 /** Click a scenario and wait until its panel is the only one left. */
 async function settleOn(situation: string) {
   fireEvent.click(scenarioButton(situation));
@@ -131,20 +139,23 @@ describe('ActStrategy — interaction resilience', () => {
 });
 
 describe('ActStrategy — disclosure', () => {
-  it('resets the disclosure to closed when the scenario changes', async () => {
+  it('opens on click and resets to closed when the scenario changes', async () => {
     render(<ActStrategy />);
 
-    // Open the current scenario's disclosure. jsdom does not toggle <details> on a summary click,
-    // so set the native state directly — the point under test is what the *next* scenario inherits.
-    const before = section().querySelector('details') as HTMLDetailsElement;
-    before.open = true;
-    expect(before.open).toBe(true);
+    // Open the current scenario's disclosure, then confirm the point under test: what the *next*
+    // scenario inherits. The keyed remount must drop the open state, not carry it across.
+    fireEvent.click(leanToggle());
+    expect(leanToggle()).toHaveAttribute('aria-expanded', 'true');
+    expect(within(section()).getByText(STRATEGY_SCENARIOS[0]!.leaning)).toBeInTheDocument();
 
     await settleOn(STRATEGY_SCENARIOS[4]!.situation);
 
-    // The new panel is a fresh remount, so its native <details> starts closed.
-    const after = section().querySelector('details') as HTMLDetailsElement;
-    expect(after.open).toBe(false);
+    // The new panel is a fresh remount, so its disclosure starts closed — and it reopens
+    // independently of the one left open under the previous scenario.
+    expect(leanToggle()).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(leanToggle());
+    expect(leanToggle()).toHaveAttribute('aria-expanded', 'true');
+    expect(within(section()).getByText(STRATEGY_SCENARIOS[4]!.leaning)).toBeInTheDocument();
   });
 
   it('keeps every citation for the selected scenario reachable', async () => {
@@ -168,13 +179,13 @@ describe('ActStrategy — reduced motion', () => {
     reduceMotion = true;
     render(<ActStrategy />);
 
-    const opened = section().querySelector('details') as HTMLDetailsElement;
-    opened.open = true;
+    fireEvent.click(leanToggle());
+    expect(leanToggle()).toHaveAttribute('aria-expanded', 'true');
 
     await settleOn(STRATEGY_SCENARIOS[4]!.situation);
 
     expect(within(section()).getByText(STRATEGY_SCENARIOS[4]!.advantage)).toBeInTheDocument();
-    expect((section().querySelector('details') as HTMLDetailsElement).open).toBe(false);
+    expect(leanToggle()).toHaveAttribute('aria-expanded', 'false');
     expect(screen.getByRole('status')).toHaveTextContent(
       `Selected strategy scenario: ${STRATEGY_SCENARIOS[4]!.situation}.`,
     );
