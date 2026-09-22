@@ -258,6 +258,14 @@ describe('/tyres — the archive keeps what the acts hid', () => {
     }
   });
 
+  /*
+   * 20s, against vitest's 5s default. Not a race and not masking one: this renders the whole
+   * page and then calls `getAllByRole('link', { name })` once per entry in `TYRE_SOURCES`, and
+   * each of those recomputes accessible names across the entire tree. Measured at 5.9-6.3s, so
+   * the default was always going to fail on a slower runner — it went red in CI at 5979ms while
+   * passing locally in isolation. The real fix is to index the links once instead of scanning
+   * per source; that is a rewrite of the assertion, not a timeout.
+   */
   it('links every source, safely', () => {
     renderPage();
 
@@ -272,7 +280,7 @@ describe('/tyres — the archive keeps what the acts hid', () => {
         expect(link).toHaveAttribute('rel', 'noopener noreferrer');
       }
     }
-  });
+  }, 20_000);
 
   it('publishes what the page deliberately does not claim', () => {
     renderPage();

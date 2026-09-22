@@ -5,6 +5,9 @@ import { useFrame, useLoader } from '@react-three/fiber';
 import { GLTFLoader } from 'three-stdlib';
 import * as THREE from 'three';
 
+import { hexToRgb, recolourLivery, selectLiveryMaterials } from '@/lib/livery';
+import { CAR_BOUNDS, GROUND_Y, groundedOffset } from '@/lib/scene-fit';
+
 interface CarMotion {
   rotationSpeed: number;
   float?: boolean;
@@ -23,58 +26,163 @@ function useCarMotion(ref: RefObject<THREE.Group | null>, { rotationSpeed, float
 
 interface RealCarProps extends CarMotion {
   teamColor: string;
-  scale: number;
-  position: [number, number, number];
 }
 
-export function RealCar({ teamColor, scale, position, rotationSpeed, float }: RealCarProps) {
+/**
+ * Where the model sits inside the group that spins it.
+ *
+ * Constant, because `RealCar` loads one specific GLB. It replaces the `scale` and `position`
+ * props both scenes used to pass: the camera does the framing now (`components/3d/fit-camera.tsx`),
+ * so a scale multiplier only desynchronised the car from the ground plane, the grid and the
+ * lights, which are all in world units. The two values it supplied were `scale={2}` — a 22.5-unit
+ * car on a 20-unit grid — and positions that floated the car 0.41 above the floor on one route
+ * and sank its wheels 0.09 through it on the other.
+ */
+const MODEL_OFFSET = groundedOffset(CAR_BOUNDS, GROUND_Y);
+
+/**
+ * A cloned livery material plus the canvas its base-colour texture is painted on.
+ *
+ * `paint` rewrites the texture rather than setting `material.color`, because `color` *multiplies*
+ * into `.map` and this asset's base texel is `#003572` — red channel zero, so no multiply can put
+ * red back. See `lib/livery.ts` for the measurements behind that.
+ */
+interface LiveryPaint {
+  material: THREE.MeshStandardMaterial;
+  paint: (teamColor: string) => void;
+  dispose: () => void;
+}
+
+function createLiveryPaint(source: THREE.MeshStandardMaterial): LiveryPaint | null {
+  const map = source.map;
+  const image = map?.image as (CanvasImageSource & { width?: number; height?: number }) | undefined;
+  const width = image?.width ?? 0;
+  const height = image?.height ?? 0;
+
+  if (!map || !image || !width || !height) {
+    console.error(
+      '[f1-car-model] livery material has no readable base-colour texture; the car will not recolour.',
+    );
+    return null;
+  }
+
+  // Read the authored texels out once. This canvas is temporary — only `surface` below is kept.
+  const read = document.createElement('canvas');
+  read.width = width;
+  read.height = height;
+  const readContext = read.getContext('2d');
+  if (!readContext) {
+    console.error('[f1-car-model] no 2D context; the car will not recolour.');
+    return null;
+  }
+  readContext.drawImage(image, 0, 0);
+  const pristine = readContext.getImageData(0, 0, width, height);
+
+  const surface = document.createElement('canvas');
+  surface.width = width;
+  surface.height = height;
+  const surfaceContext = surface.getContext('2d');
+  if (!surfaceContext) {
+    console.error('[f1-car-model] no 2D context; the car will not recolour.');
+    return null;
+  }
+  const painted = surfaceContext.createImageData(width, height);
+
+  /*
+   * `clone()` carries the sampling settings that matter — `colorSpace`, `flipY`, wrapping,
+   * anisotropy — but shares the original's `Source`, so assigning `.image` would write straight
+   * into the GLTF cache. A fresh `Source` is what makes this texture independent.
+   */
+  const texture = map.clone();
+  texture.source = new THREE.Source(surface);
+
+  const material = source.clone();
+  material.map = texture;
+
+  return {
+    material,
+    paint(teamColor: string) {
+      // Always from `pristine`: recolouring the previous output would compound on every switch.
+      recolourLivery(pristine.data, painted.data, hexToRgb(teamColor));
+      surfaceContext.putImageData(painted, 0, 0);
+      texture.needsUpdate = true;
+    },
+    dispose() {
+      texture.dispose();
+      material.dispose();
+    },
+  };
+}
+
+export function RealCar({ teamColor, rotationSpeed, float }: RealCarProps) {
   const groupRef = useRef<THREE.Group>(null);
   const gltf = useLoader(GLTFLoader, '/models/f1-car.glb');
 
-  // Clone once per mount; useLoader caches the GLTF, so body materials must be
-  // cloned before recoloring or the tint would bleed into every other consumer.
-  const { clonedScene, bodyMaterials } = useMemo(() => {
+  // Clone once per mount; useLoader caches the GLTF, so livery materials must be cloned before
+  // recolouring or the repaint would bleed into every other consumer.
+  const { clonedScene, liveryPaints } = useMemo(() => {
     const scene = gltf.scene.clone();
-    const materials: THREE.MeshStandardMaterial[] = [];
+
+    const meshes: THREE.Mesh[] = [];
+    const materials = new Map<string, THREE.MeshStandardMaterial>();
     scene.traverse((child: THREE.Object3D) => {
-      if (child instanceof THREE.Mesh) {
-        child.castShadow = true;
-        child.receiveShadow = true;
-        if (child.material) {
-          const material = child.material as THREE.MeshStandardMaterial;
-          if (
-            material.name &&
-            (material.name.includes('body') ||
-              material.name.includes('Body') ||
-              material.name.includes('paint'))
-          ) {
-            const newMaterial = material.clone();
-            newMaterial.metalness = 0.9;
-            newMaterial.roughness = 0.15;
-            child.material = newMaterial;
-            materials.push(newMaterial);
-          }
-        }
-      }
+      if (!(child instanceof THREE.Mesh)) return;
+      child.castShadow = true;
+      child.receiveShadow = true;
+      if (!child.material || Array.isArray(child.material)) return;
+      meshes.push(child);
+      const material = child.material as THREE.MeshStandardMaterial;
+      materials.set(material.uuid, material);
     });
-    return { clonedScene: scene, bodyMaterials: materials };
+
+    const livery = selectLiveryMaterials(Array.from(materials.values()));
+
+    /*
+     * Loud, because the silent version of this is the defect being fixed: the old filter guessed
+     * at `body`/`Body`/`paint`, matched none of the GLB's four materials, and left every team
+     * rendering the baked blue with nothing anywhere reporting a problem.
+     */
+    if (livery.length === 0) {
+      console.error(
+        `[f1-car-model] no livery material in the GLB; the car will not recolour. Found: ${Array.from(
+          materials.values(),
+        )
+          .map((m) => m.name)
+          .join(', ')}`,
+      );
+    }
+
+    // One paint per source material, not per mesh: the two bodywork meshes share `Livery`, so
+    // this recolours a single 2048² texture rather than the same one twice.
+    const paints = new Map<string, LiveryPaint>();
+    for (const material of livery) {
+      const created = createLiveryPaint(material);
+      if (created) paints.set(material.uuid, created);
+    }
+
+    for (const mesh of meshes) {
+      const paint = paints.get((mesh.material as THREE.MeshStandardMaterial).uuid);
+      if (paint) mesh.material = paint.material;
+    }
+
+    return { clonedScene: scene, liveryPaints: Array.from(paints.values()) };
   }, [gltf.scene]);
 
   useEffect(() => {
-    bodyMaterials.forEach((material) => material.color.set(teamColor));
-  }, [bodyMaterials, teamColor]);
+    liveryPaints.forEach((livery) => livery.paint(teamColor));
+  }, [liveryPaints, teamColor]);
 
   useEffect(() => {
     return () => {
-      bodyMaterials.forEach((material) => material.dispose());
+      liveryPaints.forEach((livery) => livery.dispose());
     };
-  }, [bodyMaterials]);
+  }, [liveryPaints]);
 
   useCarMotion(groupRef, { rotationSpeed, float });
 
   return (
     <group ref={groupRef}>
-      <primitive object={clonedScene} scale={scale} position={position} />
+      <primitive object={clonedScene} position={MODEL_OFFSET} />
     </group>
   );
 }

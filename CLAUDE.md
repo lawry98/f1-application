@@ -227,6 +227,37 @@ made rather than silently fallen through.
 **`gltf.scene.clone()` must stay inside `useMemo`** — without it Three.js re-clones the scene on
 every render.
 
+**Neither 3D scene frames its own camera any more, and the arithmetic is not `radius / sin(fov/2)`.**
+`camera={{ position: [5, 2.5, 5] }}` put both cameras **7.5 units** from a car that is **11.24 units
+long** — `/showcase` also scaled it by 2, so it showed about a quarter of a car. `lib/scene-fit.ts`
+now computes the distance and `components/3d/fit-camera.tsx` applies it, and five things there are
+not guessable. The car **rotates**, so the volume to fit is the cylinder it sweeps (radius 5.98, the
+box's XZ diagonal, not its 5.62 half-length). That cylinder is **not** usefully approximated by its
+enclosing sphere: the sphere models a 2.66-tall car as 12.3 tall, and the exact-for-a-sphere
+`radius / sin(fov/2)` then parks the camera 37% too far out — measured live, the car filled **51%**
+of the frame against **71%** for the cylinder fit, and *every* "does it fit" assertion passed on the
+sphere version. The **binding fov depends on the canvas**: `/showcase`'s is `h-[70vh]` at full width,
+so it is landscape on a desktop and **portrait on a phone**, where the horizontal fov binds and the
+camera needs to be at 24.6 rather than 13.4 — aspect is only knowable inside `<Canvas>`, which is the
+whole reason `FitCamera` is a component. **Fog moves with the camera**, so `FitCamera` owns
+`scene.fog` outright; a `<fog attach="fog">` left in the JSX would recreate it from stale literals
+and win, and the shipped `[8, 20]` puts a correctly framed car entirely past the far plane. And the
+model is **neither centred nor grounded** — centre 0.218 off the rotation axis in x, lowest point
+-0.090 rather than 0 — so `RealCar` carries a constant `groundedOffset` and no longer takes `scale`
+or `position`. `CAR_BOUNDS` is checked against the shipped GLB in `tests/scene-fit.test.ts`, so a
+re-exported model fails CI instead of quietly mis-framing both routes.
+
+**Verifying a camera means projecting vertices, and the node you rotate is not the one you think.**
+jsdom lays nothing out and a screenshot cannot tell a fitted camera from a lucky one, so the check
+that matters is: sweep the spin group through 360 degrees, project every Nth vertex with
+`Vector3.project(camera)`, and assert `|ndc| <= 1`. Two traps cost real time here.
+`Sketchfab_model`'s **parent is `Sketchfab_Scene`, the GLB's own root, which carries the grounding
+offset** — the R3F group that `useFrame` spins is one level above that, so rotating `sketch.parent`
+orbits the car eccentrically and reports a 596% overflow that is purely an artefact. And an
+**axis-aligned bounding box of a rotated model has phantom corners**: at 50 degrees the live `Box3`
+reports half-extents of 5.07 and 5.58, whose corner is 7.54 from the axis, but no vertex is out
+there — the real reach is still 5.98. Measure vertices, not boxes.
+
 **The 3D scene's `frameloop` is state, and `demand` is not the default for a reason.** `f1-hero-scene.tsx`
 is reached from exactly one place — the teams page's Inspect modal — and the right rail deliberately
 has no canvas, which is what keeps `three` / `@react-three/fiber` out of the page-load bundle. The
@@ -236,14 +267,28 @@ obvious optimisation and freezes the car: `RealCar`'s rotation and float run thr
 which under `demand` fires only on invalidation. An `Invalidator` component sits inside the
 `Canvas` for a narrower reason than it looks: R3F's reconciler already auto-invalidates on any
 scene-graph mutation, so the Suspense swap when the GLB resolves needs no help. What actually
-requires `Invalidator` is `RealCar`'s imperative `material.color.set(teamColor)`, which mutates an
-existing Three.js object outside R3F's prop diffing and so is never auto-invalidated — without it,
-a livery change under `demand` would show the wrong colour until the next invalidation. That
-recolour call is dormant today, though: `f1-car-model.tsx`'s material filter matches names
-containing `body`/`Body`/`paint`, but the committed GLB's materials are named `Livery`, `RearLight`,
-`Wheels` and `WheelCovers`, so `bodyMaterials` is empty and `material.color.set()` never runs on
-anything — `Invalidator` currently invalidates for a colour change that never happens, and becomes
-load-bearing the moment that filter is fixed.
+requires `Invalidator` is `RealCar`'s repaint of the livery texture, which writes pixels into a
+canvas and flips `texture.needsUpdate` outside R3F's prop diffing and so is never
+auto-invalidated — without it, a livery change under `demand` would show the wrong colour until
+the next invalidation. Measured in a browser in that dialog under `demand`: idle draws **0**
+frames, a bare `texture.needsUpdate = true` draws **0**, and the same mutation plus `invalidate()`
+draws exactly **1**.
+
+**The livery recolour rewrites the texture, and `material.color` is the trap.** `color`
+*multiplies* into `.map`, and the committed GLB's base texel is `#003572` — **red channel zero**,
+so no multiply can put red back. Computed in linear space, the one-line "widen the filter" fix
+renders Ferrari `#000000`, Audi/Cadillac/McLaren/Aston Martin/Racing Bulls within a few counts of
+it, and the remaining five the same blue only darker; Haas, being white, changes nothing at all.
+Zero of eleven teams come out recognisable. So `lib/livery.ts` repaints the texels instead: the
+texture is 62.9% flat `#003572`, 30.2% pure black (floor, wings, underbody) and ~4.3% FIA/F1
+decals that all carry red at full scale, so a texel is bodywork exactly when it is `k · base` for
+`k` in `[0, 1.2]` and becomes `k · teamColour`. Black is on that ray at `k = 0`, so the structure
+survives with no special case, and the decals are off it, so they survive untouched. The three
+tolerances are measured, not guessed. Material selection is an **exact** name match — the defect
+this replaced was a `body`/`Body`/`paint` substring guess that matched none of `Livery`,
+`RearLight`, `Wheels`, `WheelCovers`, so nothing recoloured and nothing reported it.
+`tests/livery.test.ts` parses the real GLB out of `public/` rather than a fixture, which is what
+makes an asset re-export fail in CI instead of silently un-fixing this.
 
 **The landing page composes, it doesn't contain.** `app/page.tsx` is seven imports from
 `components/landing/`; the hero, features, and footer markup are not inline.
