@@ -30,12 +30,21 @@ logger = logging.getLogger(__name__)
 SEASON_NOT_STARTED = "season_not_started"
 
 
+def _season_not_started(year: int) -> dict[str, Any]:
+    return {
+        "error": f"No completed races found for {year} season yet",
+        "reason": SEASON_NOT_STARTED,
+    }
+
+
 @tool
 def get_championship_standings(year: int) -> dict[str, Any]:
     """Get the driver and constructor championship tables for a season.
 
-    Points are summed across every completed Race and Sprint session. Only seasons from
-    OPENF1_FIRST_YEAR onwards are available, which is where OpenF1's coverage begins.
+    Points are summed across every completed Race and Sprint session. A session counts as
+    completed once it has produced results, so a cancelled race is neither scored nor counted
+    in races_completed. Only seasons from OPENF1_FIRST_YEAR onwards are available, which is
+    where OpenF1's coverage begins.
 
     Args:
         year: Season to query.
@@ -57,15 +66,22 @@ def get_championship_standings(year: int) -> dict[str, Any]:
             if date.fromisoformat(session["date_start"][:10]) < today
         ]
         if not sessions:
-            return {
-                "error": f"No completed races found for {year} season yet",
-                "reason": SEASON_NOT_STARTED,
-            }
+            return _season_not_started(year)
 
         keys = {session["session_key"] for session in sessions}
         drivers = driver_index(keys)
         driver_teams = driver_teams_by_session(keys)
         rows = session_results(keys)
+
+        # A session is *held* once it has produced a classification, not once its date has
+        # passed. A cancelled race keeps its OpenF1 session and entry list and serves no result
+        # rows — Imola 2023, Bahrain and Saudi Arabia 2026 — so the date-based count reported 16
+        # races for a 2026 season that had run 14. It never touched the points (an empty race
+        # adds none); it corrupted the count, which is the number the briefing and /standings
+        # both quote.
+        held = {row.get("session_key") for row in rows}
+        if not held:
+            return _season_not_started(year)
 
         # Seeded from the roster rather than from the results, so a driver — and
         # therefore a team — who has scored nothing all season still appears. Without
@@ -122,7 +138,9 @@ def get_championship_standings(year: int) -> dict[str, Any]:
             )
         ]
 
-        races_completed = sum(1 for s in sessions if s["session_name"] == "Race")
+        races_completed = sum(
+            1 for s in sessions if s["session_name"] == "Race" and s["session_key"] in held
+        )
         logger.info(
             "Standings for %d: %d drivers, %d constructors, %d races",
             year,

@@ -216,6 +216,13 @@ scale and must be included, and the table is seeded from the driver roster rathe
 from the results — otherwise a team on zero points (Cadillac, 2026) vanishes and an
 11-team grid renders as 10.
 
+**A standings session counts only once it has results, not once its date has passed.** A
+cancelled race keeps its OpenF1 session and entry list and serves no result rows, so the
+date-based count reported 16 races for 2026 when 14 had run (Bahrain and Saudi Arabia never did)
+and 23 for 2023's 22 (Imola). It never touched the points — an empty race adds none — only
+`races_completed`, which is exactly the number the briefing and `/standings` quote. A season
+with no held session at all returns `reason: SEASON_NOT_STARTED`.
+
 **`tests/conftest.py` blocks OpenF1 as well as FastF1, and the two differ on purpose.**
 `_block_fastf1_network` raises `AssertionError` because no production path should swallow
 one. `_block_openf1_network` raises `requests.ConnectionError` because the tools *do*

@@ -276,3 +276,97 @@ def test_the_whole_table_costs_three_requests(openf1_season):
     get_championship_standings.invoke({"year": 2024})
 
     assert len(openf1_season.calls) <= 4
+
+
+# A race that is on the calendar, dated in the past, and never ran. OpenF1 keeps the session
+# and its entry list but serves no result rows for it — the shape Imola 2023 and Bahrain and
+# Saudi Arabia 2026 really have. 9801 is that race; 9800 is one that ran.
+_CANCELLED_SESSIONS = [
+    {
+        "session_key": 9800,
+        "meeting_key": 1400,
+        "session_name": "Race",
+        "circuit_short_name": "Sakhir",
+        "country_name": "Bahrain",
+        "date_start": "2024-03-02T15:00:00+00:00",
+    },
+    {
+        "session_key": 9801,
+        "meeting_key": 1401,
+        "session_name": "Race",
+        "circuit_short_name": "Imola",
+        "country_name": "Italy",
+        "date_start": "2024-05-19T13:00:00+00:00",
+    },
+]
+
+_CANCELLED_DRIVERS = [
+    {
+        "session_key": key,
+        "driver_number": 1,
+        "full_name": "Max VERSTAPPEN",
+        "name_acronym": "VER",
+        "team_name": "Red Bull Racing",
+    }
+    for key in (9800, 9801)
+]
+
+_CANCELLED_RESULTS = [
+    {
+        "session_key": 9800,
+        "position": 1,
+        "driver_number": 1,
+        "points": 25.0,
+        "dnf": False,
+        "dns": False,
+        "dsq": False,
+    },
+]
+
+
+def _serve_cancelled_season(monkeypatch, results):
+    from tests.factories import make_openf1_get
+    from tools import openf1_client
+
+    fake = make_openf1_get(
+        {
+            "sessions": _CANCELLED_SESSIONS,
+            "session_result": results,
+            "drivers": _CANCELLED_DRIVERS,
+        }
+    )
+    monkeypatch.setattr(openf1_client.requests, "get", fake)
+    return fake
+
+
+@freeze_time("2024-06-01")
+def test_a_race_with_no_results_is_not_counted_as_completed(monkeypatch):
+    """Both races are dated before today; only one produced a classification.
+
+    Counting by date reports 2 here — the bug that had the real 2026 table claiming 16 races
+    completed when 14 had run, and 2023 claiming 23 of FastF1's 22 rounds.
+    """
+    _serve_cancelled_season(monkeypatch, _CANCELLED_RESULTS)
+
+    result = get_championship_standings.invoke({"year": 2024})
+
+    assert result["races_completed"] == 1
+    # An empty race adds no points, so the table itself was never wrong — only the count.
+    assert result["drivers"][0]["points"] == 25.0
+
+
+@freeze_time("2024-06-01")
+def test_a_season_whose_past_sessions_have_no_results_has_not_started(monkeypatch):
+    """Every past session was cancelled, or none has published a classification yet.
+
+    Before this the tool returned the whole roster on zero points, with races_completed
+    counting the cancellations — a table no caller should render as a championship.
+    """
+    _serve_cancelled_season(monkeypatch, [])
+
+    result = get_championship_standings.invoke({"year": 2024})
+
+    assert result == {
+        "error": "No completed races found for 2024 season yet",
+        "reason": SEASON_NOT_STARTED,
+    }
