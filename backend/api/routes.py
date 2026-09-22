@@ -22,7 +22,7 @@ from api.models import BriefingRequest, BriefingResponse, ToolTraceSummary
 from tools.openf1_client import OPENF1_FIRST_YEAR
 from tools.openf1_client import clear as clear_openf1_cache
 from tools.schedule_cache import clear as clear_schedule_cache
-from tools.standings_tools import get_championship_standings
+from tools.standings_tools import SEASON_NOT_STARTED, get_championship_standings
 
 logger = logging.getLogger(__name__)
 
@@ -246,6 +246,13 @@ async def get_standings(
     """
     try:
         result = await asyncio.to_thread(get_championship_standings.invoke, {"year": year})
+
+        if result.get("reason") == SEASON_NOT_STARTED:
+            # Not a failure: a season that has not run has an empty table, and saying so is the
+            # correct answer. Folded into the 502 below it told the page to "try again" every day
+            # from January to the first race, and no retry could ever succeed.
+            logger.info("Standings for %d: season not started", year)
+            return {"year": year, "races_completed": 0, "drivers": [], "constructors": []}
 
         if "error" in result:
             # The tool's error text can carry upstream exception detail, which is neither

@@ -924,3 +924,35 @@ def test_standings_replaces_a_tool_error_with_a_generic_502(client, monkeypatch)
     assert response.status_code == 502
     assert "503" not in response.text
     assert response.json()["detail"] == routes.GENERIC_STANDINGS_ERROR
+
+
+def test_standings_serves_a_season_not_started_as_an_empty_table(client, monkeypatch):
+    """A season with no completed race is a correct, permanent answer, not an outage — so it
+    is a 200 with empty tables rather than the generic 502 that tells the page to retry. The
+    tool's error prose still never reaches the client.
+    """
+    from api import routes
+    from tools.standings_tools import SEASON_NOT_STARTED
+
+    monkeypatch.setattr(
+        routes,
+        "get_championship_standings",
+        make_tool(
+            "get_championship_standings",
+            result={
+                "error": "No completed races found for 2026 season yet",
+                "reason": SEASON_NOT_STARTED,
+            },
+        ),
+    )
+
+    response = client.get("/api/standings/2026")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "year": 2026,
+        "races_completed": 0,
+        "drivers": [],
+        "constructors": [],
+    }
+    assert "No completed races" not in response.text
