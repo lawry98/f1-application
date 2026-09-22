@@ -7,10 +7,11 @@
  * would let the backend drift away silently.
  */
 
-import { describe, expect, it } from 'vitest';
-import { streamBriefing } from '@/lib/api';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { getStandings, streamBriefing } from '@/lib/api';
 import type { StreamEvent } from '@/types';
 import { type FixtureName, fetchInChunks, fixture } from './sse';
+import standings2026 from './fixtures/standings-2026.json';
 
 async function collect(name: FixtureName, chunkSize: number) {
   globalThis.fetch = fetchInChunks(fixture(name), chunkSize) as typeof fetch;
@@ -129,5 +130,39 @@ describe('streamBriefing error handling', () => {
     for await (const event of streamBriefing('Monaco')) events.push(event);
 
     expect(events.map((e) => e.type)).toEqual(['complete']);
+  });
+});
+
+/**
+ * `getStandings` is a plain JSON fetch, so the only fetch surface it touches is `ok` and `json()`
+ * — the stub is exactly that, which keeps this independent of whether the test environment
+ * ships a `Response` constructor. The body is the captured route response, not a literal.
+ */
+function jsonResponse(body: unknown, status = 200): Response {
+  return { ok: status >= 200 && status < 300, status, json: async () => body } as Response;
+}
+
+describe('getStandings', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('asks the standings route for the year and returns the payload as served', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(standings2026));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await getStandings(2026);
+
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringMatching(/\/api\/standings\/2026$/));
+    expect(result).toEqual(standings2026);
+  });
+
+  it('throws on a non-OK response rather than handing the error body on as a table', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse({ detail: 'Could not load the standings.' }, 502)),
+    );
+
+    await expect(getStandings(2026)).rejects.toThrow('Failed to fetch standings');
   });
 });

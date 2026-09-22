@@ -1,4 +1,4 @@
-import type { StreamEvent, Race, RaceInfo } from '@/types';
+import type { StreamEvent, Race, RaceInfo, StandingsResponse } from '@/types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
 
@@ -11,6 +11,16 @@ export async function getRaces(year: number): Promise<Race[]> {
 
   const data = (await response.json()) as { races: Race[] };
   return data.races;
+}
+
+export async function getStandings(year: number): Promise<StandingsResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/standings/${year}`);
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch standings');
+  }
+
+  return (await response.json()) as StandingsResponse;
 }
 
 /**
