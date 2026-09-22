@@ -236,14 +236,28 @@ obvious optimisation and freezes the car: `RealCar`'s rotation and float run thr
 which under `demand` fires only on invalidation. An `Invalidator` component sits inside the
 `Canvas` for a narrower reason than it looks: R3F's reconciler already auto-invalidates on any
 scene-graph mutation, so the Suspense swap when the GLB resolves needs no help. What actually
-requires `Invalidator` is `RealCar`'s imperative `material.color.set(teamColor)`, which mutates an
-existing Three.js object outside R3F's prop diffing and so is never auto-invalidated — without it,
-a livery change under `demand` would show the wrong colour until the next invalidation. That
-recolour call is dormant today, though: `f1-car-model.tsx`'s material filter matches names
-containing `body`/`Body`/`paint`, but the committed GLB's materials are named `Livery`, `RearLight`,
-`Wheels` and `WheelCovers`, so `bodyMaterials` is empty and `material.color.set()` never runs on
-anything — `Invalidator` currently invalidates for a colour change that never happens, and becomes
-load-bearing the moment that filter is fixed.
+requires `Invalidator` is `RealCar`'s repaint of the livery texture, which writes pixels into a
+canvas and flips `texture.needsUpdate` outside R3F's prop diffing and so is never
+auto-invalidated — without it, a livery change under `demand` would show the wrong colour until
+the next invalidation. Measured in a browser in that dialog under `demand`: idle draws **0**
+frames, a bare `texture.needsUpdate = true` draws **0**, and the same mutation plus `invalidate()`
+draws exactly **1**.
+
+**The livery recolour rewrites the texture, and `material.color` is the trap.** `color`
+*multiplies* into `.map`, and the committed GLB's base texel is `#003572` — **red channel zero**,
+so no multiply can put red back. Computed in linear space, the one-line "widen the filter" fix
+renders Ferrari `#000000`, Audi/Cadillac/McLaren/Aston Martin/Racing Bulls within a few counts of
+it, and the remaining five the same blue only darker; Haas, being white, changes nothing at all.
+Zero of eleven teams come out recognisable. So `lib/livery.ts` repaints the texels instead: the
+texture is 62.9% flat `#003572`, 30.2% pure black (floor, wings, underbody) and ~4.3% FIA/F1
+decals that all carry red at full scale, so a texel is bodywork exactly when it is `k · base` for
+`k` in `[0, 1.2]` and becomes `k · teamColour`. Black is on that ray at `k = 0`, so the structure
+survives with no special case, and the decals are off it, so they survive untouched. The three
+tolerances are measured, not guessed. Material selection is an **exact** name match — the defect
+this replaced was a `body`/`Body`/`paint` substring guess that matched none of `Livery`,
+`RearLight`, `Wheels`, `WheelCovers`, so nothing recoloured and nothing reported it.
+`tests/livery.test.ts` parses the real GLB out of `public/` rather than a fixture, which is what
+makes an asset re-export fail in CI instead of silently un-fixing this.
 
 **The landing page composes, it doesn't contain.** `app/page.tsx` is seven imports from
 `components/landing/`; the hero, features, and footer markup are not inline.

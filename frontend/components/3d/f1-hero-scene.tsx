@@ -28,15 +28,16 @@ function HeroFallbackCar({ rotationSpeed, float }: { rotationSpeed: number; floa
  * reconciler already auto-invalidates on any scene-graph mutation — mounting/unmounting Object3D
  * children, which is exactly what the Suspense swap from the primitive fallback to `RealCar` does
  * once the GLB resolves — so that transition needs no help here. What isn't covered is `RealCar`'s
- * imperative `material.color.set(teamColor)`: it mutates an existing Three.js object directly,
- * outside R3F's declarative prop diffing, so nothing invalidates it on its own. Must live inside
- * `<Canvas>`; `useThree` throws outside one.
+ * repaint of the livery texture: it writes pixels into an existing canvas and flips
+ * `texture.needsUpdate`, mutating a Three.js object outside R3F's declarative prop diffing, so
+ * nothing invalidates it on its own. Must live inside `<Canvas>`; `useThree` throws outside one.
  *
- * That recolour call is dormant today: `f1-car-model.tsx`'s material filter matches names
- * containing `body`/`Body`/`paint`, but the GLB's actual materials are `Livery`, `RearLight`,
- * `Wheels` and `WheelCovers` — zero matches, so `bodyMaterials` is empty and `material.color.set()`
- * never runs on anything. This component invalidates for a colour change that never happens, and
- * becomes load-bearing the moment that filter is fixed.
+ * This was dormant until the material filter was fixed, and is now genuinely load-bearing —
+ * measured in a browser, in this dialog, under `demand`: idle draws **0** frames per second, a
+ * bare `texture.needsUpdate = true` still draws **0**, and the same mutation followed by
+ * `invalidate()` draws exactly **1**. Remove this component and a livery change under
+ * `prefers-reduced-motion` shows the previous team's colour until something else happens to
+ * schedule a frame.
  */
 function Invalidator({ teamColor }: { teamColor: string }) {
   const invalidate = useThree((state) => state.invalidate);

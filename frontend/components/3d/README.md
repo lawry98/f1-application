@@ -34,11 +34,11 @@ off page load and behind the Inspect click. Do not add one back.
 `demand` under `prefers-reduced-motion` — where the car is deliberately still, and the in-canvas
 `Invalidator` is what makes the one frame it does draw correct — and `always` otherwise. A literal
 `frameloop="demand"` in the normal case would freeze the car, because `RealCar`'s rotation and
-float run through `useFrame`. `Invalidator` covers `RealCar`'s imperative
-`material.color.set(teamColor)`, but that call is dormant today: the material filter matches
-`body`/`Body`/`paint`, and the GLB's actual materials are `Livery`/`RearLight`/`Wheels`/`WheelCovers`,
-so nothing matches and the car never recolours yet — `Invalidator` invalidates for a change that
-never happens until the filter is fixed.
+float run through `useFrame`. `Invalidator` covers `RealCar`'s repaint of the livery texture, which
+mutates a canvas and flips `texture.needsUpdate` outside R3F's prop diffing. Measured in this
+dialog under `demand`: idle draws 0 frames, a bare `texture.needsUpdate = true` draws 0, and the
+same mutation plus `invalidate()` draws exactly 1. Without it, a livery change under reduced motion
+keeps showing the previous team.
 
 ### F1CarShowcase (`f1-car-showcase.tsx`, default export)
 
@@ -54,9 +54,17 @@ Not a page-level scene — the building blocks both scenes compose:
 
 - `RealCar` — loads `/models/f1-car.glb` via `useLoader(GLTFLoader)`, clones the scene
   **once per mount** (the clone stays inside `useMemo`; the GLTF is cached by
-  `useLoader`, so body materials are cloned before recoloring and disposed on unmount).
-  Team color changes update the cloned materials in place — no re-clone per color.
+  `useLoader`, so livery materials are cloned before recolouring and disposed on unmount).
+  Team color changes repaint the cloned texture in place — no re-clone per color.
   Props: `teamColor`, `scale`, `position`, `rotationSpeed`, `float?`.
+
+  **The recolour rewrites the texture; it does not set `material.color`.** `color` *multiplies*
+  into `.map`, and this GLB's base texel is `#003572` — red channel zero — so no multiply can put
+  red back: Ferrari lands on `#000000`, five more teams within a few counts of it, and the rest
+  render the same blue, darker. The per-texel rule, the measurements behind it and the material
+  selection all live in [`lib/livery.ts`](../../lib/livery.ts), pure and unit-tested against the
+  shipped GLB in `tests/livery.test.ts`. Both bodywork meshes share the one `Livery` material, so
+  a single 2048² canvas is repainted (~16ms, measured, no long task).
 - `PrimitiveCar` — the primitive-mesh fallback car, parameterized by `bodyColor`,
   `sidepodColor`, `scale?`, `rotationSpeed`, `float?`, `bodyEnvMapIntensity?`,
   `exhaustEmissiveIntensity`.
