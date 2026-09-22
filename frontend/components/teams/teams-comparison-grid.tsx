@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { AnimatePresence, motion } from 'motion/react';
 import { Check, Plus } from 'lucide-react';
 
@@ -19,6 +20,15 @@ const SORTS: { key: SortKey; label: string }[] = [
   { key: 'championships', label: 'Titles' },
   { key: 'firstEntry', label: 'Since' },
 ];
+
+/**
+ * The link treatment `/credits` uses. The ring is flush: this is a text link on the section's bare
+ * `bg-zinc-950`, not a filled control.
+ */
+const LIVE_LINK = cn(
+  'rounded text-xs text-zinc-300 underline decoration-zinc-700 underline-offset-2 transition-colors duration-200 hover:text-white hover:decoration-zinc-400',
+  focusRing,
+);
 
 /**
  * How the currently-sorted metric reads aloud, singular-aware.
@@ -112,9 +122,16 @@ export function TeamsComparisonGrid({
             Constructors&apos; Championship
           </TextAnimate>
         </div>
-        <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-400">
-          {STANDINGS_AS_OF}
-        </p>
+        <div className="flex flex-col items-start gap-2 sm:items-end">
+          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-400">
+            {STANDINGS_AS_OF}
+          </p>
+          {/* The stamp above is frozen on purpose — this section explores the teams, it is not
+              the championship — so it points at the live table rather than pretending to be one. */}
+          <Link href="/standings" className={LIVE_LINK}>
+            Live standings →
+          </Link>
+        </div>
       </div>
 
       <div className="mb-6 flex gap-2">

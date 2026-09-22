@@ -209,6 +209,7 @@ OUTPUT (Race Briefing)
 | `/briefing` | AI race weekend briefing chat |
 | `/teardown` | Scroll-driven F1 car anatomy (192-frame canvas animation) |
 | `/showcase` | Interactive 3D car with all 11 team liveries |
+| `/standings` | Drivers' and constructors' championship tables for every season since 2023, with a season picker |
 | `/teams` | 2026 team explorer — liveries, driver line-ups, comparison grid |
 | `/credits` | Credits & attributions |
 

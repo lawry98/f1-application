@@ -14,7 +14,7 @@ export function LandingNav() {
   /*
    * Bring the current page's link into view in the scrolling row.
    *
-   * Six links overflow a phone, so the row scrolls — and the link for the page you are on can
+   * Seven links overflow a phone, so the row scrolls — and the link for the page you are on can
    * start off screen, leaving the nav showing no sign of where you are. `teams-chip-strip.tsx`
    * has the same problem and the same fix.
    *
@@ -55,7 +55,7 @@ export function LandingNav() {
          * 390 px viewport**, `Showcase` ended at x=400.6 and `Credits` at x=475.8 — both entirely
          * past the right edge — while `document.documentElement.scrollWidth` stayed at 390, so the
          * page did not scroll to reach them. Two of the then-five destinations were simply
-         * unreachable on a phone, and `/tyres` has since made it a six-link row.
+         * unreachable on a phone, and `/tyres` and `/standings` have since made it a seven-link row.
          *
          * Why scroll and not a smaller type ramp: the labels plus their gaps measure 432.6 px
          * at their natural size (measured at 1440, before `Tyres`), and after the wordmark and the

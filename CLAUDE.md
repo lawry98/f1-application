@@ -16,7 +16,7 @@ backend/
 frontend/
   app/           App Router, one directory per route
   components/
-    <feature>/   Page sections: landing/, briefing/, teams/, teardown/, tyres/
+    <feature>/   Page sections: landing/, briefing/, standings/, teams/, teardown/, tyres/
     3d/          Three.js — only ever loaded via dynamic import, ssr: false
     ui/          shadcn/ui + vendored Magic UI — do not hand-edit
   data/          Static domain data (TEAMS, tyre compounds) and the types describing it
