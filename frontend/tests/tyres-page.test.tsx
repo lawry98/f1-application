@@ -259,20 +259,38 @@ describe('/tyres — the archive keeps what the acts hid', () => {
   });
 
   /*
-   * 20s, against vitest's 5s default. Not a race and not masking one: this renders the whole
-   * page and then calls `getAllByRole('link', { name })` once per entry in `TYRE_SOURCES`, and
-   * each of those recomputes accessible names across the entire tree. Measured at 5.9-6.3s, so
-   * the default was always going to fail on a slower runner — it went red in CI at 5979ms while
-   * passing locally in isolation. The real fix is to index the links once instead of scanning
-   * per source; that is a rewrite of the assertion, not a timeout.
+   * One query, then an index — asking per source is what made this the slowest test in the
+   * suite. `getAllByRole(role, { name })` recomputes the accessible name of every link in the
+   * tree on *every* call, so 28 sources walked the whole page 28 times: 2029ms of query here
+   * against 63ms for a single pass, and 5233ms under the parallel suite's CPU contention, which
+   * is what carried it past vitest's 5s default and red in CI.
+   *
+   * The index is keyed by the name Testing Library itself computes, never by `textContent`. A
+   * `name` matcher may be a predicate, and it is called once per candidate with the name the
+   * query would have matched against — so one pass can both select the source links and record
+   * what each one is called. The two keys are not interchangeable on this page: the footer's
+   * onward link wraps an `aria-hidden` arrow, so its text reads `NextCar Anatomy→` where its
+   * accessible name is `NextCar Anatomy`.
    */
   it('links every source, safely', () => {
     renderPage();
 
+    const wanted = new Set(TYRE_SOURCES.map((s) => `${s.publisher} — ${s.title}`));
+    const linksByName = new Map<string, Element[]>();
+
+    // Called for its predicate's side effect; the returned array cannot say which name matched.
+    screen.getAllByRole('link', {
+      name: (accessibleName, element) => {
+        if (!wanted.has(accessibleName)) return false;
+        const carrying = linksByName.get(accessibleName);
+        if (carrying) carrying.push(element);
+        else linksByName.set(accessibleName, [element]);
+        return true;
+      },
+    });
+
     for (const source of TYRE_SOURCES) {
-      const links = screen.getAllByRole('link', {
-        name: `${source.publisher} — ${source.title}`,
-      });
+      const links = linksByName.get(`${source.publisher} — ${source.title}`) ?? [];
       expect(links.length).toBeGreaterThan(0);
       for (const link of links) {
         expect(link).toHaveAttribute('href', source.url);
@@ -280,7 +298,7 @@ describe('/tyres — the archive keeps what the acts hid', () => {
         expect(link).toHaveAttribute('rel', 'noopener noreferrer');
       }
     }
-  }, 20_000);
+  });
 
   it('publishes what the page deliberately does not claim', () => {
     renderPage();
