@@ -188,8 +188,10 @@ endpoints are all per-year, so porting it cost four requests per year (12 reques
 5-year window) against FastF1's 4.62s. Don't "finish the migration" by re-porting it; the
 tool's own docstring in `f1_data_tools.py` carries the same numbers.
 
-**OpenF1 coverage starts in 2023, and `OPENF1_FIRST_YEAR` is the only place that number
-lives.** Every ported result tool tries OpenF1 first and falls through to its
+**OpenF1 coverage starts in 2023, and `OPENF1_FIRST_YEAR` is the only place in the backend that
+number lives.** The frontend's season picker mirrors it as `STANDINGS_FIRST_YEAR` in
+`lib/standings.ts`, and `tests/standings.test.ts` reads the constant out of `backend/tools/openf1_client.py`
+and fails on drift. Every ported result tool tries OpenF1 first and falls through to its
 `load_race_session` path for an earlier year or a transport failure. The visible cost of the
 OpenF1 path is `Status` fidelity: FastF1 reports *why* a car stopped ("+1 Lap", "Accident"),
 OpenF1 exposes only `dnf`/`dns`/`dsq`, so `derive_status()` collapses it to
@@ -224,6 +226,17 @@ and 23 for 2023's 22 (Imola). It never touched the points — an empty race adds
 with no held session at all returns `reason: SEASON_NOT_STARTED`, which `/api/standings` serves as
 a **200 with empty tables** — the one tool error the route does not fold into
 `502 GENERIC_STANDINGS_ERROR`, because it is a correct answer and no retry changes it.
+
+**`/standings` joins two upstreams, and both joins are exact on purpose.** OpenF1 spells two
+2026 teams differently from `Team.shortName` (`Haas F1 Team`, `Red Bull Racing`), so
+`teamForStanding` matches `shortName` exactly plus an explicit two-entry alias map — never a
+substring, the defect class the livery fix removed. Predecessor brands (`Kick Sauber`, `RB`,
+`AlphaTauri`, `Alfa Romeo`) are deliberately unmapped: an unmatched team renders as plain text
+with an empty bar slot, which is the normal case for every season before 2026. The as-of stamp
+joins `races_completed` to FastF1's calendar by `round`, and that is exact only because FastF1
+drops cancelled events and renumbers the rest *and* the count now skips them too — Round 14 of
+23 is the Spanish Grand Prix. Name the event by `Race.name`: FastF1 files the rescheduled 2026
+Bahrain Grand Prix under `Location: "Kuala Lumpur"`.
 
 **`tests/conftest.py` blocks OpenF1 as well as FastF1, and the two differ on purpose.**
 `_block_fastf1_network` raises `AssertionError` because no production path should swallow
