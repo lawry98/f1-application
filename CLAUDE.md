@@ -238,6 +238,13 @@ drops cancelled events and renumbers the rest *and* the count now skips them too
 23 is the Spanish Grand Prix. Name the event by `Race.name`: FastF1 files the rescheduled 2026
 Bahrain Grand Prix under `Location: "Kuala Lumpur"`.
 
+**Team colour on `/standings` is decorative only.** Each row carries a 4px bar in the true hex
+and every glyph is a zinc neutral on bare `zinc-950` — no zebra, no hover tint, no highlighted
+leader — which is why `standings-tables.tsx` calls no `team-utils` helper at all.
+`tests/standings-tables.test.tsx` asserts `inlineColouredText()` is empty and that no table
+element carries a `bg-` class, so colouring a name or tinting a row fails there until it has its
+own backdrop variant, built the way the five on `/teams` are.
+
 **`tests/conftest.py` blocks OpenF1 as well as FastF1, and the two differ on purpose.**
 `_block_fastf1_network` raises `AssertionError` because no production path should swallow
 one. `_block_openf1_network` raises `requests.ConnectionError` because the tools *do*
