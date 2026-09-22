@@ -6,6 +6,7 @@ import { GLTFLoader } from 'three-stdlib';
 import * as THREE from 'three';
 
 import { hexToRgb, recolourLivery, selectLiveryMaterials } from '@/lib/livery';
+import { CAR_BOUNDS, GROUND_Y, groundedOffset } from '@/lib/scene-fit';
 
 interface CarMotion {
   rotationSpeed: number;
@@ -25,9 +26,19 @@ function useCarMotion(ref: RefObject<THREE.Group | null>, { rotationSpeed, float
 
 interface RealCarProps extends CarMotion {
   teamColor: string;
-  scale: number;
-  position: [number, number, number];
 }
+
+/**
+ * Where the model sits inside the group that spins it.
+ *
+ * Constant, because `RealCar` loads one specific GLB. It replaces the `scale` and `position`
+ * props both scenes used to pass: the camera does the framing now (`components/3d/fit-camera.tsx`),
+ * so a scale multiplier only desynchronised the car from the ground plane, the grid and the
+ * lights, which are all in world units. The two values it supplied were `scale={2}` — a 22.5-unit
+ * car on a 20-unit grid — and positions that floated the car 0.41 above the floor on one route
+ * and sank its wheels 0.09 through it on the other.
+ */
+const MODEL_OFFSET = groundedOffset(CAR_BOUNDS, GROUND_Y);
 
 /**
  * A cloned livery material plus the canvas its base-colour texture is painted on.
@@ -103,7 +114,7 @@ function createLiveryPaint(source: THREE.MeshStandardMaterial): LiveryPaint | nu
   };
 }
 
-export function RealCar({ teamColor, scale, position, rotationSpeed, float }: RealCarProps) {
+export function RealCar({ teamColor, rotationSpeed, float }: RealCarProps) {
   const groupRef = useRef<THREE.Group>(null);
   const gltf = useLoader(GLTFLoader, '/models/f1-car.glb');
 
@@ -171,7 +182,7 @@ export function RealCar({ teamColor, scale, position, rotationSpeed, float }: Re
 
   return (
     <group ref={groupRef}>
-      <primitive object={clonedScene} scale={scale} position={position} />
+      <primitive object={clonedScene} position={MODEL_OFFSET} />
     </group>
   );
 }

@@ -5,14 +5,25 @@ import { Canvas, useThree } from '@react-three/fiber';
 import { useReducedMotion } from 'motion/react';
 import { cn } from '@/lib/utils';
 import { useDocumentVisible } from '@/hooks/use-document-visible';
+import { CAR_SWEPT, CAR_TARGET, INSPECT_FIT_MARGIN } from '@/lib/scene-fit';
+import { FitCamera } from './fit-camera';
 import { PrimitiveCar, RealCar } from './f1-car-model';
+
+const FOG_COLOR = '#09090b';
+
+/**
+ * `2.4`, up from `0.8`: `PrimitiveCar` is ~4.6 units long and the GLB is 11.24, and the camera is
+ * now framed for the GLB. At the old scale the stand-in would be a sixth of the size of the car
+ * that replaces it.
+ */
+const FALLBACK_SCALE = 2.4;
 
 function HeroFallbackCar({ rotationSpeed, float }: { rotationSpeed: number; float: boolean }) {
   return (
     <PrimitiveCar
       bodyColor="#dc2626"
       sidepodColor="#b91c1c"
-      scale={0.8}
+      scale={FALLBACK_SCALE}
       rotationSpeed={rotationSpeed}
       float={float}
       bodyEnvMapIntensity={1.5}
@@ -83,15 +94,20 @@ export default function F1HeroScene({
         className ?? 'h-[600px]',
       )}
     >
-      <Canvas
-        camera={{ position: [5, 2.5, 5], fov: 45 }}
-        dpr={[1, 2]}
-        shadows
-        frameloop={frameloop}
-      >
+      {/*
+        No camera `position` and no `<fog>`: `FitCamera` sets both from the canvas it can measure.
+        The modal is a smaller panel than `/showcase`, so it keeps its narrower 45° lens and a
+        tighter margin — a closer crop that, unlike the one that shipped, contains the whole car.
+      */}
+      <Canvas camera={{ fov: 45 }} dpr={[1, 2]} shadows frameloop={frameloop}>
         <Invalidator teamColor={teamColor} />
-        <color attach="background" args={['#09090b']} />
-        <fog attach="fog" args={['#09090b', 5, 15]} />
+        <color attach="background" args={[FOG_COLOR]} />
+        <FitCamera
+          subject={CAR_SWEPT}
+          target={CAR_TARGET}
+          margin={INSPECT_FIT_MARGIN}
+          fogColor={FOG_COLOR}
+        />
 
         {/* Enhanced lighting */}
         <ambientLight intensity={0.3} />
@@ -127,7 +143,7 @@ export default function F1HeroScene({
         />
 
         <Suspense fallback={<HeroFallbackCar {...motion} />}>
-          <RealCar teamColor={teamColor} scale={1} position={[0, -0.5, 0]} {...motion} />
+          <RealCar teamColor={teamColor} {...motion} />
         </Suspense>
 
         {/* Reflective ground plane */}

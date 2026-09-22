@@ -24,11 +24,27 @@ const GLB_PATH = join(process.cwd(), 'public', 'models', 'f1-car.glb');
 const CHUNK_JSON = 0x4e4f534a;
 const CHUNK_BIN = 0x004e4942;
 
+interface GltfNode {
+  name?: string;
+  mesh?: number;
+  children?: number[];
+  /** Column-major, and mutually exclusive with the TRS triple below. */
+  matrix?: number[];
+  translation?: [number, number, number];
+  rotation?: [number, number, number, number];
+  scale?: [number, number, number];
+}
+
 interface Gltf {
   materials: { name?: string; pbrMetallicRoughness?: { baseColorTexture?: { index: number } } }[];
   textures: { source: number }[];
   images: { bufferView: number }[];
   bufferViews: { byteOffset?: number; byteLength: number }[];
+  nodes: GltfNode[];
+  meshes: { primitives: { attributes: { POSITION: number } }[] }[];
+  accessors: { min?: number[]; max?: number[] }[];
+  scenes: { nodes: number[] }[];
+  scene?: number;
 }
 
 function readGlb(): { gltf: Gltf; bin: Buffer } {
@@ -179,4 +195,114 @@ export function modalColor(data: Uint8ClampedArray): [number, number, number] {
     }
   });
   return [(best >> 16) & 255, (best >> 8) & 255, best & 255];
+}
+
+export interface GlbBounds {
+  /** World-space extent, in the order `[x, y, z]`. */
+  size: [number, number, number];
+  /** World-space midpoint of the box, in the order `[x, y, z]`. */
+  centre: [number, number, number];
+  /** World-space lowest point — what has to meet the ground plane. */
+  minY: number;
+}
+
+/** `a * b`, both column-major 4x4, glTF's convention and three.js's. */
+function multiply(a: number[], b: number[]): number[] {
+  const out = new Array<number>(16).fill(0);
+  for (let column = 0; column < 4; column++) {
+    for (let row = 0; row < 4; row++) {
+      let sum = 0;
+      for (let k = 0; k < 4; k++) sum += a[k * 4 + row]! * b[column * 4 + k]!;
+      out[column * 4 + row] = sum;
+    }
+  }
+  return out;
+}
+
+function fromTrs(node: GltfNode): number[] {
+  const [tx, ty, tz] = node.translation ?? [0, 0, 0];
+  const [qx, qy, qz, qw] = node.rotation ?? [0, 0, 0, 1];
+  const [sx, sy, sz] = node.scale ?? [1, 1, 1];
+
+  const x2 = qx + qx;
+  const y2 = qy + qy;
+  const z2 = qz + qz;
+  const xx = qx * x2;
+  const xy = qx * y2;
+  const xz = qx * z2;
+  const yy = qy * y2;
+  const yz = qy * z2;
+  const zz = qz * z2;
+  const wx = qw * x2;
+  const wy = qw * y2;
+  const wz = qw * z2;
+
+  // prettier-ignore
+  return [
+    (1 - (yy + zz)) * sx, (xy + wz) * sx,       (xz - wy) * sx,       0,
+    (xy - wz) * sy,       (1 - (xx + zz)) * sy, (yz + wx) * sy,       0,
+    (xz + wy) * sz,       (yz - wx) * sz,       (1 - (xx + yy)) * sz, 0,
+    tx,                   ty,                   tz,                   1,
+  ];
+}
+
+/**
+ * The model's bounding box in **world** space, with the whole node hierarchy applied.
+ *
+ * Not the same thing as the accessors' own `min`/`max`, and the difference is the point: this
+ * asset nests the meshes under `Sketchfab_model → F1 2026.fbx → RootNode → Car`, and those
+ * wrappers both rescale (0.01 then ~100, which cancel) and permute axes Y-up → Z-up. Reading the
+ * accessors alone reports the car 4.10 tall and 2.66 wide; in the scene it is 2.66 tall and 4.10
+ * wide, and the camera has to be placed against the second pair.
+ */
+export function glbBounds(): GlbBounds {
+  const { gltf } = readGlb();
+
+  const min = [Infinity, Infinity, Infinity];
+  const max = [-Infinity, -Infinity, -Infinity];
+
+  const identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+
+  const walk = (index: number, parent: number[]): void => {
+    const node = gltf.nodes[index]!;
+    const world = multiply(parent, node.matrix ?? fromTrs(node));
+
+    if (node.mesh !== undefined) {
+      for (const primitive of gltf.meshes[node.mesh]!.primitives) {
+        const accessor = gltf.accessors[primitive.attributes.POSITION]!;
+        if (!accessor.min || !accessor.max) {
+          throw new Error('f1-car.glb: a POSITION accessor has no min/max');
+        }
+        const [ax, ay, az] = accessor.min as [number, number, number];
+        const [bx, by, bz] = accessor.max as [number, number, number];
+
+        // Every corner, because the wrappers rotate: transforming only min and max would give
+        // the box of two points rather than the box of the transformed box.
+        for (const x of [ax, bx]) {
+          for (const y of [ay, by]) {
+            for (const z of [az, bz]) {
+              const wx = world[0]! * x + world[4]! * y + world[8]! * z + world[12]!;
+              const wy = world[1]! * x + world[5]! * y + world[9]! * z + world[13]!;
+              const wz = world[2]! * x + world[6]! * y + world[10]! * z + world[14]!;
+              const point = [wx, wy, wz];
+              for (let axis = 0; axis < 3; axis++) {
+                if (point[axis]! < min[axis]!) min[axis] = point[axis]!;
+                if (point[axis]! > max[axis]!) max[axis] = point[axis]!;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    for (const child of node.children ?? []) walk(child, world);
+  };
+
+  for (const root of gltf.scenes[gltf.scene ?? 0]!.nodes) walk(root, identity);
+
+  return {
+    size: [max[0]! - min[0]!, max[1]! - min[1]!, max[2]! - min[2]!],
+    centre: [(max[0]! + min[0]!) / 2, (max[1]! + min[1]!) / 2, (max[2]! + min[2]!) / 2],
+    minY: min[1]!,
+  };
 }
