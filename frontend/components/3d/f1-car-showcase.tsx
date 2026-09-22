@@ -4,6 +4,7 @@ import { Suspense, useState } from 'react';
 import Link from 'next/link';
 import { Canvas } from '@react-three/fiber';
 import { TEAMS, type Team } from '@/data/teams-data';
+import { LiverySelect } from '@/components/showcase/livery-select';
 import { PrimitiveCar, RealCar } from './f1-car-model';
 
 function ShowcaseCarModel({ teamColor }: { teamColor: string }) {
@@ -75,35 +76,7 @@ export default function F1CarShowcase() {
           </Canvas>
         </div>
 
-        <div className="mx-auto max-w-5xl">
-          {/* `h2`, not the `h3` this shipped as: the only other heading on the route is the `h1`
-              above, so an `h3` skipped a level and axe reported `heading-order`. The text, the
-              size and the weight are untouched — the level is an outline fact, not a visual one,
-              and this route inherits tokens only. */}
-          <h2 className="mb-6 text-center text-2xl font-semibold">Select Team Livery</h2>
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
-            {TEAMS.map((team) => (
-              <button
-                key={team.id}
-                onClick={() => setSelectedTeam(team)}
-                className={`rounded-xl border-2 px-4 py-4 font-semibold transition-all duration-300 ${
-                  selectedTeam.id === team.id
-                    ? 'scale-105 border-f1-red bg-zinc-800 shadow-lg'
-                    : 'border-zinc-700 bg-zinc-900 hover:scale-[1.02] hover:border-zinc-600'
-                } `}
-                style={{
-                  boxShadow: selectedTeam.id === team.id ? `0 0 30px ${team.color}50` : 'none',
-                }}
-              >
-                <div
-                  className="mb-3 h-12 w-full rounded-lg shadow-inner"
-                  style={{ backgroundColor: team.color }}
-                />
-                <span className="text-sm">{team.shortName}</span>
-              </button>
-            ))}
-          </div>
-        </div>
+        <LiverySelect selected={selectedTeam} onSelect={setSelectedTeam} />
 
         <div className="mt-12 text-center">
           <Link
