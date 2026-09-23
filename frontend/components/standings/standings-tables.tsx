@@ -9,8 +9,9 @@ import type { ConstructorStanding, DriverStanding } from '@/types';
  * The two championship tables on `/standings`.
  *
  * Presentation only, like `attribution-table.tsx`: rows in, markup out. Rows render in the order
- * they arrive and are never sorted — the backend breaks ties on best finish and then car number
- * precisely so that two reads of the table agree, and a client-side sort would undo that.
+ * they arrive and are never sorted — the backend breaks ties on the FIA's Grand Prix countback and
+ * then car number precisely so that two reads of the table agree, and a client-side sort would undo
+ * that.
  *
  * **Team colour is decorative here, never text.** Each row carries a 4px bar in the team's true
  * hex — bars are exempt from the text-contrast rule and must keep the real colour, per
