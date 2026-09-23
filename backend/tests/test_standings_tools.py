@@ -370,3 +370,88 @@ def test_a_season_whose_past_sessions_have_no_results_has_not_started(monkeypatc
         "error": "No completed races found for 2024 season yet",
         "reason": SEASON_NOT_STARTED,
     }
+
+
+# One driver under two car numbers: Bearman raced #38 for Ferrari in one 2024 race (6 pts) and
+# #50 for Haas in a later one (1 pt). Keyed by car number, the table listed him twice.
+_TWO_NUMBER_DRIVERS = [
+    {
+        "session_key": 9700,
+        "driver_number": 38,
+        "full_name": "Oliver BEARMAN",
+        "name_acronym": "BEA",
+        "team_name": "Ferrari",
+    },
+    {
+        "session_key": 9701,
+        "driver_number": 50,
+        "full_name": "Oliver BEARMAN",
+        "name_acronym": "BEA",
+        "team_name": "Haas F1 Team",
+    },
+]
+
+_TWO_NUMBER_RESULTS = [
+    {
+        "session_key": 9700,
+        "position": 7,
+        "driver_number": 38,
+        "points": 6.0,
+        "dnf": False,
+        "dns": False,
+        "dsq": False,
+    },
+    {
+        "session_key": 9701,
+        "position": 10,
+        "driver_number": 50,
+        "points": 1.0,
+        "dnf": False,
+        "dns": False,
+        "dsq": False,
+    },
+]
+
+
+@pytest.fixture
+def openf1_one_driver_two_numbers(monkeypatch):
+    from tests.factories import make_openf1_get
+    from tools import openf1_client
+
+    fake = make_openf1_get(
+        {
+            "sessions": _TRANSFER_SESSIONS,
+            "session_result": _TWO_NUMBER_RESULTS,
+            "drivers": _TWO_NUMBER_DRIVERS,
+        }
+    )
+    monkeypatch.setattr(openf1_client.requests, "get", fake)
+    return fake
+
+
+@freeze_time("2024-06-01")
+def test_a_driver_who_raced_two_numbers_is_one_row(openf1_one_driver_two_numbers):
+    """Rows are per driver, not per car number: the points are summed across both numbers,
+    and the row names the team from the driver's latest session.
+    """
+    result = get_championship_standings.invoke({"year": 2024})
+
+    assert result["drivers"] == [
+        {
+            "position": 1,
+            "driver": "Oliver BEARMAN",
+            "driver_code": "BEA",
+            "team": "Haas F1 Team",
+            "points": 7.0,
+        }
+    ]
+
+
+@freeze_time("2024-06-01")
+def test_a_driver_who_raced_two_numbers_still_scores_for_both_teams(
+    openf1_one_driver_two_numbers,
+):
+    result = get_championship_standings.invoke({"year": 2024})
+
+    teams = {row["team"]: row["points"] for row in result["constructors"]}
+    assert teams == {"Ferrari": 6.0, "Haas F1 Team": 1.0}

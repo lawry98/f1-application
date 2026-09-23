@@ -83,11 +83,28 @@ def get_championship_standings(year: int) -> dict[str, Any]:
         if not held:
             return _season_not_started(year)
 
+        # Rows are per *driver*, not per car number. A driver can race two numbers in a
+        # season — Bearman drove #38 for Ferrari and #50 for Haas in 2024 — and a table keyed
+        # by number listed him twice. The identity is the acronym, falling back to the number
+        # when OpenF1 serves none.
+        def _identity(number: int) -> str | int:
+            return drivers[number]["name_acronym"] or number
+
+        # Each number's latest session, the same "highest session_key wins" convention
+        # `driver_index` uses. It decides which of a driver's numbers the row reports.
+        latest_session: dict[int, int] = {}
+        for session_key, number in driver_teams:
+            latest_session[number] = max(latest_session.get(number, session_key), session_key)
+
         # Seeded from the roster rather than from the results, so a driver — and
         # therefore a team — who has scored nothing all season still appears. Without
         # this a real 11-team grid renders as 10 teams the moment one of them is on zero.
-        points: dict[int, float] = dict.fromkeys(drivers, 0.0)
-        best_position: dict[int, int] = {}
+        # Walked oldest-first, so each driver ends up mapped to the number they raced last.
+        current_number: dict[str | int, int] = {}
+        for number in sorted(drivers, key=lambda n: (latest_session.get(n, 0), n)):
+            current_number[_identity(number)] = number
+        points: dict[str | int, float] = dict.fromkeys(current_number, 0.0)
+        best_position: dict[str | int, int] = {}
 
         # Seeded from every team a driver has raced for this season (not just their
         # *current* one from `drivers`), so a scoreless team still appears and a
@@ -97,14 +114,15 @@ def get_championship_standings(year: int) -> dict[str, Any]:
 
         for row in rows:
             number = row.get("driver_number")
-            if number not in points:
+            if number not in drivers:
                 continue
+            identity = _identity(number)
             row_points = float(row.get("points") or 0.0)
-            points[number] += row_points
+            points[identity] += row_points
 
             position = row.get("position")
             if isinstance(position, int) and position > 0:
-                best_position[number] = min(best_position.get(number, position), position)
+                best_position[identity] = min(best_position.get(identity, position), position)
 
             # The team the driver was actually racing for *in this session* — not
             # `drivers[number]["team_name"]`, which is collapsed to their latest team and
@@ -114,22 +132,25 @@ def get_championship_standings(year: int) -> dict[str, Any]:
             team = driver_teams.get((session_key, number)) or drivers[number]["team_name"]
             team_points[team] = team_points.get(team, 0.0) + row_points
 
-        # Ties break on best finishing position, then on driver number. Points alone
-        # would let two equal drivers swap places between runs, and an LLM reading a
-        # reshuffling table reports a different championship each time it is asked.
-        def _driver_sort_key(number: int) -> tuple[float, int, int]:
-            return (-points[number], best_position.get(number, 99), number)
+        # Ties break on best finishing position, then on driver number (the latest one).
+        # Points alone would let two equal drivers swap places between runs, and an LLM
+        # reading a reshuffling table reports a different championship each time it is asked.
+        def _driver_sort_key(identity: str | int) -> tuple[float, int, int]:
+            return (-points[identity], best_position.get(identity, 99), current_number[identity])
 
-        driver_table = [
-            {
-                "position": rank,
-                "driver": drivers[number]["full_name"],
-                "driver_code": drivers[number]["name_acronym"],
-                "team": drivers[number]["team_name"],
-                "points": points[number],
-            }
-            for rank, number in enumerate(sorted(points, key=_driver_sort_key), start=1)
-        ]
+        driver_table = []
+        for rank, identity in enumerate(sorted(points, key=_driver_sort_key), start=1):
+            # Name, code and team from the driver's latest session.
+            latest = drivers[current_number[identity]]
+            driver_table.append(
+                {
+                    "position": rank,
+                    "driver": latest["full_name"],
+                    "driver_code": latest["name_acronym"],
+                    "team": latest["team_name"],
+                    "points": points[identity],
+                }
+            )
 
         constructor_table = [
             {"position": rank, "team": team, "points": team_points[team]}

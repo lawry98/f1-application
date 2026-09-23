@@ -216,7 +216,8 @@ subscription, so `get_championship_standings` sums `session_result.points` acros
 **and Sprint** sessions. Two traps live in that derivation: sprints score on the 8/7/6
 scale and must be included, and the table is seeded from the driver roster rather than
 from the results — otherwise a team on zero points (Cadillac, 2026) vanishes and an
-11-team grid renders as 10.
+11-team grid renders as 10. Drivers' rows are per driver (`name_acronym`), not per car number:
+Bearman raced #38 for Ferrari and #50 for Haas in 2024, and a number-keyed table listed him twice.
 
 **A standings session counts only once it has results, not once its date has passed.** A
 cancelled race keeps its OpenF1 session and entry list and serves no result rows, so the
