@@ -65,9 +65,15 @@ describe('parseStandingsYear', () => {
 
   it('falls back for a missing param and for a repeated one', () => {
     expect(parseStandingsYear(undefined, 2026)).toBe(2026);
-    // Next hands a repeated `?year=` over as an array. Guessing which one was meant is worse
-    // than showing the default.
+    // `getAll` of a repeated `?year=` is an array. Guessing which one was meant is worse than
+    // showing the default.
     expect(parseStandingsYear(['2024', '2025'], 2026)).toBe(2026);
+  });
+
+  it('reads the values `URLSearchParams.getAll` returns', () => {
+    // A single `?year=` is a one-element array, and a missing one an empty array.
+    expect(parseStandingsYear(['2024'], 2026)).toBe(2024);
+    expect(parseStandingsYear([], 2026)).toBe(2026);
   });
 });
 

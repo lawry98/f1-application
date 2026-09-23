@@ -23,12 +23,17 @@ export function standingsYears(latest: number): number[] {
  * The season a `?year=` query asks for, or `latest` when it asks for nothing usable.
  *
  * Validated here, at the edge, so a hand-edited `?year=2019` or `?year=abc` renders the current
- * table rather than sending the route a year it answers with a 422. Next hands a repeated param
- * over as an array; that is treated as unusable rather than guessed at.
+ * table rather than sending the route a year it answers with a 422. Takes a bare value or what
+ * `URLSearchParams.getAll('year')` returns: a one-element array is that value, while an empty
+ * array (no `?year=`) or a repeated param is treated as unusable rather than guessed at.
  */
-export function parseStandingsYear(param: string | string[] | undefined, latest: number): number {
-  if (typeof param !== 'string' || !/^\d{4}$/.test(param)) return latest;
-  const year = Number(param);
+export function parseStandingsYear(
+  param: string | readonly string[] | undefined,
+  latest: number,
+): number {
+  const value = typeof param === 'string' ? param : param?.length === 1 ? param[0] : undefined;
+  if (value === undefined || !/^\d{4}$/.test(value)) return latest;
+  const year = Number(value);
   return year >= STANDINGS_FIRST_YEAR && year <= latest ? year : latest;
 }
 

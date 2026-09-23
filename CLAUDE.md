@@ -245,6 +245,21 @@ leader — which is why `standings-tables.tsx` calls no `team-utils` helper at a
 element carries a `bg-` class, so colouring a name or tinting a row fails there until it has its
 own backdrop variant, built the way the five on `/teams` are.
 
+**`/standings` reads its season from `useSearchParams`, never from state seeded by a server
+prop.** The first version seeded `useState` from a server-parsed `initialYear` and desynced both
+ways, measured in a browser: pick 2024, follow "Compare the teams →", press Back, and the URL
+said `?year=2024` while the page showed 2026; pick 2024, click the nav's "Standings" link, and
+the URL said `/standings` while the page showed 2024. Next 14.2 keys the page segment without
+its search params, so client state survives a same-page navigation, and its patched
+`window.history.replaceState` (installed unconditionally in `app-router.js`) moves the router's
+URL — and so `useSearchParams()` — but not the RSC payload, so Back re-mounts the page from the
+original payload's props. `useSearchParams()` follows the patched `replaceState`, Back and
+Forward alike, so the rule for URL state on this page is: derive it from `useSearchParams`, and
+make the picker's only write a `replaceState`. The page is `force-dynamic` because `latestYear`
+is read from the server clock per request — a prerendered page would freeze it at build time —
+and because `useSearchParams` on a static page needs a Suspense boundary. `pnpm build` lists it
+as `ƒ /standings`.
+
 **`tests/conftest.py` blocks OpenF1 as well as FastF1, and the two differ on purpose.**
 `_block_fastf1_network` raises `AssertionError` because no production path should swallow
 one. `_block_openf1_network` raises `requests.ConnectionError` because the tools *do*

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { StandingsPageClient } from '@/components/standings/standings-page-client';
@@ -11,6 +11,37 @@ import standings2026 from './fixtures/standings-2026.json';
 import { ZINC, restingTextNeutrals } from './zinc';
 
 vi.mock('@/lib/api', () => ({ getStandings: vi.fn(), getRaces: vi.fn() }));
+
+/**
+ * The URL's query string, as a tiny external store. It models Next's real contract: its patched
+ * `history.replaceState` moves `useSearchParams()`, and so do Back, Forward and a `<Link>` — which
+ * is exactly what the page's season now follows. `set` is how a test navigates.
+ */
+const url = vi.hoisted(() => {
+  let query = '';
+  const listeners = new Set<() => void>();
+  return {
+    get: () => query,
+    set(next: string) {
+      query = next;
+      listeners.forEach((listener) => listener());
+    },
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+  };
+});
+
+vi.mock('next/navigation', async () => {
+  const { useSyncExternalStore } = await import('react');
+  return {
+    useSearchParams: () =>
+      new URLSearchParams(useSyncExternalStore(url.subscribe, url.get, url.get)),
+  };
+});
 const getStandingsMock = vi.mocked(getStandings);
 const getRacesMock = vi.mocked(getRaces);
 
@@ -33,8 +64,10 @@ function notStarted(year: number): StandingsResponse {
 const MID_SEASON = 'After Round 14 of 23 · Spanish Grand Prix';
 const FINAL_2024 = 'After Round 24 of 24 · Abu Dhabi Grand Prix';
 
-function renderPage(initialYear = 2026, latestYear = 2026) {
-  return render(<StandingsPageClient initialYear={initialYear} latestYear={latestYear} />);
+/** Renders the page at `/standings` plus `query` — `'?year=2024'`, or `''` for the bare URL. */
+function renderPage(query = '', latestYear = 2026) {
+  url.set(query);
+  return render(<StandingsPageClient latestYear={latestYear} />);
 }
 
 /**
@@ -57,8 +90,11 @@ beforeEach(() => {
   );
   getRacesMock.mockImplementation(async (year) => (year === 2024 ? CALENDAR_2024 : CALENDAR_2026));
   vi.spyOn(console, 'error').mockImplementation(() => {});
-  // Stubbed rather than spied through: the real call would move jsdom's URL for later tests.
-  vi.spyOn(window.history, 'replaceState').mockImplementation(() => {});
+  // Stubbed rather than spied through: the real call would move jsdom's URL for later tests. It
+  // moves the query store instead, which is what Next's patched `replaceState` really does.
+  vi.spyOn(window.history, 'replaceState').mockImplementation((_data, _unused, next) => {
+    url.set(new URL(String(next), 'http://localhost').search);
+  });
 });
 
 afterEach(() => {
@@ -91,7 +127,7 @@ describe('StandingsPageClient', () => {
   });
 
   it('marks a finished season final', async () => {
-    renderPage(2024);
+    renderPage('?year=2024');
 
     expect(await screen.findByText(FINAL_2024)).toBeInTheDocument();
     expect(screen.getByText('Final')).toBeInTheDocument();
@@ -111,7 +147,7 @@ describe('StandingsPageClient', () => {
   });
 
   it('keeps the latest season on the bare URL', async () => {
-    renderPage(2024);
+    renderPage('?year=2024');
     await screen.findByText(FINAL_2024);
 
     fireEvent.change(screen.getByRole('combobox', { name: 'Season' }), {
@@ -121,11 +157,32 @@ describe('StandingsPageClient', () => {
     expect(window.history.replaceState).toHaveBeenLastCalledWith(null, '', '/standings');
   });
 
+  it('follows the URL both ways when it moves without the picker', async () => {
+    renderPage('?year=2024');
+    await screen.findByText(FINAL_2024);
+    const select = screen.getByRole('combobox', { name: 'Season' });
+
+    // The nav's "Standings" link, or Back to the bare URL: Next keeps this page mounted, so a
+    // season held in state seeded from a prop stayed on 2024 here.
+    act(() => url.set(''));
+
+    expect(select).toHaveValue('2026');
+    expect(getStandingsMock).toHaveBeenLastCalledWith(2026);
+    expect(await screen.findByText(MID_SEASON)).toBeInTheDocument();
+
+    // Back to `?year=2024`.
+    act(() => url.set('?year=2024'));
+
+    expect(select).toHaveValue('2024');
+    expect(getStandingsMock).toHaveBeenLastCalledWith(2024);
+    expect(await screen.findByText(FINAL_2024)).toBeInTheDocument();
+  });
+
   it('says a season that has not started has not started, and offers the last one', async () => {
     getStandingsMock.mockImplementation(async (year) =>
       year === 2027 ? notStarted(2027) : standings2026,
     );
-    renderPage(2027, 2027);
+    renderPage('?year=2027', 2027);
 
     expect(await screen.findByText("The 2027 season hasn't started yet.")).toBeInTheDocument();
     expect(screen.queryByRole('table')).toBeNull();
@@ -141,7 +198,7 @@ describe('StandingsPageClient', () => {
 
   it('offers no earlier season before coverage begins', async () => {
     getStandingsMock.mockResolvedValue(notStarted(2023));
-    renderPage(2023);
+    renderPage('?year=2023');
 
     await screen.findByText("The 2023 season hasn't started yet.");
     expect(screen.queryByRole('button', { name: /final standings/ })).toBeNull();
@@ -179,7 +236,7 @@ describe('StandingsPageClient', () => {
   });
 
   it('keeps every neutral readable against what is really behind it', async () => {
-    renderPage(2024);
+    renderPage('?year=2024');
     await screen.findByText('Final');
 
     const runs = restingTextNeutrals(document.body);

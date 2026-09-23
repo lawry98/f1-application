@@ -3,7 +3,33 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import StandingsPage from '@/app/standings/page';
 
-vi.mock('next/navigation', () => ({ usePathname: () => '/standings' }));
+/** The URL's query string, which the page's season now follows through `useSearchParams`. */
+const url = vi.hoisted(() => {
+  let query = '';
+  const listeners = new Set<() => void>();
+  return {
+    get: () => query,
+    set(next: string) {
+      query = next;
+      listeners.forEach((listener) => listener());
+    },
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+  };
+});
+
+vi.mock('next/navigation', async () => {
+  const { useSyncExternalStore } = await import('react');
+  return {
+    usePathname: () => '/standings',
+    useSearchParams: () =>
+      new URLSearchParams(useSyncExternalStore(url.subscribe, url.get, url.get)),
+  };
+});
 // Never settles: this suite is about which season the page opens on, not about its data.
 vi.mock('@/lib/api', () => ({
   getStandings: vi.fn(() => new Promise(() => {})),
@@ -28,13 +54,15 @@ describe('StandingsPage', () => {
     ['abc', '2026'],
     [undefined, '2026'],
   ])('?year=%s opens on %s', (param, shown) => {
-    render(<StandingsPage searchParams={{ year: param }} />);
+    url.set(param === undefined ? '' : `?year=${param}`);
+    render(<StandingsPage />);
 
     expect(screen.getByRole('combobox', { name: 'Season' })).toHaveValue(shown);
   });
 
   it('marks Standings as the current page in the nav', () => {
-    render(<StandingsPage searchParams={{}} />);
+    url.set('');
+    render(<StandingsPage />);
 
     expect(screen.getByRole('link', { name: 'Standings' })).toHaveAttribute('aria-current', 'page');
   });

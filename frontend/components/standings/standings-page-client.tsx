@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 
 import { SeasonSelect } from '@/components/standings/season-select';
 import {
@@ -11,7 +12,12 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { useStandings } from '@/hooks/use-standings';
 import { focusRing, focusRingOffsetBase } from '@/lib/focus';
-import { STANDINGS_FIRST_YEAR, seasonStamp, standingsYears } from '@/lib/standings';
+import {
+  STANDINGS_FIRST_YEAR,
+  parseStandingsYear,
+  seasonStamp,
+  standingsYears,
+} from '@/lib/standings';
 import { cn } from '@/lib/utils';
 
 const LABEL = 'text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-400';
@@ -32,8 +38,6 @@ const SKELETON_SECTIONS = ['drivers', 'constructors'] as const;
 const SKELETON_ROWS = ['a', 'b', 'c', 'd', 'e', 'f'] as const;
 
 interface StandingsPageClientProps {
-  /** The season `?year=` asked for, already validated by `parseStandingsYear`. */
-  initialYear: number;
   /** The newest season, read from the server's clock so render never reads one. */
   latestYear: number;
 }
@@ -45,16 +49,22 @@ interface StandingsPageClientProps {
  * reachable without interaction and both stay testable. The four states are mutually exclusive:
  * loading, error, a season that has not started, and data.
  */
-export function StandingsPageClient({ initialYear, latestYear }: StandingsPageClientProps) {
-  const [year, setYear] = useState(initialYear);
+export function StandingsPageClient({ latestYear }: StandingsPageClientProps) {
+  // The URL owns the season, and this component holds no copy of it. A year held in state seeded
+  // from a server prop desynced both ways: Next keys the page segment without its search params,
+  // so the component survives a same-page navigation — the nav's "Standings" link left the bare
+  // URL showing the picked 2024 — and its patched `replaceState` moves the router's URL but not
+  // the RSC payload, so Back re-mounted `?year=2024` from the original payload's 2026.
+  // `useSearchParams()` follows the patched `replaceState`, Back, Forward and links alike.
+  const year = parseStandingsYear(useSearchParams().getAll('year'), latestYear);
   const { standings, calendar, loading, error, retry } = useStandings(year);
 
   const selectYear = useCallback(
     (next: number) => {
-      setYear(next);
-      // Replace, not push: a picker is not navigation, so it should not fill the back stack, and
-      // nothing then needs a `popstate` handler. Next 14.2 syncs native history calls into its
-      // router, so this costs no server round trip. The newest season keeps the bare URL.
+      // The only write: `useSearchParams()` picks the new query up and re-renders with it.
+      // Replace, not push: a picker is not navigation, so it should not fill the back stack.
+      // Next 14.2 syncs native history calls into its router, so this costs no server round
+      // trip. The newest season keeps the bare URL.
       window.history.replaceState(
         null,
         '',
