@@ -274,7 +274,9 @@ async def get_standings(year: int = Path(ge=OPENF1_FIRST_YEAR)) -> dict[str, Any
         # A range query cached here before a race's results are published would serve a
         # stale table to every standings request until the process restarts — clearing
         # per request trades the within-request dedupe for cross-request freshness, same
-        # reasoning as the briefing routes above.
+        # reasoning as the briefing routes above. Repeat views are cheap anyway: the tool
+        # caches the finished table per year, above this cache, with its own freshness
+        # policy (see tools/standings_tools.py).
         clear_openf1_cache()
 
 

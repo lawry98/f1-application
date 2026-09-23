@@ -13,6 +13,7 @@ from datetime import date
 from typing import Any
 
 import pytest
+from freezegun import freeze_time
 
 from api import routes as routes_module
 from api.errors import FAILED_TOOL_SUMMARY, GENERIC_BRIEFING_ERROR, GENERIC_SCHEDULE_ERROR
@@ -937,6 +938,22 @@ def test_standings_clears_the_openf1_cache(client, monkeypatch):
     client.get("/api/standings/2026")
 
     assert openf1_client._cache == {}
+
+
+def test_a_repeat_view_of_a_completed_season_makes_no_openf1_requests(client, openf1_season):
+    """The route clears the OpenF1 client cache after every request, so the repeat has to be
+    served from above it — otherwise each /standings view costs four requests against OpenF1's
+    30 req/min free tier and a public deployment rate-limits at about seven views a minute.
+    """
+    with freeze_time("2025-05-01"):
+        first = client.get("/api/standings/2024")
+        after_first = len(openf1_season.calls)
+        second = client.get("/api/standings/2024")
+
+    assert first.status_code == second.status_code == 200
+    assert second.json() == first.json()
+    assert after_first > 0
+    assert len(openf1_season.calls) == after_first
 
 
 def test_standings_replaces_a_tool_error_with_a_generic_502(client, monkeypatch):

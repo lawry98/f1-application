@@ -7,14 +7,38 @@ classification, not a cumulative table, and OpenF1's own ``drivers_championship`
 paid subscription. So the table is summed here from per-session points.
 
 If OpenF1 authentication is ever added, those endpoints replace this module wholesale.
+
+**The table is cached per year, across requests.** ``api/routes.py`` clears the OpenF1
+client cache after every request, so without this each /standings view cost four OpenF1
+requests against the free tier's 30 req/min — a public page rate-limited at about seven
+views a minute. The freshness policy is the year:
+
+- A **completed** season (``year < date.today().year``) is kept for the life of the process.
+  The calendar year, not "the last race has been held", is the test on purpose: the final
+  race's classification can still move for days afterwards (OpenF1 publication lag, the
+  stewards' 14-day right of review), and the season always ends in early December, so the
+  year boundary is a margin that needs no data to decide.
+- The **running** season is kept for ``STANDINGS_TTL_SECONDS`` (0 disables it), which bounds
+  its cost at four requests per TTL however many people are looking.
+- A failure is never cached, so one 429 cannot become a persistent outage. "Season not
+  started" is the exception for the running season — it is an answer, not a failure, and
+  from January to the first race it is the answer every view gets.
+
+Process-local and unevicted, as in ADR-0003: the key space is one entry per season. Two
+concurrent misses on one year both derive the table; the OpenF1 client's single-flight
+collapses their identical requests while they overlap.
 """
 
+import copy
 import logging
+import threading
+import time
 from datetime import date
 from typing import Any
 
 from langchain_core.tools import tool
 
+from config import STANDINGS_TTL_SECONDS
 from tools.openf1_client import (
     OPENF1_FIRST_YEAR,
     driver_index,
@@ -30,11 +54,50 @@ logger = logging.getLogger(__name__)
 SEASON_NOT_STARTED = "season_not_started"
 
 
+# year -> (monotonic expiry, or None for a completed season; the tool's result).
+_cache_lock = threading.Lock()
+_cache: dict[int, tuple[float | None, dict[str, Any]]] = {}
+
+
+def clear() -> None:
+    """Clear the cached tables. Used by tests; harmless in production."""
+    with _cache_lock:
+        _cache.clear()
+
+
 def _season_not_started(year: int) -> dict[str, Any]:
     return {
         "error": f"No completed races found for {year} season yet",
         "reason": SEASON_NOT_STARTED,
     }
+
+
+def _cached(year: int) -> dict[str, Any] | None:
+    with _cache_lock:
+        entry = _cache.get(year)
+    if entry is None:
+        return None
+    expires_at, result = entry
+    if expires_at is not None and time.monotonic() >= expires_at:
+        return None
+    # A copy: the cache outlives the request, and a caller editing its result in place
+    # must not reach every later caller.
+    return copy.deepcopy(result)
+
+
+def _store(year: int, result: dict[str, Any]) -> None:
+    if year < date.today().year:
+        if "error" in result:
+            return
+        expires_at = None
+    else:
+        if "error" in result and result.get("reason") != SEASON_NOT_STARTED:
+            return
+        if STANDINGS_TTL_SECONDS <= 0:
+            return
+        expires_at = time.monotonic() + STANDINGS_TTL_SECONDS
+    with _cache_lock:
+        _cache[year] = (expires_at, copy.deepcopy(result))
 
 
 @tool
@@ -58,6 +121,17 @@ def get_championship_standings(year: int) -> dict[str, Any]:
             "error": f"Championship standings are only available from {OPENF1_FIRST_YEAR} onwards."
         }
 
+    cached = _cached(year)
+    if cached is not None:
+        return cached
+
+    result = _derive_standings(year)
+    _store(year, result)
+    return result
+
+
+def _derive_standings(year: int) -> dict[str, Any]:
+    """Sum the tables from OpenF1. Never raises; a failure is ``{"error": ...}``."""
     try:
         today = date.today()
         sessions = [

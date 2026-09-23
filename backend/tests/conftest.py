@@ -120,6 +120,21 @@ def _clear_openf1_cache():
 
 
 @pytest.fixture(autouse=True)
+def _clear_standings_cache():
+    """Reset the cross-request standings cache around every test.
+
+    It is keyed on the year alone and most tests here ask for 2024, so without this the
+    first test's table answers every later one — including tests that patch a different
+    season in, or none at all to exercise the transport-failure path.
+    """
+    from tools import standings_tools
+
+    standings_tools.clear()
+    yield
+    standings_tools.clear()
+
+
+@pytest.fixture(autouse=True)
 def _clear_result_cache():
     """Reset the module-level tool result cache around every test.
 

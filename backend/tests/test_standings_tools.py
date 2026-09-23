@@ -10,6 +10,7 @@ qualifying must not count, and a team on zero points must still appear.
 import pytest
 from freezegun import freeze_time
 
+from tests.conftest import OPENF1_DRIVERS, OPENF1_RESULTS, OPENF1_SESSIONS_2024
 from tools.standings_tools import SEASON_NOT_STARTED, get_championship_standings
 
 # A driver who transfers mid-season: Team A for the early race, Team B for the later
@@ -533,3 +534,129 @@ def test_a_held_sprint_with_no_held_race_is_a_table_with_no_races(monkeypatch):
         }
     ]
     assert result["constructors"] == [{"position": 1, "team": "Red Bull Racing", "points": 8.0}]
+
+
+# ── Cross-request cache ──────────────────────────────────────────────────────────────────
+#
+# routes.py clears the OpenF1 client cache after every request, so without a cache of its
+# own each /standings view costs four OpenF1 requests against a 30 req/min ceiling. These
+# tests call `openf1_client.clear()` between invocations to reproduce that route-level clear:
+# a hit has to survive it, or it saves nothing in production.
+
+
+def _calls_for_a_repeat(fake, *, between=None) -> int:
+    """Invoke for 2024, clear the OpenF1 cache as routes.py does, invoke again.
+
+    Returns how many OpenF1 requests the *second* invocation made.
+    """
+    from tools import openf1_client
+
+    get_championship_standings.invoke({"year": 2024})
+    openf1_client.clear()
+    if between is not None:
+        between()
+    before = len(fake.calls)
+    get_championship_standings.invoke({"year": 2024})
+    return len(fake.calls) - before
+
+
+def test_a_completed_season_is_served_without_touching_openf1(openf1_season):
+    with freeze_time("2025-05-01"):
+        assert _calls_for_a_repeat(openf1_season) == 0
+
+
+def test_a_completed_season_does_not_expire(openf1_season):
+    """A finished season cannot change, so no TTL applies — a month later is still a hit."""
+    with freeze_time("2025-05-01") as frozen:
+        assert _calls_for_a_repeat(openf1_season, between=lambda: frozen.tick(30 * 86400)) == 0
+
+
+def test_a_repeat_hit_returns_the_same_table(openf1_season):
+    with freeze_time("2025-05-01"):
+        first = get_championship_standings.invoke({"year": 2024})
+        second = get_championship_standings.invoke({"year": 2024})
+
+    assert second == first
+
+
+def test_a_hit_cannot_be_corrupted_by_mutating_an_earlier_result(openf1_season):
+    """The cache outlives the request, so handing out the stored dict by reference would
+    let one caller's in-place edit reach every later one.
+    """
+    with freeze_time("2025-05-01"):
+        for _ in range(2):
+            # The first pass edits the miss's result, the second a hit's.
+            get_championship_standings.invoke({"year": 2024})["drivers"].clear()
+        third = get_championship_standings.invoke({"year": 2024})
+
+    assert len(third["drivers"]) == 5
+
+
+def test_the_current_season_is_served_from_cache_within_the_ttl(openf1_season):
+    with freeze_time("2024-06-01") as frozen:
+        assert _calls_for_a_repeat(openf1_season, between=lambda: frozen.tick(299)) == 0
+
+
+def test_the_current_season_refetches_once_the_ttl_has_passed(openf1_season):
+    """The running season grows with every race, so it is only ever briefly cached."""
+    with freeze_time("2024-06-01") as frozen:
+        assert _calls_for_a_repeat(openf1_season, between=lambda: frozen.tick(301)) > 0
+
+
+def test_a_zero_ttl_keeps_the_current_season_uncached(openf1_season, monkeypatch):
+    from tools import standings_tools
+
+    monkeypatch.setattr(standings_tools, "STANDINGS_TTL_SECONDS", 0)
+    with freeze_time("2024-06-01"):
+        assert _calls_for_a_repeat(openf1_season) > 0
+
+
+def test_a_zero_ttl_still_caches_a_completed_season(openf1_season, monkeypatch):
+    """The TTL governs only the running season; a finished one is immutable either way."""
+    from tools import standings_tools
+
+    monkeypatch.setattr(standings_tools, "STANDINGS_TTL_SECONDS", 0)
+    with freeze_time("2025-05-01"):
+        assert _calls_for_a_repeat(openf1_season) == 0
+
+
+def test_a_season_not_started_is_cached_within_the_ttl(openf1_season):
+    """January to the first race, every view of the new season would otherwise cost the
+    sessions fetches — and the answer cannot change until a session is held.
+    """
+    with freeze_time("2024-01-15"):
+        assert _calls_for_a_repeat(openf1_season) == 0
+        assert get_championship_standings.invoke({"year": 2024})["reason"] == SEASON_NOT_STARTED
+
+
+@pytest.mark.parametrize("today", ["2025-05-01", "2024-06-01"], ids=["completed", "current"])
+def test_a_failure_is_never_cached(monkeypatch, today):
+    """A 429 on one view must not become a persistent 502 — for good, or for a TTL."""
+    from tests.factories import make_openf1_get
+    from tools import openf1_client
+
+    with freeze_time(today):
+        # conftest's autouse fixture makes this first call a transport failure.
+        assert "error" in get_championship_standings.invoke({"year": 2024})
+
+        fake = make_openf1_get(
+            {
+                "sessions": OPENF1_SESSIONS_2024,
+                "session_result": OPENF1_RESULTS,
+                "drivers": OPENF1_DRIVERS,
+            }
+        )
+        monkeypatch.setattr(openf1_client.requests, "get", fake)
+        result = get_championship_standings.invoke({"year": 2024})
+
+    assert "error" not in result
+    assert len(fake.calls) > 0
+
+
+def test_each_year_is_cached_separately(openf1_season):
+    with freeze_time("2025-05-01"):
+        get_championship_standings.invoke({"year": 2024})
+        before = len(openf1_season.calls)
+        get_championship_standings.invoke({"year": 2023})
+
+    assert len(openf1_season.calls) > before

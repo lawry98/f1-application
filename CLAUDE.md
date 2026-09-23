@@ -60,6 +60,7 @@ part worth knowing:
 | `OPENWEATHER_API_KEY` | Warning; weather silently disabled |
 | `FASTF1_CACHE_DIR` | Defaults to `cache/` |
 | `EXECUTOR_MAX_WORKERS` | Defaults to `4` |
+| `STANDINGS_TTL_SECONDS` | Defaults to `300`; `0` disables current-season caching; invalid/negative warns and uses `300` |
 | `CORS_ORIGINS` | Comma-separated; defaults to `http://localhost:3000,http://localhost:3001` |
 
 `LLM_MODEL` is a **hardcoded constant** in `config.py`, not an env var — changing the model
@@ -263,6 +264,18 @@ make the picker's only write a `replaceState`. The page is `force-dynamic` becau
 is read from the server clock per request — a prerendered page would freeze it at build time —
 and because `useSearchParams` on a static page needs a Suspense boundary. `pnpm build` lists it
 as `ƒ /standings`.
+
+**Standings are cached per year above the OpenF1 cache, because routes.py empties that one.**
+The `finally: clear_openf1_cache()` in every route means the client cache only dedupes
+*within* a request, so each /standings view cost four OpenF1 requests — ~7 views/min on the
+free tier. `get_championship_standings` now keeps its own per-year result: a season with
+`year < date.today().year` for the life of the process, the running season for
+`STANDINGS_TTL_SECONDS`. "Completed" is the calendar year, **not** "last race held", on
+purpose — a final race's classification can still move for days (publication lag, the
+stewards' 14-day right of review), and the season ends in early December anyway. Failures
+are never cached; `season_not_started` is, under the TTL. Don't delete the route's
+`clear_openf1_cache()` thinking the new cache replaces it — it still bounds the other
+OpenF1 tools' staleness, and the TTL miss path relies on it.
 
 **`tests/conftest.py` blocks OpenF1 as well as FastF1, and the two differ on purpose.**
 `_block_fastf1_network` raises `AssertionError` because no production path should swallow
