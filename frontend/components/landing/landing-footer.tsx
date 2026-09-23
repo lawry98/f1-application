@@ -30,7 +30,7 @@ const DEFAULT_NEXT: FooterNext = { href: '/briefing', label: 'Race weekend brief
 /**
  * Shared link chrome. The ring rule and its measurements are in `lib/focus.ts`.
  *
- * Every link in the footer carries the same one, including the two outbound attribution links,
+ * Every link in the footer carries the same one, including the outbound attribution links,
  * which before this branch had none — a keyboard user tabbing through the legal line had no
  * visible focus at all. `base-warm` and not `base` because the card these links sit on is
  * `#140B0B`; the offset gap is painted in the colour it names, so naming the page background
@@ -159,6 +159,16 @@ export function LandingFooter({ next = DEFAULT_NEXT }: LandingFooterProps = {}) 
                 className={`underline underline-offset-2 transition-colors hover:text-zinc-300 ${FOCUS_RING}`}
               >
                 FastF1
+              </a>
+              {', '}
+              {/* OpenF1 asks for no credit, only a link back to openf1.org; this is that link. */}
+              <a
+                href="https://openf1.org/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`underline underline-offset-2 transition-colors hover:text-zinc-300 ${FOCUS_RING}`}
+              >
+                OpenF1
               </a>
               {' & '}
               <a

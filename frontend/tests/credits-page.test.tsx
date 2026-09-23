@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -80,6 +80,43 @@ describe('/credits', () => {
     // The copyright holder has to be named on the page, not only linked to.
     expect(screen.getByText(/Tomislav Bacinger/)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'MIT licence' })).toBeInTheDocument();
+  });
+
+  /**
+   * OpenF1 serves the race results and the points the standings are summed from. Its FAQ says
+   * credit is not required but asks for a link back to openf1.org, so the link is the thing
+   * asserted. The section also has to say two things a bare logo-style credit would not: that
+   * OpenF1 is unofficial, and that the standings are this site's arithmetic rather than OpenF1's
+   * figures — its championship endpoints are paywalled, so an error in that table is ours.
+   */
+  describe('the OpenF1 credit', () => {
+    it('has its own linkable section, linking back to openf1.org', () => {
+      const { container } = render(<CreditsPage />);
+      const section = container.querySelector('section#race-data');
+      expect(section, 'no #race-data section').not.toBeNull();
+
+      const link = within(section as HTMLElement).getByRole('link', { name: 'OpenF1' });
+      expect(link).toHaveAttribute('href', 'https://openf1.org/');
+      expect(link).toHaveAttribute('target', '_blank');
+      expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+    });
+
+    it('says OpenF1 is unofficial and that the standings are derived here', () => {
+      const { container } = render(<CreditsPage />);
+      const text = (container.querySelector('section#race-data')?.textContent ?? '').replace(
+        /\s+/g,
+        ' ',
+      );
+      expect(text).toMatch(/unofficial/i);
+      expect(text).toMatch(/not associated with Formula 1/i);
+      expect(text).toMatch(/sums the Race and Sprint points/i);
+    });
+
+    it('is listed among the data sources', () => {
+      render(<CreditsPage />);
+      const sources = screen.getByRole('heading', { name: 'Data sources' }).closest('section');
+      expect(within(sources as HTMLElement).getByText(/OpenF1/)).toBeInTheDocument();
+    });
   });
 
   // f1-red is 4.01:1 on zinc-950: it clears only the 3:1 large-text bar, so every use of it has
