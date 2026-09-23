@@ -265,6 +265,44 @@ export default function CreditsPage() {
           </p>
         </section>
 
+        {/*
+         * Race data. Prose in its own section, not a row in the image tables: `lib/credits.ts`
+         * keys those to a shipped `.png`/`.svg` and a Commons link, and OpenF1 is neither — it is
+         * a live API the backend queries, and nothing of it is committed here. A third
+         * `CREDITS.md` would be a parser contract for one row.
+         *
+         * OpenF1 does not require credit (its FAQ: credit is "appreciated", a link back to
+         * openf1.org helps others find it), so unlike the circuit geometry this discharges no
+         * obligation. Its repository is CC BY-NC-SA 4.0, but that licenses OpenF1's *source code*,
+         * none of which is used here. What the section does owe the reader is where the standings
+         * come from: they are this site's sum, not an OpenF1 figure.
+         */}
+        <section id="race-data" className="mb-16 scroll-mt-24">
+          <h2 className={cn('mb-3', HEADING)}>Race results &amp; standings</h2>
+          <div className={RULE} />
+          <p className={PROSE}>
+            Race results, finishing positions and points from the 2023 season onward come from{' '}
+            <a
+              href="https://openf1.org/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className={LINK}
+            >
+              OpenF1
+            </a>
+            , a free API of historical Formula 1 timing data. OpenF1 is an unofficial, community-run
+            project, not associated with Formula 1, the FIA or Formula One Management; it asks for
+            no credit, only a link back, and this is it.
+          </p>
+          <p className={cn('mt-4', PROSE)}>
+            The championship standings are not OpenF1&rsquo;s own figures. Its championship
+            endpoints need a paid subscription, so this site sums the Race and Sprint points OpenF1
+            reports session by session &mdash; any error in that table is ours, and there are no
+            standings before 2023. Race results for earlier seasons, or for any request OpenF1
+            cannot answer, come from FastF1 instead.
+          </p>
+        </section>
+
         <section className="mb-16">
           <h2 className={cn('mb-3', HEADING)}>Technologies</h2>
           <div className={RULE} />
@@ -285,6 +323,7 @@ export default function CreditsPage() {
                 <li>LangChain &amp; LangGraph</li>
                 <li>Gemini 3.6 Flash (Google)</li>
                 <li>FastF1</li>
+                <li>OpenF1 API</li>
                 <li>Tavily API</li>
                 <li>OpenWeather API</li>
               </ul>
@@ -298,7 +337,17 @@ export default function CreditsPage() {
           <dl className="space-y-3 text-sm text-zinc-400">
             <div>
               <dt className="inline font-semibold text-zinc-300">FastF1 — </dt>
-              <dd className="inline">schedules, session timing and race results</dd>
+              <dd className="inline">schedules, circuit history and race results before 2023</dd>
+            </div>
+            <div>
+              <dt className="inline font-semibold text-zinc-300">OpenF1 — </dt>
+              <dd className="inline">
+                race results and the points behind the{' '}
+                <a href="#race-data" className={LINK}>
+                  derived standings
+                </a>
+                , 2023 onward
+              </dd>
             </div>
             <div>
               <dt className="inline font-semibold text-zinc-300">Tavily — </dt>

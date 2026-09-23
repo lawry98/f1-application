@@ -34,20 +34,23 @@ describe('LandingFooter', () => {
     const { container } = render(<LandingFooter />);
     const text = normalise(container.textContent);
 
-    expect(text).toContain('Data from FastF1 & OpenWeather. F1 car model CC BY 4.0.');
+    expect(text).toContain('Data from FastF1, OpenF1 & OpenWeather. F1 car model CC BY 4.0.');
     expect(text).toContain(
       'Built with Gemini 3.6 Flash · Not affiliated with Formula 1 or the FIA.',
     );
   });
 
   /*
-   * FastF1 and OpenWeather are attribution, i.e. a licence obligation, not decoration. Their
+   * FastF1, OpenF1 and OpenWeather are attribution, not decoration. OpenF1's is a courtesy
+   * rather than an obligation — its FAQ says credit is not required but asks for a link back to
+   * openf1.org — which is exactly why its href is pinned: the link *is* the ask. Their
    * hrefs are asserted alongside their labels because a restyle that keeps the word but drops
    * the link discharges nothing — and `target="_blank"` without `rel="noopener"` is the
    * reverse-tabnabbing hole, so the pair is pinned too.
    */
   it.each([
     ['FastF1', 'https://theoehrly.github.io/Fast-F1/'],
+    ['OpenF1', 'https://openf1.org/'],
     ['OpenWeather', 'https://openweathermap.org/'],
   ])('keeps the %s attribution link', (label, href) => {
     render(<LandingFooter />);
