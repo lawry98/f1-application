@@ -125,8 +125,8 @@
             "position": 18,
             "driver": "Oliver BEARMAN",
             "driver_code": "BEA",
-            "team": "Ferrari",
-            "points": 6.0
+            "team": "Haas F1 Team",
+            "points": 7.0
         },
         {
             "position": 19,
@@ -151,27 +151,20 @@
         },
         {
             "position": 22,
-            "driver": "Oliver BEARMAN",
-            "driver_code": "BEA",
-            "team": "Haas F1 Team",
-            "points": 1.0
-        },
-        {
-            "position": 23,
             "driver": "Logan SARGEANT",
             "driver_code": "SAR",
             "team": "Williams",
             "points": 0.0
         },
         {
-            "position": 24,
+            "position": 23,
             "driver": "Valtteri BOTTAS",
             "driver_code": "BOT",
             "team": "Kick Sauber",
             "points": 0.0
         },
         {
-            "position": 25,
+            "position": 24,
             "driver": "Jack DOOHAN",
             "driver_code": "DOO",
             "team": "Alpine",

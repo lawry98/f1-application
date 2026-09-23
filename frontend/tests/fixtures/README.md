@@ -21,7 +21,9 @@ here follows the backend suite rather than being maintained separately.
 
 `standings-2026.json`, `standings-2024.json` and `races-2026.json` are responses from the real
 `/api/standings/{year}` and `/api/races/{year}` routes. They were captured on 2026-09-22 against
-live OpenF1 and FastF1 and pretty-printed with `python3 -m json.tool`; the values are untouched.
+live OpenF1 and FastF1 — `standings-2024.json` again on 2026-09-23, once the drivers' table went
+from one row per car number to one per driver — and pretty-printed with `python3 -m json.tool`;
+the values are untouched.
 
 They are real for the same reason the `.sse` files are. The team-name join in `lib/standings.ts`
 and the round join in `seasonStamp` both depend on how upstream *spells* things: `Haas F1 Team`,
@@ -31,7 +33,7 @@ fixture would encode the spelling its author expected rather than the one served
 Unlike the `.sse` files, these are **snapshots of live data**. There is no generator script, and
 re-capturing changes the numbers the tests pin:
 - 2026, after Round 14 of 23 (the Spanish Grand Prix): 23 drivers, 11 constructors;
-- 2024, final after 24 rounds, with `Kick Sauber` and `RB`.
+- 2024, final after 24 rounds: 24 drivers (Bearman once, on 7 points), with `Kick Sauber` and `RB`.
 
 To re-capture, run the backend (`GOOGLE_API_KEY=unused` is enough, since neither route calls
 Gemini), then:
