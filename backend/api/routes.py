@@ -236,14 +236,21 @@ async def get_races(year: int = Path(ge=1950, le=date.today().year + 1)) -> dict
 
 
 @router.get("/standings/{year}")
-async def get_standings(
-    year: int = Path(ge=OPENF1_FIRST_YEAR, le=date.today().year),
-) -> dict[str, Any]:
+async def get_standings(year: int = Path(ge=OPENF1_FIRST_YEAR)) -> dict[str, Any]:
     """Get the driver and constructor championship tables for a season.
 
     The lower bound is ``OPENF1_FIRST_YEAR`` rather than a literal, so the route and the
     tool cannot disagree about where coverage starts.
     """
+    # The upper bound is checked per request, not as `Path(le=date.today().year)`: a default
+    # argument is evaluated once, at import, so a process still running after New Year would
+    # answer 422 for the new season — the page's default — and the page would open on its
+    # error state until someone restarted the backend.
+    if year > date.today().year:
+        raise HTTPException(
+            status_code=422, detail="Standings are only available up to the current season."
+        )
+
     try:
         result = await asyncio.to_thread(get_championship_standings.invoke, {"year": year})
 

@@ -9,6 +9,7 @@ events, which the frontend's discriminated union depends on.
 import asyncio
 import json
 import logging
+from datetime import date
 from typing import Any
 
 import pytest
@@ -884,6 +885,40 @@ def test_standings_rejects_a_year_before_coverage(client):
     response = client.get("/api/standings/2022")
 
     assert response.status_code == 422
+
+
+def test_standings_rejects_a_year_after_this_one(client):
+    """A season that has not begun yet cannot have a table; 422 before the tool runs, which
+    the conftest OpenF1 guard would otherwise turn into a 502.
+    """
+    response = client.get(f"/api/standings/{date.today().year + 1}")
+
+    assert response.status_code == 422
+
+
+def test_standings_accepts_the_new_season_after_new_year_without_a_restart(client, monkeypatch):
+    """The ceiling is today's year *per request*. A `Path(le=date.today().year)` bound is
+    evaluated once, at import, so a process still running on 2 January answered 422 for the
+    new season — the page's default — and the page opened on its error state.
+    """
+
+    class _NewYear(date):
+        @classmethod
+        def today(cls):
+            return cls(2027, 1, 2)
+
+    payload = {"year": 2027, "races_completed": 0, "drivers": [], "constructors": []}
+    monkeypatch.setattr(routes_module, "date", _NewYear)
+    monkeypatch.setattr(
+        routes_module,
+        "get_championship_standings",
+        make_tool("get_championship_standings", result=payload),
+    )
+
+    response = client.get("/api/standings/2027")
+
+    assert response.status_code == 200
+    assert response.json() == payload
 
 
 def test_standings_clears_the_openf1_cache(client, monkeypatch):
