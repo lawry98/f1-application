@@ -58,3 +58,45 @@ def test_a_fully_configured_environment_validates_silently(monkeypatch, caplog):
         assert config.validate_config() is None
 
     assert caplog.records == []
+
+
+@pytest.fixture
+def reload_config(monkeypatch):
+    """Re-read config.py under a patched environment, then restore the real reading.
+
+    config.py reads env vars once at import, so the only way to exercise the parse is to
+    re-import it. The teardown reload runs after monkeypatch has restored the environment.
+    """
+    import importlib
+
+    def _reload(**env):
+        for name, value in env.items():
+            monkeypatch.setenv(name, value)
+        return importlib.reload(config)
+
+    yield _reload
+    monkeypatch.undo()
+    importlib.reload(config)
+
+
+def test_the_standings_ttl_defaults_to_five_minutes(reload_config, monkeypatch):
+    monkeypatch.delenv("STANDINGS_TTL_SECONDS", raising=False)
+
+    assert reload_config().STANDINGS_TTL_SECONDS == 300
+
+
+def test_the_standings_ttl_reads_the_environment(reload_config):
+    assert reload_config(STANDINGS_TTL_SECONDS="60").STANDINGS_TTL_SECONDS == 60
+
+
+def test_a_zero_standings_ttl_is_honoured(reload_config):
+    """Zero is how an operator turns current-season caching off, not an invalid value."""
+    assert reload_config(STANDINGS_TTL_SECONDS="0").STANDINGS_TTL_SECONDS == 0
+
+
+@pytest.mark.parametrize("raw", ["five", "-1"])
+def test_an_invalid_standings_ttl_falls_back_to_the_default(reload_config, raw, caplog):
+    with caplog.at_level(logging.WARNING, logger="config"):
+        assert reload_config(STANDINGS_TTL_SECONDS=raw).STANDINGS_TTL_SECONDS == 300
+
+    assert "STANDINGS_TTL_SECONDS" in caplog.text

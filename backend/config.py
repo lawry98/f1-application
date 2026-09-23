@@ -35,6 +35,20 @@ except ValueError:
     logger.warning("Invalid EXECUTOR_MAX_WORKERS=%r — falling back to 4", _raw_max_workers)
     EXECUTOR_MAX_WORKERS = 4
 
+# ── Standings cache ──────────────────────────────────────────────────────────
+
+# How long the *running* season's standings are reused across requests. A completed season
+# is cached for the life of the process whatever this says; 0 turns current-season caching
+# off. See the cache note in tools/standings_tools.py.
+_raw_standings_ttl = os.getenv("STANDINGS_TTL_SECONDS", "300")
+try:
+    STANDINGS_TTL_SECONDS: int = int(_raw_standings_ttl)
+    if STANDINGS_TTL_SECONDS < 0:
+        raise ValueError
+except ValueError:
+    logger.warning("Invalid STANDINGS_TTL_SECONDS=%r — falling back to 300", _raw_standings_ttl)
+    STANDINGS_TTL_SECONDS = 300
+
 # ── API ──────────────────────────────────────────────────────────────────────
 
 CORS_ORIGINS: list[str] = [
