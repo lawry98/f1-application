@@ -122,7 +122,7 @@ export function TeamsComparisonGrid({
             Constructors&apos; Championship
           </TextAnimate>
         </div>
-        <div className="flex flex-col items-start gap-2 sm:items-end">
+        <div className="flex flex-col items-start gap-2">
           <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-400">
             {STANDINGS_AS_OF}
           </p>
