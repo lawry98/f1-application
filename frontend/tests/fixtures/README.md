@@ -26,12 +26,13 @@ from one row per car number to one per driver — and pretty-printed with `pytho
 the values are untouched.
 
 They are real for the same reason the `.sse` files are. The team-name join in `lib/standings.ts`
-and the round join in `seasonStamp` both depend on how upstream *spells* things: `Haas F1 Team`,
+and the round join in `seasonStamp` both depend on how upstream _spells_ things: `Haas F1 Team`,
 `Red Bull Racing`, and a 2026 calendar renumbered around two cancelled races. A hand-written
 fixture would encode the spelling its author expected rather than the one served.
 
 Unlike the `.sse` files, these are **snapshots of live data**. There is no generator script, and
 re-capturing changes the numbers the tests pin:
+
 - 2026, after Round 14 of 23 (the Spanish Grand Prix): 23 drivers, 11 constructors;
 - 2024, final after 24 rounds: 24 drivers (Bearman once, on 7 points), with `Kick Sauber` and `RB`.
 

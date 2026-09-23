@@ -106,7 +106,9 @@ describe('StandingsPageClient', () => {
     renderPage();
 
     const select = screen.getByRole('combobox', { name: 'Season' });
-    const options = within(select).getAllByRole('option').map((option) => option.textContent);
+    const options = within(select)
+      .getAllByRole('option')
+      .map((option) => option.textContent);
     expect(options).toEqual(['2026', '2025', '2024', '2023']);
     expect(select).toHaveValue('2026');
   });

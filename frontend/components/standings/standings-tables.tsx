@@ -110,7 +110,10 @@ export function DriverStandingsTable({ rows }: { rows: DriverStanding[] }) {
 
 export function ConstructorStandingsTable({ rows }: { rows: ConstructorStanding[] }) {
   return (
-    <StandingsTable caption="Constructors' championship: position, team, points." subjectLabel="Team">
+    <StandingsTable
+      caption="Constructors' championship: position, team, points."
+      subjectLabel="Team"
+    >
       {rows.map((row) => {
         const team = teamForStanding(row.team);
         return (

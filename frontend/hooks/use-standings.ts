@@ -50,10 +50,7 @@ export function useStandings(year: number): UseStandingsReturn {
     let active = true;
 
     async function load(): Promise<void> {
-      const [standings, calendar] = await Promise.allSettled([
-        getStandings(year),
-        getRaces(year),
-      ]);
+      const [standings, calendar] = await Promise.allSettled([getStandings(year), getRaces(year)]);
       if (!active) return;
 
       // Kept for the same reason `use-races` keeps its log: a silent network failure in

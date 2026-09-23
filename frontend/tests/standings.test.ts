@@ -27,10 +27,7 @@ describe('STANDINGS_FIRST_YEAR', () => {
     // The route rejects a year below OPENF1_FIRST_YEAR with a 422, so a picker offering one would
     // offer a page that can only fail. Read out of the Python source rather than retyped here,
     // because a retyped copy drifts exactly as silently as the mirror it is meant to check.
-    const source = readFileSync(
-      resolve(__dirname, '../../backend/tools/openf1_client.py'),
-      'utf8',
-    );
+    const source = readFileSync(resolve(__dirname, '../../backend/tools/openf1_client.py'), 'utf8');
     const match = /^OPENF1_FIRST_YEAR = (\d{4})$/m.exec(source);
 
     expect(match?.[1]).toBe(String(STANDINGS_FIRST_YEAR));
@@ -154,7 +151,9 @@ describe('seasonStamp', () => {
   it('leaves round-0 testing out of the total', () => {
     // FastF1 lists pre-season testing as round 0 — twice in 2026. Counting those would make the
     // season 25 rounds long.
-    expect(seasonStamp(1, CALENDAR_2026)?.label).toBe('After Round 1 of 23 · Australian Grand Prix');
+    expect(seasonStamp(1, CALENDAR_2026)?.label).toBe(
+      'After Round 1 of 23 · Australian Grand Prix',
+    );
   });
 
   it('falls back to a bare count without a calendar', () => {
