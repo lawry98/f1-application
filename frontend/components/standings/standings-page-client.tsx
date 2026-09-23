@@ -75,7 +75,11 @@ export function StandingsPageClient({ latestYear }: StandingsPageClientProps) {
   );
 
   const stamp = standings ? seasonStamp(standings.races_completed, calendar) : null;
-  const notStarted = standings !== null && standings.races_completed === 0;
+  // Empty tables, not a zero race count: the route serves empty tables only when no scoring
+  // session has results. A season whose only held session is a sprint has a real table with
+  // `races_completed: 0`, and keying this off the count would hide it behind "hasn't started".
+  // The stamp needs no special case — `seasonStamp` is already null at zero races.
+  const notStarted = standings !== null && standings.drivers.length === 0;
 
   return (
     <div className="container mx-auto max-w-3xl px-4 py-16">

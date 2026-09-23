@@ -455,3 +455,81 @@ def test_a_driver_who_raced_two_numbers_still_scores_for_both_teams(
 
     teams = {row["team"]: row["points"] for row in result["constructors"]}
     assert teams == {"Ferrari": 6.0, "Haas F1 Team": 1.0}
+
+
+# A season whose first weekend is a sprint weekend, frozen on the Sunday before the race: one held
+# scoring session, and it is not a Race. (A session counts from the day after its date.)
+_SPRINT_ONLY_SESSIONS = [
+    {
+        "session_key": 9900,
+        "meeting_key": 1500,
+        "session_name": "Sprint",
+        "circuit_short_name": "Shanghai",
+        "country_name": "China",
+        "date_start": "2024-04-20T03:00:00+00:00",
+    },
+    {
+        "session_key": 9901,
+        "meeting_key": 1500,
+        "session_name": "Race",
+        "circuit_short_name": "Shanghai",
+        "country_name": "China",
+        "date_start": "2024-04-21T07:00:00+00:00",
+    },
+]
+
+_SPRINT_ONLY_DRIVERS = [
+    {
+        "session_key": 9900,
+        "driver_number": 1,
+        "full_name": "Max VERSTAPPEN",
+        "name_acronym": "VER",
+        "team_name": "Red Bull Racing",
+    },
+]
+
+_SPRINT_ONLY_RESULTS = [
+    {
+        "session_key": 9900,
+        "position": 1,
+        "driver_number": 1,
+        "points": 8.0,
+        "dnf": False,
+        "dns": False,
+        "dsq": False,
+    },
+]
+
+
+@freeze_time("2024-04-21T01:00:00")
+def test_a_held_sprint_with_no_held_race_is_a_table_with_no_races(monkeypatch):
+    """Not "season not started": that is reserved for no scoring session having results. The
+    page tells the two apart by whether the tables are empty, so a sprint-only table must come
+    back as a real table with races_completed == 0.
+    """
+    from tests.factories import make_openf1_get
+    from tools import openf1_client
+
+    fake = make_openf1_get(
+        {
+            "sessions": _SPRINT_ONLY_SESSIONS,
+            "session_result": _SPRINT_ONLY_RESULTS,
+            "drivers": _SPRINT_ONLY_DRIVERS,
+        }
+    )
+    monkeypatch.setattr(openf1_client.requests, "get", fake)
+
+    result = get_championship_standings.invoke({"year": 2024})
+
+    assert "reason" not in result
+    assert result["races_completed"] == 0
+    assert result["drivers"] == [
+        {
+            "position": 1,
+            "driver": "Max VERSTAPPEN",
+            "driver_code": "VER",
+            "team": "Red Bull Racing",
+            "points": 8.0,
+        }
+    ]
+    assert result["constructors"] == [{"position": 1, "team": "Red Bull Racing", "points": 8.0}]

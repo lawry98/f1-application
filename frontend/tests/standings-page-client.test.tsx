@@ -196,6 +196,19 @@ describe('StandingsPageClient', () => {
     expect(await screen.findByText(MID_SEASON)).toBeInTheDocument();
   });
 
+  it('shows a season whose only held session is a sprint as a table', async () => {
+    // The route serves empty tables only when no scoring session has results. A sprint-only
+    // weekend has real points with `races_completed: 0`, and hiding it would hide a real table.
+    getStandingsMock.mockResolvedValue({ ...standings2026, races_completed: 0 });
+    renderPage();
+
+    expect(
+      await screen.findByRole('table', { name: /^drivers' championship/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('table', { name: /^constructors' championship/i })).toBeInTheDocument();
+    expect(screen.queryByText(/hasn't started yet/)).toBeNull();
+  });
+
   it('offers no earlier season before coverage begins', async () => {
     getStandingsMock.mockResolvedValue(notStarted(2023));
     renderPage('?year=2023');
