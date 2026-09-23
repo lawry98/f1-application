@@ -345,14 +345,14 @@ def _openf1_result(session_key, position, number, points, **flags):
 #
 # Season totals this produces: VER 75, NOR 69, HAM 30, TIE 30, ZER 0.
 #   - Driver 44 (HAM) retires from Monaco — the DNF case.
-#   - Driver 5 (TIE) finishes level with HAM on 30.0 — the tie-break case. HAM's best
-#     finish is P3 and TIE's is P4, so best_position decides and HAM ranks ahead — even
+#   - Driver 5 (TIE) finishes level with HAM on 30.0 — the tie-break case. HAM has two
+#     Grand Prix P3s and TIE none, so the countback decides and HAM ranks ahead — even
 #     though TIE's driver number (5) is numerically ahead of HAM's (44), which is what
 #     makes this a real guard rather than a coincidence of ascending driver-number order.
 #   - Driver 50 (ZER) scores nothing all season — the zero-fill case.
 # Constructors: Red Bull 75, McLaren 69, Ferrari 30, Williams 30, Cadillac 0. Ferrari and
-# Williams tie, broken alphabetically, so Cadillac lands at P5 — even though Williams is
-# inserted into the roster before Ferrari (see OPENF1_DRIVERS), which is what makes this a
+# Williams tie, broken by the same countback, so Cadillac lands at P5 — even though Williams
+# is inserted into the roster before Ferrari (see OPENF1_DRIVERS), which is what makes this a
 # real guard rather than a coincidence of dict-insertion order.
 OPENF1_RESULTS = [
     _openf1_result(9500, 1, 1, 25.0),
