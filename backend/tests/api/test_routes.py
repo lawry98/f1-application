@@ -962,8 +962,8 @@ def test_standings_replaces_a_tool_error_with_a_generic_502(client, monkeypatch)
 
 
 def test_standings_serves_a_season_not_started_as_an_empty_table(client, monkeypatch):
-    """A season with no completed race is a correct, permanent answer, not an outage — so it
-    is a 200 with empty tables rather than the generic 502 that tells the page to retry. The
+    """A season with no completed race is an answer, not an outage — so it is a 200 with
+    empty tables rather than the generic 502 that tells the page to retry. The
     tool's error prose still never reaches the client.
     """
     from api import routes

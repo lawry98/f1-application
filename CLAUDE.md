@@ -24,6 +24,7 @@ frontend/
   lib/           api.ts (typed client), utils.ts, team-utils.ts, tyre-utils.ts
   types/         Shared types, re-exported through types/index.ts
   tests/         Vitest — flat, not mirroring the source tree; fixtures/ holds real SSE bytes
+                 and captured JSON route responses
 ```
 
 ## Commands
@@ -226,14 +227,16 @@ and 23 for 2023's 22 (Imola). It never touched the points — an empty race adds
 `races_completed`, which is exactly the number the briefing and `/standings` quote. A season
 with no held session at all returns `reason: SEASON_NOT_STARTED`, which `/api/standings` serves as
 a **200 with empty tables** — the one tool error the route does not fold into
-`502 GENERIC_STANDINGS_ERROR`, because it is a correct answer and no retry changes it.
+`502 GENERIC_STANDINGS_ERROR`, because it is an answer, not an outage, so the page states it
+rather than offering a retry. It also covers first results not yet published, which a later load
+does change.
 
 **`/standings` joins two upstreams, and both joins are exact on purpose.** OpenF1 spells two
 2026 teams differently from `Team.shortName` (`Haas F1 Team`, `Red Bull Racing`), so
 `teamForStanding` matches `shortName` exactly plus an explicit two-entry alias map — never a
 substring, the defect class the livery fix removed. Predecessor brands (`Kick Sauber`, `RB`,
 `AlphaTauri`, `Alfa Romeo`) are deliberately unmapped: an unmatched team renders as plain text
-with an empty bar slot, which is the normal case for every season before 2026. The as-of stamp
+with an empty bar slot, which is expected in every season before 2026. The as-of stamp
 joins `races_completed` to FastF1's calendar by `round`, and that is exact only because FastF1
 drops cancelled events and renumbers the rest *and* the count now skips them too — Round 14 of
 23 is the Spanish Grand Prix. Name the event by `Race.name`: FastF1 files the rescheduled 2026

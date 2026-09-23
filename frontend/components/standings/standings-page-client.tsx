@@ -167,9 +167,10 @@ function ErrorState({ onRetry }: { onRetry: () => void }) {
 }
 
 /**
- * A season with no race yet. Not an error — the route answers it with a 200 and empty tables —
- * so the page says what is true and offers last season's final table, not a retry that could
- * never succeed.
+ * A season with no results yet. Not an error — the route answers it with a 200 and empty tables,
+ * and it is an answer rather than an outage — so the page states it and offers last season's
+ * final table instead of a retry. It also covers first results not yet published, which a later
+ * load does change.
  */
 function NotStartedState({
   year,

@@ -18,8 +18,11 @@ export type StreamEvent =
  * `GET /api/standings/{year}`. Rows arrive already ranked — driver ties broken on best finish,
  * then car number — so they render in served order and are never re-sorted.
  *
- * A season that has not started is a 200 with `races_completed: 0` and both tables empty, not
- * an error: it is a correct answer, and no retry would change it.
+ * A season with no results yet is a 200 with `races_completed: 0` and both tables empty, not an
+ * error: it is an answer rather than an outage, so the page states it instead of offering a
+ * retry. It covers a season that has not started and first results not yet published, which a
+ * later load does change. Empty tables are the tell, not the count: a season whose only held
+ * session is a sprint has real rows at `races_completed: 0`.
  */
 export interface StandingsResponse {
   year: number;

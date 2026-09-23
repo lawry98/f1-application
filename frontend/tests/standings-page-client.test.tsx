@@ -189,7 +189,7 @@ describe('StandingsPageClient', () => {
       "The 2027 season hasn't started yet.",
     );
     expect(screen.queryByRole('table')).toBeNull();
-    // Not an error, so nothing offers a retry that could never succeed.
+    // An answer, not an outage, so the page states it rather than offering a retry.
     expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
     expectReadableOnButton('See the 2026 final standings');
 

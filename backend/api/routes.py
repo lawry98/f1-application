@@ -255,9 +255,11 @@ async def get_standings(year: int = Path(ge=OPENF1_FIRST_YEAR)) -> dict[str, Any
         result = await asyncio.to_thread(get_championship_standings.invoke, {"year": year})
 
         if result.get("reason") == SEASON_NOT_STARTED:
-            # Not a failure: a season that has not run has an empty table, and saying so is the
-            # correct answer. Folded into the 502 below it told the page to "try again" every day
-            # from January to the first race, and no retry could ever succeed.
+            # Not a failure: no scoring session has results yet — the season has not started, or
+            # its first results are not yet published, which a later load does change — so the
+            # table is empty, and that is an answer, not an outage. Folded into the 502 below it
+            # told the page to "try again" every day from January to the first race; the page
+            # states it instead of offering a retry.
             logger.info("Standings for %d: season not started", year)
             return {"year": year, "races_completed": 0, "drivers": [], "constructors": []}
 

@@ -55,7 +55,8 @@ const OPENF1_TEAM_ALIASES: Record<string, string> = {
  * The `Team` a standings row's OpenF1 team name refers to, or `null`.
  *
  * `null` is a value the tables render — OpenF1's own spelling as plain text, with no colour bar
- * — not an error. It is the normal case for every season before 2026.
+ * — not an error. It is expected in every season before 2026, where predecessor brands such as
+ * `Kick Sauber` and `RB` have no `Team` of their own.
  */
 export function teamForStanding(name: string): Team | null {
   const aliased = OPENF1_TEAM_ALIASES[name];
