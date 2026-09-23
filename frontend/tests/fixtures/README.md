@@ -22,7 +22,10 @@ here follows the backend suite rather than being maintained separately.
 `standings-2026.json`, `standings-2024.json` and `races-2026.json` are responses from the real
 `/api/standings/{year}` and `/api/races/{year}` routes. They were captured on 2026-09-22 against
 live OpenF1 and FastF1 — `standings-2024.json` again on 2026-09-23, once the drivers' table went
-from one row per car number to one per driver — and pretty-printed with `python3 -m json.tool`;
+from one row per car number to one per driver, and both standings files again later that day, once
+ties broke on the FIA's Grand Prix countback rather than a best finish that counted sprints (which
+swapped Albon and Ricciardo in 2024 and Ocon and Alonso in 2026; 2026 was still after Round 14) —
+and pretty-printed with `python3 -m json.tool`;
 the values are untouched.
 
 They are real for the same reason the `.sse` files are. The team-name join in `lib/standings.ts`

@@ -208,9 +208,9 @@ def test_a_mid_season_transfer_splits_points_across_both_constructors(
 
 
 @freeze_time("2024-06-01")
-def test_a_driver_tie_breaks_on_best_finishing_position(openf1_season):
-    """HAM and TIE both finish the season on 30.0. HAM's best result is a P3 and TIE's a
-    P4, so HAM must rank ahead. Sorting on points alone would leave the pair's order down
+def test_a_driver_tie_breaks_on_grand_prix_countback(openf1_season):
+    """HAM and TIE both finish the season on 30.0. HAM has two Grand Prix P3s and TIE none,
+    so HAM must rank ahead. Sorting on points alone would leave the pair's order down
     to dict iteration, and an LLM reading a reshuffling table reports a different
     championship every time it is asked.
     """
@@ -222,9 +222,9 @@ def test_a_driver_tie_breaks_on_best_finishing_position(openf1_season):
 
 
 @freeze_time("2024-06-01")
-def test_a_constructor_tie_breaks_alphabetically(openf1_season):
-    """Ferrari and Williams both finish on 30.0. Neither has a driver-level tiebreak to
-    inherit, so the team name decides and the order is stable.
+def test_a_constructor_tie_breaks_on_grand_prix_countback(openf1_season):
+    """Ferrari and Williams both finish on 30.0. Ferrari's two P3s beat Williams' three P4s,
+    even though Williams is inserted into the roster first.
     """
     result = get_championship_standings.invoke({"year": 2024})
 
@@ -533,3 +533,229 @@ def test_a_held_sprint_with_no_held_race_is_a_table_with_no_races(monkeypatch):
         }
     ]
     assert result["constructors"] == [{"position": 1, "team": "Red Bull Racing", "points": 8.0}]
+
+
+# A tie the sprint and the Grand Prix countback decide in opposite directions — the shape of
+# Albon and Ricciardo on 12 points in 2024, where Ricciardo's P4 in the Miami sprint was the
+# best result either of them had, and the table put him ahead of the official order. The FIA
+# counts back over Grand Prix results only.
+#
+#   ALB #23 (Williams): GP P7 (6) + GP P9 (2)       = 8, best GP finish P7
+#   RIC  #3 (RB):       Sprint P5 (4) + GP P8 (4)   = 8, best GP finish P8, best overall P5
+#
+# Both confounds point at RIC: his sprint P5 is the best position either holds, his number is
+# lower, and "RB" sorts before "Williams". Only a Grand Prix countback puts ALB — and Williams
+# — ahead, so dropping the Race-only filter inverts both tables.
+_COUNTBACK_SESSIONS = [
+    {
+        "session_key": 9950,
+        "meeting_key": 1600,
+        "session_name": "Race",
+        "circuit_short_name": "Sakhir",
+        "country_name": "Bahrain",
+        "date_start": "2024-03-02T15:00:00+00:00",
+    },
+    {
+        "session_key": 9951,
+        "meeting_key": 1601,
+        "session_name": "Sprint",
+        "circuit_short_name": "Miami",
+        "country_name": "United States",
+        "date_start": "2024-05-04T16:00:00+00:00",
+    },
+    {
+        "session_key": 9952,
+        "meeting_key": 1601,
+        "session_name": "Race",
+        "circuit_short_name": "Miami",
+        "country_name": "United States",
+        "date_start": "2024-05-05T20:00:00+00:00",
+    },
+]
+
+_COUNTBACK_DRIVERS = [
+    {
+        "session_key": key,
+        "driver_number": number,
+        "full_name": full_name,
+        "name_acronym": acronym,
+        "team_name": team,
+    }
+    for key in (9950, 9951, 9952)
+    for number, full_name, acronym, team in (
+        (23, "Alexander ALBON", "ALB", "Williams"),
+        (3, "Daniel RICCIARDO", "RIC", "RB"),
+    )
+]
+
+
+def _row(session_key, position, number, points):
+    return {
+        "session_key": session_key,
+        "position": position,
+        "driver_number": number,
+        "points": points,
+        "dnf": False,
+        "dns": False,
+        "dsq": False,
+    }
+
+
+_COUNTBACK_RESULTS = [
+    _row(9950, 7, 23, 6.0),
+    _row(9950, 11, 3, 0.0),
+    _row(9951, 5, 3, 4.0),
+    _row(9951, 9, 23, 0.0),
+    _row(9952, 8, 3, 4.0),
+    _row(9952, 9, 23, 2.0),
+]
+
+
+def _serve(monkeypatch, sessions, drivers, results):
+    from tests.factories import make_openf1_get
+    from tools import openf1_client
+
+    fake = make_openf1_get({"sessions": sessions, "session_result": results, "drivers": drivers})
+    monkeypatch.setattr(openf1_client.requests, "get", fake)
+    return fake
+
+
+@freeze_time("2024-06-01")
+def test_a_driver_tie_counts_back_over_grand_prix_results_only(monkeypatch):
+    _serve(monkeypatch, _COUNTBACK_SESSIONS, _COUNTBACK_DRIVERS, _COUNTBACK_RESULTS)
+
+    result = get_championship_standings.invoke({"year": 2024})
+
+    assert [(row["driver_code"], row["points"]) for row in result["drivers"]] == [
+        ("ALB", 8.0),
+        ("RIC", 8.0),
+    ]
+
+
+@freeze_time("2024-06-01")
+def test_a_constructor_tie_counts_back_over_grand_prix_results_only(monkeypatch):
+    _serve(monkeypatch, _COUNTBACK_SESSIONS, _COUNTBACK_DRIVERS, _COUNTBACK_RESULTS)
+
+    result = get_championship_standings.invoke({"year": 2024})
+
+    assert result["constructors"] == [
+        {"position": 1, "team": "Williams", "points": 8.0},
+        {"position": 2, "team": "RB", "points": 8.0},
+    ]
+
+
+# Countback is "most wins, then most 2nds, and so on" — a count at each position, not just the
+# best one. Both drivers have one Grand Prix win, so a best-position tie-break ties them and
+# falls through to the car number, which favours BBB (#2). AAA's other finish is a P5, BBB's a P6.
+#
+#   AAA #9: GP P1 (25) + GP P5 (10)                 = 35
+#   BBB #2: GP P6 (8) + Sprint P7 (2) + GP P1 (25)  = 35
+_DEEP_COUNTBACK_DRIVERS = [
+    {
+        "session_key": key,
+        "driver_number": number,
+        "full_name": full_name,
+        "name_acronym": acronym,
+        "team_name": team,
+    }
+    for key in (9950, 9951, 9952)
+    for number, full_name, acronym, team in (
+        (9, "Driver AAA", "AAA", "Zeta"),
+        (2, "Driver BBB", "BBB", "Alpha"),
+    )
+]
+
+_DEEP_COUNTBACK_RESULTS = [
+    _row(9950, 1, 9, 25.0),
+    _row(9950, 6, 2, 8.0),
+    _row(9951, 7, 2, 2.0),
+    _row(9951, 9, 9, 0.0),
+    _row(9952, 1, 2, 25.0),
+    _row(9952, 5, 9, 10.0),
+]
+
+
+@freeze_time("2024-06-01")
+def test_a_driver_tie_counts_back_past_the_best_result(monkeypatch):
+    _serve(monkeypatch, _COUNTBACK_SESSIONS, _DEEP_COUNTBACK_DRIVERS, _DEEP_COUNTBACK_RESULTS)
+
+    result = get_championship_standings.invoke({"year": 2024})
+
+    assert [(row["driver_code"], row["points"]) for row in result["drivers"]] == [
+        ("AAA", 35.0),
+        ("BBB", 35.0),
+    ]
+
+
+# A constructor's countback pools every car's Grand Prix finishes. Each team's best car
+# finishes P3, so a best-car-only countback ties them and falls through to the name, which
+# favours Alpha. Zeta's other car has a P4; Alpha's a P5.
+#
+#   Zeta:  P3 (15) + P4 (12)                 = 27
+#   Alpha: P5 (10) + Sprint P7 (2) + P3 (15) = 27
+_TEAM_COUNTBACK_DRIVERS = [
+    {
+        "session_key": key,
+        "driver_number": number,
+        "full_name": f"Driver {acronym}",
+        "name_acronym": acronym,
+        "team_name": team,
+    }
+    for key in (9950, 9951, 9952)
+    for number, acronym, team in (
+        (11, "ZEA", "Zeta"),
+        (12, "ZEB", "Zeta"),
+        (21, "ALA", "Alpha"),
+        (22, "ALB", "Alpha"),
+    )
+]
+
+_TEAM_COUNTBACK_RESULTS = [
+    _row(9950, 3, 11, 15.0),
+    _row(9950, 5, 22, 10.0),
+    _row(9951, 7, 22, 2.0),
+    _row(9952, 3, 21, 15.0),
+    _row(9952, 4, 12, 12.0),
+]
+
+
+@freeze_time("2024-06-01")
+def test_a_constructor_tie_counts_back_over_every_car(monkeypatch):
+    _serve(monkeypatch, _COUNTBACK_SESSIONS, _TEAM_COUNTBACK_DRIVERS, _TEAM_COUNTBACK_RESULTS)
+
+    result = get_championship_standings.invoke({"year": 2024})
+
+    assert result["constructors"] == [
+        {"position": 1, "team": "Zeta", "points": 27.0},
+        {"position": 2, "team": "Alpha", "points": 27.0},
+    ]
+
+
+# Level on points *and* on the Grand Prix countback: both teams hold one P5 and one P10. The
+# FIA would nominate here; the table falls back to the team name so the order is stable. Zeta
+# has the better sprint finish (P6 to Alpha's P7 and P8), so a countback that let sprints in
+# would put Zeta first.
+#
+#   Zeta:  P5 (10) + Sprint P6 (3) + P10 (1)                 = 14
+#   Alpha: P10 (1) + Sprint P7 (2) + Sprint P8 (1) + P5 (10) = 14
+_LEVEL_COUNTBACK_RESULTS = [
+    _row(9950, 5, 11, 10.0),
+    _row(9950, 10, 21, 1.0),
+    _row(9951, 6, 12, 3.0),
+    _row(9951, 7, 21, 2.0),
+    _row(9951, 8, 22, 1.0),
+    _row(9952, 5, 21, 10.0),
+    _row(9952, 10, 11, 1.0),
+]
+
+
+@freeze_time("2024-06-01")
+def test_a_constructor_tie_level_on_countback_falls_back_to_the_name(monkeypatch):
+    _serve(monkeypatch, _COUNTBACK_SESSIONS, _TEAM_COUNTBACK_DRIVERS, _LEVEL_COUNTBACK_RESULTS)
+
+    result = get_championship_standings.invoke({"year": 2024})
+
+    assert result["constructors"] == [
+        {"position": 1, "team": "Alpha", "points": 14.0},
+        {"position": 2, "team": "Zeta", "points": 14.0},
+    ]

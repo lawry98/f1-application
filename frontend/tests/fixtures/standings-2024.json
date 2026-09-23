@@ -109,16 +109,16 @@
         },
         {
             "position": 16,
-            "driver": "Daniel RICCIARDO",
-            "driver_code": "RIC",
-            "team": "RB",
+            "driver": "Alexander ALBON",
+            "driver_code": "ALB",
+            "team": "Williams",
             "points": 12.0
         },
         {
             "position": 17,
-            "driver": "Alexander ALBON",
-            "driver_code": "ALB",
-            "team": "Williams",
+            "driver": "Daniel RICCIARDO",
+            "driver_code": "RIC",
+            "team": "RB",
             "points": 12.0
         },
         {
@@ -151,16 +151,16 @@
         },
         {
             "position": 22,
-            "driver": "Logan SARGEANT",
-            "driver_code": "SAR",
-            "team": "Williams",
+            "driver": "Valtteri BOTTAS",
+            "driver_code": "BOT",
+            "team": "Kick Sauber",
             "points": 0.0
         },
         {
             "position": 23,
-            "driver": "Valtteri BOTTAS",
-            "driver_code": "BOT",
-            "team": "Kick Sauber",
+            "driver": "Logan SARGEANT",
+            "driver_code": "SAR",
+            "team": "Williams",
             "points": 0.0
         },
         {

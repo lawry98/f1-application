@@ -219,6 +219,10 @@ scale and must be included, and the table is seeded from the driver roster rathe
 from the results — otherwise a team on zero points (Cadillac, 2026) vanishes and an
 11-team grid renders as 10. Drivers' rows are per driver (`name_acronym`), not per car number:
 Bearman raced #38 for Ferrari and #50 for Haas in 2024, and a number-keyed table listed him twice.
+A third trap is the tie-break: sprints count for **points** but not for the **countback** (most
+Grand Prix wins, then 2nds, …; a constructor pools both cars). A best-finish tie-break over
+both session types put Ricciardo — P4 in the 2024 Miami sprint — ahead of Albon on 12 points,
+the reverse of the official order.
 
 **A standings session counts only once it has results, not once its date has passed.** A
 cancelled race keeps its OpenF1 session and entry list and serves no result rows, so the

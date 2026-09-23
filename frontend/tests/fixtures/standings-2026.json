@@ -123,16 +123,16 @@
         },
         {
             "position": 18,
-            "driver": "Fernando ALONSO",
-            "driver_code": "ALO",
-            "team": "Aston Martin",
+            "driver": "Esteban OCON",
+            "driver_code": "OCO",
+            "team": "Haas F1 Team",
             "points": 3.0
         },
         {
             "position": 19,
-            "driver": "Esteban OCON",
-            "driver_code": "OCO",
-            "team": "Haas F1 Team",
+            "driver": "Fernando ALONSO",
+            "driver_code": "ALO",
+            "team": "Aston Martin",
             "points": 3.0
         },
         {
