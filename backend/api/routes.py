@@ -22,7 +22,7 @@ from api.models import BriefingRequest, BriefingResponse, ToolTraceSummary
 from tools.openf1_client import OPENF1_FIRST_YEAR
 from tools.openf1_client import clear as clear_openf1_cache
 from tools.schedule_cache import clear as clear_schedule_cache
-from tools.standings_tools import get_championship_standings
+from tools.standings_tools import SEASON_NOT_STARTED, get_championship_standings
 
 logger = logging.getLogger(__name__)
 
@@ -236,16 +236,32 @@ async def get_races(year: int = Path(ge=1950, le=date.today().year + 1)) -> dict
 
 
 @router.get("/standings/{year}")
-async def get_standings(
-    year: int = Path(ge=OPENF1_FIRST_YEAR, le=date.today().year),
-) -> dict[str, Any]:
+async def get_standings(year: int = Path(ge=OPENF1_FIRST_YEAR)) -> dict[str, Any]:
     """Get the driver and constructor championship tables for a season.
 
     The lower bound is ``OPENF1_FIRST_YEAR`` rather than a literal, so the route and the
     tool cannot disagree about where coverage starts.
     """
+    # The upper bound is checked per request, not as `Path(le=date.today().year)`: a default
+    # argument is evaluated once, at import, so a process still running after New Year would
+    # answer 422 for the new season — the page's default — and the page would open on its
+    # error state until someone restarted the backend.
+    if year > date.today().year:
+        raise HTTPException(
+            status_code=422, detail="Standings are only available up to the current season."
+        )
+
     try:
         result = await asyncio.to_thread(get_championship_standings.invoke, {"year": year})
+
+        if result.get("reason") == SEASON_NOT_STARTED:
+            # Not a failure: no scoring session has results yet — the season has not started, or
+            # its first results are not yet published, which a later load does change — so the
+            # table is empty, and that is an answer, not an outage. Folded into the 502 below it
+            # told the page to "try again" every day from January to the first race; the page
+            # states it instead of offering a retry.
+            logger.info("Standings for %d: season not started", year)
+            return {"year": year, "races_completed": 0, "drivers": [], "constructors": []}
 
         if "error" in result:
             # The tool's error text can carry upstream exception detail, which is neither

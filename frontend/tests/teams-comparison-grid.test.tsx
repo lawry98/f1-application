@@ -59,6 +59,15 @@ describe('TeamsComparisonGrid', () => {
     );
   });
 
+  it('points its frozen stamp at the live standings', () => {
+    renderGrid();
+
+    expect(screen.getByRole('link', { name: 'Live standings →' })).toHaveAttribute(
+      'href',
+      '/standings',
+    );
+  });
+
   it('claims the clicked team without preventing navigation', () => {
     const onSelectTeam = vi.fn();
     renderGrid(onSelectTeam);

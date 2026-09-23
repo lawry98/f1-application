@@ -16,7 +16,7 @@ backend/
 frontend/
   app/           App Router, one directory per route
   components/
-    <feature>/   Page sections: landing/, briefing/, teams/, teardown/, tyres/
+    <feature>/   Page sections: landing/, briefing/, standings/, teams/, teardown/, tyres/
     3d/          Three.js — only ever loaded via dynamic import, ssr: false
     ui/          shadcn/ui + vendored Magic UI — do not hand-edit
   data/          Static domain data (TEAMS, tyre compounds) and the types describing it
@@ -24,6 +24,7 @@ frontend/
   lib/           api.ts (typed client), utils.ts, team-utils.ts, tyre-utils.ts
   types/         Shared types, re-exported through types/index.ts
   tests/         Vitest — flat, not mirroring the source tree; fixtures/ holds real SSE bytes
+                 and captured JSON route responses
 ```
 
 ## Commands
@@ -188,8 +189,10 @@ endpoints are all per-year, so porting it cost four requests per year (12 reques
 5-year window) against FastF1's 4.62s. Don't "finish the migration" by re-porting it; the
 tool's own docstring in `f1_data_tools.py` carries the same numbers.
 
-**OpenF1 coverage starts in 2023, and `OPENF1_FIRST_YEAR` is the only place that number
-lives.** Every ported result tool tries OpenF1 first and falls through to its
+**OpenF1 coverage starts in 2023, and `OPENF1_FIRST_YEAR` is the only place in the backend that
+number lives.** The frontend's season picker mirrors it as `STANDINGS_FIRST_YEAR` in
+`lib/standings.ts`, and `tests/standings.test.ts` reads the constant out of `backend/tools/openf1_client.py`
+and fails on drift. Every ported result tool tries OpenF1 first and falls through to its
 `load_race_session` path for an earlier year or a transport failure. The visible cost of the
 OpenF1 path is `Status` fidelity: FastF1 reports *why* a car stopped ("+1 Lap", "Accident"),
 OpenF1 exposes only `dnf`/`dns`/`dsq`, so `derive_status()` collapses it to
@@ -214,7 +217,52 @@ subscription, so `get_championship_standings` sums `session_result.points` acros
 **and Sprint** sessions. Two traps live in that derivation: sprints score on the 8/7/6
 scale and must be included, and the table is seeded from the driver roster rather than
 from the results — otherwise a team on zero points (Cadillac, 2026) vanishes and an
-11-team grid renders as 10.
+11-team grid renders as 10. Drivers' rows are per driver (`name_acronym`), not per car number:
+Bearman raced #38 for Ferrari and #50 for Haas in 2024, and a number-keyed table listed him twice.
+
+**A standings session counts only once it has results, not once its date has passed.** A
+cancelled race keeps its OpenF1 session and entry list and serves no result rows, so the
+date-based count reported 16 races for 2026 when 14 had run (Bahrain and Saudi Arabia never did)
+and 23 for 2023's 22 (Imola). It never touched the points — an empty race adds none — only
+`races_completed`, which is exactly the number the briefing and `/standings` quote. A season
+with no held session at all returns `reason: SEASON_NOT_STARTED`, which `/api/standings` serves as
+a **200 with empty tables** — the one tool error the route does not fold into
+`502 GENERIC_STANDINGS_ERROR`, because it is an answer, not an outage, so the page states it
+rather than offering a retry. It also covers first results not yet published, which a later load
+does change.
+
+**`/standings` joins two upstreams, and both joins are exact on purpose.** OpenF1 spells two
+2026 teams differently from `Team.shortName` (`Haas F1 Team`, `Red Bull Racing`), so
+`teamForStanding` matches `shortName` exactly plus an explicit two-entry alias map — never a
+substring, the defect class the livery fix removed. Predecessor brands (`Kick Sauber`, `RB`,
+`AlphaTauri`, `Alfa Romeo`) are deliberately unmapped: an unmatched team renders as plain text
+with an empty bar slot, which is expected in every season before 2026. The as-of stamp
+joins `races_completed` to FastF1's calendar by `round`, and that is exact only because FastF1
+drops cancelled events and renumbers the rest *and* the count now skips them too — Round 14 of
+23 is the Spanish Grand Prix. Name the event by `Race.name`: FastF1 files the rescheduled 2026
+Bahrain Grand Prix under `Location: "Kuala Lumpur"`.
+
+**Team colour on `/standings` is decorative only.** Each row carries a 4px bar in the true hex
+and every glyph is a zinc neutral on bare `zinc-950` — no zebra, no hover tint, no highlighted
+leader — which is why `standings-tables.tsx` calls no `team-utils` helper at all.
+`tests/standings-tables.test.tsx` asserts `inlineColouredText()` is empty and that no table
+element carries a `bg-` class, so colouring a name or tinting a row fails there until it has its
+own backdrop variant, built the way the five on `/teams` are.
+
+**`/standings` reads its season from `useSearchParams`, never from state seeded by a server
+prop.** The first version seeded `useState` from a server-parsed `initialYear` and desynced both
+ways, measured in a browser: pick 2024, follow "Compare the teams →", press Back, and the URL
+said `?year=2024` while the page showed 2026; pick 2024, click the nav's "Standings" link, and
+the URL said `/standings` while the page showed 2024. Next 14.2 keys the page segment without
+its search params, so client state survives a same-page navigation, and its patched
+`window.history.replaceState` (installed unconditionally in `app-router.js`) moves the router's
+URL — and so `useSearchParams()` — but not the RSC payload, so Back re-mounts the page from the
+original payload's props. `useSearchParams()` follows the patched `replaceState`, Back and
+Forward alike, so the rule for URL state on this page is: derive it from `useSearchParams`, and
+make the picker's only write a `replaceState`. The page is `force-dynamic` because `latestYear`
+is read from the server clock per request — a prerendered page would freeze it at build time —
+and because `useSearchParams` on a static page needs a Suspense boundary. `pnpm build` lists it
+as `ƒ /standings`.
 
 **`tests/conftest.py` blocks OpenF1 as well as FastF1, and the two differ on purpose.**
 `_block_fastf1_network` raises `AssertionError` because no production path should swallow

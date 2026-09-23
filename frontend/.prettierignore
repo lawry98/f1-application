@@ -14,3 +14,8 @@ public/logos/CREDITS.md
 # outline to one coordinate pair per line, multiplying a 168 kB directory several times over for
 # a diff nobody reads.
 data/circuits/*.json
+
+# Captured route responses, pretty-printed by `python3 -m json.tool` and never hand-edited (see
+# tests/fixtures/README.md). Prettier would re-indent them, and a re-capture would then show a
+# whole-file diff instead of the values that changed.
+tests/fixtures/*.json

@@ -28,6 +28,9 @@ const DESTINATIONS = [
   // The two "how the machine works" experiences belong next to each other, and Briefing — the
   // thing the app is named for — stays first. The retyped list above is what pins that order.
   ['/tyres', 'Tyres'],
+  // The table sits before the profiles it leads to, and leaves Teams beside Showcase, which
+  // shares its liveries.
+  ['/standings', 'Standings'],
   ['/teams', 'Teams'],
   ['/showcase', 'Showcase'],
   ['/credits', 'Credits'],
@@ -181,7 +184,7 @@ describe('LandingNav', () => {
   });
 
   /*
-   * Six links do not fit a 390 px viewport, so the row scrolls — which means the link for the page
+   * Seven links do not fit a 390 px viewport, so the row scrolls — which means the link for the page
    * you are actually on can start off screen, and the nav then shows no sign of where you are.
    * `teams-chip-strip.tsx` solves the identical problem the identical way.
    */

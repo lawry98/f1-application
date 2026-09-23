@@ -1,0 +1,226 @@
+{
+    "year": 2024,
+    "races_completed": 24,
+    "drivers": [
+        {
+            "position": 1,
+            "driver": "Max VERSTAPPEN",
+            "driver_code": "VER",
+            "team": "Red Bull Racing",
+            "points": 437.0
+        },
+        {
+            "position": 2,
+            "driver": "Lando NORRIS",
+            "driver_code": "NOR",
+            "team": "McLaren",
+            "points": 374.0
+        },
+        {
+            "position": 3,
+            "driver": "Charles LECLERC",
+            "driver_code": "LEC",
+            "team": "Ferrari",
+            "points": 356.0
+        },
+        {
+            "position": 4,
+            "driver": "Oscar PIASTRI",
+            "driver_code": "PIA",
+            "team": "McLaren",
+            "points": 292.0
+        },
+        {
+            "position": 5,
+            "driver": "Carlos SAINZ",
+            "driver_code": "SAI",
+            "team": "Ferrari",
+            "points": 290.0
+        },
+        {
+            "position": 6,
+            "driver": "George RUSSELL",
+            "driver_code": "RUS",
+            "team": "Mercedes",
+            "points": 245.0
+        },
+        {
+            "position": 7,
+            "driver": "Lewis HAMILTON",
+            "driver_code": "HAM",
+            "team": "Mercedes",
+            "points": 223.0
+        },
+        {
+            "position": 8,
+            "driver": "Sergio PEREZ",
+            "driver_code": "PER",
+            "team": "Red Bull Racing",
+            "points": 152.0
+        },
+        {
+            "position": 9,
+            "driver": "Fernando ALONSO",
+            "driver_code": "ALO",
+            "team": "Aston Martin",
+            "points": 70.0
+        },
+        {
+            "position": 10,
+            "driver": "Pierre GASLY",
+            "driver_code": "GAS",
+            "team": "Alpine",
+            "points": 42.0
+        },
+        {
+            "position": 11,
+            "driver": "Nico HULKENBERG",
+            "driver_code": "HUL",
+            "team": "Haas F1 Team",
+            "points": 41.0
+        },
+        {
+            "position": 12,
+            "driver": "Yuki TSUNODA",
+            "driver_code": "TSU",
+            "team": "RB",
+            "points": 30.0
+        },
+        {
+            "position": 13,
+            "driver": "Lance STROLL",
+            "driver_code": "STR",
+            "team": "Aston Martin",
+            "points": 24.0
+        },
+        {
+            "position": 14,
+            "driver": "Esteban OCON",
+            "driver_code": "OCO",
+            "team": "Alpine",
+            "points": 23.0
+        },
+        {
+            "position": 15,
+            "driver": "Kevin MAGNUSSEN",
+            "driver_code": "MAG",
+            "team": "Haas F1 Team",
+            "points": 16.0
+        },
+        {
+            "position": 16,
+            "driver": "Daniel RICCIARDO",
+            "driver_code": "RIC",
+            "team": "RB",
+            "points": 12.0
+        },
+        {
+            "position": 17,
+            "driver": "Alexander ALBON",
+            "driver_code": "ALB",
+            "team": "Williams",
+            "points": 12.0
+        },
+        {
+            "position": 18,
+            "driver": "Oliver BEARMAN",
+            "driver_code": "BEA",
+            "team": "Haas F1 Team",
+            "points": 7.0
+        },
+        {
+            "position": 19,
+            "driver": "Franco COLAPINTO",
+            "driver_code": "COL",
+            "team": "Williams",
+            "points": 5.0
+        },
+        {
+            "position": 20,
+            "driver": "ZHOU Guanyu",
+            "driver_code": "ZHO",
+            "team": "Kick Sauber",
+            "points": 4.0
+        },
+        {
+            "position": 21,
+            "driver": "Liam LAWSON",
+            "driver_code": "LAW",
+            "team": "RB",
+            "points": 4.0
+        },
+        {
+            "position": 22,
+            "driver": "Logan SARGEANT",
+            "driver_code": "SAR",
+            "team": "Williams",
+            "points": 0.0
+        },
+        {
+            "position": 23,
+            "driver": "Valtteri BOTTAS",
+            "driver_code": "BOT",
+            "team": "Kick Sauber",
+            "points": 0.0
+        },
+        {
+            "position": 24,
+            "driver": "Jack DOOHAN",
+            "driver_code": "DOO",
+            "team": "Alpine",
+            "points": 0.0
+        }
+    ],
+    "constructors": [
+        {
+            "position": 1,
+            "team": "McLaren",
+            "points": 666.0
+        },
+        {
+            "position": 2,
+            "team": "Ferrari",
+            "points": 652.0
+        },
+        {
+            "position": 3,
+            "team": "Red Bull Racing",
+            "points": 589.0
+        },
+        {
+            "position": 4,
+            "team": "Mercedes",
+            "points": 468.0
+        },
+        {
+            "position": 5,
+            "team": "Aston Martin",
+            "points": 94.0
+        },
+        {
+            "position": 6,
+            "team": "Alpine",
+            "points": 65.0
+        },
+        {
+            "position": 7,
+            "team": "Haas F1 Team",
+            "points": 58.0
+        },
+        {
+            "position": 8,
+            "team": "RB",
+            "points": 46.0
+        },
+        {
+            "position": 9,
+            "team": "Williams",
+            "points": 17.0
+        },
+        {
+            "position": 10,
+            "team": "Kick Sauber",
+            "points": 4.0
+        }
+    ]
+}
