@@ -180,7 +180,8 @@ function NotStartedState({
 }) {
   const previous = year - 1;
   return (
-    <div className="flex flex-col items-start gap-4">
+    // A status, so a switch to this state is announced: the stamp's live region stays empty here.
+    <div role="status" className="flex flex-col items-start gap-4">
       <p className="text-sm text-zinc-300">The {year} season hasn&#39;t started yet.</p>
       {previous >= STANDINGS_FIRST_YEAR && (
         <button type="button" onClick={() => onSelectYear(previous)} className={BUTTON}>

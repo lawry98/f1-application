@@ -184,7 +184,10 @@ describe('StandingsPageClient', () => {
     );
     renderPage('?year=2027', 2027);
 
-    expect(await screen.findByText("The 2027 season hasn't started yet.")).toBeInTheDocument();
+    // A status, so switching to a season that has not started is announced.
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      "The 2027 season hasn't started yet.",
+    );
     expect(screen.queryByRole('table')).toBeNull();
     // Not an error, so nothing offers a retry that could never succeed.
     expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
