@@ -12,6 +12,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:browser": "playwright test",
+    "test:browser:mutants": "node scripts/run-mutants.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
@@ -33,9 +35,12 @@
     "three-stdlib": "^2.36.1"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "@playwright/test": "1.63.0",
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.3.2",
     "@types/node": "22.9.3",
+    "@types/pngjs": "6.0.5",
     "@types/react": "18.3.12",
     "@types/react-dom": "18.3.1",
     "@types/three": "^0.182.0",
@@ -47,6 +52,7 @@
     "eslint-config-next": "14.2.18",
     "eslint-config-prettier": "^10.1.8",
     "jsdom": "^30.0.1",
+    "pngjs": "7.0.0",
     "postcss": "^8.4.35",
     "prettier": "^3.8.1",
     "prettier-plugin-tailwindcss": "^0.7.2",
