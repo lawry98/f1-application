@@ -3,8 +3,9 @@
 ## 01, 02
 
 Date: 2026-09-25
-Commit: `496fd3e01ed8963ca459dd0b547eb0e707d1f1e6`
-Run: `pnpm test:browser:mutants 01 02`
+Commit: `8b35f7093e47d471f62604d2dcd5dadc6179b554`
+Run: `pnpm test:browser:mutants 01 02` (after fixing the runner's fake-kill/ENOENT/unchecked-rebuild
+findings — see below)
 
 ```
 ┌─────────┬────────────────────────────────────┬──────────┬─────────────┐
@@ -34,3 +35,15 @@ literally in `components/tyres/acts/tyre-archive.tsx` and `source-list.tsx`, bot
 scanned — only `focus-visible:ring-ink`, which appears nowhere outside `lib/focus.ts`, actually
 goes missing. `mutants.json`'s `mustFail` for 01 was rescoped to the four titles that genuinely
 depend on `lib/` being in `content` (commit `496fd3e`), which is why this run kills cleanly.
+
+**Fix round 1 (2026-09-25, commit `8b35f70`).** Review found the runner itself could fake a kill:
+it never checked for a global Playwright failure (webServer never booted, global setup crashed)
+before trusting spec-level `ok`, so a uniform infra failure across every test could read as every
+`mustFail` title failing "for the right reason." A missing/unparseable JSON report also threw
+`ENOENT` out of the mutant loop, aborting the whole run — no table, later mutants skipped, final
+rebuild never attempted — and the final clean-tree rebuild's own exit status was never checked.
+`classifyMutant` now treats a report's top-level `errors` as its own `error` outcome (checked
+first), only counts a title as a kill if it genuinely executed with status `failed`/`timedOut`,
+wraps the report read in its own `try`/`catch` so a missing file becomes `error` and the `finally`
+patch-revert still runs, and the final rebuild's failure now exits 1 with a clear message. The
+table above is the re-run against the fixed runner; both mutants are still `killed`.
