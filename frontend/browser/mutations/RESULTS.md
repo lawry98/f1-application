@@ -3,7 +3,7 @@
 ## Full run
 
 Date: 2026-09-25
-Commit: `14144a04670e53067d4138be8d9bd988f2b38e5b`
+Commit: `6454c54ac0c9f6b76f63d1a51d91eaaa457e64e6`
 Run: `pnpm test:browser:mutants` (all five, Task 10 Step 2 full verification)
 
 ```
@@ -140,8 +140,9 @@ touches `components/teams/team-section.tsx`. `pnpm test:browser:mutants 04` rebu
 tree afterwards; `git status --porcelain` was empty.
 
 This run followed four unrelated shipped-defect fixes made earlier in the same session —
-DoubleMarquee's and `landing-how-it-works.tsx`'s numerals off a sub-3:1 `zinc-600`, `EYEBROW_RED`'s missing
-`base-warm` variant, and `LifecycleStepper`'s inherited-transition flash — all committed
+DoubleMarquee's and `landing-how-it-works.tsx`'s numerals off a sub-3:1 `zinc-600`,
+`EYEBROW_RED`'s missing `base-warm` variant, and `LifecycleStepper`'s inherited-transition
+flash — all committed
 separately before this harness's own files were committed, so this mutant run is against a tree
 where `browser/invisible-text.spec.ts` and `browser/a11y-smoke.spec.ts` both pass clean
 (`11 passed`) on the unmutated tree.
@@ -173,7 +174,8 @@ Received: 5
 ```
 
 (CLAUDE.md measured 8 of 31 for this defect; the count is deterministic per code path and the
-band/`STEP_PX` were not tuned to reach either number.) Before the mutant, three green-tree runs of `browser/scroll-spy.spec.ts` alone passed `1 passed`
-each (5.5s, 5.2s, 5.1s), with no flake, confirming the spec is stable against the real hook.
+band/`STEP_PX` were not tuned to reach either number.) Before the mutant, three green-tree
+runs of `browser/scroll-spy.spec.ts` alone passed `1 passed` each (5.5s, 5.2s, 5.1s), with no
+flake, confirming the spec is stable against the real hook.
 `pnpm test:browser:mutants 05` rebuilt the clean tree afterwards; `git status --porcelain` was
 empty.
