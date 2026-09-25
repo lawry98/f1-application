@@ -83,3 +83,43 @@ The unmutated (green) tree passed both tests 2/2 (`pnpm exec playwright test
 browser/team-contrast.spec.ts`, 6.5s) before this mutant was generated — no selector or floor was
 touched to make this kill happen. `pnpm test:browser:mutants 03` rebuilt the clean tree
 afterwards; `git status --porcelain` was empty.
+
+## 04
+
+Date: 2026-09-25
+Commit: `ecf6ee50b893b370b66deb5d3ccd55c1baae66ef`
+Run: `pnpm test:browser:mutants 04`
+
+```
+┌─────────┬─────────────────────────┬──────────┬─────────────┐
+│ (index) │ patch                   │ outcome  │ detail      │
+├─────────┼─────────────────────────┼──────────┼─────────────┤
+│ 0       │ '04-sm-text-base.patch' │ 'killed' │ 'failed: 1' │
+└─────────┴─────────────────────────┴──────────┴─────────────┘
+```
+
+`killed`. Exactly the one title in `mustFail`, `/teams at 1440px paints no text in its own
+backdrop colour`, failed — with all eleven team taglines reported, each at `rgb(9, 9, 11)` on
+`rgb(9, 9, 11)` (1.00:1), e.g.:
+
+```
+"The Silver Arrows reborn — a new era, a new voice." rgb(9, 9, 11) on rgb(9, 9, 11) (1.00:1)
+  at main:nth-child(2) > div:nth-child(1) > div:nth-child(3) > div:nth-child(3) > section:nth-child(1)
+  > div:nth-child(6) > div:nth-child(2) > div:nth-child(1) > div:nth-child(2) > p:nth-child(1)
+```
+
+(...one such line per team, sections 1-11.) `/teams at 390px paints no text in its own backdrop
+colour` **passed** — it was not in `mustFail` and did not fail — which proves the sweep is
+breakpoint-true: `sm:text-base` is a no-op below the `sm` breakpoint (640px), so the 390px
+viewport never hits the mutated rule and the tagline stays `text-zinc-300`. The four other
+routes (`/`, `/tyres`, `/candy`, `/standings`) were unaffected, as expected — the mutation only
+touches `components/teams/team-section.tsx`. `pnpm test:browser:mutants 04` rebuilt the clean
+tree afterwards; `git status --porcelain` was empty.
+
+This run followed four unrelated shipped-defect fixes made earlier in the same session (see
+`task-7-report.md`'s "Shipped-defect fixes" section) — DoubleMarquee's and
+`landing-how-it-works.tsx`'s numerals off a sub-3:1 `zinc-600`, `EYEBROW_RED`'s missing
+`base-warm` variant, and `LifecycleStepper`'s inherited-transition flash — all committed
+separately before this harness's own files were committed, so this mutant run is against a tree
+where `browser/invisible-text.spec.ts` and `browser/a11y-smoke.spec.ts` both pass clean
+(`11 passed`) on the unmutated tree.
