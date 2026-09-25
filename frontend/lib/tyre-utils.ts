@@ -1,4 +1,11 @@
-import { DARK_BG, MIN_CONTRAST, blendOver, liftUntilContrast, ringOnDark } from '@/lib/team-utils';
+import {
+  DARK_BG,
+  MIN_CONTRAST,
+  blendOver,
+  contrastRatio,
+  liftUntilContrast,
+  ringOnDark,
+} from '@/lib/team-utils';
 
 /**
  * Compound colour → a colour that is actually readable where it is used.
@@ -154,5 +161,61 @@ const BASE_WARM = '#140b0b';
  * `EYEBROW_RED`'s zero-headroom-by-construction 4.5:1+ on `DARK_BG`. `tyre-utils.test.ts` asserts
  * both halves of that: this variant clears 4.5:1 (measured 4.51:1) on `base-warm`, and the plain
  * `EYEBROW_RED` genuinely does not — so this cannot be a redundant helper.
+ *
+ * It too has zero headroom, so it is correct only on **bare** `base-warm`: Act 2 and the Archive.
+ * Act 3b's eyebrow sits under the strategy glow and uses `EYEBROW_RED_ON_STRATEGY_GLOW`.
  */
 export const EYEBROW_RED_ON_WARM = liftUntilContrast('#dc2626', MIN_CONTRAST, BASE_WARM);
+
+/**
+ * Act 3b's ambient glow: one tint per strategy scenario, keyed by the ids in
+ * `STRATEGY_SCENARIOS`, plus the neutral a scenario without a tint falls back to. They live here
+ * rather than in `act-strategy.tsx` so the eyebrow's backdrop is judged against the tints the
+ * component really paints — the component reads them from this record.
+ */
+export const STRATEGY_TINTS = {
+  'hot-abrasive': '#e8382f',
+  'safety-car-restart': '#ffd12e',
+  'long-first-stint': '#f4f4f5',
+  'drying-track': '#3fbf4f',
+  'returning-rain': '#2b8fe0',
+  'close-call': '#a1a1aa',
+} as const satisfies Record<string, string>;
+
+export const STRATEGY_DEFAULT_TINT = '#a1a1aa';
+
+/**
+ * Peak opacity of Act 3b's glow, and — deliberately the same number — the alpha its composite is
+ * judged at, the rule `GLOW_PEAK_OPACITY` and `TYRE_GLOW_PEAK` follow. The glow is a blurred disc,
+ * so the alpha genuinely behind the eyebrow is lower than this (roughly half, measured); judging at
+ * the peak is the conservative side.
+ */
+export const STRATEGY_GLOW_PEAK = 0.16;
+
+/**
+ * The lightest composite the strategy glow can leave behind the Act 3b eyebrow: every tint at
+ * `STRATEGY_GLOW_PEAK` over `base-warm`, keeping the one white text contrasts with least — i.e.
+ * the most luminous. The eyebrow is lighter than every candidate, so clearing the lightest clears
+ * them all. Today that is the long-first-stint white.
+ */
+export function strategyGlowWorstBackdrop(): string {
+  const candidates = [...Object.values(STRATEGY_TINTS), STRATEGY_DEFAULT_TINT].map((tint) =>
+    blendOver(tint, STRATEGY_GLOW_PEAK, BASE_WARM),
+  );
+  return candidates.reduce((worst, c) =>
+    contrastRatio(c, '#ffffff') < contrastRatio(worst, '#ffffff') ? c : worst,
+  );
+}
+
+/**
+ * The eyebrow colour for Act 3b, which sits inside the strategy glow rather than on bare
+ * `base-warm`. `EYEBROW_RED_ON_WARM` measured 3.83:1 there under the white tint at 390px (and under
+ * 4.5:1 for every scenario at every width), because the glow lightens its backdrop and it had no
+ * headroom to spend. Taking the eyebrow out of the glow was not an option: the glow is 30rem wide
+ * and centred, so at phone widths it covers the whole section.
+ */
+export const EYEBROW_RED_ON_STRATEGY_GLOW = liftUntilContrast(
+  '#dc2626',
+  MIN_CONTRAST,
+  strategyGlowWorstBackdrop(),
+);

@@ -386,7 +386,10 @@ at 12px. (Since the tyres redesign into acts, `compoundTextOnTrackedRow` has no 
 browser harness's class-2 mutant uses the teams rail's `railStandingColor` instead.)
 `EYEBROW_RED_ON_WARM` (`lib/tyre-utils.ts`) exists because `EYEBROW_RED` is lifted against
 `#09090b` and measured under 4.5:1 on the `bg-base-warm` acts; the browser harness's axe smoke
-found it. If you add compound-coloured text, the first question is what is behind it; the second is
+found it. It too has zero headroom, so it is right only on *bare* `base-warm` (Act 2, the
+Archive): Act 3b's eyebrow sits under the strategy glow and measured 3.83–4.44:1 with it, so it
+uses `EYEBROW_RED_ON_STRATEGY_GLOW`, judged against the lightest scenario tint at
+`STRATEGY_GLOW_PEAK` (`browser/tyres-contrast.spec.ts` measures every scenario). If you add compound-coloured text, the first question is what is behind it; the second is
 whether a helper already describes that composite. `tyre-utils.test.ts` asserts one surface per
 helper *and* that the weaker helper genuinely falls short on it, so a redundant helper cannot
 survive — there is no `compoundTextOnPage`, because it was byte-identical to `readableOnDark`.

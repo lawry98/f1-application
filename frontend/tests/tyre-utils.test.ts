@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 
-import { COMPOUND_COLORS } from '@/data/tyres-data';
+import { COMPOUND_COLORS, STRATEGY_SCENARIOS } from '@/data/tyres-data';
 import {
+  blendOver,
   contrastRatio,
   readableOnDark,
   DARK_BG,
@@ -10,8 +11,13 @@ import {
 } from '@/lib/team-utils';
 import {
   EYEBROW_RED,
+  EYEBROW_RED_ON_STRATEGY_GLOW,
   EYEBROW_RED_ON_WARM,
+  STRATEGY_DEFAULT_TINT,
+  STRATEGY_GLOW_PEAK,
+  STRATEGY_TINTS,
   TYRE_GLOW_PEAK,
+  strategyGlowWorstBackdrop,
   compoundCardBackdrop,
   compoundGlowBackdrop,
   compoundRing,
@@ -201,6 +207,47 @@ describe('EYEBROW_RED_ON_WARM', () => {
 
   it('still reads as red rather than washing out to pink', () => {
     const [r, g, b] = [1, 3, 5].map((i) => parseInt(EYEBROW_RED_ON_WARM.slice(i, i + 2), 16));
+    expect(r!).toBeGreaterThan(g! + 60);
+    expect(r!).toBeGreaterThan(b! + 60);
+  });
+});
+
+describe('EYEBROW_RED_ON_STRATEGY_GLOW', () => {
+  /*
+   * Act 3b's eyebrow sits under the strategy glow, whose tint follows the selected scenario. The
+   * browser measured `EYEBROW_RED_ON_WARM` under 4.5:1 there for every scenario at every width
+   * (3.83:1 under the white tint at 390px). Judged at the glow's peak alpha over `base-warm`,
+   * against the lightest tint — the conservative side of what is really behind the glyphs.
+   */
+  const composites = [...Object.values(STRATEGY_TINTS), STRATEGY_DEFAULT_TINT].map((tint) =>
+    blendOver(tint, STRATEGY_GLOW_PEAK, BASE_WARM),
+  );
+
+  it('clears AA over the worst tint, where the base-warm variant falls short', () => {
+    expect(contrastRatio(EYEBROW_RED_ON_WARM, strategyGlowWorstBackdrop())).toBeLessThan(
+      MIN_CONTRAST,
+    );
+    expect(
+      contrastRatio(EYEBROW_RED_ON_STRATEGY_GLOW, strategyGlowWorstBackdrop()),
+    ).toBeGreaterThanOrEqual(MIN_CONTRAST);
+  });
+
+  it('clears AA over every scenario tint, not only the one picked as worst', () => {
+    for (const backdrop of composites) {
+      expect(contrastRatio(EYEBROW_RED_ON_STRATEGY_GLOW, backdrop), backdrop).toBeGreaterThanOrEqual(
+        MIN_CONTRAST,
+      );
+    }
+  });
+
+  it('has a tint for every scenario, so none is judged by the fallback alone', () => {
+    for (const { id } of STRATEGY_SCENARIOS) expect(Object.keys(STRATEGY_TINTS)).toContain(id);
+  });
+
+  it('still reads as red rather than washing out to pink', () => {
+    const [r, g, b] = [1, 3, 5].map((i) =>
+      parseInt(EYEBROW_RED_ON_STRATEGY_GLOW.slice(i, i + 2), 16),
+    );
     expect(r!).toBeGreaterThan(g! + 60);
     expect(r!).toBeGreaterThan(b! + 60);
   });
