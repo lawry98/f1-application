@@ -10,8 +10,16 @@ const WCAG_A_AA = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
  */
 const KNOWN: Record<string, string[]> = {};
 
-for (const route of ['/', '/teams', '/tyres', '/candy', '/standings']) {
-  test(`${route} has no WCAG A/AA axe violations`, async ({ page }) => {
+// Desktop for every route; 390px as well where the layout genuinely changes (the tyres acts
+// restack), since a violation can live in one layout only.
+const PASSES = [
+  ...['/', '/teams', '/tyres', '/candy', '/standings'].map((route) => ({ route, width: 1440 })),
+  { route: '/tyres', width: 390 },
+];
+
+for (const { route, width } of PASSES) {
+  test(`${route} has no WCAG A/AA axe violations at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
     await page.goto(route);
     if (route === '/standings') await expect(page.getByRole('table').first()).toBeVisible();
     const { violations } = await new AxeBuilder({ page }).withTags(WCAG_A_AA).analyze();
