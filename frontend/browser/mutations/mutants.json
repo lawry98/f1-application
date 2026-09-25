@@ -1,9 +1,14 @@
 [
   {
     "patch": "01-tailwind-content-no-lib.patch",
-    "reintroduces": "lib/ missing from tailwind content, so focus-visible:ring-f1-red and ring-ink are never generated (CLAUDE.md: 'A Tailwind class that no content glob reaches')",
+    "reintroduces": "lib/ missing from tailwind content, so focus-visible:ring-ink is never generated (CLAUDE.md: 'A Tailwind class that no content glob reaches'). Not ring-f1-red: that literal is also written directly in components/tyres/acts/tyre-archive.tsx and source-list.tsx, which content still reaches, so that rule survives regardless of this mutation.",
     "specs": ["browser/focus-rings.spec.ts"],
-    "mustFail": ["the red-filled hero CTA takes the ink ring", "a flush control on base takes the red ring"]
+    "mustFail": [
+      "the red-filled hero CTA takes the ink ring",
+      "no focusable control on / paints Tailwind's default blue ring",
+      "no focusable control on /teams paints Tailwind's default blue ring",
+      "no focusable control on /tyres paints Tailwind's default blue ring"
+    ]
   },
   {
     "patch": "02-duration-arbitrary.patch",
