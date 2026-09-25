@@ -123,3 +123,36 @@ This run followed four unrelated shipped-defect fixes made earlier in the same s
 separately before this harness's own files were committed, so this mutant run is against a tree
 where `browser/invisible-text.spec.ts` and `browser/a11y-smoke.spec.ts` both pass clean
 (`11 passed`) on the unmutated tree.
+
+## 05
+
+Date: 2026-09-25
+Commit: `c13b63b2cced6094f01acc33094bd2c1d639b0c3`
+Run: `pnpm test:browser:mutants 05`
+
+```
+┌─────────┬─────────────────────────────────────────────┬──────────┬─────────────┐
+│ (index) │ patch                                       │ outcome  │ detail      │
+├─────────┼─────────────────────────────────────────────┼──────────┼─────────────┤
+│ 0       │ '05-scroll-spy-intersection-observer.patch' │ 'killed' │ 'failed: 1' │
+└─────────┴─────────────────────────────────────────────┴──────────┴─────────────┘
+```
+
+`killed`. Exactly the one title in `mustFail`, `the rail names the section covering most of the
+band at every sampled scroll position`, failed. The spec's own final assertion reported:
+
+```
+Error: 5 of 31 sampled positions named the wrong section
+
+expect(received).toBe(expected) // Object.is equality
+
+Expected: 0
+Received: 5
+```
+
+(CLAUDE.md measured 8 of 31 for this defect; the count is deterministic per code path and the
+band/`STEP_PX` were not tuned to reach either number — see "Deviations" in `task-8-report.md`.)
+Before the mutant, three green-tree runs of `browser/scroll-spy.spec.ts` alone passed `1 passed`
+each (5.5s, 5.2s, 5.1s), with no flake, confirming the spec is stable against the real hook.
+`pnpm test:browser:mutants 05` rebuilt the clean tree afterwards; `git status --porcelain` was
+empty.
