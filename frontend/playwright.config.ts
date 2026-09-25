@@ -21,8 +21,9 @@ export default defineConfig({
   reporter: process.env.CI ? [['github'], ['html', { open: 'never' }]] : [['list']],
   use: {
     baseURL: 'http://localhost:3100',
-    // Settles BlurFade, the rail cascade and Lenis (`SmoothScroll` stops under `reduce`), so a
-    // measurement never lands mid-animation. Specs that need motion opt out per test.
+    // Stops Lenis (`SmoothScroll` stops under `reduce`) and most entrance delays, but not every
+    // opacity fade: BlurFade and the teams dossier still fade in after load, so the axe smoke
+    // waits for `waitForMotionToSettle` first. Specs that need motion opt out per test.
     reducedMotion: 'reduce',
     viewport: { width: 1440, height: 900 },
     trace: 'retain-on-failure',
