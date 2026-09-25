@@ -41,6 +41,11 @@ export async function findInvisibleText(page: Page): Promise<InvisibleText[]> {
   const samples = await page.evaluate(async (): Promise<Sample[]> => {
     const frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     const isOpaque = (c: string) => c.startsWith('rgb(');
+    // `parseCssColor` cannot cross into the page, so the alpha channel is read here.
+    const alphaOf = (c: string): number => {
+      const a = /^rgba?\(([^)]+)\)$/.exec(c)?.[1]?.split(/[\s,/]+/).filter(Boolean)[3];
+      return a === undefined ? 1 : a.endsWith('%') ? Number.parseFloat(a) / 100 : Number(a);
+    };
     const seen = new Map<string, Sample>();
 
     const pathOf = (el: Element): string => {
@@ -72,7 +77,10 @@ export async function findInvisibleText(page: Page): Promise<InvisibleText[]> {
         if (rect.bottom <= 0 || rect.top >= innerHeight) continue;
         if (!el.checkVisibility({ opacityProperty: true, visibilityProperty: true })) continue;
         const color = getComputedStyle(el).color;
-        if (color.endsWith(', 0)')) continue; // transparent text, e.g. bg-clip-text
+        // Transparent text (e.g. `bg-clip-text`) paints its glyphs from a background, not
+        // `color`. Skipped on alpha alone: a string test like `endsWith(', 0)')` also drops every
+        // opaque colour whose blue channel is 0, f1-red `rgb(225, 6, 0)` among them.
+        if (alphaOf(color) === 0) continue;
         const backdrop = backdropOf(el);
         if (backdrop === null) continue;
         const path = pathOf(el);
