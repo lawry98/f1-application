@@ -2,10 +2,12 @@ import { focusByKeyboard, focusState, hasRule, tabThroughPage, TAILWIND_DEFAULT_
 import { expect, test } from './support/test';
 
 /**
- * Class 1: a Tailwind rule that was never generated. `focus-visible:ring-f1-red` and
- * `focus-visible:ring-ink` are written only in `lib/focus.ts`; with `lib/` missing from
- * `content` neither rule exists, the class is still on the element, and every ring falls back
- * to Tailwind's default blue, invisible on the red CTA. Only computed style can see it.
+ * Class 1: a Tailwind rule that was never generated. `focus-visible:ring-ink` is written only in
+ * `lib/focus.ts`; with `lib/` missing from `content` that rule does not exist, the class is still
+ * on the element, and the ring falls back to Tailwind's default blue, invisible on the red CTA.
+ * Only computed style can see it. (`focus-visible:ring-f1-red` is also written literally in
+ * `components/tyres/acts/*`, so it is generated either way; its test below is a guard on the
+ * colour, not on `content`.)
  */
 
 /** `tailwind.config.ts` → `ink`. */
