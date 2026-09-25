@@ -3,8 +3,11 @@
 ## Full run
 
 Date: 2026-09-25
-Commit: `6454c54ac0c9f6b76f63d1a51d91eaaa457e64e6`
-Run: `pnpm test:browser:mutants` (all five, Task 10 Step 2 full verification)
+Commit: `5dd94bedfed8cdf7048e801ff4d3a922b82aa8c5`
+Run: `pnpm test:browser:mutants` (all five, after the final-review fix wave)
+
+The runner's clean-tree baseline ran first: the union of the five mutants' specs passed
+`16 passed (27.3s)` with `--retries=0`, so the kills below are against a green harness.
 
 ```
 ┌─────────┬─────────────────────────────────────────────┬──────────┬─────────────┐
