@@ -7,10 +7,15 @@
  * "killed" only if *those tests* failed. A red run caused by something else (the server did
  * not start, an unrelated spec) does not count, because that is a fake kill.
  *
+ * Before any patch is applied it builds the clean tree and runs the union of the selected
+ * mutants' specs once. If anything fails there, it stops: a spec that is red with no mutant in
+ * place would make every mutant read `killed`.
+ *
  *   node scripts/run-mutants.mjs            # every mutant
  *   node scripts/run-mutants.mjs 03 05      # by patch-name prefix
  *
- * Exit 0 only if every selected mutant was killed. Outcomes other than `killed`:
+ * Exit 0 only if the baseline passed and every selected mutant was killed. Outcomes other than
+ * `killed`:
  *   survived     the harness passed with the defect in place: coverage is gone
  *   stale        the patch no longer applies: regenerate it (browser/mutations/README.md)
  *   build-failed the mutant does not compile: the patch needs adapting, not deleting
@@ -40,13 +45,8 @@ import { fileURLToPath } from 'node:url';
  * reason that has nothing to do with the mutant, which would otherwise read as every `mustFail`
  * title failing "for the right reason."
  */
-export function classifyMutant(report, mustFail) {
-  const globalErrors = report.errors ?? [];
-  if (globalErrors.length > 0) {
-    return { outcome: 'error', detail: `global error: ${globalErrors[0]?.message ?? 'unknown'}` };
-  }
-
-  /** title -> the status of its last executed attempt (retries overwrite earlier attempts). */
+/** title -> the status of its last executed attempt (retries overwrite earlier attempts). */
+function executedStatuses(report) {
   const executed = new Map();
   const walk = (suite) => {
     for (const spec of suite.specs ?? []) {
@@ -59,14 +59,36 @@ export function classifyMutant(report, mustFail) {
     for (const child of suite.suites ?? []) walk(child);
   };
   for (const suite of report.suites ?? []) walk(suite);
+  return executed;
+}
 
-  const ran = (status) => status === 'failed' || status === 'timedOut';
+const ran = (status) => status === 'failed' || status === 'timedOut';
+
+export function classifyMutant(report, mustFail) {
+  const globalErrors = report.errors ?? [];
+  if (globalErrors.length > 0) {
+    return { outcome: 'error', detail: `global error: ${globalErrors[0]?.message ?? 'unknown'}` };
+  }
+
+  const executed = executedStatuses(report);
   const failed = [...executed.entries()].filter(([, status]) => ran(status)).map(([title]) => title);
   const missing = mustFail.filter((title) => !ran(executed.get(title)));
 
   return missing.length === 0
     ? { outcome: 'killed', detail: `failed: ${failed.length}` }
     : { outcome: 'survived', detail: `still passing: ${missing.join(' | ')}` };
+}
+
+/**
+ * What is wrong with the clean-tree baseline run, as one line per problem; empty means it is
+ * green. A global error or a run where nothing executed counts, since neither proves the specs pass.
+ */
+export function baselineFailures(report) {
+  const problems = (report.errors ?? []).map((e) => `global error: ${e?.message ?? 'unknown'}`);
+  const executed = executedStatuses(report);
+  if (executed.size === 0) problems.push('no test executed');
+  for (const [title, status] of executed) if (status !== 'passed' && status !== 'skipped') problems.push(`${status}: ${title}`);
+  return problems;
 }
 
 const isMain = process.argv[1] !== undefined && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
@@ -94,6 +116,33 @@ if (isMain) {
   }
 
   const scratch = mkdtempSync(path.join(tmpdir(), 'run-mutants-'));
+
+  // Baseline: the same specs, on the clean tree, must be green. Otherwise a mustFail title that is
+  // already failing would be read as a kill for every mutant that names it.
+  const baselineSpecs = [...new Set(selected.flatMap((m) => m.specs))];
+  console.log(`\n=== baseline (clean tree)\n    ${baselineSpecs.join(' ')}\n`);
+  if (run('pnpm', ['build']) !== 0) {
+    console.error('run-mutants: baseline failed: the clean tree does not build. No mutant was run.');
+    process.exit(1);
+  }
+  const baselineReport = path.join(scratch, 'baseline.json');
+  run('pnpm', ['exec', 'playwright', 'test', ...baselineSpecs, '--retries=0', '--reporter=line,json'], {
+    PLAYWRIGHT_JSON_OUTPUT_FILE: baselineReport,
+  });
+  let baselineProblems;
+  try {
+    baselineProblems = baselineFailures(JSON.parse(readFileSync(baselineReport, 'utf8')));
+  } catch (err) {
+    baselineProblems = [`no readable report: ${err.message}`];
+  }
+  if (baselineProblems.length > 0) {
+    console.error('\nrun-mutants: baseline failed: the harness is red on the clean tree, kills would be fake.');
+    for (const problem of baselineProblems) console.error(`  ${problem}`);
+    console.error('No mutant was run.');
+    process.exit(1);
+  }
+  console.log('Baseline green.');
+
   const results = [];
 
   for (const mutant of selected) {

@@ -6,6 +6,9 @@ it with the tests that must fail. `pnpm test:browser:mutants` proves that they s
 A mutant that **survives** means the harness has stopped covering that class. Fix the spec, not
 the manifest.
 
+The runner first builds the clean tree and runs the selected mutants' specs once. If that
+**baseline fails** it runs no mutant: a spec already red on the clean tree would fake every kill.
+
 **Mutant 01's `mustFail` doesn't include `a flush control on base takes the red ring`.** That test
 stays in `focus-rings.spec.ts` as a guard on the "flush" ring colour itself, but it can't prove
 "is `lib/` in `content`": `focus-visible:ring-f1-red` is also written literally in
