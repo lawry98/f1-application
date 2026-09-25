@@ -499,6 +499,20 @@ monogram tile reads as page background (axe catches those — the two tools are 
 `TextAnimate` renders an `sr-only` copy beside the painted `aria-hidden` spans, so hiding the
 accessible copy measures the visible glyphs and reports 1:1.
 
+**`reducedMotion: 'reduce'` does not stop entrance opacity fades, and axe folds a mid-fade
+opacity into the colour it measures.** The `/teams` hero CTA wrapper and the sticky dossier's
+`AnimatePresence` swap both still fade in after `goto` under `reduce`; an axe pass timed right
+after load caught the CTA between 2.14:1 and 4.43:1 and failed 8/10 serial runs (3/10 in
+parallel) before the fix, 0 failures once settled. `waitForMotionToSettle`
+(`frontend/browser/support/motion.ts`) is the guard, and every `a11y-smoke` pass calls it before
+`analyze()`. It requires both: no finite Web Animation still running, because the CTA sits at
+`opacity: 0` for several frames before motion has even created that animation; and a `QUIET_MS`
+(300ms) window with no change to opacity, filter, transform, colour or background-color, because
+motion drives some values from JS on `requestAnimationFrame`, which `document.getAnimations()`
+never sees. It throws after `TIMEOUT_MS` (10s) rather than proceeding silently. Its blind spot: a
+JS-driven animation still in a delay phase longer than 300ms would slip past unnoticed — none
+exists on the routes it covers today. Any new browser check that reads colour must call it first.
+
 **The teams page's three columns appear at three different widths.** Left rail from `lg`, sticky
 dossier from `xl`, mobile chip strip below `lg` — laptop widths get two columns on purpose. The
 dossier is also *mounted* on a `matchMedia` check, not just `hidden xl:block`: inside a
