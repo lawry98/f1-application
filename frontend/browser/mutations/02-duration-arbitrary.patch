@@ -1,0 +1,13 @@
+diff --git a/frontend/components/landing/landing-section-theme.tsx b/frontend/components/landing/landing-section-theme.tsx
+index cb16fe9..b224c95 100644
+--- a/frontend/components/landing/landing-section-theme.tsx
++++ b/frontend/components/landing/landing-section-theme.tsx
+@@ -43,7 +43,7 @@ export const TONE_TRANSITION_MS = 600;
+  * the number is greppable. Neither jsdom nor a screenshot can catch this — it is only visible by
+  * reading `transitionDuration` off the live element.
+  */
+-const TONE_TRANSITION = 'transition-[background-color] duration-600';
++const TONE_TRANSITION = 'transition-[background-color] duration-[600ms]';
+ 
+ /**
+  * The band a section has to reach before it counts as "in view", as an `IntersectionObserver`

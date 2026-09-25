@@ -1,0 +1,14 @@
+[
+  {
+    "patch": "01-tailwind-content-no-lib.patch",
+    "reintroduces": "lib/ missing from tailwind content, so focus-visible:ring-f1-red and ring-ink are never generated (CLAUDE.md: 'A Tailwind class that no content glob reaches')",
+    "specs": ["browser/focus-rings.spec.ts"],
+    "mustFail": ["the red-filled hero CTA takes the ink ring", "a flush control on base takes the red ring"]
+  },
+  {
+    "patch": "02-duration-arbitrary.patch",
+    "reintroduces": "duration-[600ms] instead of the duration-600 token, so the crossfade runs at 150ms (CLAUDE.md, same section)",
+    "specs": ["browser/transition-tokens.spec.ts"],
+    "mustFail": ["the warm landing sections crossfade over 600ms, not the 150ms fallback"]
+  }
+]
