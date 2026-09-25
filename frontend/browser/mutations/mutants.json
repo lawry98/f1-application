@@ -15,5 +15,11 @@
     "reintroduces": "duration-[600ms] instead of the duration-600 token, so the crossfade runs at 150ms (CLAUDE.md, same section)",
     "specs": ["browser/transition-tokens.spec.ts"],
     "mustFail": ["the warm landing sections crossfade over 600ms, not the 150ms fallback"]
+  },
+  {
+    "patch": "03-rail-readable-on-dark.patch",
+    "reintroduces": "the rail's active standing coloured with readableOnDark, judged against bare zinc-950 while it sits on bg-zinc-800/60 (CLAUDE.md: measured 4.02:1)",
+    "specs": ["browser/team-contrast.spec.ts"],
+    "mustFail": ["every team, active in the rail and in its section, clears AA"]
   }
 ]
