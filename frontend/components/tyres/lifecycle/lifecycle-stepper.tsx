@@ -46,13 +46,13 @@ export function LifecycleStepper({ activeIndex, total, onSelect, reduced }: Life
                 onClick={() => onSelect(i)}
                 aria-current={isActive ? 'step' : undefined}
                 className={cn(
-                  'relative flex h-11 w-11 items-center justify-center rounded-full border text-xs font-bold transition-colors',
+                  'group relative flex h-11 w-11 items-center justify-center rounded-full border text-xs font-bold transition-colors',
                   isActive
                     ? cn('border-f1-red', focusRingOnRedFill, 'focus-visible:ring-offset-base')
                     : cn(
                         isDone
-                          ? 'border-f1-red/45 text-zinc-200 hover:border-f1-red'
-                          : 'border-white/15 text-zinc-400 hover:border-white/40 hover:text-zinc-200',
+                          ? 'border-f1-red/45 hover:border-f1-red'
+                          : 'border-white/15 hover:border-white/40',
                         focusRingOffsetBase,
                       ),
                 )}
@@ -64,7 +64,32 @@ export function LifecycleStepper({ activeIndex, total, onSelect, reduced }: Life
                     transition={indicatorTransition}
                   />
                 )}
-                <span className={cn('relative z-10', isActive && 'text-white')} aria-hidden="true">
+                {/*
+                 * The numeral's own colour, explicit in every branch — not just `isActive` — and
+                 * with its own `transition-colors` rather than the button's.
+                 *
+                 * The previous version only set `text-white` here and otherwise left the numeral
+                 * to *inherit* `color` from the button, which had no colour utility of its own
+                 * while active. That inherited value is what a real scroll-driven `isActive` →
+                 * `isDone` flip (the `IntersectionObserver` in `useLifecycleActiveStage`) exposed:
+                 * the browser's transition for the button's `color` property animated from
+                 * whatever ambient/UA value it held while unset — measured near-black
+                 * (`rgb(8, 8, 8)`, `rgb(40, 40, 40)` across repeated runs) — up to the new
+                 * `text-zinc-200`, and the numeral, inheriting `color` live, painted that same
+                 * near-black-on-near-black frame for part of the 150ms transition. Giving the
+                 * numeral its own resting colour in every state means no property here ever
+                 * starts a transition from an unset/inherited value — the three end states
+                 * (white / zinc-200 / zinc-400) are unchanged, and the only new behaviour is the
+                 * `group-hover:text-zinc-200` that replaces the button's old `hover:text-zinc-200`
+                 * (moved here since the numeral no longer inherits it).
+                 */}
+                <span
+                  className={cn(
+                    'relative z-10 transition-colors',
+                    isActive ? 'text-white' : isDone ? 'text-zinc-200' : 'text-zinc-400 group-hover:text-zinc-200',
+                  )}
+                  aria-hidden="true"
+                >
                   {i + 1}
                 </span>
                 <span className="sr-only">{`Step ${i + 1} of ${total}: ${entry.stage.name}`}</span>
