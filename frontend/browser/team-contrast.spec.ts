@@ -41,7 +41,29 @@ test.describe('laptop width: rail + section standing', () => {
   });
 });
 
-test.describe('desktop width: compare tray', () => {
+test.describe('desktop width: section standing + compare tray', () => {
+  // The glow is 40vw, so at 1440 it is wider than at 1100 and more of it lands on the content
+  // column: the section standing line is measured again here rather than assumed from 1100.
+  test('every team, active in its section, clears AA at 1440', async ({ page }) => {
+    await page.goto('/teams');
+    const rows = page.getByRole('navigation', { name: 'Constructors' }).getByRole('link');
+    await expect(rows).toHaveCount(11);
+
+    for (let i = 0; i < 11; i++) {
+      const row = rows.nth(i);
+      const href = await row.getAttribute('href');
+      const name = (await row.locator('span.font-medium').textContent())?.trim() ?? `row ${i}`;
+      await row.click();
+      await expect(row).toHaveAttribute('aria-current', 'location');
+
+      await expectContrast(page.locator(`${href} [data-testid="section-standing"]`), {
+        atLeast: AA_SMALL_TEXT,
+        site: `section standing line (sectionStandingColor inside the glow), ${name}, 1440px`,
+        soft: true,
+      });
+    }
+  });
+
   test('every leading tray value clears AA', async ({ page }) => {
     await page.goto('/teams');
     const toggles = page.getByRole('button', { name: /^Compare / });
