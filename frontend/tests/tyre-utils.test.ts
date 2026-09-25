@@ -10,6 +10,7 @@ import {
 } from '@/lib/team-utils';
 import {
   EYEBROW_RED,
+  EYEBROW_RED_ON_WARM,
   TYRE_GLOW_PEAK,
   compoundCardBackdrop,
   compoundGlowBackdrop,
@@ -21,6 +22,10 @@ import {
   compoundTextOnCard,
   compoundTextOnGlow,
 } from '@/lib/tyre-utils';
+
+/** Tailwind's `base-warm` token — kept in the test too so the assertion below and the source
+ * literal cannot silently drift apart. */
+const BASE_WARM = '#140b0b';
 
 const COLORS = Object.entries(COMPOUND_COLORS);
 
@@ -176,6 +181,26 @@ describe('EYEBROW_RED', () => {
 
   it('still reads as red rather than washing out to pink', () => {
     const [r, g, b] = [1, 3, 5].map((i) => parseInt(EYEBROW_RED.slice(i, i + 2), 16));
+    expect(r!).toBeGreaterThan(g! + 60);
+    expect(r!).toBeGreaterThan(b! + 60);
+  });
+});
+
+describe('EYEBROW_RED_ON_WARM', () => {
+  /*
+   * Act 2, Act 3b and the Archive render their eyebrow on `bg-base-warm`, not `DARK_BG` — the
+   * same trap CLAUDE.md records for `/teams`' rail and `/tyres`' own tablist and allocation row:
+   * a colour lifted against one backdrop has no headroom left for a different one. This asserts
+   * both halves, so the variant cannot be redundant with the plain `EYEBROW_RED`: the old colour
+   * genuinely falls short on `base-warm`, and the new one genuinely clears it there.
+   */
+  it('clears AA on base-warm where the DARK_BG-lifted colour falls short', () => {
+    expect(contrastRatio(EYEBROW_RED, BASE_WARM)).toBeLessThan(MIN_CONTRAST);
+    expect(contrastRatio(EYEBROW_RED_ON_WARM, BASE_WARM)).toBeGreaterThanOrEqual(MIN_CONTRAST);
+  });
+
+  it('still reads as red rather than washing out to pink', () => {
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(EYEBROW_RED_ON_WARM.slice(i, i + 2), 16));
     expect(r!).toBeGreaterThan(g! + 60);
     expect(r!).toBeGreaterThan(b! + 60);
   });

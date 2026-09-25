@@ -132,5 +132,27 @@ export function compoundRing(hex: string): string {
  * limiting it to `text-2xl` and up — yet eyebrow labels across the site use it at `text-sm`,
  * which is an AA failure. Rather than copy an existing failure onto a new page, this lifts it
  * to the bar. At 14px the two are indistinguishable; only the ratio changes.
+ *
+ * This clears 4.5:1 on `DARK_BG` (bare `zinc-950`, `#09090b`) **only** — it has zero headroom
+ * by construction, same as `readableOnDark`. Use it only where the eyebrow really sits on that
+ * colour (the explorer's own page background). Anywhere else, judge against what is actually
+ * behind the glyphs — see `EYEBROW_RED_ON_WARM` below.
  */
 export const EYEBROW_RED = liftUntilContrast('#dc2626', MIN_CONTRAST, DARK_BG);
+
+/** Tailwind's `base-warm` token, so this file's `base-warm` variant and its test share one literal. */
+const BASE_WARM = '#140b0b';
+
+/**
+ * The eyebrow label colour where it sits on `bg-base-warm` rather than bare `zinc-950`.
+ *
+ * Act 2, Act 3b and the Archive (`components/tyres/acts/act-compound-lab.tsx`,
+ * `act-strategy.tsx`, `tyre-archive.tsx`) all render their eyebrow on a `bg-base-warm` section,
+ * not `DARK_BG` — a real axe run flags exactly this trio. `base-warm` (`#140B0B`) is a *lighter*
+ * background than `zinc-950` (`#09090b`) — every channel is equal or higher — so the same lifted
+ * red text loses contrast against it: measured 4.40:1, under the 4.5:1 floor, versus
+ * `EYEBROW_RED`'s zero-headroom-by-construction 4.5:1+ on `DARK_BG`. `tyre-utils.test.ts` asserts
+ * both halves of that: this variant clears 4.5:1 (measured 4.51:1) on `base-warm`, and the plain
+ * `EYEBROW_RED` genuinely does not — so this cannot be a redundant helper.
+ */
+export const EYEBROW_RED_ON_WARM = liftUntilContrast('#dc2626', MIN_CONTRAST, BASE_WARM);
