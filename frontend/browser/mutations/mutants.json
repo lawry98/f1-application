@@ -27,5 +27,11 @@
     "reintroduces": "sm:text-base on /teams body copy: the base colour token #09090B beats text-zinc-300 at >=640px (CLAUDE.md: 'text-base is a colour in this theme')",
     "specs": ["browser/invisible-text.spec.ts"],
     "mustFail": ["/teams at 1440px paints no text in its own backdrop colour"]
+  },
+  {
+    "patch": "05-scroll-spy-intersection-observer.patch",
+    "reintroduces": "the IntersectionObserver scroll spy from 4743f45: intersectionRatio peaks at 0.48 against an unreachable 0.5 threshold (CLAUDE.md: wrong at 8 of 31 positions)",
+    "specs": ["browser/scroll-spy.spec.ts"],
+    "mustFail": ["the rail names the section covering most of the band at every sampled scroll position"]
   }
 ]
