@@ -7,12 +7,19 @@ on:
   schedule:
     - cron: "0 6 * * 1"
   workflow_dispatch:
-  # Also on any PR that touches the harness itself — the one change most likely to loosen a spec.
+  # Also on any PR that touches the harness itself — the one change most likely to loosen a spec —
+  # or a file a patch mutates, since editing one can leave its patch stale.
   pull_request:
     paths:
       - "frontend/browser/**"
       - "frontend/scripts/run-mutants.mjs"
       - "frontend/playwright.config.ts"
+      # The files the patches in frontend/browser/mutations/ edit (their `+++` headers).
+      - "frontend/tailwind.config.ts"
+      - "frontend/components/landing/landing-section-theme.tsx"
+      - "frontend/components/teams/teams-nav-rail.tsx"
+      - "frontend/components/teams/team-section.tsx"
+      - "frontend/hooks/use-scroll-spy.ts"
 
 jobs:
   mutants:
