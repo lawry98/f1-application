@@ -1,0 +1,13 @@
+diff --git a/frontend/components/teams/team-section.tsx b/frontend/components/teams/team-section.tsx
+index 02d8fd0..4bdb115 100644
+--- a/frontend/components/teams/team-section.tsx
++++ b/frontend/components/teams/team-section.tsx
+@@ -271,7 +271,7 @@ export function TeamSection({ team, index, isActive, onInspect, reducedMotion }:
+ 
+             {/* Tagline */}
+             <BlurFadeReduced delay={reducedMotion ? 0 : 0.15} inView>
+-              <p className="max-w-sm text-base leading-relaxed text-zinc-300">{team.tagline}</p>
++              <p className="max-w-sm sm:text-base leading-relaxed text-zinc-300">{team.tagline}</p>
+             </BlurFadeReduced>
+ 
+             {/* Meta info */}

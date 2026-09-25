@@ -1,0 +1,37 @@
+[
+  {
+    "patch": "01-tailwind-content-no-lib.patch",
+    "reintroduces": "lib/ missing from tailwind content, so focus-visible:ring-ink is never generated (CLAUDE.md: 'A Tailwind class that no content glob reaches'). Not ring-f1-red: that literal is also written directly in components/tyres/acts/tyre-archive.tsx and source-list.tsx, which content still reaches, so that rule survives regardless of this mutation.",
+    "specs": ["browser/focus-rings.spec.ts"],
+    "mustFail": [
+      "the red-filled hero CTA takes the ink ring",
+      "no focusable control on / paints Tailwind's default blue ring",
+      "no focusable control on /teams paints Tailwind's default blue ring",
+      "no focusable control on /tyres paints Tailwind's default blue ring"
+    ]
+  },
+  {
+    "patch": "02-duration-arbitrary.patch",
+    "reintroduces": "duration-[600ms] instead of the duration-600 token, so the crossfade runs at 150ms (CLAUDE.md, same section)",
+    "specs": ["browser/transition-tokens.spec.ts"],
+    "mustFail": ["the warm landing sections crossfade over 600ms, not the 150ms fallback"]
+  },
+  {
+    "patch": "03-rail-readable-on-dark.patch",
+    "reintroduces": "the rail's active standing coloured with readableOnDark, judged against bare zinc-950 while it sits on bg-zinc-800/60 (CLAUDE.md: measured 4.02:1)",
+    "specs": ["browser/team-contrast.spec.ts"],
+    "mustFail": ["every team, active in the rail and in its section, clears AA"]
+  },
+  {
+    "patch": "04-sm-text-base.patch",
+    "reintroduces": "sm:text-base on /teams body copy: the base colour token #09090B beats text-zinc-300 at >=640px (CLAUDE.md: 'text-base is a colour in this theme')",
+    "specs": ["browser/invisible-text.spec.ts"],
+    "mustFail": ["/teams at 1440px paints no text in its own backdrop colour"]
+  },
+  {
+    "patch": "05-scroll-spy-intersection-observer.patch",
+    "reintroduces": "the IntersectionObserver scroll spy from 4743f45: intersectionRatio peaks at 0.48 against an unreachable 0.5 threshold (CLAUDE.md: wrong at 8 of 31 positions)",
+    "specs": ["browser/scroll-spy.spec.ts"],
+    "mustFail": ["the rail names the section covering most of the band at every sampled scroll position"]
+  }
+]

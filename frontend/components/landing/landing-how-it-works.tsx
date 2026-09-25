@@ -201,13 +201,20 @@ export function LandingHowItWorks() {
                      * comfortably past the 24px large-text threshold where f1-red's 4.01:1 is
                      * sufficient. Do not "fix" this to match the no-small-red-text rule — the rule
                      * is about small text, and this is not.
+                     *
+                     * Steps 02-04's neutral needed the same large-text check and didn't get it:
+                     * `text-zinc-600` measured ≈2.51:1 against `NUMERAL_MASK`'s `base-warm`
+                     * (`#140B0B`), under the 3:1 large-text floor even though 32px qualifies for
+                     * it — an axe smoke run catches this even with the numeral `aria-hidden`,
+                     * because contrast is a sighted-rendering concern, not a screen-reader one.
+                     * `text-zinc-500` clears it at ≈4.02:1.
                      */}
                     <div
                       className={cn(
                         'relative flex justify-center py-1 font-display text-[2rem] tabular-nums leading-none tracking-tight',
                         NUMERAL_MASK,
                         NUMERAL_COLUMN,
-                        i === 0 ? 'text-f1-red' : 'text-zinc-600',
+                        i === 0 ? 'text-f1-red' : 'text-zinc-500',
                       )}
                       aria-hidden="true"
                     >

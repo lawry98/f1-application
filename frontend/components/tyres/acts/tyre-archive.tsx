@@ -4,7 +4,7 @@ import {
   TYRE_FAQ,
   TYRE_SOURCES,
 } from '@/data/tyres-data';
-import { EYEBROW_RED } from '@/lib/tyre-utils';
+import { EYEBROW_RED_ON_WARM } from '@/lib/tyre-utils';
 
 import { AnimatedDisclosure } from './animated-disclosure';
 
@@ -33,7 +33,9 @@ export function TyreArchive() {
       <div className="container relative mx-auto max-w-7xl px-4 py-14 sm:py-20">
         <p
           className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.2em]"
-          style={{ color: EYEBROW_RED }}
+          // This section renders on `bg-base-warm` — the `-warm` variant, not the plain
+          // `EYEBROW_RED` lifted for bare `zinc-950`, which falls short here.
+          style={{ color: EYEBROW_RED_ON_WARM }}
         >
           <span className="h-[3px] w-6 bg-f1-red" aria-hidden="true" />
           Archive
