@@ -21,5 +21,11 @@
     "reintroduces": "the rail's active standing coloured with readableOnDark, judged against bare zinc-950 while it sits on bg-zinc-800/60 (CLAUDE.md: measured 4.02:1)",
     "specs": ["browser/team-contrast.spec.ts"],
     "mustFail": ["every team, active in the rail and in its section, clears AA"]
+  },
+  {
+    "patch": "04-sm-text-base.patch",
+    "reintroduces": "sm:text-base on /teams body copy: the base colour token #09090B beats text-zinc-300 at >=640px (CLAUDE.md: 'text-base is a colour in this theme')",
+    "specs": ["browser/invisible-text.spec.ts"],
+    "mustFail": ["/teams at 1440px paints no text in its own backdrop colour"]
   }
 ]
