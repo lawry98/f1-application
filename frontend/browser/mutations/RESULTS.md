@@ -1,5 +1,28 @@
 # Results
 
+## Full run
+
+Date: 2026-09-25
+Commit: `14144a04670e53067d4138be8d9bd988f2b38e5b`
+Run: `pnpm test:browser:mutants` (all five, Task 10 Step 2 full verification)
+
+```
+┌─────────┬─────────────────────────────────────────────┬──────────┬─────────────┐
+│ (index) │ patch                                       │ outcome  │ detail      │
+├─────────┼─────────────────────────────────────────────┼──────────┼─────────────┤
+│ 0       │ '01-tailwind-content-no-lib.patch'          │ 'killed' │ 'failed: 4' │
+│ 1       │ '02-duration-arbitrary.patch'               │ 'killed' │ 'failed: 1' │
+│ 2       │ '03-rail-readable-on-dark.patch'            │ 'killed' │ 'failed: 1' │
+│ 3       │ '04-sm-text-base.patch'                     │ 'killed' │ 'failed: 1' │
+│ 4       │ '05-scroll-spy-intersection-observer.patch' │ 'killed' │ 'failed: 1' │
+└─────────┴─────────────────────────────────────────────┴──────────┴─────────────┘
+```
+
+All five `killed`. The runner rebuilt the unmutated tree afterwards; `git status --porcelain`
+was empty.
+
+## History
+
 ## 01, 02
 
 Date: 2026-09-25
@@ -116,9 +139,8 @@ routes (`/`, `/tyres`, `/candy`, `/standings`) were unaffected, as expected — 
 touches `components/teams/team-section.tsx`. `pnpm test:browser:mutants 04` rebuilt the clean
 tree afterwards; `git status --porcelain` was empty.
 
-This run followed four unrelated shipped-defect fixes made earlier in the same session (see
-`task-7-report.md`'s "Shipped-defect fixes" section) — DoubleMarquee's and
-`landing-how-it-works.tsx`'s numerals off a sub-3:1 `zinc-600`, `EYEBROW_RED`'s missing
+This run followed four unrelated shipped-defect fixes made earlier in the same session —
+DoubleMarquee's and `landing-how-it-works.tsx`'s numerals off a sub-3:1 `zinc-600`, `EYEBROW_RED`'s missing
 `base-warm` variant, and `LifecycleStepper`'s inherited-transition flash — all committed
 separately before this harness's own files were committed, so this mutant run is against a tree
 where `browser/invisible-text.spec.ts` and `browser/a11y-smoke.spec.ts` both pass clean
@@ -151,8 +173,7 @@ Received: 5
 ```
 
 (CLAUDE.md measured 8 of 31 for this defect; the count is deterministic per code path and the
-band/`STEP_PX` were not tuned to reach either number — see "Deviations" in `task-8-report.md`.)
-Before the mutant, three green-tree runs of `browser/scroll-spy.spec.ts` alone passed `1 passed`
+band/`STEP_PX` were not tuned to reach either number.) Before the mutant, three green-tree runs of `browser/scroll-spy.spec.ts` alone passed `1 passed`
 each (5.5s, 5.2s, 5.1s), with no flake, confirming the spec is stable against the real hook.
 `pnpm test:browser:mutants 05` rebuilt the clean tree afterwards; `git status --porcelain` was
 empty.
