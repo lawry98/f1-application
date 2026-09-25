@@ -47,3 +47,39 @@ first), only counts a title as a kill if it genuinely executed with status `fail
 wraps the report read in its own `try`/`catch` so a missing file becomes `error` and the `finally`
 patch-revert still runs, and the final rebuild's failure now exits 1 with a clear message. The
 table above is the re-run against the fixed runner; both mutants are still `killed`.
+
+## 03
+
+Date: 2026-09-25
+Commit: `bfa616aa4a8065a1108a7c59edab5b793f0c6af8`
+Run: `pnpm test:browser:mutants 03`
+
+```
+┌─────────┬──────────────────────────────────┬──────────┬─────────────┐
+│ (index) │ patch                            │ outcome  │ detail      │
+├─────────┼──────────────────────────────────┼──────────┼─────────────┤
+│ 0       │ '03-rail-readable-on-dark.patch' │ 'killed' │ 'failed: 1' │
+└─────────┴──────────────────────────────────┴──────────┴─────────────┘
+```
+
+`killed`. `every team, active in the rail and in its section, clears AA` failed, with seven of
+the eleven rail rows under 4.5:1 (soft assertions, so all seven are reported in one run rather
+than stopping at the first):
+
+```
+rail active row (railStandingColor over bg-zinc-800/60), Ferrari: 4.03:1, needs 4.5:1 (text rgb(246, 0, 0) on backdrop rgb(27, 27, 29))
+rail active row (railStandingColor over bg-zinc-800/60), Red Bull: 4.04:1, needs 4.5:1 (text rgb(81, 108, 255) on backdrop rgb(27, 27, 29))
+rail active row (railStandingColor over bg-zinc-800/60), Racing Bulls: 3.95:1, needs 4.5:1 (text rgb(77, 124, 176) on backdrop rgb(27, 27, 29))
+rail active row (railStandingColor over bg-zinc-800/60), Audi: 3.94:1, needs 4.5:1 (text rgb(242, 0, 47) on backdrop rgb(27, 27, 29))
+rail active row (railStandingColor over bg-zinc-800/60), Williams: 4.00:1, needs 4.5:1 (text rgb(36, 113, 255) on backdrop rgb(27, 27, 29))
+rail active row (railStandingColor over bg-zinc-800/60), Cadillac: 3.94:1, needs 4.5:1 (text rgb(237, 25, 60) on backdrop rgb(27, 27, 29))
+rail active row (railStandingColor over bg-zinc-800/60), Aston Martin: 3.98:1, needs 4.5:1 (text rgb(0, 137, 121) on backdrop rgb(27, 27, 29))
+```
+
+Ferrari's 4.03:1 matches CLAUDE.md's recorded 4.02:1 for `readableOnDark` against the rail's
+`bg-zinc-800/60` composite, within measurement noise. The other four teams (Mercedes, McLaren,
+Alpine, Haas) stayed at or above 4.5:1 under the mutation and did not appear in the failure list.
+The unmutated (green) tree passed both tests 2/2 (`pnpm exec playwright test
+browser/team-contrast.spec.ts`, 6.5s) before this mutant was generated — no selector or floor was
+touched to make this kill happen. `pnpm test:browser:mutants 03` rebuilt the clean tree
+afterwards; `git status --porcelain` was empty.
