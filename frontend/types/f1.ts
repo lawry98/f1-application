@@ -28,6 +28,31 @@ export interface Race {
   official_name: string;
 }
 
+/** One race win at a circuit, from `GET /api/circuits/{id}/winners`. */
+export interface CircuitWinner {
+  year: number;
+  /** The Grand Prix, which can differ year to year at the same track — and a year can hold two. */
+  event: string;
+  driver: string;
+  driver_code: string;
+  team: string;
+  /** Total race time as `H:MM:SS.mmm`, or null when FastF1 has none. */
+  time: string | null;
+}
+
+/**
+ * Winners across `from_year`..`to_year` inclusive — the three seasons before the current one.
+ * A year the circuit did not host is simply absent; a year whose load failed is listed in
+ * `unavailable_years` so the page can say so rather than implying the circuit sat out.
+ */
+export interface CircuitWinnersResponse {
+  circuit_id: string;
+  from_year: number;
+  to_year: number;
+  winners: CircuitWinner[];
+  unavailable_years: number[];
+}
+
 /**
  * One row of the drivers' table from `GET /api/standings/{year}` — mirrors the dicts
  * `get_championship_standings` builds in `backend/tools/standings_tools.py`.

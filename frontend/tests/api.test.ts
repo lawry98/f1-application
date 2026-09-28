@@ -8,10 +8,11 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getStandings, streamBriefing } from '@/lib/api';
+import { getCircuitWinners, getStandings, streamBriefing } from '@/lib/api';
 import type { StreamEvent } from '@/types';
 import { type FixtureName, fetchInChunks, fixture } from './sse';
 import standings2026 from './fixtures/standings-2026.json';
+import monzaWinners from './fixtures/circuit-winners-it-1922.json';
 
 async function collect(name: FixtureName, chunkSize: number) {
   globalThis.fetch = fetchInChunks(fixture(name), chunkSize) as typeof fetch;
@@ -164,5 +165,29 @@ describe('getStandings', () => {
     );
 
     await expect(getStandings(2026)).rejects.toThrow('Failed to fetch standings');
+  });
+});
+
+describe('getCircuitWinners', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('asks the winners route for the circuit id and returns the payload as served', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(monzaWinners));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await getCircuitWinners('it-1922');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(/\/api\/circuits\/it-1922\/winners$/),
+    );
+    expect(result).toEqual(monzaWinners);
+  });
+
+  it('throws on a non-OK response rather than handing the error body on as winners', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ detail: 'x' }, 502)));
+
+    await expect(getCircuitWinners('it-1922')).rejects.toThrow('Failed to fetch circuit winners');
   });
 });
