@@ -2,7 +2,7 @@ import { circuitBySlug, type CircuitEntry } from '@/lib/circuit-geometry';
 
 export type CircuitRoute =
   | { kind: 'render'; entry: CircuitEntry }
-  | { kind: 'redirect'; to: string }
+  | { kind: 'redirect'; to: string; entry: CircuitEntry }
   | { kind: 'notFound' };
 
 /**
@@ -24,6 +24,7 @@ export function resolveCircuitRoute(
   const path = `/circuits/${found.entry.slug}`;
   return {
     kind: 'redirect',
+    entry: found.entry,
     to: typeof year === 'string' && /^\d{4}$/.test(year) ? `${path}?year=${year}` : path,
   };
 }

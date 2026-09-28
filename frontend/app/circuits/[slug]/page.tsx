@@ -16,7 +16,10 @@ interface CircuitPageProps {
 
 export function generateMetadata({ params }: CircuitPageProps): Metadata {
   const route = resolveCircuitRoute(params.slug, undefined);
-  if (route.kind !== 'render') return { title: 'Circuit not found' };
+  if (route.kind === 'notFound') return { title: 'Circuit not found' };
+  // `render` and `redirect` both carry the canonical entry — a redirect still streams this
+  // metadata for the moment before the client redirect lands, so it should name the circuit
+  // it is redirecting to rather than say "Circuit not found".
   return {
     title: `${route.entry.name} — F1 Circuits`,
     description: `${route.entry.name}, ${route.entry.location}: its outline, length, first Grand Prix and recent winners.`,

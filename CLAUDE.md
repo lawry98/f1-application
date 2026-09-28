@@ -323,7 +323,7 @@ import of an outline outside the three files that draw one known circuit.
 resolves through `redirect()` or `notFound()` in `app/circuits/[slug]/page.tsx`, but the root
 `app/loading.tsx` streams the response, so both a client-side redirect and a soft 404 land with
 status 200. `browser/circuits.spec.ts` asserts the landed URL and the rendered not-found content,
-never the response status (Ruling P2).
+never the response status.
 
 **`gltf.scene.clone()` must stay inside `useMemo`** — without it Three.js re-clones the scene on
 every render.

@@ -98,6 +98,14 @@ describe('CircuitDetailClient', () => {
     expect(await screen.findByText('Results for 2024 could not be loaded.')).toBeInTheDocument();
   });
 
+  it('never claims "no Grand Prix" when the empty list is because a year failed to load', async () => {
+    winnersMock.mockResolvedValue({ ...WINNERS, winners: [], unavailable_years: [2024] });
+    renderDetail();
+
+    expect(await screen.findByText('Results for 2024 could not be loaded.')).toBeInTheDocument();
+    expect(screen.queryByText(/^No Grand Prix here in/)).toBeNull();
+  });
+
   it('names the event when one year held two races here', async () => {
     const [first] = WINNERS.winners;
     winnersMock.mockResolvedValue({

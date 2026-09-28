@@ -39,7 +39,7 @@ const getRacesMock = vi.mocked(getRaces);
 const CALENDAR_2026: Race[] = races2026.races;
 // The fixture carries pre-season testing rows (round 0) alongside the real calendar; the grid
 // draws one card per Grand Prix, never per testing row. 2026 has 23, not the 24 the plan assumed
-// — never hardcode it, derive it from the fixture (Ruling P1).
+// — never hardcode it, derive it from the fixture.
 const ROUNDS_2026 = CALENDAR_2026.filter(
   (race) => typeof race.round === 'number' && race.round > 0,
 ).length;
@@ -50,8 +50,8 @@ function renderPage(query = '', latestYear = 2026) {
 }
 
 beforeEach(() => {
-  // Vitest 4 keeps mock calls across tests, which would pollute the retry test's call count
-  // (Ruling P5). Reset first, then re-establish the default implementation.
+  // Vitest 4 keeps mock calls across tests, which would pollute the retry test's call count.
+  // Reset first, then re-establish the default implementation.
   getRacesMock.mockReset();
   getRacesMock.mockResolvedValue(CALENDAR_2026);
   // Moves the query store instead, which is what Next's patched `replaceState` really does.

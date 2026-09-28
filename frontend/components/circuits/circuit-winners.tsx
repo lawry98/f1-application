@@ -53,7 +53,7 @@ export function CircuitWinners({ winners, loading, error, retry }: UseCircuitWin
         </div>
       )}
 
-      {winners && winners.winners.length === 0 && (
+      {winners && winners.winners.length === 0 && winners.unavailable_years.length === 0 && (
         <p className="text-sm text-zinc-300">No Grand Prix here in {span}.</p>
       )}
 

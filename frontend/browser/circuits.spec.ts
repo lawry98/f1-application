@@ -33,7 +33,7 @@ test('the season picker replaces the URL, so Back leaves the page rather than th
 
 test('an alias slug redirects to its canonical URL, and ?year= survives', async ({ page }) => {
   // `app/loading.tsx` streams the redirect with HTTP 200, so status/Location-header assertions
-  // don't work here (Ruling P2) — assert the landed URL instead. `Monza` (mis-cased) resolves to
+  // don't work here — assert the landed URL instead. `Monza` (mis-cased) resolves to
   // the same circuit as the canonical `monza` slug and has a captured winners fixture, unlike
   // `bahrain` → `sakhir` (bh-2002), which is not mocked and would fail closed.
   await page.goto('/circuits/Monza?year=2024');
@@ -50,10 +50,15 @@ test('a card opens its circuit, and the circuit shows its winners', async ({ pag
   await expect(page.getByRole('table')).toBeVisible();
 });
 
-test('an unknown circuit shows the not-found page', async ({ page }) => {
+test('an unknown circuit shows the not-found page, kept out of search indexes', async ({ page }) => {
   await page.goto('/circuits/atlantis');
 
-  // Ruling P2: the same streamed-200 behaviour applies to `notFound()`, so this asserts the
-  // rendered not-found content (`app/not-found.tsx`) rather than the response status.
+  // The same streamed-200 behaviour applies to `notFound()`, so this asserts the rendered
+  // not-found content (`app/not-found.tsx`) rather than the response status. The HTTP status
+  // being unavailable as a signal is only safe to ship because a crawler still sees this meta
+  // tag, so a soft 404 is asserted alongside the heading rather than left to chance.
   await expect(page.getByRole('heading', { name: 'Page not found' })).toBeVisible();
+  // Next renders this tag twice post-hydration (SSR copy plus a client-inserted one, both
+  // identical) — assert the first rather than the count, which is not this test's to pin.
+  await expect(page.locator('meta[name="robots"]').first()).toHaveAttribute('content', /noindex/);
 });

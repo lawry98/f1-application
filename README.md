@@ -212,6 +212,8 @@ OUTPUT (Race Briefing)
 | `/showcase` | Interactive 3D car with all 11 team liveries |
 | `/standings` | Drivers' and constructors' championship tables for every season since 2023, with a season picker |
 | `/teams` | 2026 team explorer — liveries, driver line-ups, comparison grid |
+| `/circuits` | Every round of a season's calendar with its track outline, with a season picker |
+| `/circuits/[slug]` | One circuit's facts, calendar row and recent winners |
 | `/credits` | Credits & attributions |
 
 ### Example: Generate Briefing
