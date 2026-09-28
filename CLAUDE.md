@@ -128,11 +128,12 @@ planner, tools, and synthesizer. Anything assuming the synthesizer always runs i
 
 **`tools/` is not uniform.** Eight `@tool` functions live across five modules
 (`fastf1_tools`, `f1_data_tools`, `search_tools`, `weather_tools`, `standings_tools`). The other
-six files are plain helpers, **not** LLM-callable: `race_resolver.py` (used by the resolver
+seven files are plain helpers, **not** LLM-callable: `race_resolver.py` (used by the resolver
 node), `schedule_cache.py` (a FastF1 schedule cache), `fastf1_helpers.py` (shared FastF1
 lookup/session helpers), `openf1_client.py` (the OpenF1 HTTP client and its range-query
-cache), `openf1_races.py` (shared "which session is this event's race" lookups), and
-`openf1_shaping.py` (converts OpenF1 rows into the tools' existing return shapes). Adding a
+cache), `openf1_races.py` (shared "which session is this event's race" lookups),
+`openf1_shaping.py` (converts OpenF1 rows into the tools' existing return shapes), and
+`circuit_winners.py` (recent winners per circuit for the `/circuits` detail page). Adding a
 file here does not make it a tool.
 
 **Tools never raise.** Every `@tool` returns `{"error": "..."}` on failure. The agent is built to
@@ -287,6 +288,42 @@ handle that — it is the FastF1 fallback — and that is what lets `test_fastf1
 keep testing the FastF1 path unedited. The consequence is that the fallback is the
 default under test, so `test_openf1_tools.py` asserts the OpenF1 request is genuinely
 made rather than silently fallen through.
+
+**`/circuits` winners are matched by circuit, never by Grand Prix name — and the agent's tool
+still matches by name.** `fastf1_helpers.find_event` is a substring match on `EventName`, and a
+Grand Prix is not a track: 2026's Spanish GP is at Madrid while 2023–25's was at Barcelona, and
+FastF1 files the rescheduled 2026 Bahrain GP under Kuala Lumpur. So `tools/circuit_winners.py`
+slugs each schedule row's `Location` and looks it up in `frontend/data/circuits/index.json`
+(`CIRCUIT_INDEX_PATH` in `config.py`) — which makes `location_slug` the **third** copy of the slug
+rule, after `locationSlug` and the converter's `slug()`. `frontend/tests/fixtures/slug-cases.json`
+is read by both test suites; add a case there, never to one side.
+
+**The winners cache has no expiry, on purpose.** Keyed `(circuit_id, year)` across the three
+seasons before the current one — all finished, so nothing a TTL could refresh — and bounded by the
+40 ids in `index.json`, because the route rejects an unknown id (404) before anything is stored. A
+year the circuit did not host is cached as `()`; a year whose FastF1 load *failed* is not cached
+and is reported in `unavailable_years`, so a transient outage is never remembered as "never raced
+here". A lock per circuit id makes two cold views of the same circuit pay the ~4.6s once —
+different circuits never block each other. The current season's winner is deliberately out of the
+window.
+
+**`index.json`'s aliases must cover past seasons, not just the current calendar.** FastF1 spells
+Abu Dhabi `Yas Island` for 2020–25 and Belgium `Spa` before 2022; without those aliases the
+winners matcher misses them and the briefing band draws no outline for those years. Aliases live in
+`LOCATION_ALIASES` in `scripts/fetch-circuit-geometry.mjs` and nowhere else.
+`tests/circuit-catalog.test.ts` pins them.
+
+**A round with no outline renders a card on `/circuits`, unlike the band.** The band hides a missing
+outline because a briefing without it is still complete; in the grid the card *is* the content, so
+it keeps its box, says "No track map", and is not a link. The grid loads one lazy chunk per unique
+circuit and reveals when all have settled; `tests/circuit-imports.test.ts` fails any new static
+import of an outline outside the three files that draw one known circuit.
+
+**`/circuits/<alias>` redirects, and an unknown slug 404s — both as an HTTP 200.** The route
+resolves through `redirect()` or `notFound()` in `app/circuits/[slug]/page.tsx`, but the root
+`app/loading.tsx` streams the response, so both a client-side redirect and a soft 404 land with
+status 200. `browser/circuits.spec.ts` asserts the landed URL and the rendered not-found content,
+never the response status (Ruling P2).
 
 **`gltf.scene.clone()` must stay inside `useMemo`** — without it Three.js re-clones the scene on
 every render.
@@ -604,8 +641,10 @@ required CI check (`browser` job). Things that are not guessable:
   with no mutant behind it.
 - **The scroll-spy band is copied into the spec, not imported**, so a mutant that removes an
   export cannot be "killed" by a compile error.
-- The focus-ring sweep runs on every route except `/candy`, a pure styleguide with no focusable
-  controls by design.
+- **The route sweeps are hand-written lists, not discovered.** `focus-rings.spec.ts`,
+  `a11y-smoke.spec.ts` and `invisible-text.spec.ts` each name their routes literally; a new
+  route is covered only once it is added to all three. `/candy` stays out of the focus sweep
+  because it has no focusable controls by design.
 
 ### Backend
 
