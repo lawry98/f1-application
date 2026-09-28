@@ -62,7 +62,7 @@ describe('resolveCircuitId', () => {
   });
 
   /*
-   * The five aliases live inside `index.json`, written there by the converter as a second key
+   * The six aliases live inside `index.json`, written there by the converter as a second key
    * pointing at the same id — not in a table in the loader. FastF1 says "Monte-Carlo" and the
    * geometry source says "Monaco"; both must land on the same circuit. This asserts the aliasing
    * survives whatever regenerates the data, which is the thing a second table here would hide.
@@ -72,6 +72,7 @@ describe('resolveCircuitId', () => {
     ['Bahrain', 'Sakhir'],
     ['Marina Bay', 'Singapore'],
     ['Miami Gardens', 'Miami'],
+    ['Yas Island', 'Yas Marina'],
   ])('resolves the FastF1 name %s to the same circuit as %s', (fastf1Name, sourceName) => {
     const viaAlias = resolveCircuitId(fastf1Name);
     expect(viaAlias).not.toBeNull();

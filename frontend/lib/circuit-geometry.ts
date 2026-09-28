@@ -84,10 +84,11 @@ export function locationSlug(location: string): string {
 /**
  * The circuit id for a race location, or `null` if the set does not carry it.
  *
- * The five places the two data sources name differently (Bahrain/Sakhir, Monte-Carlo/Monaco,
- * Marina Bay/Singapore, Miami Gardens/Miami, Kuala Lumpur/Sepang) are already aliased **inside**
- * `index.json` by the converter, which writes both keys pointing at the same id. So there is no
- * alias table here, and adding one would be a second place to keep in step.
+ * The six places the two data sources name differently (Bahrain/Sakhir, Monte-Carlo/Monaco,
+ * Marina Bay/Singapore, Miami Gardens/Miami, Kuala Lumpur/Sepang, Yas Island/Yas Marina) are
+ * already aliased **inside** `index.json` by the converter, which writes both keys pointing at the
+ * same id. So there is no alias table here, and adding one would be a second place to keep in
+ * step. The backend's `tools/circuit_index.py` reads the same file.
  */
 export function resolveCircuitId(location: string): string | null {
   return LOCATION_TO_ID[locationSlug(location)] ?? null;

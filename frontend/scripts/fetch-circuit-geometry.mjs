@@ -53,10 +53,12 @@ const MAX_POINTS = 240;
 /**
  * FastF1 `Location` values that do not match a bacinger `Location`.
  *
- * Everything else in the 2026 calendar matches once both sides are slugged, including the ones
+ * Everything else in the 2023–2026 calendars matches once both sides are slugged, including the ones
  * that only differ by an accent or a hyphen (Montréal/Montreal, São Paulo/Sao Paulo,
- * Spa-Francorchamps/Spa Francorchamps). These five are genuinely different names for the same
- * place, so no amount of string normalising will join them.
+ * Spa-Francorchamps/Spa Francorchamps). These six are genuinely different names for the same
+ * place, so no amount of string normalising will join them. `yas-island` is FastF1's name for
+ * Abu Dhabi through 2025 and is needed by the backend's `get_circuit_winners`, which matches past
+ * seasons by circuit.
  *
  * Keys are slugged FastF1 locations; values are slugged bacinger locations.
  */
@@ -66,6 +68,7 @@ const LOCATION_ALIASES = {
   'monte-carlo': 'monaco',
   'kuala-lumpur': 'sepang',
   'marina-bay': 'singapore',
+  'yas-island': 'yas-marina',
 };
 
 /** Lowercase, strip accents, collapse anything else to single hyphens. */

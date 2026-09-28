@@ -6,7 +6,7 @@ from typing import Any
 
 from langchain_core.tools import tool
 
-from tools.fastf1_helpers import find_event, format_position, load_race_session
+from tools.fastf1_helpers import find_event_at_circuit, format_position, load_race_session
 from tools.openf1_client import OPENF1_FIRST_YEAR, driver_index, session_results
 from tools.openf1_races import completed_races
 from tools.openf1_shaping import top_finisher_rows
@@ -90,8 +90,13 @@ def get_recent_top_finishers(year: int) -> dict[str, Any]:
 
 
 @tool
-def get_circuit_winners(circuit_name: str, years_back: int = 3) -> dict[str, Any]:
+def get_circuit_winners(circuit_name: str, location: str, years_back: int = 3) -> dict[str, Any]:
     """Get recent race winners at a specific circuit using FastF1 historical data.
+
+    Past years are matched by ``location`` — the track — never by Event name. The name
+    matched the wrong circuit whenever an Event moved: a 2026 Spanish Grand Prix (Madrid)
+    reported Barcelona's winners, and the rescheduled 2026 Bahrain Grand Prix (filed under
+    Kuala Lumpur) reported Sakhir's.
 
     Deliberately still FastF1, unlike the other three result tools. This one wants a
     single race from each of N different years, and OpenF1's endpoints are per-year —
@@ -101,7 +106,8 @@ def get_circuit_winners(circuit_name: str, years_back: int = 3) -> dict[str, Any
     worse, so it was reverted.
 
     Args:
-        circuit_name: Name of the circuit/Grand Prix.
+        circuit_name: Name of the Grand Prix, echoed back as the result's label.
+        location: The Event's FastF1 ``Location``, which identifies the circuit.
         years_back: Number of previous years to look back (default: 3).
 
     Returns:
@@ -112,7 +118,7 @@ def get_circuit_winners(circuit_name: str, years_back: int = 3) -> dict[str, Any
         winners = []
 
         for year in range(current_year - years_back, current_year):
-            winner = _fastf1_circuit_winner(circuit_name, year)
+            winner = _fastf1_circuit_winner(location, year)
             if winner is not None:
                 winners.append(winner)
 
@@ -124,7 +130,7 @@ def get_circuit_winners(circuit_name: str, years_back: int = 3) -> dict[str, Any
         return {"error": f"Failed to get circuit winners: {exc}"}
 
 
-def _fastf1_circuit_winner(circuit_name: str, year: int) -> dict[str, Any] | None:
+def _fastf1_circuit_winner(location: str, year: int) -> dict[str, Any] | None:
     """Return the FastF1 winner row for one circuit-year, or None if unavailable.
 
     A dead year is skipped rather than fatal — the caller is collecting a window, and one
@@ -132,7 +138,7 @@ def _fastf1_circuit_winner(circuit_name: str, year: int) -> dict[str, Any] | Non
     """
     try:
         schedule = get_schedule(year)
-        event_data = find_event(schedule, circuit_name)
+        event_data = find_event_at_circuit(schedule, location)
         if event_data is None:
             return None
 

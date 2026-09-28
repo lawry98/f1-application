@@ -128,8 +128,9 @@ planner, tools, and synthesizer. Anything assuming the synthesizer always runs i
 
 **`tools/` is not uniform.** Eight `@tool` functions live across five modules
 (`fastf1_tools`, `f1_data_tools`, `search_tools`, `weather_tools`, `standings_tools`). The other
-six files are plain helpers, **not** LLM-callable: `race_resolver.py` (used by the resolver
-node), `schedule_cache.py` (a FastF1 schedule cache), `fastf1_helpers.py` (shared FastF1
+seven files are plain helpers, **not** LLM-callable: `race_resolver.py` (used by the resolver
+node), `circuit_index.py` (location → circuit id, read from `frontend/data/circuits/index.json`),
+`schedule_cache.py` (a FastF1 schedule cache), `fastf1_helpers.py` (shared FastF1
 lookup/session helpers), `openf1_client.py` (the OpenF1 HTTP client and its range-query
 cache), `openf1_races.py` (shared "which session is this event's race" lookups), and
 `openf1_shaping.py` (converts OpenF1 rows into the tools' existing return shapes). Adding a
@@ -192,6 +193,17 @@ faster, so it was reverted.** It needs one race from each of N different years, 
 endpoints are all per-year, so porting it cost four requests per year (12 requests, 6.57s for a
 5-year window) against FastF1's 4.62s. Don't "finish the migration" by re-porting it; the
 tool's own docstring in `f1_data_tools.py` carries the same numbers.
+
+**`get_circuit_winners` matches past years by circuit, never by Event name.** An Event name is
+not a track: the 2026 Spanish Grand Prix is at Madrid where 2023–2025's was at Barcelona, the
+rescheduled 2026 Bahrain Grand Prix is filed under `Location: "Kuala Lumpur"`, and the 2026
+Barcelona Grand Prix shares no name with the races Barcelona hosted before it. `find_event`'s
+substring match reported the wrong circuit's winners for the first two and none for the third.
+`find_event_at_circuit` joins on `Location` through `tools/circuit_index.py`, which reads the
+frontend's `data/circuits/index.json` — one alias map for both sides, so a FastF1 rename (Abu
+Dhabi is `Yas Island` through 2025, `Yas Marina` from 2026) is fixed there, in
+`LOCATION_ALIASES` of `scripts/fetch-circuit-geometry.mjs`, not in Python. A location the index
+lacks matches its own slug; testing rows are skipped because pre-season testing shares Sakhir.
 
 **OpenF1 coverage starts in 2023, and `OPENF1_FIRST_YEAR` is the only place in the backend that
 number lives.** The frontend's season picker mirrors it as `STANDINGS_FIRST_YEAR` in

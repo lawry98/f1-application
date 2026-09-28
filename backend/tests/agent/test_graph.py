@@ -321,7 +321,10 @@ def test_planner_logs_which_llm_failure_caused_the_fallback(fake_llm, caplog):
     [
         ("get_track_info", {"circuit_name": "Monaco Grand Prix", "year": 2024}),
         ("get_recent_top_finishers", {"year": 2024}),
-        ("get_circuit_winners", {"circuit_name": "Monaco Grand Prix", "years_back": 3}),
+        (
+            "get_circuit_winners",
+            {"circuit_name": "Monaco Grand Prix", "location": "Monaco", "years_back": 3},
+        ),
         ("search_f1_news", {"query": "Monaco Grand Prix 2025", "max_results": 5}),
         ("get_race_weather", {"city": "Monaco", "country_code": "MC"}),
         ("get_driver_form", {"driver_code": "VER", "year": 2024, "num_races": 5}),

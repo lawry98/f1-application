@@ -17,7 +17,7 @@ import pytest
 from freezegun import freeze_time
 
 from tests.conftest import FROZEN_NOW
-from tests.factories import make_session
+from tests.factories import make_schedule, make_session
 from tools import f1_data_tools, fastf1_tools
 from tools.f1_data_tools import get_circuit_winners, get_recent_top_finishers
 from tools.fastf1_tools import get_driver_form, get_recent_race_results, get_track_info
@@ -250,7 +250,9 @@ def test_circuit_winners_collect_wins_across_the_lookback_window(
     """
     monkeypatch.setattr(f1_data_tools, "get_schedule", fake_get_schedule)
 
-    result = get_circuit_winners.invoke({"circuit_name": "Monaco", "years_back": 3})
+    result = get_circuit_winners.invoke(
+        {"circuit_name": "Monaco", "location": "Monaco", "years_back": 3}
+    )
 
     assert result["circuit"] == "Monaco"
     assert result["recent_winners"] == [
@@ -267,7 +269,9 @@ def test_circuit_winners_collect_wins_across_the_lookback_window(
 @freeze_time(FROZEN_NOW)
 def test_circuit_winners_degrade_to_a_note_when_nothing_matches(monkeypatch, fake_get_schedule):
     monkeypatch.setattr(f1_data_tools, "get_schedule", fake_get_schedule)
-    result = get_circuit_winners.invoke({"circuit_name": "Nürburgring", "years_back": 3})
+    result = get_circuit_winners.invoke(
+        {"circuit_name": "Nürburgring", "location": "Nürburg", "years_back": 3}
+    )
     assert result == {
         "circuit": "Nürburgring",
         "recent_winners": [{"note": "No recent data available"}],
@@ -279,6 +283,115 @@ def test_circuit_winners_absorb_session_failures(monkeypatch, fake_get_schedule)
     monkeypatch.setattr(f1_data_tools, "get_schedule", fake_get_schedule)
     monkeypatch.setattr(fastf1, "get_session", _boom)
 
-    result = get_circuit_winners.invoke({"circuit_name": "Monaco", "years_back": 3})
+    result = get_circuit_winners.invoke(
+        {"circuit_name": "Monaco", "location": "Monaco", "years_back": 3}
+    )
 
     assert result["recent_winners"] == [{"note": "No recent data available"}]
+
+
+# ── get_circuit_winners: matched by circuit, not by event name ───────────────
+#
+# These schedules mirror FastF1's real 2023-2026 rows for the cases that broke name
+# matching: the Spanish Grand Prix moved from Barcelona to Madrid in 2026, Barcelona's
+# 2026 race is a differently-named Event, and the rescheduled 2026 Bahrain Grand Prix is
+# filed under Location "Kuala Lumpur". Pre-season testing shares Sakhir with the race.
+
+PAST_SEASON_EVENTS = [
+    {"name": "Pre-Season Testing", "location": "Sakhir", "format": "testing", "round": 0},
+    {"name": "Bahrain Grand Prix", "location": "Sakhir"},
+    {"name": "Spanish Grand Prix", "location": "Barcelona"},
+    {"name": "Monaco Grand Prix", "location": "Monaco"},
+]
+
+
+@pytest.fixture
+def past_seasons(monkeypatch):
+    """Serve 2023-2025 schedules and record every (year, event) a session is loaded for."""
+    schedules = {
+        year: make_schedule(
+            [
+                {**event, "date": f"{year}-0{index}-01"}
+                for index, event in enumerate(PAST_SEASON_EVENTS, 1)
+            ]
+        )
+        for year in (2023, 2024, 2025)
+    }
+    monkeypatch.setattr(f1_data_tools, "get_schedule", lambda year: schedules[year])
+
+    loaded: list[tuple[int, str]] = []
+
+    def _get_session(year, event, kind):
+        loaded.append((year, event))
+        return make_session(RESULTS_ROWS)
+
+    monkeypatch.setattr(fastf1, "get_session", _get_session)
+    return loaded
+
+
+def _winners_at(circuit_name: str, location: str) -> dict[str, Any]:
+    return get_circuit_winners.invoke(
+        {"circuit_name": circuit_name, "location": location, "years_back": 3}
+    )
+
+
+@freeze_time("2026-09-28")
+def test_a_spanish_grand_prix_at_madrid_reports_no_barcelona_winners(past_seasons):
+    result = _winners_at("Spanish Grand Prix", "Madrid")
+
+    assert result["recent_winners"] == [{"note": "No recent data available"}]
+    assert past_seasons == []
+
+
+@freeze_time("2026-09-28")
+def test_a_bahrain_grand_prix_at_kuala_lumpur_reports_no_sakhir_winners(past_seasons):
+    result = _winners_at("Bahrain Grand Prix", "Kuala Lumpur")
+
+    assert result["recent_winners"] == [{"note": "No recent data available"}]
+    assert past_seasons == []
+
+
+@freeze_time("2026-09-28")
+def test_a_barcelona_grand_prix_finds_the_spanish_grands_prix_held_there(past_seasons):
+    result = _winners_at("Barcelona Grand Prix", "Barcelona")
+
+    assert [winner["year"] for winner in result["recent_winners"]] == [2023, 2024, 2025]
+    assert past_seasons == [
+        (2023, "Spanish Grand Prix"),
+        (2024, "Spanish Grand Prix"),
+        (2025, "Spanish Grand Prix"),
+    ]
+
+
+@freeze_time("2026-09-28")
+def test_pre_season_testing_at_the_same_circuit_is_not_taken_for_the_race(past_seasons):
+    _winners_at("Bahrain Grand Prix", "Sakhir")
+
+    assert {event for _, event in past_seasons} == {"Bahrain Grand Prix"}
+
+
+@freeze_time("2026-09-28")
+def test_an_empty_location_matches_no_race(past_seasons):
+    assert _winners_at("Spanish Grand Prix", "")["recent_winners"] == [
+        {"note": "No recent data available"}
+    ]
+
+
+@freeze_time("2026-09-28")
+def test_a_location_outside_the_circuit_index_still_matches_itself(monkeypatch, past_seasons):
+    """A new venue the geometry set does not carry yet must not fall back to name matching."""
+    monkeypatch.setattr(
+        f1_data_tools,
+        "get_schedule",
+        lambda year: make_schedule(
+            [
+                {"name": "Spanish Grand Prix", "location": "Barcelona", "date": f"{year}-05-01"},
+                {"name": "Thai Grand Prix", "location": "Bangkok", "date": f"{year}-06-01"},
+            ]
+        ),
+    )
+
+    result = _winners_at("Spanish Grand Prix", "Bangkok")
+
+    assert len(result["recent_winners"]) == 3
+    assert {event for _, event in past_seasons} == {"Thai Grand Prix"}
