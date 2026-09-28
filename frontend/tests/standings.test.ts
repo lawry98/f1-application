@@ -137,7 +137,7 @@ describe('seasonStamp', () => {
   it('names the last race in the table by its round, mid-season', () => {
     // 14 held races. FastF1 renumbered around the cancelled Bahrain and Saudi Arabia rounds, so
     // Round 14 of 23 is Madrid — a date-based count would have pointed two rounds into the future.
-    expect(seasonStamp(standings2026.races_completed, CALENDAR_2026)).toEqual({
+    expect(seasonStamp(standings2026.races_completed, CALENDAR_2026)).toMatchObject({
       label: 'After Round 14 of 23 · Spanish Grand Prix',
       final: false,
     });
@@ -150,7 +150,7 @@ describe('seasonStamp', () => {
       race(22, 'Abu Dhabi Grand Prix'),
     ];
 
-    expect(seasonStamp(22, calendar2023)).toEqual({
+    expect(seasonStamp(22, calendar2023)).toMatchObject({
       label: 'After Round 22 of 22 · Abu Dhabi Grand Prix',
       final: true,
     });
@@ -165,21 +165,33 @@ describe('seasonStamp', () => {
   });
 
   it('falls back to a bare count without a calendar', () => {
-    expect(seasonStamp(14, null)).toEqual({ label: 'After 14 rounds', final: false });
-    expect(seasonStamp(1, null)).toEqual({ label: 'After 1 round', final: false });
+    expect(seasonStamp(14, null)).toMatchObject({ label: 'After 14 rounds', final: false });
+    expect(seasonStamp(1, null)).toMatchObject({ label: 'After 1 round', final: false });
   });
 
   it('drops the denominator rather than print a count the calendar cannot hold', () => {
-    expect(seasonStamp(24, CALENDAR_2026)).toEqual({ label: 'After 24 rounds', final: false });
+    expect(seasonStamp(24, CALENDAR_2026)).toMatchObject({ label: 'After 24 rounds', final: false });
   });
 
   it('keeps the denominator when the round itself is missing from the calendar', () => {
     const gappy = CALENDAR_2026.filter((r) => r.round !== 14);
 
-    expect(seasonStamp(14, gappy)).toEqual({ label: 'After 14 of 22 rounds', final: false });
+    expect(seasonStamp(14, gappy)).toMatchObject({ label: 'After 14 of 22 rounds', final: false });
   });
 
   it('gives no stamp for a season with no race yet', () => {
     expect(seasonStamp(0, CALENDAR_2026)).toBeNull();
+  });
+
+  it('names the as-of event and its lead separately, so the page can link the event', () => {
+    const stamp = seasonStamp(14, CALENDAR_2026);
+
+    expect(stamp?.lead).toBe('After Round 14 of 23');
+    expect(stamp?.event?.name).toBe('Spanish Grand Prix');
+    expect(stamp?.label).toBe(`${stamp?.lead} · ${stamp?.event?.name}`);
+  });
+
+  it('has no event when the calendar cannot name one', () => {
+    expect(seasonStamp(14, null)).toMatchObject({ lead: 'After 14 rounds', event: null });
   });
 });

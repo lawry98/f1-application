@@ -4,6 +4,10 @@ export const NAV_LINKS = [
   // Next to Car Anatomy on purpose: both explain how the machine works, and a reader who
   // has just seen what is inside the car is the reader most likely to want the tyres.
   { href: '/tyres', label: 'Tyres' },
+  // Opens the season group: where they race, then who is winning (Standings), then who they are
+  // (Teams). Beside Standings on purpose — both pages carry `?year=` and link to each other — and
+  // after Tyres so Car Anatomy and Tyres, the two "how the machine works" pages, stay adjacent.
+  { href: '/circuits', label: 'Circuits' },
   // Before Teams on purpose: the table answers who is winning and Teams answers who they are, so
   // a name in the table is one link from its profile — and it leaves Teams beside Showcase, which
   // shares the liveries.

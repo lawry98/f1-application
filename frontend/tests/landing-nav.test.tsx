@@ -28,6 +28,9 @@ const DESTINATIONS = [
   // The two "how the machine works" experiences belong next to each other, and Briefing — the
   // thing the app is named for — stays first. The retyped list above is what pins that order.
   ['/tyres', 'Tyres'],
+  // Circuits opens the season group — where they race, then who is winning, then who they are —
+  // and sits beside Standings because the two share `?year=` links.
+  ['/circuits', 'Circuits'],
   // The table sits before the profiles it leads to, and leaves Teams beside Showcase, which
   // shares its liveries.
   ['/standings', 'Standings'],
