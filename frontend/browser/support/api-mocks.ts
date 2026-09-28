@@ -33,6 +33,13 @@ export async function mockApi(page: Page): Promise<string[]> {
         json: fixture(existsSync(path.join(FIXTURES, named)) ? named : 'standings-2026.json'),
       });
     }
+    const winners = /^\/api\/circuits\/([a-z]{2}-\d{4})\/winners$/.exec(pathname);
+    if (winners) {
+      // Only circuits with a captured response are served. Any other id falls through to the
+      // fail-closed 501 below, so a test that wanders onto an uncaptured circuit fails loudly.
+      const named = `circuit-winners-${winners[1]}.json`;
+      if (existsSync(path.join(FIXTURES, named))) return route.fulfill({ json: fixture(named) });
+    }
     unmocked.push(route.request().url());
     return route.fulfill({ status: 501, body: 'unmocked in the browser harness' });
   });
