@@ -212,22 +212,30 @@ async def generate_briefing_stream(request: BriefingRequest) -> EventSourceRespo
     return EventSourceResponse(event_generator())
 
 
+def _race_row(event: Any) -> dict[str, Any]:
+    """One calendar row. ``event_format`` and ``official_name`` are the two fields
+    ``get_track_info`` adds over this row, served here so /circuits needs no per-circuit call.
+    """
+    official = event.get("OfficialEventName")
+    return {
+        "name": event["EventName"],
+        "location": event["Location"],
+        "country": event["Country"],
+        "date": str(event["EventDate"]),
+        "round": int(event["RoundNumber"]) if "RoundNumber" in event else None,
+        "event_format": str(event.get("EventFormat", "conventional")),
+        # A blank or NaN official name falls back to the event name rather than printing nothing.
+        "official_name": official if isinstance(official, str) and official else event["EventName"],
+    }
+
+
 @router.get("/races/{year}")
 async def get_races(year: int = Path(ge=1950, le=date.today().year + 1)) -> dict[str, Any]:
     """Get the F1 calendar for a specific year."""
     try:
         schedule = await asyncio.to_thread(fastf1.get_event_schedule, year)
 
-        races = [
-            {
-                "name": event["EventName"],
-                "location": event["Location"],
-                "country": event["Country"],
-                "date": str(event["EventDate"]),
-                "round": int(event["RoundNumber"]) if "RoundNumber" in event else None,
-            }
-            for _, event in schedule.iterrows()
-        ]
+        races = [_race_row(event) for _, event in schedule.iterrows()]
 
         return {"year": year, "races": races}
     except Exception as exc:

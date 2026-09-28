@@ -22,6 +22,10 @@ export interface Race {
   country: string;
   date: string;
   round: number | null;
+  /** FastF1's `EventFormat`: `conventional`, `sprint_qualifying`, `sprint_shootout`, `testing`… */
+  event_format: string;
+  /** FastF1's `OfficialEventName`, or the event name when FastF1 leaves it blank. */
+  official_name: string;
 }
 
 /**

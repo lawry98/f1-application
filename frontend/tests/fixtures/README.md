@@ -44,3 +44,6 @@ curl -sf http://localhost:8000/api/standings/2026 | python3 -m json.tool > front
 curl -sf http://localhost:8000/api/standings/2024 | python3 -m json.tool > frontend/tests/fixtures/standings-2024.json
 curl -sf http://localhost:8000/api/races/2026 | python3 -m json.tool > frontend/tests/fixtures/races-2026.json
 ```
+
+`races-2026.json` was re-captured on 2026-09-28 to pick up `event_format` and `official_name`;
+no existing value changed.

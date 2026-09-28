@@ -12,7 +12,15 @@ vi.mock('@/lib/api', () => ({ getRaces: vi.fn() }));
 const getRacesMock = vi.mocked(getRaces);
 
 function race(name: string, date: string, round: number | null): Race {
-  return { name, location: name, country: 'Testland', date, round };
+  return {
+    name,
+    location: name,
+    country: 'Testland',
+    date,
+    round,
+    event_format: 'conventional',
+    official_name: name,
+  };
 }
 
 /**

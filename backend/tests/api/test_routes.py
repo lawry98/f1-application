@@ -811,7 +811,32 @@ def test_races_returns_the_calendar(client, monkeypatch, season_2025):
         "country": "Monaco",
         "date": "2025-05-25 00:00:00",
         "round": 3,
+        "event_format": "conventional",
+        "official_name": "FORMULA 1 MONACO GRAND PRIX",
     }
+
+
+def test_races_falls_back_to_the_event_name_when_the_official_name_is_blank(client, monkeypatch):
+    """FastF1 leaves OfficialEventName empty for some historical events; the row still needs a
+    name the page can print, and the event name is the honest one.
+    """
+    schedule = make_schedule(
+        [{"name": "Italian Grand Prix", "date": "2025-09-07", "official_name": ""}]
+    )
+    monkeypatch.setattr(routes_module.fastf1, "get_event_schedule", lambda year: schedule)
+
+    race = client.get("/api/races/2025").json()["races"][0]
+
+    assert race["official_name"] == "Italian Grand Prix"
+
+
+def test_races_carries_the_sprint_format_through(client, monkeypatch):
+    schedule = make_schedule(
+        [{"name": "Miami Grand Prix", "date": "2025-05-04", "format": "sprint_qualifying"}]
+    )
+    monkeypatch.setattr(routes_module.fastf1, "get_event_schedule", lambda year: schedule)
+
+    assert client.get("/api/races/2025").json()["races"][0]["event_format"] == "sprint_qualifying"
 
 
 def test_races_returns_an_empty_list_for_an_empty_schedule(client, monkeypatch):

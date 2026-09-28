@@ -19,7 +19,15 @@ import standings2026 from './fixtures/standings-2026.json';
 const CALENDAR_2026: Race[] = races2026.races;
 
 function race(round: number, name: string): Race {
-  return { name, location: 'Somewhere', country: 'Testland', date: '2023-01-01', round };
+  return {
+    name,
+    location: 'Somewhere',
+    country: 'Testland',
+    date: '2023-01-01',
+    round,
+    event_format: 'conventional',
+    official_name: name,
+  };
 }
 
 describe('STANDINGS_FIRST_YEAR', () => {

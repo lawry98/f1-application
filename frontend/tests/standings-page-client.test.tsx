@@ -48,7 +48,15 @@ const getRacesMock = vi.mocked(getRaces);
 const CALENDAR_2026: Race[] = races2026.races;
 
 function race(round: number, name: string): Race {
-  return { name, location: 'Somewhere', country: 'Testland', date: '2024-01-01', round };
+  return {
+    name,
+    location: 'Somewhere',
+    country: 'Testland',
+    date: '2024-01-01',
+    round,
+    event_format: 'conventional',
+    official_name: name,
+  };
 }
 
 /** 2024's shape: 24 rounds, all held, Abu Dhabi last. */
