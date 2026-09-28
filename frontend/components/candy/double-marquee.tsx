@@ -129,8 +129,11 @@ export function DoubleMarquee({ topText, bottomText, className }: DoubleMarqueeP
         text={topText}
         animationClass={TOP_ANIMATION}
         paused={!!reduceMotion}
-        // Quieter of the two — the serif italic is the accent voice, not the headline.
-        textClassName={cn(LINE_SIZE, 'font-serif-display italic text-zinc-600')}
+        // Quieter of the two — the serif italic is the accent voice, not the headline. `zinc-600`
+        // measured ≈2.51:1 against both backdrops this renders on (`base-warm` on `/`, `base` on
+        // `/candy`) — below the 3:1 large-text floor this ~100px line needs even decoratively.
+        // `zinc-500` clears both (≈4.02:1 on `base-warm`, ≈4.12:1 on `base`).
+        textClassName={cn(LINE_SIZE, 'font-serif-display italic text-zinc-500')}
       />
       <MarqueeLine
         text={bottomText}

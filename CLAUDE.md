@@ -37,6 +37,8 @@ pinned in `mise.toml`, so `mise exec -- pnpm …` always uses the right ones.
 cd frontend && pnpm typecheck   # tsc --noEmit
 cd frontend && pnpm lint        # ESLint
 cd frontend && pnpm test        # Vitest (jsdom)
+cd frontend && pnpm build && pnpm test:browser   # Playwright, production build, no backend
+cd frontend && pnpm test:browser:mutants         # prove it still fails on each recorded defect
 cd backend  && ruff check .
 cd backend  && ruff format .
 ```
@@ -93,8 +95,9 @@ a single unapproved build makes `pnpm typecheck`, `pnpm lint`, and `pnpm build` 
 
 **A Tailwind class that no `content` glob reaches generates no rule, and nothing but a browser
 can tell.** `tailwind.config.ts`'s `content` lists `components/`, `app/` **and `lib/`** — the last
-one because `lib/focus.ts` is the only place `focus-visible:ring-f1-red` and
-`focus-visible:ring-ink` are written. Without it neither rule was emitted, so every control built
+one because `lib/focus.ts` is the only place `focus-visible:ring-ink` is written (`ring-f1-red`
+is also written literally in `components/tyres/acts/tyre-archive.tsx` and `source-list.tsx`, both
+already inside `content`). Without it the `ring-ink` rule was never emitted, so every control built
 from `focusRing` / `focusRingOffsetBase` / `focusRingOnRedFill` kept its `ring-2` and fell back to
 Tailwind's default blue `--tw-ring-color` (`rgb(59 130 246 / 0.5)`, measured live) — on the
 red-filled CTA, the invisible-indicator case `lib/focus.ts` exists to prevent. The same shape bit
@@ -379,7 +382,14 @@ against the composite genuinely behind it. Two shipped wrong and were caught sep
 active tab used a bare-`zinc-950` helper while sitting on `bg-zinc-800/80`, and the allocation
 section's highlighted row used the *card* helper while sitting on a further `bg-zinc-800/70` on top
 of the card — Soft measured 4.60:1 against the card and **3.95:1** where the glyphs actually sit,
-at 12px. If you add compound-coloured text, the first question is what is behind it; the second is
+at 12px. (Since the tyres redesign into acts, `compoundTextOnTrackedRow` has no call site; the
+browser harness's class-2 mutant uses the teams rail's `railStandingColor` instead.)
+`EYEBROW_RED_ON_WARM` (`lib/tyre-utils.ts`) exists because `EYEBROW_RED` is lifted against
+`#09090b` and measured under 4.5:1 on the `bg-base-warm` acts; the browser harness's axe smoke
+found it. It too has zero headroom, so it is right only on *bare* `base-warm` (Act 2, the
+Archive): Act 3b's eyebrow sits under the strategy glow and measured 3.83–4.44:1 with it, so it
+uses `EYEBROW_RED_ON_STRATEGY_GLOW`, judged against the lightest scenario tint at
+`STRATEGY_GLOW_PEAK` (`browser/tyres-contrast.spec.ts` measures every scenario). If you add compound-coloured text, the first question is what is behind it; the second is
 whether a helper already describes that composite. `tyre-utils.test.ts` asserts one surface per
 helper *and* that the weaker helper genuinely falls short on it, so a redundant helper cannot
 survive — there is no `compoundTextOnPage`, because it was byte-identical to `readableOnDark`.
@@ -489,6 +499,20 @@ monogram tile reads as page background (axe catches those — the two tools are 
 `TextAnimate` renders an `sr-only` copy beside the painted `aria-hidden` spans, so hiding the
 accessible copy measures the visible glyphs and reports 1:1.
 
+**`reducedMotion: 'reduce'` does not stop entrance opacity fades, and axe folds a mid-fade
+opacity into the colour it measures.** The `/teams` hero CTA wrapper and the sticky dossier's
+`AnimatePresence` swap both still fade in after `goto` under `reduce`; an axe pass timed right
+after load caught the CTA between 2.14:1 and 4.43:1 and failed 8/10 serial runs (3/10 in
+parallel) before the fix, 0 failures once settled. `waitForMotionToSettle`
+(`frontend/browser/support/motion.ts`) is the guard, and every `a11y-smoke` pass calls it before
+`analyze()`. It requires both: no finite Web Animation still running, because the CTA sits at
+`opacity: 0` for several frames before motion has even created that animation; and a `QUIET_MS`
+(300ms) window with no change to opacity, filter, transform, colour or background-color, because
+motion drives some values from JS on `requestAnimationFrame`, which `document.getAnimations()`
+never sees. It throws after `TIMEOUT_MS` (10s) rather than proceeding silently. Its blind spot: a
+JS-driven animation still in a delay phase longer than 300ms would slip past unnoticed — none
+exists on the routes it covers today. Any new browser check that reads colour must call it first.
+
 **The teams page's three columns appear at three different widths.** Left rail from `lg`, sticky
 dossier from `xl`, mobile chip strip below `lg` — laptop widths get two columns on purpose. The
 dossier is also *mounted* on a `matchMedia` check, not just `hidden xl:block`: inside a
@@ -550,6 +574,38 @@ Fake timers are load-bearing in `use-briefing.test.tsx` — the flush interval i
 constant, so controlling the clock is the only way to observe a paint mid-stream. Use
 `vi.advanceTimersByTimeAsync` and not the sync variant; the stream's promise chain has to be
 allowed to run between pushes.
+
+### Browser tests
+
+Playwright, in `frontend/browser/`, against `next start` on a **production** build. This is the
+gate for everything jsdom cannot see: CSS that was never generated, contrast against the real
+composite, text painted in its own backdrop colour, and scroll/layout behaviour. It is a
+required CI check (`browser` job). Things that are not guessable:
+
+- **Build first, every time.** The suite never builds, and `reuseExistingServer` is off, so it
+  always tests the bundle in `.next`. After `pnpm test:browser:mutants` locally, the runner
+  rebuilds the clean tree; if you kill it midway, rebuild before trusting a result.
+- **A contrast assertion names a WCAG floor and a site, never a measured ratio:**
+  `expectContrast(loc, { atLeast: AA_SMALL_TEXT, site: 'rail active row over bg-zinc-800/60' })`.
+  The text colour is computed style; the backdrop is pixels, from `backdropBehindGlyphs`, which
+  ports the hide-the-glyphs method to pngjs and designs out both of its traps: glyphs go
+  *transparent* rather than `visibility: hidden` (so an element's own fill survives), and a
+  1px `sr-only` copy is refused (TextAnimate's accessible twin reads 1:1).
+- **There is no screenshot diffing, on purpose.** Every defect here asserts better than it
+  diffs, and a golden captured on a broken tree would bless the bug.
+- **`/api/` is served from `tests/fixtures/` and fails closed.** A new endpoint with no fixture
+  fails the test that reaches it.
+- **Mutants prove coverage.** `browser/mutations/` holds one patch per recorded defect and the
+  tests it must fail; the weekly `browser-mutants` workflow runs them. A surviving mutant means
+  a class is no longer covered: fix the spec. A stale patch means the code moved: regenerate
+  it (the README says how), never delete it. Mutant 01 only proves the `ring-ink` half of the
+  Tailwind-content claim above — `ring-f1-red`'s literal call sites keep that rule generated
+  regardless, so "a flush control on base takes the red ring" stays in the suite as a guard
+  with no mutant behind it.
+- **The scroll-spy band is copied into the spec, not imported**, so a mutant that removes an
+  export cannot be "killed" by a compile error.
+- The focus-ring sweep runs on every route except `/candy`, a pure styleguide with no focusable
+  controls by design.
 
 ### Backend
 

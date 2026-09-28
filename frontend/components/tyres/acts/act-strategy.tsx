@@ -5,7 +5,12 @@ import { AnimatePresence, motion } from 'motion/react';
 
 import { STRATEGY_SCENARIOS } from '@/data/tyres-data';
 import { focusRingOffsetBaseWarm } from '@/lib/focus';
-import { EYEBROW_RED } from '@/lib/tyre-utils';
+import {
+  EYEBROW_RED_ON_STRATEGY_GLOW,
+  STRATEGY_DEFAULT_TINT,
+  STRATEGY_GLOW_PEAK,
+  STRATEGY_TINTS,
+} from '@/lib/tyre-utils';
 import { useReducedMotionSafe } from '@/hooks/use-reduced-motion-safe';
 import { cn } from '@/lib/utils';
 
@@ -16,15 +21,15 @@ import { StrategyPanel, type PanelMotion, type StrategyTheme } from './strategy-
  * scenario to the data without a theme here degrades to the neutral default rather than throwing.
  */
 const THEME: Record<string, StrategyTheme> = {
-  'hot-abrasive': { tint: '#e8382f', label: 'Track temperature high' },
-  'safety-car-restart': { tint: '#ffd12e', label: 'Neutralised' },
-  'long-first-stint': { tint: '#f4f4f5', label: 'Track position play' },
-  'drying-track': { tint: '#3fbf4f', label: 'Drying' },
-  'returning-rain': { tint: '#2b8fe0', label: 'Rain returning' },
-  'close-call': { tint: '#a1a1aa', label: 'Marginal' },
+  'hot-abrasive': { tint: STRATEGY_TINTS['hot-abrasive'], label: 'Track temperature high' },
+  'safety-car-restart': { tint: STRATEGY_TINTS['safety-car-restart'], label: 'Neutralised' },
+  'long-first-stint': { tint: STRATEGY_TINTS['long-first-stint'], label: 'Track position play' },
+  'drying-track': { tint: STRATEGY_TINTS['drying-track'], label: 'Drying' },
+  'returning-rain': { tint: STRATEGY_TINTS['returning-rain'], label: 'Rain returning' },
+  'close-call': { tint: STRATEGY_TINTS['close-call'], label: 'Marginal' },
 };
 
-const DEFAULT_THEME: StrategyTheme = { tint: '#a1a1aa', label: 'Scenario' };
+const DEFAULT_THEME: StrategyTheme = { tint: STRATEGY_DEFAULT_TINT, label: 'Scenario' };
 
 /** Horizontal travel of the panel swap. Mobile uses less so nothing leaves the viewport. */
 const OFFSET_DESKTOP = 24;
@@ -106,14 +111,16 @@ export function ActStrategy() {
       <motion.div
         aria-hidden="true"
         className="pointer-events-none absolute left-1/2 top-0 h-[30rem] w-[30rem] -translate-x-1/2 rounded-full blur-[140px]"
-        animate={{ backgroundColor: theme.tint, opacity: 0.16 }}
+        animate={{ backgroundColor: theme.tint, opacity: STRATEGY_GLOW_PEAK }}
         transition={reduced ? { duration: 0 } : { duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
       />
 
       <div className="container relative mx-auto max-w-7xl px-4 py-14 sm:py-20">
         <p
           className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.2em]"
-          style={{ color: EYEBROW_RED }}
+          // This eyebrow sits inside the glow above, not on bare `bg-base-warm`, so it is judged
+          // against the glow's lightest tint; `EYEBROW_RED_ON_WARM` has no headroom for it.
+          style={{ color: EYEBROW_RED_ON_STRATEGY_GLOW }}
         >
           <span className="h-[3px] w-6 bg-f1-red" aria-hidden="true" />
           Act 3b

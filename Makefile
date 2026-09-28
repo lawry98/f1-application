@@ -31,7 +31,7 @@ NODE_STAMP := frontend/node_modules/.modules.yaml
 
 # `backend` and `frontend` are also directory names — without .PHONY, make sees
 # the directories, decides the targets are up to date, and does nothing.
-.PHONY: help dev backend frontend install lint format format-check typecheck test ci clean
+.PHONY: help dev backend frontend install lint format format-check typecheck test ci clean test-browser test-mutants
 
 help: ## List available targets
 	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -85,7 +85,13 @@ test: $(VENV_STAMP) $(NODE_STAMP) ## Run both test suites
 	cd backend && $(PY) -m pytest
 	cd frontend && $(MISE) pnpm test
 
-ci: lint format-check typecheck test ## Run everything CI runs, in CI's order
+test-browser: $(NODE_STAMP) ## Build, then run the Playwright suite (as CI's browser job)
+	cd frontend && $(MISE) pnpm build && $(MISE) pnpm test:browser
+
+test-mutants: $(NODE_STAMP) ## Prove the browser suite still fails on each recorded defect
+	cd frontend && $(MISE) pnpm test:browser:mutants
+
+ci: lint format-check typecheck test test-browser ## Run everything CI runs, in CI's order
 	cd frontend && $(MISE) pnpm build
 
 # --- Housekeeping -------------------------------------------------------

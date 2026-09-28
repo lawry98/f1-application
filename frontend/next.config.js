@@ -2,9 +2,9 @@
 const nextConfig = {
   reactStrictMode: true,
   // `next lint` otherwise only walks its own default set of directories, which silently
-  // excludes tests/ and scripts/ — lint passes while those files are never looked at.
+  // excludes tests/, browser/ and scripts/ — lint passes while those files are never looked at.
   eslint: {
-    dirs: ['app', 'components', 'data', 'hooks', 'lib', 'scripts', 'types', 'tests'],
+    dirs: ['app', 'browser', 'components', 'data', 'hooks', 'lib', 'scripts', 'types', 'tests'],
   },
   transpilePackages: ['three'],
   webpack: (config) => {

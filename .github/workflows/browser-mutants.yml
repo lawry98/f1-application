@@ -1,0 +1,69 @@
+name: Browser mutants
+
+# Proves the browser harness still goes red on each defect it exists for. Each mutant rebuilds,
+# so this is too slow for every PR; it runs weekly and on demand. A surviving mutant means a
+# defect class is no longer covered. See frontend/browser/mutations/README.md.
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+  # Also on any PR that touches the harness itself — the one change most likely to loosen a spec —
+  # or a file a patch mutates, since editing one can leave its patch stale.
+  pull_request:
+    paths:
+      - "frontend/browser/**"
+      - "frontend/scripts/run-mutants.mjs"
+      - "frontend/playwright.config.ts"
+      # The files the patches in frontend/browser/mutations/ edit (their `+++` headers).
+      - "frontend/tailwind.config.ts"
+      - "frontend/components/landing/landing-section-theme.tsx"
+      - "frontend/components/teams/teams-nav-rail.tsx"
+      - "frontend/components/teams/team-section.tsx"
+      - "frontend/hooks/use-scroll-spy.ts"
+
+jobs:
+  mutants:
+    name: Kill every mutant
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.8.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.17.0"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Resolve Playwright version
+        id: playwright
+        run: echo "version=$(pnpm exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-chromium
+
+      - name: Install Chromium and its system libraries
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Install Chromium's system libraries
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pnpm exec playwright install-deps chromium
+
+      - name: Run mutants
+        run: pnpm test:browser:mutants
