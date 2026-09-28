@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  canonicalSlug,
+  circuitBySlug,
+  circuitEntry,
+  circuitSlugForLocation,
   loadCircuit,
   loadCircuitByLocation,
   locationSlug,
@@ -127,5 +131,46 @@ describe('loadCircuitByLocation', () => {
 
   it('returns null for an unknown location', async () => {
     await expect(loadCircuitByLocation('Nowhere')).resolves.toBeNull();
+  });
+});
+
+describe('catalog lookups', () => {
+  it('names a circuit by id without loading its outline', () => {
+    expect(circuitEntry('it-1922')).toEqual({
+      id: 'it-1922',
+      slug: 'monza',
+      name: 'Autodromo Nazionale Monza',
+      location: 'Monza',
+      lengthM: 5793,
+      firstGp: 1950,
+    });
+    expect(circuitEntry('xx-0000')).toBeNull();
+  });
+
+  it('gives the canonical slug for an id', () => {
+    expect(canonicalSlug('bh-2002')).toBe('sakhir');
+    expect(canonicalSlug('xx-0000')).toBeNull();
+  });
+
+  it('turns a calendar location into its detail-page slug, through the aliases', () => {
+    expect(circuitSlugForLocation('Bahrain')).toBe('sakhir');
+    expect(circuitSlugForLocation('Yas Island')).toBe('yas-marina');
+    expect(circuitSlugForLocation('Atlantis')).toBeNull();
+  });
+
+  it('resolves a slug and says whether it is the canonical one', () => {
+    expect(circuitBySlug('monza')).toMatchObject({ entry: { id: 'it-1922' }, canonical: true });
+    expect(circuitBySlug('bahrain')).toMatchObject({ entry: { id: 'bh-2002' }, canonical: false });
+    expect(circuitBySlug('Monza')).toMatchObject({ entry: { id: 'it-1922' }, canonical: false });
+    expect(circuitBySlug('atlantis')).toBeNull();
+  });
+
+  /*
+   * `index.json` is a plain object, so `index['constructor']` is `Object.prototype.constructor`,
+   * not undefined. A URL segment is user input, and must not be able to reach a prototype key.
+   */
+  it('does not resolve a prototype key', () => {
+    expect(circuitBySlug('constructor')).toBeNull();
+    expect(circuitBySlug('__proto__')).toBeNull();
   });
 });
