@@ -84,10 +84,12 @@ export function locationSlug(location: string): string {
 /**
  * The circuit id for a race location, or `null` if the set does not carry it.
  *
- * The five places the two data sources name differently (Bahrain/Sakhir, Monte-Carlo/Monaco,
- * Marina Bay/Singapore, Miami Gardens/Miami, Kuala Lumpur/Sepang) are already aliased **inside**
- * `index.json` by the converter, which writes both keys pointing at the same id. So there is no
- * alias table here, and adding one would be a second place to keep in step.
+ * The ten places the two data sources name differently (Bahrain/Sakhir, Monte-Carlo/Monaco,
+ * Marina Bay/Singapore, Miami Gardens/Miami, Kuala Lumpur/Sepang, plus five earlier-season FastF1
+ * spellings — Yas Island and Abu Dhabi/Yas Marina, Spa/Spa-Francorchamps, Nürburgring/Nürburg,
+ * Mugello/Scarperia e San Piero) are already aliased **inside** `index.json` by the converter,
+ * which writes both keys pointing at the same id. So there is no alias table here, and adding one
+ * would be a second place to keep in step.
  */
 export function resolveCircuitId(location: string): string | null {
   return LOCATION_TO_ID[locationSlug(location)] ?? null;

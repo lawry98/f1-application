@@ -1,4 +1,5 @@
 {
+  "abu-dhabi": "ae-2009",
   "austin": "us-2012",
   "bahrain": "bh-2002",
   "baku": "az-2016",
@@ -29,7 +30,9 @@
   "monte-carlo": "mc-1929",
   "montreal": "ca-1978",
   "monza": "it-1922",
+  "mugello": "it-1914",
   "nurburg": "de-1927",
+  "nurburgring": "de-1927",
   "portimao": "pt-2008",
   "sakhir": "bh-2002",
   "sao-paulo": "br-1940",
@@ -39,9 +42,11 @@
   "silverstone": "gb-1948",
   "singapore": "sg-2008",
   "sochi": "ru-2014",
+  "spa": "be-1925",
   "spa-francorchamps": "be-1925",
   "spielberg": "at-1969",
   "suzuka": "jp-1962",
+  "yas-island": "ae-2009",
   "yas-marina": "ae-2009",
   "zandvoort": "nl-1948"
 }

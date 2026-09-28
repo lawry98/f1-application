@@ -6,6 +6,7 @@ import {
   resolveCircuitId,
   toPoints,
 } from '@/lib/circuit-geometry';
+import slugCases from './fixtures/slug-cases.json';
 
 describe('toPoints', () => {
   it('narrows a JSON pair array without changing a single coordinate', () => {
@@ -35,24 +36,18 @@ describe('toPoints', () => {
 
 describe('locationSlug', () => {
   /*
-   * These are the cases that make the slug rule non-trivial, and each one is a real 2026-calendar
-   * location. The rule has to match `slug()` in `scripts/fetch-circuit-geometry.mjs` exactly,
-   * because that script generated the keys in `index.json` — if the two drift, lookups return
-   * null and a null silently hides the circuit visual with no error anywhere to trace.
+   * These are the cases that make the slug rule non-trivial, and each one is a real FastF1 or
+   * bacinger location. The rule has to match `slug()` in `scripts/fetch-circuit-geometry.mjs`
+   * exactly, because that script generated the keys in `index.json` — if the two drift, lookups
+   * return null and a null silently hides the circuit visual with no error anywhere to trace.
+   *
+   * The vectors are shared with `backend/tests/test_circuit_winners.py`, which pins the Python
+   * port against the same file. Three copies of this rule exist — here, `slug()` in
+   * `scripts/fetch-circuit-geometry.mjs`, and `location_slug` in `backend/tools/circuit_winners.py`
+   * — and a drift between any two silently returns null for every lookup that depends on it.
    */
-  it.each([
-    ['Monza', 'monza'],
-    ['Montréal', 'montreal'],
-    ['São Paulo', 'sao-paulo'],
-    ['Spa-Francorchamps', 'spa-francorchamps'],
-    ['Las Vegas', 'las-vegas'],
-    ['Monte-Carlo', 'monte-carlo'],
-  ])('slugs %s to %s', (location, expected) => {
+  it.each(slugCases as [string, string][])('slugs %j to %s', (location, expected) => {
     expect(locationSlug(location)).toBe(expected);
-  });
-
-  it('collapses runs of separators and trims the ends', () => {
-    expect(locationSlug('  Marina  Bay  ')).toBe('marina-bay');
   });
 });
 
@@ -62,7 +57,7 @@ describe('resolveCircuitId', () => {
   });
 
   /*
-   * The five aliases live inside `index.json`, written there by the converter as a second key
+   * The ten aliases live inside `index.json`, written there by the converter as a second key
    * pointing at the same id — not in a table in the loader. FastF1 says "Monte-Carlo" and the
    * geometry source says "Monaco"; both must land on the same circuit. This asserts the aliasing
    * survives whatever regenerates the data, which is the thing a second table here would hide.
