@@ -21,6 +21,7 @@ const PASSES = [
   { route: '/teams', width: 390 },
   { route: '/tyres', width: 390 },
   { route: '/circuits', width: 390 },
+  { route: '/circuits/monza', width: 390 },
 ];
 
 for (const { route, width } of PASSES) {
