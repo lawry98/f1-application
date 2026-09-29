@@ -227,7 +227,11 @@ def _build_tool_args(task_name: str, race_info: dict) -> dict[str, Any] | None:
         # applies before round 1 — `_invoke_tool` retries with it in that one case.
         return {"year": race_info["year"]}
     if task_name == "get_circuit_winners":
-        return {"circuit_name": race_info["name"], "years_back": 3}
+        return {
+            "circuit_name": race_info["name"],
+            "location": race_info["location"],
+            "years_back": 3,
+        }
     if task_name == "search_f1_news":
         return {"query": f"{race_info['name']} {race_info['year']}", "max_results": 5}
     if task_name == "get_race_weather":

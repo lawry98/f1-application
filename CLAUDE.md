@@ -133,8 +133,8 @@ node), `schedule_cache.py` (a FastF1 schedule cache), `fastf1_helpers.py` (share
 lookup/session helpers), `openf1_client.py` (the OpenF1 HTTP client and its range-query
 cache), `openf1_races.py` (shared "which session is this event's race" lookups),
 `openf1_shaping.py` (converts OpenF1 rows into the tools' existing return shapes), and
-`circuit_winners.py` (recent winners per circuit for the `/circuits` detail page). Adding a
-file here does not make it a tool.
+`circuit_winners.py` (recent winners per circuit, for `/circuits` and `get_circuit_winners`).
+Adding a file here does not make it a tool.
 
 **Tools never raise.** Every `@tool` returns `{"error": "..."}` on failure. The agent is built to
 continue on partial data — preserve this or the pipeline loses its degradation behaviour.
@@ -293,14 +293,18 @@ keep testing the FastF1 path unedited. The consequence is that the fallback is t
 default under test, so `test_openf1_tools.py` asserts the OpenF1 request is genuinely
 made rather than silently fallen through.
 
-**`/circuits` winners are matched by circuit, never by Grand Prix name — and the agent's tool
-still matches by name.** `fastf1_helpers.find_event` is a substring match on `EventName`, and a
+**Circuit winners are matched by circuit, never by Grand Prix name — on `/circuits` and in the
+agent alike.** `fastf1_helpers.find_event` is a substring match on `EventName`, and a
 Grand Prix is not a track: 2026's Spanish GP is at Madrid while 2023–25's was at Barcelona, and
 FastF1 files the rescheduled 2026 Bahrain GP under Kuala Lumpur. So `tools/circuit_winners.py`
 slugs each schedule row's `Location` and looks it up in `frontend/data/circuits/index.json`
 (`CIRCUIT_INDEX_PATH` in `config.py`) — which makes `location_slug` the **third** copy of the slug
 rule, after `locationSlug` and the converter's `slug()`. `frontend/tests/fixtures/slug-cases.json`
-is read by both test suites; add a case there, never to one side.
+is read by both test suites; add a case there, never to one side. The agent's
+`get_circuit_winners` resolves the briefing's `race_info["location"]` with
+`circuit_id_for_location` and delegates to `get_recent_circuit_winners`, so it shares the matcher
+*and* the cache; a location the index lacks gets "No recent data", never a fallback to
+`find_event`, which is the defect this replaced.
 
 **The winners cache has no expiry, on purpose.** Keyed `(circuit_id, year)` across the three
 seasons before the current one — all finished, so nothing a TTL could refresh — and bounded by the

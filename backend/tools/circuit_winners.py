@@ -1,8 +1,8 @@
-"""Recent Grand Prix winners at one circuit, for the /circuits detail page.
+"""Recent Grand Prix winners at one circuit, for the /circuits detail page and the agent.
 
-A plain helper, not a ``@tool``: only the winners route calls it, and nothing here is
-LLM-callable. The agent's ``get_circuit_winners`` in ``f1_data_tools.py`` is separate and
-unchanged.
+A plain helper, not a ``@tool``. Two callers share it and its cache: the winners route, by
+circuit id, and the agent's ``get_circuit_winners`` in ``f1_data_tools.py``, which resolves
+the briefing's race location to a circuit id with ``circuit_id_for_location`` first.
 
 **Matched by circuit, never by Grand Prix name.** ``fastf1_helpers.find_event`` is a
 substring match on ``EventName``, and a Grand Prix is not a track: 2026's Spanish GP is
@@ -102,6 +102,14 @@ def _circuit_index() -> dict[str, str]:
     return loaded
 
 
+def circuit_id_for_location(location: str) -> str | None:
+    """The circuit id a FastF1 ``Location`` names, or None if the set does not carry it.
+
+    Raises if the index cannot be read, so a caller can tell "unknown circuit" from "no map".
+    """
+    return _circuit_index().get(location_slug(location))
+
+
 def _lock_for(circuit_id: str) -> threading.Lock:
     with _cache_lock:
         return _circuit_locks.setdefault(circuit_id, threading.Lock())
@@ -151,17 +159,21 @@ def _winners_in(circuit_id: str, year: int, index: dict[str, str]) -> tuple[dict
     return tuple(rows)
 
 
-def get_recent_circuit_winners(circuit_id: str) -> dict[str, Any]:
-    """Winners at one circuit across the three seasons before this one.
+def get_recent_circuit_winners(circuit_id: str, years_back: int = WINDOW_YEARS) -> dict[str, Any]:
+    """Winners at one circuit across the ``years_back`` seasons before this one.
 
     Args:
         circuit_id: A circuit id from ``index.json``'s values, e.g. ``it-1922``.
+        years_back: How many seasons before the current one to cover.
 
     Returns:
         ``circuit_id``, ``from_year``, ``to_year`` (inclusive), ``winners`` newest first, and
         ``unavailable_years`` for any year whose load failed; or ``{"error": ...}`` —
         with ``reason: UNKNOWN_CIRCUIT`` when the id is not one this repo draws.
     """
+    if years_back < 1:
+        return {"error": f"years_back must be at least 1, got {years_back}"}
+
     try:
         index = _circuit_index()
     except Exception as exc:
@@ -171,7 +183,7 @@ def get_recent_circuit_winners(circuit_id: str) -> dict[str, Any]:
         return {"error": f"Unknown circuit {circuit_id}", "reason": UNKNOWN_CIRCUIT}
 
     this_year = date.today().year
-    years = list(range(this_year - WINDOW_YEARS, this_year))
+    years = list(range(this_year - years_back, this_year))
     winners: list[dict[str, Any]] = []
     unavailable: list[int] = []
 

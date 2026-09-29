@@ -260,6 +260,30 @@ def test_every_year_failing_is_an_error(install):
     assert "reason" not in result
 
 
+def test_years_back_narrows_the_window(install):
+    install(SPANISH_AT_BARCELONA)
+
+    result = get_recent_circuit_winners("es-1991", years_back=1)
+
+    assert (result["from_year"], result["to_year"]) == (2025, 2025)
+    assert [row["year"] for row in result["winners"]] == [2025]
+
+
+@pytest.mark.parametrize("years_back", [0, -1])
+def test_an_empty_window_is_an_error_not_a_raise(install, years_back):
+    fake = install(SPANISH_AT_BARCELONA)
+    assert "error" in get_recent_circuit_winners("es-1991", years_back=years_back)
+    assert fake.schedule_calls == []
+
+
+@pytest.mark.parametrize(
+    ("location", "circuit_id"),
+    [("Madrid", "es-2026"), ("Kuala Lumpur", "my-1999"), ("Bangkok", None), ("", None)],
+)
+def test_circuit_id_for_location(location, circuit_id):
+    assert circuit_winners.circuit_id_for_location(location) == circuit_id
+
+
 def test_a_caller_mutating_the_result_cannot_reach_the_cache(install):
     install(SPANISH_AT_BARCELONA)
     get_recent_circuit_winners("es-1991")["winners"][0]["driver"] = "tampered"
