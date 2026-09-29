@@ -15,8 +15,9 @@ export type StreamEvent =
   | { type: 'error'; data: { message: string } };
 
 /**
- * `GET /api/standings/{year}`. Rows arrive already ranked — driver ties broken on best finish,
- * then car number — so they render in served order and are never re-sorted.
+ * `GET /api/standings/{year}`. Rows arrive already ranked — ties broken on the Grand Prix
+ * countback, then car number (team name for constructors) — so they render in served order and
+ * are never re-sorted.
  *
  * A season with no results yet is a 200 with `races_completed: 0` and both tables empty, not an
  * error: it is an answer rather than an outage, so the page states it instead of offering a
