@@ -57,11 +57,19 @@ export interface ModelBounds {
  *
  * `tests/scene-fit.test.ts` checks these against the shipped file, so a re-exported model fails
  * CI instead of quietly mis-framing both routes.
+ *
+ * Re-baselined, not tolerated, when the model was meshopt-compressed
+ * (`scripts/compress-car-model.mjs`). Its 14-bit position grid moved this measurement by at most
+ * 2.4e-4 (size z; was `4.097002`), inside the test's 5e-4 — so the test passed on the old numbers,
+ * which is exactly why that was no reason to keep them. Left alone they would describe a file we
+ * no longer ship, and spend half the guard's tolerance before the next re-export has moved
+ * anything. The tolerance stays: at /showcase's scale it is 0.03px, well below anything a real
+ * re-export (an axis swap, a rescale, a flattened hierarchy — 0.09 in `minY`) would move.
  */
 export const CAR_BOUNDS: ModelBounds = {
-  size: [11.242697, 2.662192, 4.097002],
-  centre: [-0.218475, 1.241258, 0],
-  minY: -0.089838,
+  size: [11.2427, 2.662122, 4.096758],
+  centre: [-0.218477, 1.241226, 0.000122],
+  minY: -0.089835,
 };
 
 /** The y the ground plane and its grid sit at, in both scenes. */

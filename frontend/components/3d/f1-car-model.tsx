@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, type RefObject } from 'react';
 import { useFrame, useLoader } from '@react-three/fiber';
-import { GLTFLoader } from 'three-stdlib';
+import { GLTFLoader, MeshoptDecoder } from 'three-stdlib';
 import * as THREE from 'three';
 
 import { hexToRgb, recolourLivery, selectLiveryMaterials } from '@/lib/livery';
@@ -39,6 +39,16 @@ interface RealCarProps extends CarMotion {
  * and sank its wheels 0.09 through it on the other.
  */
 const MODEL_OFFSET = groundedOffset(CAR_BOUNDS, GROUND_Y);
+
+/**
+ * The GLB's geometry is meshopt-compressed (`scripts/compress-car-model.mjs`), and GLTFLoader
+ * refuses the file without a decoder. `MeshoptDecoder()` memoises one instance and inlines its
+ * wasm, so there is no decoder file to host. Measured: +19.6 KB (6 KB gzipped) on the lazy 3D
+ * chunk and ~3 ms of decode, against 6.2 MB off the model.
+ */
+function withMeshoptDecoder(loader: GLTFLoader) {
+  loader.setMeshoptDecoder(MeshoptDecoder());
+}
 
 /**
  * A cloned livery material plus the canvas its base-colour texture is painted on.
@@ -116,7 +126,7 @@ function createLiveryPaint(source: THREE.MeshStandardMaterial): LiveryPaint | nu
 
 export function RealCar({ teamColor, rotationSpeed, float }: RealCarProps) {
   const groupRef = useRef<THREE.Group>(null);
-  const gltf = useLoader(GLTFLoader, '/models/f1-car.glb');
+  const gltf = useLoader(GLTFLoader, '/models/f1-car.glb', withMeshoptDecoder);
 
   // Clone once per mount; useLoader caches the GLTF, so livery materials must be cloned before
   // recolouring or the repaint would bleed into every other consumer.
