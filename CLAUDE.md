@@ -562,9 +562,22 @@ every team change. Moving it to `xl` also means the per-section "Inspect in 3D" 
 `xl:hidden`, not `lg:hidden` — otherwise 1024–1279px gets no dossier *and* no way to reach the
 inspector.
 
-**The teardown page** (`/teardown`) preloads 192 PNG frames (`public/frames/frame_0000.png` …
-`frame_0191.png`) and maps scroll position to frame index via `requestAnimationFrame`. Its canvas
-is sized `min(92vw, calc(82vh * 800 / 420))` to respect both viewport constraints at once.
+**The teardown page** (`/teardown`) scrubs 192 frames on a canvas sized
+`min(92vw, calc(82vh * 800 / 420))`, which respects both viewport constraints at once. What ships is
+lossy WebP (`public/frames/frame_NNNN.webp`, 3.60 MB); the PNG renders it is derived from live in
+`assets/teardown-frames/` (30.1 MB, never served). Never re-encode or hand-edit a shipped frame:
+change the source and re-run `node scripts/encode-teardown-frames.mjs`, whose `--check` confirms
+the committed set is byte-identical to a fresh encode. That is why `sharp` is pinned exactly —
+another libwebp is another set of bytes — and the script's header carries the measurements behind
+q85 and against AVIF (Safari decodes it only from 16, so it would need a second, fallback set).
+All 192 frames are kept on purpose: none is a duplicate, and at 96 each image holds for ~38px of
+scroll, which steps visibly on a slow trackpad drag. Loading is coarse to fine
+(`lib/teardown-frames.ts`): the overlay waits only for every 16th frame plus the last, and the
+canvas draws the nearest loaded frame and redraws as closer ones land — jsdom cannot see that, so
+`browser/teardown-scrub.spec.ts` compares canvas pixels and mutant 06 proves it would notice. The
+last frame is in the first pass because the docked still in the header is the same URL, served
+from cache. A spec that holds frame responses must `goto` with `waitUntil: 'domcontentloaded'`:
+an unfinished `new Image()` delays the document's `load` event, so the default never resolves.
 
 ## Code conventions
 

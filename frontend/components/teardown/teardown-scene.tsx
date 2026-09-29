@@ -15,8 +15,11 @@ import { focusRing } from '@/lib/focus';
 import { LaurelFlourish } from '@/components/candy/laurel-flourish';
 import { RedactedReveal } from '@/components/candy/redacted-reveal';
 import { TeardownOutro } from '@/components/teardown/teardown-outro';
+import { FRAME_COUNT, frameLoadPasses, framePath, nearestLoaded } from '@/lib/teardown-frames';
 
-const FRAME_COUNT = 192;
+const LOAD_PASSES = frameLoadPasses(FRAME_COUNT);
+/** What the loading overlay waits for. The later passes load behind a scene already scrubbing. */
+const FIRST_PASS = LOAD_PASSES[0] ?? [];
 
 /**
  * The scroll container's height. The sticky viewport inside it is 100vh, so the usable scroll
@@ -79,10 +82,6 @@ interface DockMetrics {
   dy: number;
   /** Target scale — the slot's 36px against the car box's rendered height. */
   scale: number;
-}
-
-function framePath(i: number): string {
-  return `/frames/frame_${String(i).padStart(4, '0')}.png`;
 }
 
 interface ComponentLabel {
@@ -176,7 +175,11 @@ export function TeardownScene() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const framesRef = useRef<(HTMLImageElement | null)[]>([]);
-  const lastFrameIndexRef = useRef(-1);
+  /** Which frames have arrived. A frame that failed to load stays false and is never drawn. */
+  const loadedRef = useRef<boolean[]>([]);
+  /** The frame the scroll position asks for, and the one actually on the canvas. */
+  const wantedFrameRef = useRef(-1);
+  const drawnFrameRef = useRef(-1);
   /** The car's resting box. Never itself transformed — see `dockMetricsRef` for why. */
   const carBoxRef = useRef<HTMLDivElement>(null);
   const slotRef = useRef<HTMLDivElement>(null);
@@ -200,8 +203,8 @@ export function TeardownScene() {
   const prefersReducedMotion = useReducedMotion();
   const prefersReducedMotionSafe = useReducedMotionSafe();
 
-  const [loadedCount, setLoadedCount] = useState(0);
-  const [isLoaded, setIsLoaded] = useState(false);
+  const [firstPassSettled, setFirstPassSettled] = useState(0);
+  const [isReady, setIsReady] = useState(false);
   /**
    * The scrub position as an **integer percent**, not the raw 0–1 fraction. See `apply` for why the
    * quantisation exists; the progress readout, `isArriving` and the callout windows are the only
@@ -256,11 +259,11 @@ export function TeardownScene() {
   }, []);
 
   useEffect(() => {
-    if (!isLoaded) return undefined;
+    if (!isReady) return undefined;
     measureDock();
     window.addEventListener('resize', measureDock);
     return () => window.removeEventListener('resize', measureDock);
-  }, [isLoaded, measureDock]);
+  }, [isReady, measureDock]);
 
   /**
    * 0 before the dock begins, 1 once it has arrived. Under reduced motion this is a step rather
@@ -304,46 +307,16 @@ export function TeardownScene() {
    * works.
    *
    * So the flying canvas does the *journey*, and a still of the last frame does the *arrival*. The
-   * still is the same URL the preloader already fetched, so it is served from cache, and because it
-   * lives inside the already-`fixed` header it needs no position switch of its own to persist over
-   * the outro — which is why there is no `position: fixed` swap on the car layer at all.
+   * still is the same URL the preloader fetched in its first pass, so it is served from cache, and
+   * because it lives inside the already-`fixed` header it needs no position switch of its own to
+   * persist over the outro — which is why there is no `position: fixed` swap on the car layer at
+   * all.
    */
   const canvasOpacity = useTransform(scrollYProgress, (p) => {
     if (prefersReducedMotion) return p >= DOCK_END ? 0 : 1;
     return 1 - Math.min(1, Math.max(0, (p - DOCK_ARRIVE) / (DOCK_END - DOCK_ARRIVE)));
   });
   const miniOpacity = useTransform(canvasOpacity, (o) => 1 - o);
-
-  // ── Preload all frames ────────────────────────────────────────────────────
-  useEffect(() => {
-    let isCancelled = false;
-    const images: (HTMLImageElement | null)[] = new Array(FRAME_COUNT).fill(null);
-    framesRef.current = images;
-    let completed = 0;
-
-    const onComplete = () => {
-      if (isCancelled) return;
-      completed++;
-      setLoadedCount(completed);
-      if (completed === FRAME_COUNT) setIsLoaded(true);
-    };
-
-    for (let i = 0; i < FRAME_COUNT; i++) {
-      const img = new Image();
-      img.onload = onComplete;
-      // Null the slot so drawFrame skips broken frames instead of throwing on drawImage.
-      img.onerror = () => {
-        images[i] = null;
-        onComplete();
-      };
-      img.src = framePath(i);
-      images[i] = img;
-    }
-
-    return () => {
-      isCancelled = true;
-    };
-  }, []);
 
   // ── Draw a single frame to canvas ─────────────────────────────────────────
   const drawFrame = useCallback((index: number) => {
@@ -357,9 +330,80 @@ export function TeardownScene() {
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
   }, []);
 
+  /**
+   * Draws the loaded frame closest to `wanted`, unless it is already on the canvas. Called on scroll
+   * and again each time a frame arrives, which is what upgrades a coarse first-pass frame in place
+   * when a closer one lands — without it the canvas would hold the stand-in until the reader next
+   * moved the wheel, and a reader who stops scrolling mid-load would keep it.
+   */
+  const showFrame = useCallback(
+    (wanted: number) => {
+      if (wanted < 0) return;
+      const idx = nearestLoaded(loadedRef.current, wanted);
+      if (idx === -1 || idx === drawnFrameRef.current) return;
+      drawnFrameRef.current = idx;
+      drawFrame(idx);
+    },
+    [drawFrame],
+  );
+
+  // ── Preload, coarse to fine ───────────────────────────────────────────────
+  /**
+   * In passes (see `frameLoadPasses`), and the overlay waits for the first one only: 13 frames and
+   * ~240 KB rather than all 3.6 MB, so on a slow connection the reader waits about a second instead
+   * of the better part of twenty. Until the rest arrive the scrub runs at a lower frame rate, never
+   * blank, because `showFrame` falls back to the nearest frame that has landed.
+   *
+   * Each pass is requested whole before the next starts, rather than through a fixed concurrency
+   * cap. Over HTTP/2 a cap of ~6 would throttle a high-latency link to six ~18 KB frames per round
+   * trip; a whole pass at once keeps the connection full and still lets coarse frames land first.
+   */
+  useEffect(() => {
+    let isCancelled = false;
+    const images: (HTMLImageElement | null)[] = new Array(FRAME_COUNT).fill(null);
+    const loaded: boolean[] = new Array(FRAME_COUNT).fill(false);
+    framesRef.current = images;
+    loadedRef.current = loaded;
+
+    // Resolves on error as well as load: a frame that 404s is skipped, not waited for, so one
+    // missing file cannot hold the overlay up forever.
+    const load = (i: number) =>
+      new Promise<void>((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          if (!isCancelled) {
+            loaded[i] = true;
+            showFrame(wantedFrameRef.current);
+          }
+          resolve();
+        };
+        img.onerror = () => resolve();
+        img.src = framePath(i);
+        images[i] = img;
+      });
+
+    void (async () => {
+      let settled = 0;
+      const countSettled = () => {
+        if (!isCancelled) setFirstPassSettled(++settled);
+      };
+      await Promise.all(FIRST_PASS.map((i) => load(i).then(countSettled)));
+      if (isCancelled) return;
+      setIsReady(true);
+      for (const pass of LOAD_PASSES.slice(1)) {
+        await Promise.all(pass.map(load));
+        if (isCancelled) return;
+      }
+    })();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [showFrame]);
+
   // ── Scroll → frame mapping ────────────────────────────────────────────────
   useEffect(() => {
-    if (!isLoaded) return undefined;
+    if (!isReady) return undefined;
 
     const apply = (fraction: number) => {
       // Quantised before it reaches state, so a scrub from 0 to 1 costs ~101 renders of this
@@ -378,9 +422,9 @@ export function TeardownScene() {
       if (fraction > 0.005) setHasScrolled(true);
 
       const idx = Math.min(FRAME_COUNT - 1, Math.floor(fraction * FRAME_COUNT));
-      if (idx !== lastFrameIndexRef.current) {
-        lastFrameIndexRef.current = idx;
-        drawFrame(idx);
+      if (idx !== wantedFrameRef.current) {
+        wantedFrameRef.current = idx;
+        showFrame(idx);
       }
     };
 
@@ -394,9 +438,9 @@ export function TeardownScene() {
     // one read pass per frame, so wrapping this in another requestAnimationFrame would only add a
     // frame of latency between the scroll and the repaint.
     return scrollYProgress.on('change', apply);
-  }, [isLoaded, drawFrame, scrollYProgress]);
+  }, [isReady, showFrame, scrollYProgress]);
 
-  const loadPct = Math.round((loadedCount / FRAME_COUNT) * 100);
+  const loadPct = Math.round((firstPassSettled / FIRST_PASS.length) * 100);
 
   /**
    * Gates the mounting of the landed car and its laurel. Mounting is also how the laurel is
@@ -494,8 +538,9 @@ export function TeardownScene() {
                 <LaurelFlourish draw="immediate" className="text-ink">
                   {/*
                    * `unoptimized` is deliberate and is the whole point of using next/image here at
-                   * all: it emits the raw `/frames/frame_0191.png` URL, which is the exact file the
-                   * frame preloader has already pulled into the browser cache, so the still costs no
+                   * all: it emits the raw `/frames/frame_0191.webp` URL, which is the exact file the
+                   * frame preloader pulls into the browser cache in its first pass
+                   * (`frameLoadPasses` always puts the last frame there), so the still costs no
                    * network at all. Without it next/image rewrites the src to `/_next/image?url=…`,
                    * a different URL, and the browser downloads a second copy of a frame we are
                    * already holding in memory. Decorative — the car is the page's subject and the
@@ -555,14 +600,14 @@ export function TeardownScene() {
          * is inert: it is `fixed inset-0 z-50`, so its position in the document affects neither its
          * box nor its paint order against the `z-30` header.
          */}
-        {!isLoaded && (
+        {!isReady && (
           <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-0 bg-zinc-950">
             <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-zinc-400">
               Loading frames
             </p>
             <p className="mb-6 font-mono text-5xl font-bold tabular-nums text-ink">
-              {loadedCount}
-              <span className="text-zinc-400">/{FRAME_COUNT}</span>
+              {firstPassSettled}
+              <span className="text-zinc-400">/{FIRST_PASS.length}</span>
             </p>
             {/* Progress bar */}
             <div className="h-[3px] w-72 overflow-hidden rounded-full bg-zinc-800">
