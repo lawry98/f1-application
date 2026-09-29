@@ -197,8 +197,9 @@ OUTPUT (Race Briefing)
 |----------|--------|-------------|
 | `/api/briefing` | POST | Synchronous briefing generation |
 | `/api/briefing/stream` | POST | SSE streaming briefing (used by frontend) |
-| `/api/races/{year}` | GET | F1 calendar from FastF1 |
+| `/api/races/{year}` | GET | F1 calendar from FastF1, with each event's format and official name |
 | `/api/standings/{year}` | GET | Driver and constructor championship tables, derived from OpenF1 (2023 onwards) |
+| `/api/circuits/{circuit_id}/winners` | GET | Recent winners at one circuit (the three seasons before this one), matched by circuit; ~5s cold, cached after |
 | `/api/health` | GET | Health check |
 
 ### Frontend Routes
@@ -211,6 +212,8 @@ OUTPUT (Race Briefing)
 | `/showcase` | Interactive 3D car with all 11 team liveries |
 | `/standings` | Drivers' and constructors' championship tables for every season since 2023, with a season picker |
 | `/teams` | 2026 team explorer — liveries, driver line-ups, comparison grid |
+| `/circuits` | Every round of a season's calendar with its track outline, with a season picker |
+| `/circuits/[slug]` | One circuit's facts, calendar row and recent winners |
 | `/credits` | Credits & attributions |
 
 ### Example: Generate Briefing

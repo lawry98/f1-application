@@ -12,7 +12,7 @@ import { PrimitiveCar, RealCar } from './f1-car-model';
 const FOG_COLOR = '#09090b';
 
 /**
- * `2.4`, up from `0.8`: `PrimitiveCar` is ~4.6 units long and the GLB is 11.24, and the camera is
+ * `2.4`, up from `0.8`: `PrimitiveCar` is ~4.6 units long and the GLB is 11.23, and the camera is
  * now framed for the GLB. At the old scale the stand-in would be a sixth of the size of the car
  * that replaces it.
  */

@@ -13,9 +13,11 @@
  * loudly here instead of silently skipping the check.
  */
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { inflateSync } from 'node:zlib';
+
+import { MeshoptDecoder } from 'three-stdlib';
 
 // `process.cwd()` rather than `import.meta.url`, matching `lib/credits.ts`: vitest serves test
 // modules over http, so `import.meta.url` is not a file URL here.
@@ -35,19 +37,51 @@ interface GltfNode {
   scale?: [number, number, number];
 }
 
-interface Gltf {
+/** A bufferView whose bytes are meshopt-compressed; the loader decodes them into `byteLength`. */
+export interface MeshoptView {
+  byteOffset?: number;
+  byteLength: number;
+  byteStride: number;
+  count: number;
+  mode: 'ATTRIBUTES' | 'TRIANGLES' | 'INDICES';
+  filter?: 'NONE' | 'OCTAHEDRAL' | 'QUATERNION' | 'EXPONENTIAL';
+}
+
+export interface GltfAccessor {
+  bufferView?: number;
+  byteOffset?: number;
+  componentType: number;
+  normalized?: boolean;
+  count: number;
+  type: string;
+  min?: number[];
+  max?: number[];
+}
+
+export interface Gltf {
+  extensionsRequired?: string[];
   materials: { name?: string; pbrMetallicRoughness?: { baseColorTexture?: { index: number } } }[];
   textures: { source: number }[];
   images: { bufferView: number }[];
-  bufferViews: { byteOffset?: number; byteLength: number }[];
+  bufferViews: {
+    byteOffset?: number;
+    byteLength: number;
+    byteStride?: number;
+    extensions?: { EXT_meshopt_compression?: MeshoptView };
+  }[];
   nodes: GltfNode[];
-  meshes: { primitives: { attributes: { POSITION: number } }[] }[];
-  accessors: { min?: number[]; max?: number[] }[];
+  meshes: { primitives: { attributes: { POSITION: number }; indices?: number }[] }[];
+  accessors: GltfAccessor[];
   scenes: { nodes: number[] }[];
   scene?: number;
 }
 
-function readGlb(): { gltf: Gltf; bin: Buffer } {
+/** The size of the file `public/` serves. */
+export function glbByteLength(): number {
+  return statSync(GLB_PATH).size;
+}
+
+export function readGlb(): { gltf: Gltf; bin: Buffer } {
   const glb = readFileSync(GLB_PATH);
 
   let offset = 12;
@@ -64,6 +98,64 @@ function readGlb(): { gltf: Gltf; bin: Buffer } {
 
   if (!json || !bin) throw new Error('f1-car.glb: missing a JSON or BIN chunk');
   return { gltf: JSON.parse(json.toString('utf8')) as Gltf, bin };
+}
+
+const COMPONENTS: Record<string, number> = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4 };
+const READERS: Record<number, [bytes: number, read: (view: DataView, at: number) => number]> = {
+  5120: [1, (view, at) => view.getInt8(at)],
+  5121: [1, (view, at) => view.getUint8(at)],
+  5122: [2, (view, at) => view.getInt16(at, true)],
+  5123: [2, (view, at) => view.getUint16(at, true)],
+  5125: [4, (view, at) => view.getUint32(at, true)],
+  5126: [4, (view, at) => view.getFloat32(at, true)],
+};
+
+/**
+ * Every bufferView's bytes as the loader sees them: meshopt-compressed ones decoded, the rest as
+ * stored.
+ *
+ * With three-stdlib's `MeshoptDecoder`, the one `RealCar` registers, and not meshoptimizer's own —
+ * `tests/car-model-asset.test.ts` says why that matters.
+ */
+export async function decodeBufferViews(gltf: Gltf, bin: Buffer): Promise<Uint8Array[]> {
+  const decoder = MeshoptDecoder();
+  if (!('ready' in decoder)) throw new Error('MeshoptDecoder: no WebAssembly in this environment');
+  await decoder.ready;
+
+  return gltf.bufferViews.map((view) => {
+    const meshopt = view.extensions?.EXT_meshopt_compression;
+    if (!meshopt) {
+      const start = view.byteOffset ?? 0;
+      return bin.subarray(start, start + view.byteLength);
+    }
+    const start = meshopt.byteOffset ?? 0;
+    const target = new Uint8Array(meshopt.count * meshopt.byteStride);
+    decoder.decodeGltfBuffer(
+      target,
+      meshopt.count,
+      meshopt.byteStride,
+      bin.subarray(start, start + meshopt.byteLength),
+      meshopt.mode,
+      meshopt.filter,
+    );
+    return target;
+  });
+}
+
+/** An accessor's values exactly as stored — not normalized, which is also how glTF defines `min`/`max`. */
+export function readAccessor(gltf: Gltf, views: Uint8Array[], accessor: GltfAccessor): number[][] {
+  const components = COMPONENTS[accessor.type]!;
+  const [bytes, read] = READERS[accessor.componentType]!;
+  const data = views[accessor.bufferView!]!;
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const stride = gltf.bufferViews[accessor.bufferView!]!.byteStride ?? bytes * components;
+
+  const values: number[][] = [];
+  for (let i = 0; i < accessor.count; i++) {
+    const at = (accessor.byteOffset ?? 0) + i * stride;
+    values.push(Array.from({ length: components }, (_, c) => read(view, at + c * bytes)));
+  }
+  return values;
 }
 
 /** Every material name in the shipped model, in file order. */
@@ -197,6 +289,8 @@ export function modalColor(data: Uint8ClampedArray): [number, number, number] {
   return [(best >> 16) & 255, (best >> 8) & 255, best & 255];
 }
 
+type Vec3 = [number, number, number];
+
 export interface GlbBounds {
   /** World-space extent, in the order `[x, y, z]`. */
   size: [number, number, number];
@@ -247,16 +341,31 @@ function fromTrs(node: GltfNode): number[] {
 }
 
 /**
- * The model's bounding box in **world** space, with the whole node hierarchy applied.
+ * The model's bounding box in **world** space: every decoded vertex, with the whole node hierarchy
+ * applied.
  *
  * Not the same thing as the accessors' own `min`/`max`, and the difference is the point: this
  * asset nests the meshes under `Sketchfab_model → F1 2026.fbx → RootNode → Car`, and those
- * wrappers both rescale (0.01 then ~100, which cancel) and permute axes Y-up → Z-up. Reading the
- * accessors alone reports the car 4.10 tall and 2.66 wide; in the scene it is 2.66 tall and 4.10
- * wide, and the camera has to be placed against the second pair.
+ * wrappers both rescale (0.01 then ~100, which cancel) and permute axes Y-up → Z-up. In the scene
+ * the car is 2.50 tall and 4.10 wide, and the camera has to be placed against that pair.
+ *
+ * Vertices, not the accessors' boxes carried through the walk. `Car` also rakes the body 0.648°
+ * about z, and a rotated box is not the box of what is inside it: its corners are phantoms no
+ * vertex reaches, 0.075 above the car and 0.091 below it over its 11.2-unit length. The
+ * box-of-boxes version of this measured the car 2.66 tall with its lowest point at -0.090, and
+ * `groundedOffset` rested that phantom on the floor — so the real tyres floated 0.091 above it on
+ * both routes while every test here passed.
+ *
+ * The shipped model is quantized (KHR_mesh_quantization): its positions are `uint16` grid indices
+ * and the grid's scale and origin are an extra node transform per mesh, which this walk applies
+ * like any other. That holds only for *integer* positions. `readAccessor` returns values as stored,
+ * and a normalized encoding would need dividing into [0, 1] first — read raw, it describes a car
+ * hundreds of thousands of units long. That encoding throws here rather than reaching the
+ * assertions as a baffling number.
  */
-export function glbBounds(): GlbBounds {
-  const { gltf } = readGlb();
+export async function glbBounds(): Promise<GlbBounds> {
+  const { gltf, bin } = readGlb();
+  const views = await decodeBufferViews(gltf, bin);
 
   const min = [Infinity, Infinity, Infinity];
   const max = [-Infinity, -Infinity, -Infinity];
@@ -270,26 +379,22 @@ export function glbBounds(): GlbBounds {
     if (node.mesh !== undefined) {
       for (const primitive of gltf.meshes[node.mesh]!.primitives) {
         const accessor = gltf.accessors[primitive.attributes.POSITION]!;
-        if (!accessor.min || !accessor.max) {
-          throw new Error('f1-car.glb: a POSITION accessor has no min/max');
+        if (accessor.normalized) {
+          throw new Error(
+            'f1-car.glb: a POSITION accessor is normalized; its stored values are raw integers. ' +
+              'Re-export with integer positions (gltfpack -vpi, its default).',
+          );
         }
-        const [ax, ay, az] = accessor.min as [number, number, number];
-        const [bx, by, bz] = accessor.max as [number, number, number];
 
-        // Every corner, because the wrappers rotate: transforming only min and max would give
-        // the box of two points rather than the box of the transformed box.
-        for (const x of [ax, bx]) {
-          for (const y of [ay, by]) {
-            for (const z of [az, bz]) {
-              const wx = world[0]! * x + world[4]! * y + world[8]! * z + world[12]!;
-              const wy = world[1]! * x + world[5]! * y + world[9]! * z + world[13]!;
-              const wz = world[2]! * x + world[6]! * y + world[10]! * z + world[14]!;
-              const point = [wx, wy, wz];
-              for (let axis = 0; axis < 3; axis++) {
-                if (point[axis]! < min[axis]!) min[axis] = point[axis]!;
-                if (point[axis]! > max[axis]!) max[axis] = point[axis]!;
-              }
-            }
+        for (const [x, y, z] of readAccessor(gltf, views, accessor) as Vec3[]) {
+          const point = [
+            world[0]! * x + world[4]! * y + world[8]! * z + world[12]!,
+            world[1]! * x + world[5]! * y + world[9]! * z + world[13]!,
+            world[2]! * x + world[6]! * y + world[10]! * z + world[14]!,
+          ];
+          for (let axis = 0; axis < 3; axis++) {
+            if (point[axis]! < min[axis]!) min[axis] = point[axis]!;
+            if (point[axis]! > max[axis]!) max[axis] = point[axis]!;
           }
         }
       }

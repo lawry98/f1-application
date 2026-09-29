@@ -182,3 +182,34 @@ runs of `browser/scroll-spy.spec.ts` alone passed `1 passed` each (5.5s, 5.2s, 5
 flake, confirming the spec is stable against the real hook.
 `pnpm test:browser:mutants 05` rebuilt the clean tree afterwards; `git status --porcelain` was
 empty.
+
+## 06
+
+Date: 2026-09-29
+Commit: `eeccad81d7082231499cd0929d920cc6906c4cef`
+Run: `pnpm test:browser:mutants 06`
+
+```
+┌─────────┬──────────────────────────────────────────┬──────────┬─────────────┐
+│ (index) │ patch                                    │ outcome  │ detail      │
+├─────────┼──────────────────────────────────────────┼──────────┼─────────────┤
+│ 0       │ '06-teardown-no-redraw-on-arrival.patch' │ 'killed' │ 'failed: 1' │
+└─────────┴──────────────────────────────────────────┴──────────┴─────────────┘
+```
+
+`killed`. Exactly the one title in `mustFail`,
+`the overlay lifts on the first pass, and the canvas upgrades in place as closer frames land`,
+failed; the other three tests in `browser/teardown-scrub.spec.ts` passed (`1 failed, 3 passed`).
+A hand run of the same patch before this one reported why:
+
+```
+Error: canvas should show frame 100: frame 100 has now landed
+Expected: < 0.1
+Received:   2.212185267857143
+```
+
+2.212 is the distance between frames 96 and 100, measured on the clean tree: after frame 100 had
+landed, the canvas still showed the first-pass stand-in. Before the patch was generated the clean
+tree passed the spec `40 passed` under `--repeat-each=10 --retries=0`. `pnpm test:browser:mutants 06` rebuilt
+the clean tree afterwards; `git status --porcelain` was empty.
+

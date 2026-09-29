@@ -10,7 +10,7 @@ downsamples each outline to at most 240 points. Re-run that script to refresh or
 
 `index.json` maps a slugged **location** to a circuit id. Location is the join key because the
 backend's `circuit_id` is derived from the _event_ name (`italian_grand_prix`), not the circuit,
-while `RaceInfo.location` (`Monza`) matches the source's own `Location` field. Six entries in
+while `RaceInfo.location` (`Monza`) matches the source's own `Location` field. Five entries in
 that map are aliases for places the two sources name differently — see `LOCATION_ALIASES` in the
 script.
 

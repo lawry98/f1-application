@@ -1,0 +1,32 @@
+{
+    "circuit_id": "it-1922",
+    "from_year": 2023,
+    "to_year": 2025,
+    "winners": [
+        {
+            "year": 2025,
+            "event": "Italian Grand Prix",
+            "driver": "Max Verstappen",
+            "driver_code": "VER",
+            "team": "Red Bull Racing",
+            "time": "1:13:24.325"
+        },
+        {
+            "year": 2024,
+            "event": "Italian Grand Prix",
+            "driver": "Charles Leclerc",
+            "driver_code": "LEC",
+            "team": "Ferrari",
+            "time": "1:14:40.727"
+        },
+        {
+            "year": 2023,
+            "event": "Italian Grand Prix",
+            "driver": "Max Verstappen",
+            "driver_code": "VER",
+            "team": "Red Bull Racing",
+            "time": "1:13:41.143"
+        }
+    ],
+    "unavailable_years": []
+}

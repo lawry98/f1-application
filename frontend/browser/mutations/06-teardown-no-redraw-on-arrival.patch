@@ -1,0 +1,12 @@
+diff --git a/frontend/components/teardown/teardown-scene.tsx b/frontend/components/teardown/teardown-scene.tsx
+index 34f8fcf..8b523be 100644
+--- a/frontend/components/teardown/teardown-scene.tsx
++++ b/frontend/components/teardown/teardown-scene.tsx
+@@ -373,7 +373,6 @@ export function TeardownScene() {
+         img.onload = () => {
+           if (!isCancelled) {
+             loaded[i] = true;
+-            showFrame(wantedFrameRef.current);
+           }
+           resolve();
+         };

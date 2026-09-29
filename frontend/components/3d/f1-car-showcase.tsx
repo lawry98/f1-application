@@ -14,7 +14,7 @@ const FOG_COLOR = '#0a0a0a';
 /**
  * `2.4` because the placeholder is a different car.
  *
- * `PrimitiveCar` is about 4.6 units long against the GLB's 11.24, and the camera is now framed
+ * `PrimitiveCar` is about 4.6 units long against the GLB's 11.23, and the camera is now framed
  * for the GLB — so at its natural size the stand-in would sit tiny in the middle of the canvas
  * and jump when the real model resolves. It was the other way round before: the old camera was
  * framed for the placeholder by accident, which is part of why the real car being four times too

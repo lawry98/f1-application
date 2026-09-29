@@ -60,16 +60,16 @@ the `<Canvas>` here, and the only test reaching the route mocks this whole modul
 
 Sits inside a `<Canvas>` and places the camera so the whole car is in frame, then moves
 the fog to match. Both scenes shipped with a hand-written `camera={{ position: [5, 2.5, 5] }}`
-— 7.5 units from a car **11.24 units long**, which `/showcase` additionally scaled to 22.5.
+— 7.5 units from a car **11.23 units long**, which `/showcase` additionally scaled to 22.5.
 
 Four things it handles that a literal cannot, all measured and guarded in
 `tests/scene-fit.test.ts`:
 
-- The car **rotates**, so what has to fit is the cylinder it sweeps — radius 6.13, set by
+- The car **rotates**, so what has to fit is the cylinder it sweeps — radius 5.98, set by
   the box's XZ diagonal, not its 5.62 half-length.
 - The **binding field of view depends on the canvas**. `/showcase`'s is `h-[70vh]` at full
   width: landscape on a desktop (vertical fov binds, 50°) and **portrait on a phone**
-  (horizontal binds, 31.6°), which needs the camera half again as far back. Aspect is only
+  (horizontal binds, 31.6°), which needs the camera nearly twice as far back (24.6 against 13.2). Aspect is only
   knowable inside the `<Canvas>`, which is why this is a component.
 - **Fog moves with the camera.** It owns `scene.fog` rather than leaving a `<fog attach="fog">`
   in the JSX, because a declarative one would recreate itself from stale literals and win.
@@ -85,7 +85,8 @@ than quietly mis-framing both routes.
 
 Not a page-level scene — the building blocks both scenes compose:
 
-- `RealCar` — loads `/models/f1-car.glb` via `useLoader(GLTFLoader)`, clones the scene
+- `RealCar` — loads `/models/f1-car.glb` via `useLoader(GLTFLoader)` with three-stdlib's
+  `MeshoptDecoder` registered (the GLB's geometry is meshopt-compressed; see below), clones the scene
   **once per mount** (the clone stays inside `useMemo`; the GLTF is cached by
   `useLoader`, so livery materials are cloned before recolouring and disposed on unmount).
   Team color changes repaint the cloned texture in place — no re-clone per color.
@@ -95,10 +96,11 @@ Not a page-level scene — the building blocks both scenes compose:
   multiplier only desynchronised the car from the ground plane, the grid and the lights,
   which are all in world units — `/showcase` passed `scale={2}`, putting a 22.5-unit car on
   a 20-unit grid. The model instead carries a constant `groundedOffset`, which puts it on
-  the axis its group spins about (its own centre is 0.218 off the origin in x, so it used to
-  orbit rather than turn on the spot) and rests its lowest point on the ground plane (its
-  own min-y is -0.090, so the two hand-written positions floated it 0.41 above the floor on
-  one route and sank its wheels 0.09 through it on the other).
+  the axis its group spins about (its own centre is 0.223 off the origin in x, so it used to
+  orbit rather than turn on the spot) and rests its lowest vertex on the ground plane.
+  `CAR_BOUNDS` is measured from the decoded vertices, not from the accessors' boxes: the `Car`
+  node rakes the body 0.648°, so a box carried through it has corners no vertex reaches, and
+  grounding that box floated the tyres 0.091 above the floor on both routes.
 
   **The recolour rewrites the texture; it does not set `material.color`.** `color` _multiplies_
   into `.map`, and this GLB's base texel is `#003572` — red channel zero — so no multiply can put
@@ -114,12 +116,18 @@ Not a page-level scene — the building blocks both scenes compose:
 
 Each scene renders `<Suspense fallback={<PrimitiveCar …/>}><RealCar …/></Suspense>`, so
 the primitive car shows while the GLB loads. `PrimitiveCar` is ~4.6 units long against the
-GLB's 11.24, so both scenes scale it by **2.4** to match — otherwise the stand-in is a
+GLB's 11.23, so both scenes scale it by **2.4** to match — otherwise the stand-in is a
 fraction of the size of the car that replaces it, and the swap jumps.
 
 ## 3D Model
 
-The model is **committed** at `public/models/f1-car.glb` — no download step.
+The model is **committed** at `public/models/f1-car.glb` — no download step. It is not the file
+Sketchfab serves: [`scripts/compress-car-model.mjs`](../../scripts/compress-car-model.mjs) builds
+it from that export (kept in git history, pinned by SHA-256) with gltfpack, quantizing and
+meshopt-compressing the geometry and passing the textures through untouched — 7.57 MB to 1.35 MB,
+every triangle kept. Change the model by changing that script and re-running it, never by
+dropping in a re-export: `tests/car-model-asset.test.ts`, `tests/scene-fit.test.ts` and
+`tests/livery.test.ts` all read this exact file.
 
 **Credits:** "F1 2026 Release Car" (https://skfb.ly/oWL8J) by Nimaxo is licensed under
 Creative Commons Attribution (http://creativecommons.org/licenses/by/4.0/).
@@ -127,7 +135,9 @@ Creative Commons Attribution (http://creativecommons.org/licenses/by/4.0/).
 ## Dependencies
 
 Everything needed is already declared in `package.json`: `three`, `three-stdlib`
-(GLTFLoader), `@react-three/fiber`, and `@types/three`.
+(GLTFLoader and `MeshoptDecoder`, whose wasm is inlined — no decoder file to host),
+`@react-three/fiber`, and `@types/three`. `gltfpack` is a devDependency, exact-pinned because the
+committed GLB's bytes depend on its version.
 
 ## Team Colors
 

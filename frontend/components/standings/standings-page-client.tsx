@@ -11,6 +11,7 @@ import {
 } from '@/components/standings/standings-tables';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useStandings } from '@/hooks/use-standings';
+import { circuitSlugForLocation } from '@/lib/circuit-geometry';
 import { focusRing, focusRingOffsetBase } from '@/lib/focus';
 import {
   STANDINGS_FIRST_YEAR,
@@ -75,6 +76,7 @@ export function StandingsPageClient({ latestYear }: StandingsPageClientProps) {
   );
 
   const stamp = standings ? seasonStamp(standings.races_completed, calendar) : null;
+  const eventSlug = stamp?.event ? circuitSlugForLocation(stamp.event.location) : null;
   // Empty tables, not a zero race count: the route serves empty tables only when no scoring
   // session has results. A season whose only held session is a sprint has a real table with
   // `races_completed: 0`, and keying this off the count would hide it behind "hasn't started".
@@ -99,14 +101,28 @@ export function StandingsPageClient({ latestYear }: StandingsPageClientProps) {
             aria-live="polite"
             className="flex min-h-6 items-center gap-2 font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-400"
           >
-            {stamp?.label}
+            {stamp?.event && eventSlug ? (
+              <>
+                {stamp.lead} ·{' '}
+                <Link href={`/circuits/${eventSlug}`} className={cn(LINK, 'text-[10px]')}>
+                  {stamp.event.name}
+                </Link>
+              </>
+            ) : (
+              stamp?.label
+            )}
             {stamp?.final && (
               <span className="rounded-sm bg-zinc-800 px-1.5 py-0.5 font-sans font-semibold text-zinc-200">
                 Final
               </span>
             )}
           </p>
-          <SeasonSelect years={standingsYears(latestYear)} value={year} onChange={selectYear} />
+          <div className="flex flex-wrap items-center gap-6">
+            <Link href={year === latestYear ? '/circuits' : `/circuits?year=${year}`} className={LINK}>
+              {year} circuits →
+            </Link>
+            <SeasonSelect years={standingsYears(latestYear)} value={year} onChange={selectYear} />
+          </div>
         </div>
       </header>
 

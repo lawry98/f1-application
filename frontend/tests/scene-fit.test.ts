@@ -123,13 +123,14 @@ function frameUsage(
 }
 
 describe('CAR_BOUNDS', () => {
-  it('matches the model actually shipped in public/', () => {
+  it('matches the model actually shipped in public/', async () => {
     /*
      * The guard. Every camera distance on both routes is derived from these three numbers, and
-     * they are world-space — the accessors' own min/max describe the car 4.10 tall and 2.66 wide,
-     * because the Sketchfab wrappers permute Y-up to Z-up on the way out.
+     * they are world-space — the source's accessors describe the car 4.10 tall, because the
+     * Sketchfab wrappers permute Y-up to Z-up on the way out. And they are the vertices' extremes:
+     * the box-of-boxes this used to read put the lowest point 0.091 below any real one.
      */
-    const measured = glbBounds();
+    const measured = await glbBounds();
 
     expect(CAR_BOUNDS.size[0]).toBeCloseTo(measured.size[0]!, 3);
     expect(CAR_BOUNDS.size[1]).toBeCloseTo(measured.size[1]!, 3);
@@ -181,8 +182,8 @@ describe('sweptCylinder', () => {
   it('is a cylinder and not a sphere — the car is far wider than it is tall', () => {
     /*
      * The distinction that sets the camera distance. An enclosing *sphere* of this car has radius
-     * 6.13 and is four times too tall; fitting one backs the camera off 19% further than it needs
-     * and leaves the car filling half the frame. The first cut of this code did exactly that, and
+     * 6.11 and is nearly five times too tall; fitting one backs the camera off 20% further than it
+     * needs and leaves the car filling half the frame. The first cut of this code did exactly that, and
      * every "does it fit" assertion passed.
      */
     const { radius, halfHeight } = sweptCylinder(CAR_BOUNDS.size);
@@ -350,10 +351,11 @@ describe('fogRange', () => {
 describe('groundedOffset', () => {
   it('rests the car on the ground plane', () => {
     /*
-     * Both scenes had this wrong in opposite directions: `/showcase` positioned the model at
-     * `y = 0`, floating it 0.41 above the plane, and the Inspect modal at `y = -0.5`, sinking the
-     * wheels 0.09 through it. Neither is a number anyone chose — the model's own lowest point is
-     * -0.0898, not 0.
+     * `/showcase` positioned the model at `y = 0` and `scale={2}`, floating it 0.50 above the
+     * plane. The Inspect modal's `y = -0.5` rested it there, but only because the exporter left
+     * the lowest vertex at +0.0013 — a coincidence, not a number anyone chose. And fed the old
+     * box-of-boxes bounds, this offset floated both by 0.091: it grounded a bounding-box corner
+     * no vertex reaches, which is why `CAR_BOUNDS` is measured from the vertices.
      */
     const [, offsetY] = groundedOffset(CAR_BOUNDS, GROUND_Y);
 
@@ -362,9 +364,9 @@ describe('groundedOffset', () => {
 
   it('puts the car on the axis it rotates about', () => {
     /*
-     * `RealCar` spins a group about the world origin, and the model's own centre is 0.219 off it
+     * `RealCar` spins a group about the world origin, and the model's own centre is 0.223 off it
      * in x — so the car orbits rather than turning on the spot, and at `scale={2}` that is a
-     * 0.44-unit wobble.
+     * 0.45-unit wobble.
      */
     const [offsetX, , offsetZ] = groundedOffset(CAR_BOUNDS, GROUND_Y);
 

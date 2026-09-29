@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
+  canonicalSlug,
+  circuitBySlug,
+  circuitEntry,
+  circuitSlugForLocation,
   loadCircuit,
   loadCircuitByLocation,
   locationSlug,
   resolveCircuitId,
   toPoints,
 } from '@/lib/circuit-geometry';
+import slugCases from './fixtures/slug-cases.json';
 
 describe('toPoints', () => {
   it('narrows a JSON pair array without changing a single coordinate', () => {
@@ -35,24 +40,18 @@ describe('toPoints', () => {
 
 describe('locationSlug', () => {
   /*
-   * These are the cases that make the slug rule non-trivial, and each one is a real 2026-calendar
-   * location. The rule has to match `slug()` in `scripts/fetch-circuit-geometry.mjs` exactly,
-   * because that script generated the keys in `index.json` — if the two drift, lookups return
-   * null and a null silently hides the circuit visual with no error anywhere to trace.
+   * These are the cases that make the slug rule non-trivial, and each one is a real FastF1 or
+   * bacinger location. The rule has to match `slug()` in `scripts/fetch-circuit-geometry.mjs`
+   * exactly, because that script generated the keys in `index.json` — if the two drift, lookups
+   * return null and a null silently hides the circuit visual with no error anywhere to trace.
+   *
+   * The vectors are shared with `backend/tests/test_circuit_winners.py`, which pins the Python
+   * port against the same file. Three copies of this rule exist — here, `slug()` in
+   * `scripts/fetch-circuit-geometry.mjs`, and `location_slug` in `backend/tools/circuit_winners.py`
+   * — and a drift between any two silently returns null for every lookup that depends on it.
    */
-  it.each([
-    ['Monza', 'monza'],
-    ['Montréal', 'montreal'],
-    ['São Paulo', 'sao-paulo'],
-    ['Spa-Francorchamps', 'spa-francorchamps'],
-    ['Las Vegas', 'las-vegas'],
-    ['Monte-Carlo', 'monte-carlo'],
-  ])('slugs %s to %s', (location, expected) => {
+  it.each(slugCases as [string, string][])('slugs %j to %s', (location, expected) => {
     expect(locationSlug(location)).toBe(expected);
-  });
-
-  it('collapses runs of separators and trims the ends', () => {
-    expect(locationSlug('  Marina  Bay  ')).toBe('marina-bay');
   });
 });
 
@@ -62,7 +61,7 @@ describe('resolveCircuitId', () => {
   });
 
   /*
-   * The six aliases live inside `index.json`, written there by the converter as a second key
+   * The ten aliases live inside `index.json`, written there by the converter as a second key
    * pointing at the same id — not in a table in the loader. FastF1 says "Monte-Carlo" and the
    * geometry source says "Monaco"; both must land on the same circuit. This asserts the aliasing
    * survives whatever regenerates the data, which is the thing a second table here would hide.
@@ -72,7 +71,6 @@ describe('resolveCircuitId', () => {
     ['Bahrain', 'Sakhir'],
     ['Marina Bay', 'Singapore'],
     ['Miami Gardens', 'Miami'],
-    ['Yas Island', 'Yas Marina'],
   ])('resolves the FastF1 name %s to the same circuit as %s', (fastf1Name, sourceName) => {
     const viaAlias = resolveCircuitId(fastf1Name);
     expect(viaAlias).not.toBeNull();
@@ -133,5 +131,46 @@ describe('loadCircuitByLocation', () => {
 
   it('returns null for an unknown location', async () => {
     await expect(loadCircuitByLocation('Nowhere')).resolves.toBeNull();
+  });
+});
+
+describe('catalog lookups', () => {
+  it('names a circuit by id without loading its outline', () => {
+    expect(circuitEntry('it-1922')).toEqual({
+      id: 'it-1922',
+      slug: 'monza',
+      name: 'Autodromo Nazionale Monza',
+      location: 'Monza',
+      lengthM: 5793,
+      firstGp: 1950,
+    });
+    expect(circuitEntry('xx-0000')).toBeNull();
+  });
+
+  it('gives the canonical slug for an id', () => {
+    expect(canonicalSlug('bh-2002')).toBe('sakhir');
+    expect(canonicalSlug('xx-0000')).toBeNull();
+  });
+
+  it('turns a calendar location into its detail-page slug, through the aliases', () => {
+    expect(circuitSlugForLocation('Bahrain')).toBe('sakhir');
+    expect(circuitSlugForLocation('Yas Island')).toBe('yas-marina');
+    expect(circuitSlugForLocation('Atlantis')).toBeNull();
+  });
+
+  it('resolves a slug and says whether it is the canonical one', () => {
+    expect(circuitBySlug('monza')).toMatchObject({ entry: { id: 'it-1922' }, canonical: true });
+    expect(circuitBySlug('bahrain')).toMatchObject({ entry: { id: 'bh-2002' }, canonical: false });
+    expect(circuitBySlug('Monza')).toMatchObject({ entry: { id: 'it-1922' }, canonical: false });
+    expect(circuitBySlug('atlantis')).toBeNull();
+  });
+
+  /*
+   * `index.json` is a plain object, so `index['constructor']` is `Object.prototype.constructor`,
+   * not undefined. A URL segment is user input, and must not be able to reach a prototype key.
+   */
+  it('does not resolve a prototype key', () => {
+    expect(circuitBySlug('constructor')).toBeNull();
+    expect(circuitBySlug('__proto__')).toBeNull();
   });
 });

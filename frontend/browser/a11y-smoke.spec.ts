@@ -14,9 +14,14 @@ const KNOWN: Record<string, string[]> = {};
 // Desktop for every route; 390px as well where the layout genuinely changes (the teams chip strip
 // replaces the rail, the tyres acts restack), since a violation can live in one layout only.
 const PASSES = [
-  ...['/', '/teams', '/tyres', '/candy', '/standings'].map((route) => ({ route, width: 1440 })),
+  ...['/', '/teams', '/tyres', '/candy', '/standings', '/circuits', '/circuits/monza'].map((route) => ({
+    route,
+    width: 1440,
+  })),
   { route: '/teams', width: 390 },
   { route: '/tyres', width: 390 },
+  { route: '/circuits', width: 390 },
+  { route: '/circuits/monza', width: 390 },
 ];
 
 for (const { route, width } of PASSES) {
@@ -24,6 +29,8 @@ for (const { route, width } of PASSES) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto(route);
     if (route === '/standings') await expect(page.getByRole('table').first()).toBeVisible();
+    if (route === '/circuits') await expect(page.getByRole('list', { name: /calendar$/ })).toBeVisible();
+    if (route === '/circuits/monza') await expect(page.getByRole('table')).toBeVisible();
     // axe folds opacity into the colours it measures, so a pass that lands mid-fade reports a
     // ratio that depends on timing. `reducedMotion: 'reduce'` does not stop these fades.
     await waitForMotionToSettle(page);

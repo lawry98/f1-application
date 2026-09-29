@@ -5,27 +5,10 @@ from typing import Any
 import fastf1
 import pandas as pd
 
-from tools.circuit_index import circuit_for_location
-
 
 def find_event(schedule: pd.DataFrame, name: str) -> pd.Series | None:
     """Return the first schedule row whose EventName contains name, or None."""
     matches = schedule[schedule["EventName"].str.contains(name, case=False, na=False, regex=False)]
-    return None if matches.empty else matches.iloc[0]
-
-
-def find_event_at_circuit(schedule: pd.DataFrame, location: str) -> pd.Series | None:
-    """Return the first race-weekend row held at location's circuit, or None.
-
-    Matches the track, not the Event name: the Spanish Grand Prix left Barcelona for Madrid
-    in 2026, and a rescheduled Event can keep its name at another venue. Testing rows are
-    excluded because pre-season testing shares a circuit (Sakhir) with a race.
-    """
-    circuit = circuit_for_location(location)
-    if not circuit:
-        return None
-    races = schedule[schedule["EventFormat"] != "testing"]
-    matches = races[races["Location"].map(lambda loc: circuit_for_location(str(loc)) == circuit)]
     return None if matches.empty else matches.iloc[0]
 
 

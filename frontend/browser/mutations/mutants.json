@@ -33,5 +33,11 @@
     "reintroduces": "the IntersectionObserver scroll spy from 4743f45: intersectionRatio peaks at 0.48 against an unreachable 0.5 threshold (CLAUDE.md: wrong at 8 of 31 positions)",
     "specs": ["browser/scroll-spy.spec.ts"],
     "mustFail": ["the rail names the section covering most of the band at every sampled scroll position"]
+  },
+  {
+    "patch": "06-teardown-no-redraw-on-arrival.patch",
+    "reintroduces": "the /teardown preloader marking a frame loaded without redrawing, so the canvas keeps the coarse first-pass stand-in until the reader next scrolls (CLAUDE.md: 'The teardown page')",
+    "specs": ["browser/teardown-scrub.spec.ts"],
+    "mustFail": ["the overlay lifts on the first pass, and the canvas upgrades in place as closer frames land"]
   }
 ]

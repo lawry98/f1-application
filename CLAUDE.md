@@ -129,12 +129,12 @@ planner, tools, and synthesizer. Anything assuming the synthesizer always runs i
 **`tools/` is not uniform.** Eight `@tool` functions live across five modules
 (`fastf1_tools`, `f1_data_tools`, `search_tools`, `weather_tools`, `standings_tools`). The other
 seven files are plain helpers, **not** LLM-callable: `race_resolver.py` (used by the resolver
-node), `circuit_index.py` (location → circuit id, read from `frontend/data/circuits/index.json`),
-`schedule_cache.py` (a FastF1 schedule cache), `fastf1_helpers.py` (shared FastF1
+node), `schedule_cache.py` (a FastF1 schedule cache), `fastf1_helpers.py` (shared FastF1
 lookup/session helpers), `openf1_client.py` (the OpenF1 HTTP client and its range-query
-cache), `openf1_races.py` (shared "which session is this event's race" lookups), and
-`openf1_shaping.py` (converts OpenF1 rows into the tools' existing return shapes). Adding a
-file here does not make it a tool.
+cache), `openf1_races.py` (shared "which session is this event's race" lookups),
+`openf1_shaping.py` (converts OpenF1 rows into the tools' existing return shapes), and
+`circuit_winners.py` (recent winners per circuit, for `/circuits` and `get_circuit_winners`).
+Adding a file here does not make it a tool.
 
 **Tools never raise.** Every `@tool` returns `{"error": "..."}` on failure. The agent is built to
 continue on partial data — preserve this or the pipeline loses its degradation behaviour.
@@ -193,17 +193,6 @@ faster, so it was reverted.** It needs one race from each of N different years, 
 endpoints are all per-year, so porting it cost four requests per year (12 requests, 6.57s for a
 5-year window) against FastF1's 4.62s. Don't "finish the migration" by re-porting it; the
 tool's own docstring in `f1_data_tools.py` carries the same numbers.
-
-**`get_circuit_winners` matches past years by circuit, never by Event name.** An Event name is
-not a track: the 2026 Spanish Grand Prix is at Madrid where 2023–2025's was at Barcelona, the
-rescheduled 2026 Bahrain Grand Prix is filed under `Location: "Kuala Lumpur"`, and the 2026
-Barcelona Grand Prix shares no name with the races Barcelona hosted before it. `find_event`'s
-substring match reported the wrong circuit's winners for the first two and none for the third.
-`find_event_at_circuit` joins on `Location` through `tools/circuit_index.py`, which reads the
-frontend's `data/circuits/index.json` — one alias map for both sides, so a FastF1 rename (Abu
-Dhabi is `Yas Island` through 2025, `Yas Marina` from 2026) is fixed there, in
-`LOCATION_ALIASES` of `scripts/fetch-circuit-geometry.mjs`, not in Python. A location the index
-lacks matches its own slug; testing rows are skipped because pre-season testing shares Sakhir.
 
 **OpenF1 coverage starts in 2023, and `OPENF1_FIRST_YEAR` is the only place in the backend that
 number lives.** The frontend's season picker mirrors it as `STANDINGS_FIRST_YEAR` in
@@ -304,28 +293,72 @@ keep testing the FastF1 path unedited. The consequence is that the fallback is t
 default under test, so `test_openf1_tools.py` asserts the OpenF1 request is genuinely
 made rather than silently fallen through.
 
+**Circuit winners are matched by circuit, never by Grand Prix name — on `/circuits` and in the
+agent alike.** `fastf1_helpers.find_event` is a substring match on `EventName`, and a
+Grand Prix is not a track: 2026's Spanish GP is at Madrid while 2023–25's was at Barcelona, and
+FastF1 files the rescheduled 2026 Bahrain GP under Kuala Lumpur. So `tools/circuit_winners.py`
+slugs each schedule row's `Location` and looks it up in `frontend/data/circuits/index.json`
+(`CIRCUIT_INDEX_PATH` in `config.py`) — which makes `location_slug` the **third** copy of the slug
+rule, after `locationSlug` and the converter's `slug()`. `frontend/tests/fixtures/slug-cases.json`
+is read by both test suites; add a case there, never to one side. The agent's
+`get_circuit_winners` resolves the briefing's `race_info["location"]` with
+`circuit_id_for_location` and delegates to `get_recent_circuit_winners`, so it shares the matcher
+*and* the cache; a location the index lacks gets "No recent data", never a fallback to
+`find_event`, which is the defect this replaced.
+
+**The winners cache has no expiry, on purpose.** Keyed `(circuit_id, year)` across the three
+seasons before the current one — all finished, so nothing a TTL could refresh — and bounded by the
+40 ids in `index.json`, because the route rejects an unknown id (404) before anything is stored. A
+year the circuit did not host is cached as `()`; a year whose FastF1 load *failed* is not cached
+and is reported in `unavailable_years`, so a transient outage is never remembered as "never raced
+here". A lock per circuit id makes two cold views of the same circuit pay the ~4.6s once —
+different circuits never block each other. The current season's winner is deliberately out of the
+window.
+
+**`index.json`'s aliases must cover past seasons, not just the current calendar.** FastF1 spells
+Abu Dhabi `Yas Island` for 2020–25 and Belgium `Spa` before 2022; without those aliases the
+winners matcher misses them and the briefing band draws no outline for those years. Aliases live in
+`LOCATION_ALIASES` in `scripts/fetch-circuit-geometry.mjs` and nowhere else.
+`tests/circuit-catalog.test.ts` pins them.
+
+**A round with no outline renders a card on `/circuits`, unlike the band.** The band hides a missing
+outline because a briefing without it is still complete; in the grid the card *is* the content, so
+it keeps its box, says "No track map", and is not a link. The grid loads one lazy chunk per unique
+circuit and reveals when all have settled; `tests/circuit-imports.test.ts` fails any new static
+import of an outline outside the three files that draw one known circuit.
+
+**`/circuits/<alias>` redirects, and an unknown slug 404s — both as an HTTP 200.** The route
+resolves through `redirect()` or `notFound()` in `app/circuits/[slug]/page.tsx`, but the root
+`app/loading.tsx` streams the response, so both a client-side redirect and a soft 404 land with
+status 200. `browser/circuits.spec.ts` asserts the landed URL and the rendered not-found content,
+never the response status.
+
 **`gltf.scene.clone()` must stay inside `useMemo`** — without it Three.js re-clones the scene on
 every render.
 
 **Neither 3D scene frames its own camera any more, and the arithmetic is not `radius / sin(fov/2)`.**
-`camera={{ position: [5, 2.5, 5] }}` put both cameras **7.5 units** from a car that is **11.24 units
+`camera={{ position: [5, 2.5, 5] }}` put both cameras **7.5 units** from a car that is **11.23 units
 long** — `/showcase` also scaled it by 2, so it showed about a quarter of a car. `lib/scene-fit.ts`
 now computes the distance and `components/3d/fit-camera.tsx` applies it, and five things there are
 not guessable. The car **rotates**, so the volume to fit is the cylinder it sweeps (radius 5.98, the
 box's XZ diagonal, not its 5.62 half-length). That cylinder is **not** usefully approximated by its
-enclosing sphere: the sphere models a 2.66-tall car as 12.3 tall, and the exact-for-a-sphere
-`radius / sin(fov/2)` then parks the camera 37% too far out — measured live, the car filled **51%**
-of the frame against **71%** for the cylinder fit, and *every* "does it fit" assertion passed on the
+enclosing sphere: the sphere models a 2.50-tall car as 12.2 tall, and the exact-for-a-sphere
+`radius / sin(fov/2)` then parks the camera 38% too far out — measured live, the car filled **51%**
+of the frame against **72%** for the cylinder fit, and *every* "does it fit" assertion passed on the
 sphere version. The **binding fov depends on the canvas**: `/showcase`'s is `h-[70vh]` at full width,
 so it is landscape on a desktop and **portrait on a phone**, where the horizontal fov binds and the
-camera needs to be at 24.6 rather than 13.4 — aspect is only knowable inside `<Canvas>`, which is the
+camera needs to be at 24.6 rather than 13.2 — aspect is only knowable inside `<Canvas>`, which is the
 whole reason `FitCamera` is a component. **Fog moves with the camera**, so `FitCamera` owns
 `scene.fog` outright; a `<fog attach="fog">` left in the JSX would recreate it from stale literals
 and win, and the shipped `[8, 20]` puts a correctly framed car entirely past the far plane. And the
-model is **neither centred nor grounded** — centre 0.218 off the rotation axis in x, lowest point
--0.090 rather than 0 — so `RealCar` carries a constant `groundedOffset` and no longer takes `scale`
-or `position`. `CAR_BOUNDS` is checked against the shipped GLB in `tests/scene-fit.test.ts`, so a
-re-exported model fails CI instead of quietly mis-framing both routes.
+model is **not centred** — centre 0.223 off the rotation axis in x, lowest vertex +0.001 by the
+exporter's luck — so `RealCar` carries a constant `groundedOffset` and no longer takes `scale` or
+`position`. `CAR_BOUNDS` is checked against the shipped GLB in `tests/scene-fit.test.ts`, so a
+re-exported model fails CI instead of quietly mis-framing both routes. `glbBounds` measures the
+**decoded vertices**, not the accessors' min/max boxes: the `Car` node rakes the body 0.648°, and
+the box-of-boxes it used to read reported a 2.66-tall car whose lowest point, -0.090, no vertex
+reaches — grounding that phantom floated the tyres 0.091 above the floor on both routes while every
+test passed.
 
 **Verifying a camera means projecting vertices, and the node you rotate is not the one you think.**
 jsdom lays nothing out and a screenshot cannot tell a fitted camera from a lucky one, so the check
@@ -335,8 +368,9 @@ that matters is: sweep the spin group through 360 degrees, project every Nth ver
 offset** — the R3F group that `useFrame` spins is one level above that, so rotating `sketch.parent`
 orbits the car eccentrically and reports a 596% overflow that is purely an artefact. And an
 **axis-aligned bounding box of a rotated model has phantom corners**: at 50 degrees the live `Box3`
-reports half-extents of 5.07 and 5.58, whose corner is 7.54 from the axis, but no vertex is out
-there — the real reach is still 5.98. Measure vertices, not boxes.
+reports half-extents of 5.10 and 5.56, whose corner is 7.55 from the axis, but no vertex is out
+there — the real reach is 5.79, inside even the 5.98 box diagonal the fit uses. Measure vertices,
+not boxes.
 
 **The 3D scene's `frameloop` is state, and `demand` is not the default for a reason.** `f1-hero-scene.tsx`
 is reached from exactly one place — the teams page's Inspect modal — and the right rail deliberately
@@ -369,6 +403,30 @@ this replaced was a `body`/`Body`/`paint` substring guess that matched none of `
 `RearLight`, `Wheels`, `WheelCovers`, so nothing recoloured and nothing reported it.
 `tests/livery.test.ts` parses the real GLB out of `public/` rather than a fixture, which is what
 makes an asset re-export fail in CI instead of silently un-fixing this.
+
+**`f1-car.glb` is meshopt-compressed, and only `scripts/compress-car-model.mjs` should write it.**
+7.57 → 1.35 MB on disk and 4.58 → 0.95 MB gzipped as `next start` serves it, all 205,876
+triangles kept. The weight was geometry, so gltfpack quantizes it and meshopt-compresses it; the
+four PNGs pass through byte-identical, because the livery recolour matches exact texels and any
+lossy texture codec breaks it. The source is the untouched Sketchfab export, read back out of git
+history and pinned by SHA-256, and `--check` proves the committed file is a fresh build. `RealCar`
+gives GLTFLoader three-stdlib's `MeshoptDecoder` (+19.6 KB on the lazy 3D chunk, 2.6 ms to
+decode) — without it the loader refuses the file. Four things are not guessable. **`-ce ext`**:
+three-stdlib's loader implements only `EXT_meshopt_compression`, and its decoder throws
+`Malformed buffer data` on the v1 codec that `-ce khr` emits. **`-kn`**: flattening merges the car
+into one unnamed node, so the `Sketchfab_model`/`Car` graph the vertex-projection check walks is
+gone, and the re-quantized vertices move `CAR_BOUNDS` 5.4e-4 in z — just past the guard. **Integer
+positions**: a normalized encoding stores positions as raw integers, which `glbBounds` read in
+gltf-transform's meshopt output as a 368,389-unit car; it throws on that now. **Draco was measured
+and lost**: 117 KB smaller gzipped, but 78 KB of decoder (two files to host), twice meshopt's parse
+time (82 vs 39 ms warm), and gltf-transform writes the source's float bounds over quantized
+vertices — bounds GLTFLoader copies straight into every geometry's `boundingBox` for frustum
+culling.
+`CAR_BOUNDS` was re-baselined to the compressed file, not tolerated — the reasoning is on the
+constant. `tests/car-model-asset.test.ts` is the weight guard: a 1.5 MB budget, no extension the
+scenes cannot decode, a decode with the runtime's decoder, POSITION bounds true to the decoded
+vertices, and the source's triangle count, since decimation (half the triangles for 139 KB
+gzipped) changes the silhouette and belongs in a diff.
 
 **The landing page composes, it doesn't contain.** `app/page.tsx` is seven imports from
 `components/landing/`; the hero, features, and footer markup are not inline.
@@ -537,9 +595,22 @@ every team change. Moving it to `xl` also means the per-section "Inspect in 3D" 
 `xl:hidden`, not `lg:hidden` — otherwise 1024–1279px gets no dossier *and* no way to reach the
 inspector.
 
-**The teardown page** (`/teardown`) preloads 192 PNG frames (`public/frames/frame_0000.png` …
-`frame_0191.png`) and maps scroll position to frame index via `requestAnimationFrame`. Its canvas
-is sized `min(92vw, calc(82vh * 800 / 420))` to respect both viewport constraints at once.
+**The teardown page** (`/teardown`) scrubs 192 frames on a canvas sized
+`min(92vw, calc(82vh * 800 / 420))`, which respects both viewport constraints at once. What ships is
+lossy WebP (`public/frames/frame_NNNN.webp`, 3.60 MB); the PNG renders it is derived from live in
+`assets/teardown-frames/` (30.1 MB, never served). Never re-encode or hand-edit a shipped frame:
+change the source and re-run `node scripts/encode-teardown-frames.mjs`, whose `--check` confirms
+the committed set is byte-identical to a fresh encode. That is why `sharp` is pinned exactly —
+another libwebp is another set of bytes — and the script's header carries the measurements behind
+q85 and against AVIF (Safari decodes it only from 16, so it would need a second, fallback set).
+All 192 frames are kept on purpose: none is a duplicate, and at 96 each image holds for ~38px of
+scroll, which steps visibly on a slow trackpad drag. Loading is coarse to fine
+(`lib/teardown-frames.ts`): the overlay waits only for every 16th frame plus the last, and the
+canvas draws the nearest loaded frame and redraws as closer ones land — jsdom cannot see that, so
+`browser/teardown-scrub.spec.ts` compares canvas pixels and mutant 06 proves it would notice. The
+last frame is in the first pass because the docked still in the header is the same URL, served
+from cache. A spec that holds frame responses must `goto` with `waitUntil: 'domcontentloaded'`:
+an unfinished `new Image()` delays the document's `load` event, so the default never resolves.
 
 ## Code conventions
 
@@ -620,8 +691,10 @@ required CI check (`browser` job). Things that are not guessable:
   with no mutant behind it.
 - **The scroll-spy band is copied into the spec, not imported**, so a mutant that removes an
   export cannot be "killed" by a compile error.
-- The focus-ring sweep runs on every route except `/candy`, a pure styleguide with no focusable
-  controls by design.
+- **The route sweeps are hand-written lists, not discovered.** `focus-rings.spec.ts`,
+  `a11y-smoke.spec.ts` and `invisible-text.spec.ts` each name their routes literally; a new
+  route is covered only once it is added to all three. `/candy` stays out of the focus sweep
+  because it has no focusable controls by design.
 
 ### Backend
 
