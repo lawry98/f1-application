@@ -333,24 +333,28 @@ never the response status.
 every render.
 
 **Neither 3D scene frames its own camera any more, and the arithmetic is not `radius / sin(fov/2)`.**
-`camera={{ position: [5, 2.5, 5] }}` put both cameras **7.5 units** from a car that is **11.24 units
+`camera={{ position: [5, 2.5, 5] }}` put both cameras **7.5 units** from a car that is **11.23 units
 long** — `/showcase` also scaled it by 2, so it showed about a quarter of a car. `lib/scene-fit.ts`
 now computes the distance and `components/3d/fit-camera.tsx` applies it, and five things there are
 not guessable. The car **rotates**, so the volume to fit is the cylinder it sweeps (radius 5.98, the
 box's XZ diagonal, not its 5.62 half-length). That cylinder is **not** usefully approximated by its
-enclosing sphere: the sphere models a 2.66-tall car as 12.3 tall, and the exact-for-a-sphere
-`radius / sin(fov/2)` then parks the camera 37% too far out — measured live, the car filled **51%**
-of the frame against **71%** for the cylinder fit, and *every* "does it fit" assertion passed on the
+enclosing sphere: the sphere models a 2.50-tall car as 12.2 tall, and the exact-for-a-sphere
+`radius / sin(fov/2)` then parks the camera 38% too far out — measured live, the car filled **51%**
+of the frame against **72%** for the cylinder fit, and *every* "does it fit" assertion passed on the
 sphere version. The **binding fov depends on the canvas**: `/showcase`'s is `h-[70vh]` at full width,
 so it is landscape on a desktop and **portrait on a phone**, where the horizontal fov binds and the
-camera needs to be at 24.6 rather than 13.4 — aspect is only knowable inside `<Canvas>`, which is the
+camera needs to be at 24.6 rather than 13.2 — aspect is only knowable inside `<Canvas>`, which is the
 whole reason `FitCamera` is a component. **Fog moves with the camera**, so `FitCamera` owns
 `scene.fog` outright; a `<fog attach="fog">` left in the JSX would recreate it from stale literals
 and win, and the shipped `[8, 20]` puts a correctly framed car entirely past the far plane. And the
-model is **neither centred nor grounded** — centre 0.218 off the rotation axis in x, lowest point
--0.090 rather than 0 — so `RealCar` carries a constant `groundedOffset` and no longer takes `scale`
-or `position`. `CAR_BOUNDS` is checked against the shipped GLB in `tests/scene-fit.test.ts`, so a
-re-exported model fails CI instead of quietly mis-framing both routes.
+model is **not centred** — centre 0.223 off the rotation axis in x, lowest vertex +0.001 by the
+exporter's luck — so `RealCar` carries a constant `groundedOffset` and no longer takes `scale` or
+`position`. `CAR_BOUNDS` is checked against the shipped GLB in `tests/scene-fit.test.ts`, so a
+re-exported model fails CI instead of quietly mis-framing both routes. `glbBounds` measures the
+**decoded vertices**, not the accessors' min/max boxes: the `Car` node rakes the body 0.648°, and
+the box-of-boxes it used to read reported a 2.66-tall car whose lowest point, -0.090, no vertex
+reaches — grounding that phantom floated the tyres 0.091 above the floor on both routes while every
+test passed.
 
 **Verifying a camera means projecting vertices, and the node you rotate is not the one you think.**
 jsdom lays nothing out and a screenshot cannot tell a fitted camera from a lucky one, so the check
@@ -360,8 +364,9 @@ that matters is: sweep the spin group through 360 degrees, project every Nth ver
 offset** — the R3F group that `useFrame` spins is one level above that, so rotating `sketch.parent`
 orbits the car eccentrically and reports a 596% overflow that is purely an artefact. And an
 **axis-aligned bounding box of a rotated model has phantom corners**: at 50 degrees the live `Box3`
-reports half-extents of 5.07 and 5.58, whose corner is 7.54 from the axis, but no vertex is out
-there — the real reach is still 5.98. Measure vertices, not boxes.
+reports half-extents of 5.10 and 5.56, whose corner is 7.55 from the axis, but no vertex is out
+there — the real reach is 5.79, inside even the 5.98 box diagonal the fit uses. Measure vertices,
+not boxes.
 
 **The 3D scene's `frameloop` is state, and `demand` is not the default for a reason.** `f1-hero-scene.tsx`
 is reached from exactly one place — the teams page's Inspect modal — and the right rail deliberately
@@ -404,15 +409,15 @@ history and pinned by SHA-256, and `--check` proves the committed file is a fres
 gives GLTFLoader three-stdlib's `MeshoptDecoder` (+19.6 KB on the lazy 3D chunk, 2.6 ms to
 decode) — without it the loader refuses the file. Four things are not guessable. **`-ce ext`**:
 three-stdlib's loader implements only `EXT_meshopt_compression`, and its decoder throws
-`Malformed buffer data` on the v1 codec that `-ce khr` emits. **`-kn`**: flattening bakes the
-`Car` node's 0.648° rake into the vertices and `CAR_BOUNDS.minY` jumps 0.09, because `glbBounds`
-measures each mesh's box *through* that rotation, not the vertices — the true lowest vertex is
-+0.001, not -0.090, so the car already rests 0.09 above the ground plane (a framing fix of its own,
-not this file's). **Integer positions**: a normalized encoding keeps accessor min/max as raw
-integers, and `glbBounds` read gltf-transform's meshopt output as a 368,389-unit car; it throws on
-that now. **Draco was measured and lost**: 117 KB smaller gzipped, but 78 KB of decoder (two files
-to host), twice meshopt's parse time (82 vs 39 ms warm), and gltf-transform writes the source's
-float bounds over quantized vertices, so the `CAR_BOUNDS` guard would never see its quantization.
+`Malformed buffer data` on the v1 codec that `-ce khr` emits. **`-kn`**: flattening merges the car
+into one unnamed node, so the `Sketchfab_model`/`Car` graph the vertex-projection check walks is
+gone, and the re-quantized vertices move `CAR_BOUNDS` 5.4e-4 in z — just past the guard. **Integer
+positions**: a normalized encoding stores positions as raw integers, which `glbBounds` read in
+gltf-transform's meshopt output as a 368,389-unit car; it throws on that now. **Draco was measured
+and lost**: 117 KB smaller gzipped, but 78 KB of decoder (two files to host), twice meshopt's parse
+time (82 vs 39 ms warm), and gltf-transform writes the source's float bounds over quantized
+vertices — bounds GLTFLoader copies straight into every geometry's `boundingBox` for frustum
+culling.
 `CAR_BOUNDS` was re-baselined to the compressed file, not tolerated — the reasoning is on the
 constant. `tests/car-model-asset.test.ts` is the weight guard: a 1.5 MB budget, no extension the
 scenes cannot decode, a decode with the runtime's decoder, POSITION bounds true to the decoded

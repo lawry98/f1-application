@@ -35,8 +35,8 @@ interface RealCarProps extends CarMotion {
  * props both scenes used to pass: the camera does the framing now (`components/3d/fit-camera.tsx`),
  * so a scale multiplier only desynchronised the car from the ground plane, the grid and the
  * lights, which are all in world units. The two values it supplied were `scale={2}` — a 22.5-unit
- * car on a 20-unit grid — and positions that floated the car 0.41 above the floor on one route
- * and sank its wheels 0.09 through it on the other.
+ * car on a 20-unit grid — and positions that floated the car 0.50 above the floor on one route
+ * and, on the other, rested it there only because the exporter left its lowest vertex at +0.001.
  */
 const MODEL_OFFSET = groundedOffset(CAR_BOUNDS, GROUND_Y);
 
