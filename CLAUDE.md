@@ -358,6 +358,30 @@ this replaced was a `body`/`Body`/`paint` substring guess that matched none of `
 `tests/livery.test.ts` parses the real GLB out of `public/` rather than a fixture, which is what
 makes an asset re-export fail in CI instead of silently un-fixing this.
 
+**`f1-car.glb` is meshopt-compressed, and only `scripts/compress-car-model.mjs` should write it.**
+7.57 → 1.35 MB on disk and 4.58 → 0.95 MB gzipped as `next start` serves it, all 205,876
+triangles kept. The weight was geometry, so gltfpack quantizes it and meshopt-compresses it; the
+four PNGs pass through byte-identical, because the livery recolour matches exact texels and any
+lossy texture codec breaks it. The source is the untouched Sketchfab export, read back out of git
+history and pinned by SHA-256, and `--check` proves the committed file is a fresh build. `RealCar`
+gives GLTFLoader three-stdlib's `MeshoptDecoder` (+19.6 KB on the lazy 3D chunk, 2.6 ms to
+decode) — without it the loader refuses the file. Four things are not guessable. **`-ce ext`**:
+three-stdlib's loader implements only `EXT_meshopt_compression`, and its decoder throws
+`Malformed buffer data` on the v1 codec that `-ce khr` emits. **`-kn`**: flattening bakes the
+`Car` node's 0.648° rake into the vertices and `CAR_BOUNDS.minY` jumps 0.09, because `glbBounds`
+measures each mesh's box *through* that rotation, not the vertices — the true lowest vertex is
++0.001, not -0.090, so the car already rests 0.09 above the ground plane (a framing fix of its own,
+not this file's). **Integer positions**: a normalized encoding keeps accessor min/max as raw
+integers, and `glbBounds` read gltf-transform's meshopt output as a 368,389-unit car; it throws on
+that now. **Draco was measured and lost**: 117 KB smaller gzipped, but 78 KB of decoder (two files
+to host), twice meshopt's parse time (82 vs 39 ms warm), and gltf-transform writes the source's
+float bounds over quantized vertices, so the `CAR_BOUNDS` guard would never see its quantization.
+`CAR_BOUNDS` was re-baselined to the compressed file, not tolerated — the reasoning is on the
+constant. `tests/car-model-asset.test.ts` is the weight guard: a 1.5 MB budget, no extension the
+scenes cannot decode, a decode with the runtime's decoder, POSITION bounds true to the decoded
+vertices, and the source's triangle count, since decimation (half the triangles for 139 KB
+gzipped) changes the silhouette and belongs in a diff.
+
 **The landing page composes, it doesn't contain.** `app/page.tsx` is seven imports from
 `components/landing/`; the hero, features, and footer markup are not inline.
 
