@@ -6,6 +6,10 @@ it with the tests that must fail. `pnpm test:browser:mutants` proves that they s
 A mutant that **survives** means the harness has stopped covering that class. Fix the spec, not
 the manifest.
 
+**Mutant 06 never shipped.** It is the one failure mode the `/teardown` coarse-to-fine preloader
+adds: a frame marked loaded but not drawn, so the canvas holds a first-pass stand-in until the
+next scroll. It is here because jsdom cannot see a canvas, not because it happened.
+
 The runner first builds the clean tree and runs the selected mutants' specs once. If that
 **baseline fails** it runs no mutant: a spec already red on the clean tree would fake every kill.
 
