@@ -2,7 +2,7 @@
  * Placing a camera so the car actually fits the canvas.
  *
  * Both 3D scenes shipped framed by hand, with a literal `camera={{ position: [5, 2.5, 5] }}` —
- * 7.5 units from the origin. The car is **11.24 units long**, so `/showcase` (which also scaled
+ * 7.5 units from the origin. The car is **11.23 units long**, so `/showcase` (which also scaled
  * it by 2, to 22.5) showed roughly a quarter of it and the Inspect modal roughly half. The
  * numbers below replace those literals.
  *
@@ -12,9 +12,9 @@
  * 1. **The car rotates.** `RealCar` spins its group continuously, so the volume to fit is the
  *    cylinder the box sweeps, not the box. Its radius is the box's XZ *diagonal* — 5.98, against
  *    a half-length of 5.62.
- * 2. **A cylinder is not a sphere, and the difference is 19% of the distance.** The obvious fit
+ * 2. **A cylinder is not a sphere, and the difference is 20% of the distance.** The obvious fit
  *    — enclose the subject in a sphere and use `radius / sin(fov / 2)`, which is exact for a
- *    sphere — models this 2.66-tall car as 12.3 tall. It fits, and it leaves the car filling
+ *    sphere — models this 2.50-tall car as 12.2 tall. It fits, and it leaves the car filling
  *    39% of the frame width. Measured live: that was the first cut of this file, and every "does
  *    it fit" assertion passed on it.
  * 3. **The binding field of view depends on the canvas.** `/showcase`'s is `h-[70vh]` at full
@@ -27,9 +27,9 @@
  * 5. **Fog has to move with the camera.** `/showcase` ships `fog=[8, 20]`. A camera fitted at
  *    ~14 units puts most of the car past the far plane and the scene fogs to a grey rectangle.
  *
- * And the model is neither centred nor grounded: its own centre is 0.218 off the rotation axis
- * in x — so it orbits instead of turning on the spot — and its lowest point is -0.090, not 0, so
- * `position={[0, -0.5, 0]}` sinks the wheels through the floor rather than resting them on it.
+ * And the model is not centred: its own centre is 0.223 off the rotation axis in x, so it orbits
+ * instead of turning on the spot. Its lowest point is +0.001, which puts the tyres on the floor
+ * only by the exporter's luck — `groundedOffset` makes that a property of the code instead.
  *
  * Nothing here touches three.js. The scene component that consumes it is
  * `components/3d/fit-camera.tsx`; keeping the arithmetic pure is what makes it testable at all,
@@ -52,24 +52,27 @@ export interface ModelBounds {
  *
  * World space, not the POSITION accessors': the asset nests its meshes under
  * `Sketchfab_model → F1 2026.fbx → RootNode → Car`, whose matrices cancel out to a net scale of 1
- * but permute Y-up to Z-up on the way. Read the accessors alone and the car is 4.10 tall and 2.66
- * wide; in the scene it is 2.66 tall and 4.10 wide.
+ * but permute Y-up to Z-up on the way. The source's accessors describe the car 4.10 tall; in the
+ * scene it is 2.50 tall and 4.10 wide.
+ *
+ * And the extremes of the vertices, not of a bounding box. `Car` also rakes the body 0.648°, and
+ * these numbers used to be the box of each mesh's box carried through that rotation, whose corners
+ * no vertex reaches: 2.66 tall, lowest point -0.090. `groundedOffset` rested that phantom corner
+ * on the floor, and the real tyres floated 0.091 above it on both routes.
  *
  * `tests/scene-fit.test.ts` checks these against the shipped file, so a re-exported model fails
  * CI instead of quietly mis-framing both routes.
  *
- * Re-baselined, not tolerated, when the model was meshopt-compressed
- * (`scripts/compress-car-model.mjs`). Its 14-bit position grid moved this measurement by at most
- * 2.4e-4 (size z; was `4.097002`), inside the test's 5e-4 — so the test passed on the old numbers,
- * which is exactly why that was no reason to keep them. Left alone they would describe a file we
- * no longer ship, and spend half the guard's tolerance before the next re-export has moved
- * anything. The tolerance stays: at /showcase's scale it is 0.03px, well below anything a real
- * re-export (an axis swap, a rescale, a flattened hierarchy — 0.09 in `minY`) would move.
+ * Measured on the meshopt-compressed file (`scripts/compress-car-model.mjs`), not the source: its
+ * 14-bit position grid moves the vertices by at most 3.6e-4 here (size y), inside the test's 5e-4,
+ * so the source's numbers would pass — and spend most of the guard's tolerance describing a file
+ * we do not ship. The tolerance stays: at /showcase's scale it is 0.03px, well below anything a
+ * real re-export (an axis swap, a rescale) would move.
  */
 export const CAR_BOUNDS: ModelBounds = {
-  size: [11.2427, 2.662122, 4.096758],
-  centre: [-0.218477, 1.241226, 0.000122],
-  minY: -0.089835,
+  size: [11.230871, 2.496354, 4.096758],
+  centre: [-0.222773, 1.249517, 0.000122],
+  minY: 0.00134,
 };
 
 /** The y the ground plane and its grid sit at, in both scenes. */
@@ -80,7 +83,7 @@ export const GROUND_Y = -0.5;
  *
  * The three-quarter view they were authored with: `[5, 2.5, 5]` is this, times 7.5. Only the
  * *angle* survives from those literals — the distance is computed, because 7.5 units from an
- * 11.24-unit car is a close-up of a sidepod.
+ * 11.23-unit car is a close-up of a sidepod.
  */
 export const VIEW_DIRECTION: Vec3 = [1, 0.5, 1];
 
@@ -201,7 +204,7 @@ export function fogRange(distance: number, radius: number): [number, number] {
  * The translation that puts a model on its rotation axis and rests it on the ground plane.
  *
  * Applied to the model *inside* the group that spins, so the car turns on the spot instead of
- * orbiting the world origin 0.218 units away, and so the scene component no longer needs to say
+ * orbiting the world origin 0.223 units away, and so the scene component no longer needs to say
  * where the exporter happened to leave the pivot.
  */
 export function groundedOffset(bounds: ModelBounds, groundY: number): [number, number, number] {
@@ -229,7 +232,7 @@ export const CAR_TARGET = fitTarget(CAR_BOUNDS, GROUND_Y);
  * The two margins.
  *
  * `1` is not "no margin" — it is the swept *envelope* exactly touching the frame, and the car is
- * not a solid cylinder. Measured live at `margin: 1`, the real mesh reaches 82% of the frame at
+ * not a solid cylinder. Measured live at `margin: 1`, the real mesh reaches 85% of the frame at
  * its worst orientation and well under that at most. So `1` is already a comfortable frame, and
  * anything below it trades the envelope's guarantee for a crop at some angle of the rotation.
  *

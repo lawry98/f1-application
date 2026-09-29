@@ -28,11 +28,10 @@
  *   -cc      meshopt compression at gltfpack's higher ratio. Same decoder as -c.
  *   -ce ext  the EXT_ extension, not KHR_meshopt_compression: three-stdlib's GLTFLoader, which is
  *            what RealCar loads with, implements only EXT_ and would refuse the file.
- *   -kn      keep the node hierarchy. Flattened, gltfpack bakes the `Car` node's 0.648° rake into
- *            the vertices, and CAR_BOUNDS — measured as the box of each mesh's box through that
- *            rotation — moves 0.09 in y. That fails tests/scene-fit.test.ts, and fixing it by
- *            re-baselining would re-ground the car on both routes: a framing change, not a
- *            compression one.
+ *   -kn      keep the node hierarchy. Flattened, gltfpack merges the car into one unnamed node
+ *            and bakes the `Car` node's 0.648° rake into the vertices: the `Sketchfab_model` and
+ *            `Car` nodes a live camera check walks are gone, and the re-quantized vertices move
+ *            CAR_BOUNDS 5.4e-4 in z, just past tests/scene-fit.test.ts's tolerance.
  *   -km      keep named materials. `selectLiveryMaterials` matches `Livery` exactly.
  *
  * Deliberately absent: -si (no decimation — the silhouette stays the source's; halving the

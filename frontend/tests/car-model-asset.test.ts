@@ -15,9 +15,7 @@
  */
 
 import { beforeAll, describe, expect, it } from 'vitest';
-import { MeshoptDecoder } from 'three-stdlib';
-
-import { glbByteLength, readGlb, type Gltf, type GltfAccessor } from './glb';
+import { decodeBufferViews, glbByteLength, readAccessor, readGlb, type Gltf } from './glb';
 
 /**
  * About 10% over the 1.35 MB that ships. The uncompressed source is 7.57 MB and quantization
@@ -35,58 +33,6 @@ const DECODABLE_EXTENSIONS = ['EXT_meshopt_compression', 'KHR_mesh_quantization'
  * a diff, not something a re-export may do on its own.
  */
 const SOURCE_TRIANGLES = 205_876;
-
-const COMPONENTS: Record<string, number> = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4 };
-const READERS: Record<number, [bytes: number, read: (view: DataView, at: number) => number]> = {
-  5120: [1, (view, at) => view.getInt8(at)],
-  5121: [1, (view, at) => view.getUint8(at)],
-  5122: [2, (view, at) => view.getInt16(at, true)],
-  5123: [2, (view, at) => view.getUint16(at, true)],
-  5125: [4, (view, at) => view.getUint32(at, true)],
-  5126: [4, (view, at) => view.getFloat32(at, true)],
-};
-
-/** Every bufferView's bytes as the loader sees them: meshopt-compressed ones decoded, the rest as stored. */
-async function decodeBufferViews(gltf: Gltf, bin: Buffer): Promise<Uint8Array[]> {
-  const decoder = MeshoptDecoder();
-  if (!('ready' in decoder)) throw new Error('MeshoptDecoder: no WebAssembly in this environment');
-  await decoder.ready;
-
-  return gltf.bufferViews.map((view) => {
-    const meshopt = view.extensions?.EXT_meshopt_compression;
-    if (!meshopt) {
-      const start = view.byteOffset ?? 0;
-      return bin.subarray(start, start + view.byteLength);
-    }
-    const start = meshopt.byteOffset ?? 0;
-    const target = new Uint8Array(meshopt.count * meshopt.byteStride);
-    decoder.decodeGltfBuffer(
-      target,
-      meshopt.count,
-      meshopt.byteStride,
-      bin.subarray(start, start + meshopt.byteLength),
-      meshopt.mode,
-      meshopt.filter,
-    );
-    return target;
-  });
-}
-
-/** An accessor's values exactly as stored — not normalized, which is also how glTF defines `min`/`max`. */
-function readAccessor(gltf: Gltf, views: Uint8Array[], accessor: GltfAccessor): number[][] {
-  const components = COMPONENTS[accessor.type]!;
-  const [bytes, read] = READERS[accessor.componentType]!;
-  const data = views[accessor.bufferView!]!;
-  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  const stride = gltf.bufferViews[accessor.bufferView!]!.byteStride ?? bytes * components;
-
-  const values: number[][] = [];
-  for (let i = 0; i < accessor.count; i++) {
-    const at = (accessor.byteOffset ?? 0) + i * stride;
-    values.push(Array.from({ length: components }, (_, c) => read(view, at + c * bytes)));
-  }
-  return values;
-}
 
 describe('public/models/f1-car.glb', () => {
   let gltf: Gltf;
@@ -131,10 +77,11 @@ describe('public/models/f1-car.glb', () => {
 
   it('declares the POSITION bounds its decoded vertices actually have', () => {
     /*
-     * `glbBounds`, and so the CAR_BOUNDS guard, reads accessor min/max and never the vertices.
-     * That is only sound if the exporter wrote them from the data it compressed. Draco through
-     * gltf-transform does not: it keeps the source's float bounds while the decoded vertices move
-     * by up to 2.1e-4, so the framing guard would never see the quantization at all.
+     * three-stdlib's GLTFLoader never measures the vertices: it builds every geometry's
+     * `boundingBox` and `boundingSphere` from accessor min/max, and those are what frustum
+     * culling tests. Bounds tighter than the data cull a mesh while part of it is on screen.
+     * Draco through gltf-transform writes exactly that: it keeps the source's float bounds while
+     * the decoded vertices move by up to 2.1e-4.
      */
     for (const mesh of gltf.meshes) {
       for (const primitive of mesh.primitives) {
