@@ -1,5 +1,6 @@
-import { render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, render, screen } from '@testing-library/react';
+import { motionValue, type MotionValue } from 'motion/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TeardownScene } from '@/components/teardown/teardown-scene';
 import { contrastRatio, DARK_BG, MIN_CONTRAST } from '@/lib/team-utils';
 import { restingTextNeutrals } from './zinc';
@@ -17,14 +18,25 @@ import { restingTextNeutrals } from './zinc';
  */
 
 let reduceMotion = false;
+/** When set, stands in for the scroll progress jsdom can never produce. */
+let scrollProgress: MotionValue<number> | null = null;
 
 vi.mock('motion/react', async (importOriginal) => {
   const actual = await importOriginal<typeof import('motion/react')>();
-  return { ...actual, useReducedMotion: () => reduceMotion };
+  return {
+    ...actual,
+    useReducedMotion: () => reduceMotion,
+    // The real hook always runs, so the hook order is the same in every test.
+    useScroll: (options: Parameters<typeof actual.useScroll>[0]) => {
+      const real = actual.useScroll(options);
+      return scrollProgress ? { ...real, scrollYProgress: scrollProgress } : real;
+    },
+  };
 });
 
 beforeEach(() => {
   reduceMotion = false;
+  scrollProgress = null;
 });
 
 /** Collapse runs of whitespace and trim — the title is split across two elements. */
@@ -237,7 +249,7 @@ describe('TeardownScene', () => {
     expect(neutrals.map(({ text }) => text)).toEqual(
       expect.arrayContaining([
         'Loading frames',
-        '/ 192',
+        '/ 13',
         'Preparing teardown sequence…',
         'Back',
         'Scroll to begin',
@@ -249,5 +261,115 @@ describe('TeardownScene', () => {
         MIN_CONTRAST,
       );
     }
+  });
+});
+
+/**
+ * The preloader, driven by hand. jsdom's own `Image` never fires `onload`, so these swap in one
+ * whose loads the test settles itself, and a 2D context that records which frame was drawn. What
+ * that can prove is the *order* of requests, when the overlay lifts, and which frame reaches the
+ * canvas; that the canvas actually paints is `browser/teardown-scrub.spec.ts`'s job.
+ */
+describe('TeardownScene frame loading', () => {
+  const FIRST_PASS = [0, 16, 32, 48, 64, 80, 96, 112, 128, 144, 160, 176, 191];
+  const SECOND_PASS = [8, 24, 40, 56, 72, 88, 104, 120, 136, 152, 168, 184];
+
+  class FakeImage {
+    static made: FakeImage[] = [];
+    onload: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    src = '';
+    constructor() {
+      FakeImage.made.push(this);
+    }
+  }
+
+  const frameIndex = (img: FakeImage) => Number(/frame_(\d{4})\./.exec(img.src)?.[1] ?? NaN);
+  /** Frame indices in the order the scene asked for them. */
+  const requested = () => FakeImage.made.map(frameIndex);
+  let drawn: number[] = [];
+
+  async function settle(indices: number[], outcome: 'load' | 'error' = 'load') {
+    await act(async () => {
+      for (const i of indices) {
+        const img = FakeImage.made.find((m) => frameIndex(m) === i);
+        if (!img) throw new Error(`frame ${i} was never requested`);
+        (outcome === 'load' ? img.onload : img.onerror)?.();
+      }
+    });
+  }
+
+  beforeEach(() => {
+    FakeImage.made = [];
+    drawn = [];
+    vi.stubGlobal('Image', FakeImage);
+    const context = {
+      clearRect: () => {},
+      drawImage: (img: FakeImage) => drawn.push(frameIndex(img)),
+    };
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(
+      // `getContext` is overloaded per context type and the spy types itself from the last one
+      // (WebGPU). The scene only ever asks for '2d'.
+      (() => context) as unknown as HTMLCanvasElement['getContext'],
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('asks for the first pass, and only the first pass, on mount', () => {
+    render(<TeardownScene />);
+    expect(requested()).toEqual(FIRST_PASS);
+  });
+
+  it('keeps the overlay up while any first-pass frame is still in flight', async () => {
+    render(<TeardownScene />);
+    await settle(FIRST_PASS.slice(0, -1));
+
+    expect(screen.getByText('Loading frames')).toBeInTheDocument();
+    expect(requested()).toEqual(FIRST_PASS);
+  });
+
+  it('lifts the overlay once the first pass has settled, then asks for the next pass', async () => {
+    render(<TeardownScene />);
+    await settle(FIRST_PASS);
+
+    expect(screen.queryByText('Loading frames')).not.toBeInTheDocument();
+    expect(requested().slice(FIRST_PASS.length)).toEqual(SECOND_PASS);
+  });
+
+  it('counts a frame that failed to load as settled, so one 404 cannot hold the overlay', async () => {
+    render(<TeardownScene />);
+    await settle([191], 'error');
+    await settle(FIRST_PASS.slice(0, -1));
+
+    expect(screen.queryByText('Loading frames')).not.toBeInTheDocument();
+  });
+
+  it('draws the nearest loaded frame, and redraws when a closer one arrives', async () => {
+    // Frame 100 is in the third pass. Until it lands, 96 is the closest thing there is.
+    scrollProgress = motionValue(100.5 / 192);
+    render(<TeardownScene />);
+    await settle(FIRST_PASS);
+    expect(drawn).toEqual([96]);
+
+    // 104 arrives in the second pass: as close as 96, not closer, so nothing is redrawn.
+    await settle(SECOND_PASS);
+    expect(drawn).toEqual([96]);
+
+    await settle([100]);
+    expect(drawn).toEqual([96, 100]);
+  });
+
+  it('never draws a frame that failed to load', async () => {
+    scrollProgress = motionValue(96.5 / 192);
+    render(<TeardownScene />);
+    await settle([96], 'error');
+    await settle(FIRST_PASS.filter((i) => i !== 96));
+
+    // 80 and 112 are equally far from 96; the earlier one wins the tie.
+    expect(drawn).toEqual([80]);
   });
 });
