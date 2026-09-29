@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 import { useDocumentVisible } from '@/hooks/use-document-visible';
 import { CAR_SWEPT, CAR_TARGET, INSPECT_FIT_MARGIN } from '@/lib/scene-fit';
 import { FitCamera } from './fit-camera';
-import { PrimitiveCar, RealCar } from './f1-car-model';
+import { CAR_SHADOW_NORMAL_BIAS, PrimitiveCar, RealCar } from './f1-car-model';
 
 const FOG_COLOR = '#09090b';
 
@@ -118,6 +118,7 @@ export default function F1HeroScene({
           intensity={1.5}
           castShadow
           shadow-mapSize={[2048, 2048]}
+          shadow-normalBias={CAR_SHADOW_NORMAL_BIAS}
           shadow-camera-far={50}
           shadow-camera-left={-10}
           shadow-camera-right={10}
@@ -140,6 +141,7 @@ export default function F1HeroScene({
           intensity={0.8}
           color="#ffffff"
           castShadow
+          shadow-normalBias={CAR_SHADOW_NORMAL_BIAS}
         />
 
         <Suspense fallback={<HeroFallbackCar {...motion} />}>

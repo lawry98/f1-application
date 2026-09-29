@@ -41,6 +41,20 @@ interface RealCarProps extends CarMotion {
 const MODEL_OFFSET = groundedOffset(CAR_BOUNDS, GROUND_Y);
 
 /**
+ * `shadow-normalBias` for every light that casts onto `RealCar`, in world units.
+ *
+ * Without it the bodywork renders hatched with shadow acne. Every material in this GLB is
+ * `DoubleSide`, and three.js draws a double-sided mesh's *front* faces into the shadow map (a
+ * single-sided one gets its back faces), so each lit texel is compared against its own depth and
+ * about half of them lose. The normal offset moves the lookup off the surface. Measured over
+ * eight poses in headless Chromium: clean from `0.01`, a trace left at `0.005`; `0.02` is about
+ * two texels of the key light's 20-unit, 2048² map, and moves the ground contact shadow by under
+ * 1% of its area. The spot lights take it too: their maps have the same acne, hidden only because
+ * at intensity 1 over ~11 units they are about 1% of the key light.
+ */
+export const CAR_SHADOW_NORMAL_BIAS = 0.02;
+
+/**
  * A cloned livery material plus the canvas its base-colour texture is painted on.
  *
  * `paint` rewrites the texture rather than setting `material.color`, because `color` *multiplies*
