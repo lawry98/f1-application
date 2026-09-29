@@ -39,5 +39,14 @@
     "reintroduces": "the /teardown preloader marking a frame loaded without redrawing, so the canvas keeps the coarse first-pass stand-in until the reader next scrolls (CLAUDE.md: 'The teardown page')",
     "specs": ["browser/teardown-scrub.spec.ts"],
     "mustFail": ["the overlay lifts on the first pass, and the canvas upgrades in place as closer frames land"]
+  },
+  {
+    "patch": "07-car-shadow-no-normal-bias.patch",
+    "reintroduces": "CAR_SHADOW_NORMAL_BIAS at 0, the shipped default: the GLB's DoubleSide materials put the car's front faces in its own shadow map, so the bodywork hatches with shadow acne on both 3D scenes (CLAUDE.md: 'The car's shadows need a normal bias')",
+    "specs": ["browser/shadow-acne.spec.ts"],
+    "mustFail": [
+      "the /showcase car takes its own shadows without hatching",
+      "the /teams Inspect car takes its own shadows without hatching"
+    ]
   }
 ]

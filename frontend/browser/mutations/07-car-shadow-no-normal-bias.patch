@@ -1,0 +1,13 @@
+diff --git a/frontend/components/3d/f1-car-model.tsx b/frontend/components/3d/f1-car-model.tsx
+index 42319f2..ffb05d3 100644
+--- a/frontend/components/3d/f1-car-model.tsx
++++ b/frontend/components/3d/f1-car-model.tsx
+@@ -52,7 +52,7 @@ const MODEL_OFFSET = groundedOffset(CAR_BOUNDS, GROUND_Y);
+  * 1% of its area. The spot lights take it too: their maps have the same acne, hidden only because
+  * at intensity 1 over ~11 units they are about 1% of the key light.
+  */
+-export const CAR_SHADOW_NORMAL_BIAS = 0.02;
++export const CAR_SHADOW_NORMAL_BIAS = 0;
+ 
+ /**
+  * The GLB's geometry is meshopt-compressed (`scripts/compress-car-model.mjs`), and GLTFLoader

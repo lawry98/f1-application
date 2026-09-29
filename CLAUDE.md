@@ -419,6 +419,16 @@ scenes cannot decode, a decode with the runtime's decoder, POSITION bounds true 
 vertices, and the source's triangle count, since decimation (half the triangles for 139 KB
 gzipped) changes the silhouette and belongs in a diff.
 
+**The car's shadows need a normal bias, and `DoubleSide` is why.** Every material in the GLB is
+`DoubleSide`, and three.js puts a double-sided mesh's *front* faces in the shadow map (a
+single-sided one gets its back faces), so at zero bias the car shadows itself texel by texel and
+the bodywork renders hatched, on a real GPU and in SwiftShader alike. `CAR_SHADOW_NORMAL_BIAS`
+(`f1-car-model.tsx`, which carries the measurements) goes on every light that casts onto the car.
+That includes the spot lights: their maps carry the same acne, which is invisible only because
+they are about 1% of the key light, so raising one would bring it back. Any light added with
+`castShadow` takes the bias too. jsdom has no WebGL, so `browser/shadow-acne.spec.ts` is the only
+guard, and mutant 07 proves it.
+
 **The landing page composes, it doesn't contain.** `app/page.tsx` is seven imports from
 `components/landing/`; the hero, features, and footer markup are not inline.
 
@@ -682,6 +692,12 @@ required CI check (`browser` job). Things that are not guessable:
   with no mutant behind it.
 - **The scroll-spy band is copied into the spec, not imported**, so a mutant that removes an
   export cannot be "killed" by a compile error.
+- **A WebGL check reads the drawing buffer under SwiftShader.** Follow `shadow-acne.spec.ts`:
+  it sets SwiftShader launch flags for its own file (the CI runner has no GPU), gets the R3F store
+  through `window.__THREE_DEVTOOLS__` (the one hook a production build keeps), and calls
+  `gl.readPixels` in the same task as `gl.render()`. An element screenshot also captures CSS
+  transforms and overlays, and the Inspect dialog's entrance scale made one pose read two
+  different values.
 - **The route sweeps are hand-written lists, not discovered.** `focus-rings.spec.ts`,
   `a11y-smoke.spec.ts` and `invisible-text.spec.ts` each name their routes literally; a new
   route is covered only once it is added to all three. `/candy` stays out of the focus sweep
