@@ -48,7 +48,15 @@ const getRacesMock = vi.mocked(getRaces);
 const CALENDAR_2026: Race[] = races2026.races;
 
 function race(round: number, name: string): Race {
-  return { name, location: 'Somewhere', country: 'Testland', date: '2024-01-01', round };
+  return {
+    name,
+    location: 'Somewhere',
+    country: 'Testland',
+    date: '2024-01-01',
+    round,
+    event_format: 'conventional',
+    official_name: name,
+  };
 }
 
 /** 2024's shape: 24 rounds, all held, Abu Dhabi last. */
@@ -63,6 +71,18 @@ function notStarted(year: number): StandingsResponse {
 
 const MID_SEASON = 'After Round 14 of 23 · Spanish Grand Prix';
 const FINAL_2024 = 'After Round 24 of 24 · Abu Dhabi Grand Prix';
+
+/**
+ * Matches the stamp `<p>` by its text starting with `prefix`, rather than the whole string.
+ *
+ * Once the as-of event is a link, the stamp's own text node is only the lead ("After Round 14 of
+ * 23 · "), and the event name lives in a child `<a>` — so `findByText(MID_SEASON)` can no longer
+ * find a single node whose full text equals the stamp. `textContent` still spans both.
+ */
+function stampLine(prefix: string) {
+  return (_content: string, element: Element | null) =>
+    element?.tagName === 'P' && element.textContent?.startsWith(prefix) === true;
+}
 
 /** Renders the page at `/standings` plus `query` — `'?year=2024'`, or `''` for the bare URL. */
 function renderPage(query = '', latestYear = 2026) {
@@ -116,7 +136,7 @@ describe('StandingsPageClient', () => {
   it('shows the stamp and both tables once the season lands', async () => {
     renderPage();
 
-    expect(await screen.findByText(MID_SEASON)).toBeInTheDocument();
+    expect(await screen.findByText(stampLine(MID_SEASON))).toBeInTheDocument();
     expect(screen.getByRole('table', { name: /^drivers' championship/i })).toBeInTheDocument();
     expect(screen.getByRole('table', { name: /^constructors' championship/i })).toBeInTheDocument();
     expect(screen.queryByText('Final')).toBeNull();
@@ -125,7 +145,7 @@ describe('StandingsPageClient', () => {
   it('announces the stamp politely', async () => {
     renderPage();
 
-    expect(await screen.findByText(MID_SEASON)).toHaveAttribute('aria-live', 'polite');
+    expect(await screen.findByText(stampLine(MID_SEASON))).toHaveAttribute('aria-live', 'polite');
   });
 
   it('marks a finished season final', async () => {
@@ -137,7 +157,7 @@ describe('StandingsPageClient', () => {
 
   it('fetches the chosen season and records it in the URL without adding history', async () => {
     renderPage();
-    await screen.findByText(MID_SEASON);
+    await screen.findByText(stampLine(MID_SEASON));
 
     fireEvent.change(screen.getByRole('combobox', { name: 'Season' }), {
       target: { value: '2024' },
@@ -170,7 +190,7 @@ describe('StandingsPageClient', () => {
 
     expect(select).toHaveValue('2026');
     expect(getStandingsMock).toHaveBeenLastCalledWith(2026);
-    expect(await screen.findByText(MID_SEASON)).toBeInTheDocument();
+    expect(await screen.findByText(stampLine(MID_SEASON))).toBeInTheDocument();
 
     // Back to `?year=2024`.
     act(() => url.set('?year=2024'));
@@ -198,7 +218,7 @@ describe('StandingsPageClient', () => {
     fireEvent.click(screen.getByRole('button', { name: 'See the 2026 final standings' }));
 
     expect(getStandingsMock).toHaveBeenLastCalledWith(2026);
-    expect(await screen.findByText(MID_SEASON)).toBeInTheDocument();
+    expect(await screen.findByText(stampLine(MID_SEASON))).toBeInTheDocument();
   });
 
   it('shows a season whose only held session is a sprint as a table', async () => {
@@ -232,7 +252,7 @@ describe('StandingsPageClient', () => {
     expectReadableOnButton('Try again');
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
 
-    expect(await screen.findByText(MID_SEASON)).toBeInTheDocument();
+    expect(await screen.findByText(stampLine(MID_SEASON))).toBeInTheDocument();
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
@@ -250,6 +270,27 @@ describe('StandingsPageClient', () => {
     expect(await screen.findByRole('link', { name: 'Compare the teams →' })).toHaveAttribute(
       'href',
       '/teams',
+    );
+  });
+
+  it('links the as-of event to its circuit', async () => {
+    getStandingsMock.mockResolvedValue(standings2026 as StandingsResponse);
+    getRacesMock.mockResolvedValue(CALENDAR_2026);
+    renderPage();
+
+    const link = await screen.findByRole('link', { name: 'Spanish Grand Prix' });
+    expect(link).toHaveAttribute('href', '/circuits/madrid');
+    expect(link.closest('p')).toHaveTextContent(MID_SEASON);
+  });
+
+  it('links to the same season’s circuits', async () => {
+    getStandingsMock.mockResolvedValue(standings2024 as StandingsResponse);
+    getRacesMock.mockResolvedValue(CALENDAR_2024);
+    renderPage('?year=2024');
+
+    expect(await screen.findByRole('link', { name: '2024 circuits →' })).toHaveAttribute(
+      'href',
+      '/circuits?year=2024',
     );
   });
 

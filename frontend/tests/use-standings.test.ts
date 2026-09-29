@@ -29,6 +29,8 @@ const CALENDAR: Race[] = [
     country: 'Australia',
     date: '2026-03-08',
     round: 1,
+    event_format: 'conventional',
+    official_name: 'Australian Grand Prix',
   },
 ];
 

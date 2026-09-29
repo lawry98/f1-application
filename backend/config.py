@@ -2,6 +2,7 @@
 
 import logging
 import os
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,16 @@ try:
 except ValueError:
     logger.warning("Invalid STANDINGS_TTL_SECONDS=%r — falling back to 300", _raw_standings_ttl)
     STANDINGS_TTL_SECONDS = 300
+
+# ── Circuit geometry ─────────────────────────────────────────────────────────
+
+# The frontend's slugged-location → circuit-id map, which tools/circuit_winners.py matches FastF1
+# schedule rows against. A path into this repo, not deployment config, so it is a constant rather
+# than an env var. If the backend is ever deployed without the frontend tree beside it, the winners
+# route answers 502 and nothing else is affected.
+CIRCUIT_INDEX_PATH: Path = (
+    Path(__file__).resolve().parent.parent / "frontend" / "data" / "circuits" / "index.json"
+)
 
 # ── API ──────────────────────────────────────────────────────────────────────
 

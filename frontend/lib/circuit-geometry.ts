@@ -19,10 +19,14 @@
  * (the `/candy` styleguide, the landing hero) can import the JSON directly instead and skip this
  * entirely — `toPoints` below is the one piece of this module they still need, so that the static
  * path and the dynamic path agree on the JSON↔`Point` boundary rather than each re-deriving it.
+ *
+ * `catalog.json` is the points-free view (id, canonical slug, name, facts), about 5 kB, so it is
+ * statically imported: the grid's links and the detail page's facts need no outline.
  */
 
 import type { Point } from '@/lib/svg-path';
 import index from '@/data/circuits/index.json';
+import catalog from '@/data/circuits/catalog.json';
 
 /** One circuit, exactly as the converter writes it. */
 export interface CircuitGeometry {
@@ -84,13 +88,58 @@ export function locationSlug(location: string): string {
 /**
  * The circuit id for a race location, or `null` if the set does not carry it.
  *
- * The five places the two data sources name differently (Bahrain/Sakhir, Monte-Carlo/Monaco,
- * Marina Bay/Singapore, Miami Gardens/Miami, Kuala Lumpur/Sepang) are already aliased **inside**
- * `index.json` by the converter, which writes both keys pointing at the same id. So there is no
- * alias table here, and adding one would be a second place to keep in step.
+ * The ten places the two data sources name differently (Bahrain/Sakhir, Monte-Carlo/Monaco,
+ * Marina Bay/Singapore, Miami Gardens/Miami, Kuala Lumpur/Sepang, plus five earlier-season FastF1
+ * spellings — Yas Island and Abu Dhabi/Yas Marina, Spa/Spa-Francorchamps, Nürburgring/Nürburg,
+ * Mugello/Scarperia e San Piero) are already aliased **inside** `index.json` by the converter,
+ * which writes both keys pointing at the same id. So there is no alias table here, and adding one
+ * would be a second place to keep in step.
  */
 export function resolveCircuitId(location: string): string | null {
-  return LOCATION_TO_ID[locationSlug(location)] ?? null;
+  const id: unknown = LOCATION_TO_ID[locationSlug(location)];
+  return typeof id === 'string' ? id : null;
+}
+
+/** One circuit's facts and canonical slug — everything in its outline file except the points. */
+export interface CircuitEntry {
+  id: string;
+  /** `locationSlug(location)`, the detail page's URL segment: `/circuits/monza`. */
+  slug: string;
+  name: string;
+  location: string;
+  lengthM: number;
+  firstGp: number;
+}
+
+const CATALOG: readonly CircuitEntry[] = catalog;
+const BY_ID = new Map(CATALOG.map((entry) => [entry.id, entry]));
+
+export function circuitEntry(id: string): CircuitEntry | null {
+  return BY_ID.get(id) ?? null;
+}
+
+/** The detail page's slug for an id. Several slugs can name one id; this is the source's own. */
+export function canonicalSlug(id: string): string | null {
+  return BY_ID.get(id)?.slug ?? null;
+}
+
+/** A calendar location's detail-page slug, through the aliases, or null for a circuit not in the set. */
+export function circuitSlugForLocation(location: string): string | null {
+  const id = resolveCircuitId(location);
+  return id ? canonicalSlug(id) : null;
+}
+
+/**
+ * A URL segment's circuit, and whether the segment is already that circuit's canonical slug —
+ * `bahrain` and `Monza` resolve but are not, so the route redirects them.
+ *
+ * Looked up through `BY_ID` rather than trusting `LOCATION_TO_ID[key]` alone: the index is a
+ * plain object, so `constructor` or `__proto__` would otherwise return a prototype member.
+ */
+export function circuitBySlug(slug: string): { entry: CircuitEntry; canonical: boolean } | null {
+  const id: unknown = LOCATION_TO_ID[locationSlug(slug)];
+  const entry = typeof id === 'string' ? BY_ID.get(id) : undefined;
+  return entry ? { entry, canonical: entry.slug === slug } : null;
 }
 
 /**
