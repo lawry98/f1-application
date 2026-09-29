@@ -135,6 +135,18 @@ def _clear_standings_cache():
 
 
 @pytest.fixture(autouse=True)
+def _clear_circuit_winners_cache():
+    """Reset the cross-request winners cache around every test — it outlives requests by design,
+    so without this one test's Monza answers every later one.
+    """
+    from tools import circuit_winners
+
+    circuit_winners.clear()
+    yield
+    circuit_winners.clear()
+
+
+@pytest.fixture(autouse=True)
 def _clear_result_cache():
     """Reset the module-level tool result cache around every test.
 

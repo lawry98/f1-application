@@ -47,3 +47,19 @@ curl -sf http://localhost:8000/api/standings/2026 | python3 -m json.tool > front
 curl -sf http://localhost:8000/api/standings/2024 | python3 -m json.tool > frontend/tests/fixtures/standings-2024.json
 curl -sf http://localhost:8000/api/races/2026 | python3 -m json.tool > frontend/tests/fixtures/races-2026.json
 ```
+
+`races-2026.json` was re-captured on 2026-09-28 to pick up `event_format` and `official_name`;
+no existing value changed.
+
+# Circuit winners fixture
+
+`circuit-winners-it-1922.json` is the real `/api/circuits/it-1922/winners` response (Monza),
+captured on the capture date (`date +%F`) against live FastF1 and pretty-printed with `python3 -m json.tool`. The
+browser harness serves it for `/circuits/monza`; any other circuit id is unmocked and fails
+closed. To re-capture, run the backend as above, then:
+
+```bash
+curl -sf http://localhost:8000/api/circuits/it-1922/winners | python3 -m json.tool > frontend/tests/fixtures/circuit-winners-it-1922.json
+```
+
+A cold call costs one FastF1 session load per season, about five seconds in all.

@@ -13,7 +13,7 @@
  * loudly here instead of silently skipping the check.
  */
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { inflateSync } from 'node:zlib';
 
@@ -35,19 +35,51 @@ interface GltfNode {
   scale?: [number, number, number];
 }
 
-interface Gltf {
+/** A bufferView whose bytes are meshopt-compressed; the loader decodes them into `byteLength`. */
+export interface MeshoptView {
+  byteOffset?: number;
+  byteLength: number;
+  byteStride: number;
+  count: number;
+  mode: 'ATTRIBUTES' | 'TRIANGLES' | 'INDICES';
+  filter?: 'NONE' | 'OCTAHEDRAL' | 'QUATERNION' | 'EXPONENTIAL';
+}
+
+export interface GltfAccessor {
+  bufferView?: number;
+  byteOffset?: number;
+  componentType: number;
+  normalized?: boolean;
+  count: number;
+  type: string;
+  min?: number[];
+  max?: number[];
+}
+
+export interface Gltf {
+  extensionsRequired?: string[];
   materials: { name?: string; pbrMetallicRoughness?: { baseColorTexture?: { index: number } } }[];
   textures: { source: number }[];
   images: { bufferView: number }[];
-  bufferViews: { byteOffset?: number; byteLength: number }[];
+  bufferViews: {
+    byteOffset?: number;
+    byteLength: number;
+    byteStride?: number;
+    extensions?: { EXT_meshopt_compression?: MeshoptView };
+  }[];
   nodes: GltfNode[];
-  meshes: { primitives: { attributes: { POSITION: number } }[] }[];
-  accessors: { min?: number[]; max?: number[] }[];
+  meshes: { primitives: { attributes: { POSITION: number }; indices?: number }[] }[];
+  accessors: GltfAccessor[];
   scenes: { nodes: number[] }[];
   scene?: number;
 }
 
-function readGlb(): { gltf: Gltf; bin: Buffer } {
+/** The size of the file `public/` serves. */
+export function glbByteLength(): number {
+  return statSync(GLB_PATH).size;
+}
+
+export function readGlb(): { gltf: Gltf; bin: Buffer } {
   const glb = readFileSync(GLB_PATH);
 
   let offset = 12;
@@ -254,6 +286,13 @@ function fromTrs(node: GltfNode): number[] {
  * wrappers both rescale (0.01 then ~100, which cancel) and permute axes Y-up → Z-up. Reading the
  * accessors alone reports the car 4.10 tall and 2.66 wide; in the scene it is 2.66 tall and 4.10
  * wide, and the camera has to be placed against the second pair.
+ *
+ * The shipped model is quantized (KHR_mesh_quantization): its positions are `uint16` grid indices
+ * and the grid's scale and origin are an extra node transform per mesh, which this walk applies
+ * like any other. That holds only for *integer* positions. A normalized encoding keeps `min`/`max`
+ * as raw integers too — the spec says `normalized` does not touch them — so read as floats they
+ * describe a car hundreds of thousands of units long. That encoding throws here rather than
+ * reaching the assertions as a baffling number.
  */
 export function glbBounds(): GlbBounds {
   const { gltf } = readGlb();
@@ -272,6 +311,12 @@ export function glbBounds(): GlbBounds {
         const accessor = gltf.accessors[primitive.attributes.POSITION]!;
         if (!accessor.min || !accessor.max) {
           throw new Error('f1-car.glb: a POSITION accessor has no min/max');
+        }
+        if (accessor.normalized) {
+          throw new Error(
+            'f1-car.glb: a POSITION accessor is normalized; its min/max are raw integers. ' +
+              'Re-export with integer positions (gltfpack -vpi, its default).',
+          );
         }
         const [ax, ay, az] = accessor.min as [number, number, number];
         const [bx, by, bz] = accessor.max as [number, number, number];

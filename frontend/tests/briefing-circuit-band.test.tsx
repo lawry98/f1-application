@@ -28,9 +28,10 @@ import { inlineColouredText, restingTextNeutrals, ZINC } from './zinc';
  * `tests/circuit-geometry.test.ts` owns the real loader (the slug rules, the aliases, the null on
  * an unknown id), so nothing here re-tests it.
  */
-vi.mock('@/lib/circuit-geometry', () => ({
-  loadCircuitByLocation: vi.fn(),
-}));
+vi.mock('@/lib/circuit-geometry', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/circuit-geometry')>();
+  return { ...actual, loadCircuitByLocation: vi.fn() };
+});
 
 /**
  * The reduced-motion recipe: motion caches the preference in a module global on the first
@@ -94,11 +95,18 @@ const MONZA_RACE: RaceInfo = {
   historical_year: 2025,
 };
 
+/**
+ * `location` is the calendar's own spelling, `'Monte Carlo'` — not `'Monaco'`, which is the
+ * geometry index's key (`MONACO_GEOMETRY.location`, above) and the detail page's slug. The two
+ * differ on the real calendar (`resolveCircuitId`'s docstring in `lib/circuit-geometry.ts` lists
+ * `Monte-Carlo/Monaco` as one of the aliased pairs), and the CIRCUIT row's link test below only
+ * proves anything — "not the calendar's spelling" — if the two inputs actually disagree.
+ */
 const MONACO_RACE: RaceInfo = {
   name: 'Monaco Grand Prix',
   year: 2025,
   circuit_id: 'monaco_grand_prix',
-  location: 'Monaco',
+  location: 'Monte Carlo',
   country: 'Monaco',
   date: '2025-05-25 00:00:00',
   is_upcoming: false,
@@ -109,7 +117,7 @@ beforeEach(() => {
   reduceMotion = false;
   load.mockReset();
   load.mockImplementation(async (location: string) =>
-    location === 'Monaco' ? MONACO_GEOMETRY : MONZA_GEOMETRY,
+    location === 'Monte Carlo' ? MONACO_GEOMETRY : MONZA_GEOMETRY,
   );
 });
 
@@ -159,6 +167,24 @@ describe('BriefingCircuitBand', () => {
       await renderBand(<BriefingCircuitBand raceInfo={MONZA_RACE} round={8} />);
 
       expect(screen.getByText('08')).toBeInTheDocument();
+    });
+
+    it('links the CIRCUIT row to the circuit’s page', async () => {
+      await renderBand(<BriefingCircuitBand raceInfo={MONZA_RACE} round={16} />);
+
+      expect(screen.getByRole('link', { name: 'Autodromo Nazionale Monza' })).toHaveAttribute(
+        'href',
+        '/circuits/monza',
+      );
+    });
+
+    it('links Monaco to its canonical slug, not the calendar’s spelling', async () => {
+      await renderBand(<BriefingCircuitBand raceInfo={MONACO_RACE} round={8} />);
+
+      expect(screen.getByRole('link', { name: 'Circuit de Monaco' })).toHaveAttribute(
+        'href',
+        '/circuits/monaco',
+      );
     });
   });
 
@@ -406,7 +432,7 @@ describe('BriefingCircuitBand', () => {
        */
       let resolveMonza: (value: CircuitGeometry | null) => void = () => {};
       load.mockImplementation((location: string) =>
-        location === 'Monaco'
+        location === 'Monte Carlo'
           ? Promise.resolve(MONACO_GEOMETRY)
           : new Promise<CircuitGeometry | null>((resolve) => {
               resolveMonza = resolve;

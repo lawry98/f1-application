@@ -16,7 +16,12 @@ import pytest
 from freezegun import freeze_time
 
 from api import routes as routes_module
-from api.errors import FAILED_TOOL_SUMMARY, GENERIC_BRIEFING_ERROR, GENERIC_SCHEDULE_ERROR
+from api.errors import (
+    FAILED_TOOL_SUMMARY,
+    GENERIC_BRIEFING_ERROR,
+    GENERIC_CIRCUIT_WINNERS_ERROR,
+    GENERIC_SCHEDULE_ERROR,
+)
 from api.models import BriefingRequest
 from tests.factories import make_race_info, make_schedule, make_tool
 
@@ -811,7 +816,32 @@ def test_races_returns_the_calendar(client, monkeypatch, season_2025):
         "country": "Monaco",
         "date": "2025-05-25 00:00:00",
         "round": 3,
+        "event_format": "conventional",
+        "official_name": "FORMULA 1 MONACO GRAND PRIX",
     }
+
+
+def test_races_falls_back_to_the_event_name_when_the_official_name_is_blank(client, monkeypatch):
+    """FastF1 leaves OfficialEventName empty for some historical events; the row still needs a
+    name the page can print, and the event name is the honest one.
+    """
+    schedule = make_schedule(
+        [{"name": "Italian Grand Prix", "date": "2025-09-07", "official_name": ""}]
+    )
+    monkeypatch.setattr(routes_module.fastf1, "get_event_schedule", lambda year: schedule)
+
+    race = client.get("/api/races/2025").json()["races"][0]
+
+    assert race["official_name"] == "Italian Grand Prix"
+
+
+def test_races_carries_the_sprint_format_through(client, monkeypatch):
+    schedule = make_schedule(
+        [{"name": "Miami Grand Prix", "date": "2025-05-04", "format": "sprint_qualifying"}]
+    )
+    monkeypatch.setattr(routes_module.fastf1, "get_event_schedule", lambda year: schedule)
+
+    assert client.get("/api/races/2025").json()["races"][0]["event_format"] == "sprint_qualifying"
 
 
 def test_races_returns_an_empty_list_for_an_empty_schedule(client, monkeypatch):
@@ -1008,3 +1038,91 @@ def test_standings_serves_a_season_not_started_as_an_empty_table(client, monkeyp
         "constructors": [],
     }
     assert "No completed races" not in response.text
+
+
+# ── GET /api/circuits/{circuit_id}/winners ──────────────────────────────────
+
+
+WINNERS_PAYLOAD = {
+    "circuit_id": "it-1922",
+    "from_year": 2023,
+    "to_year": 2025,
+    "winners": [
+        {
+            "year": 2025,
+            "event": "Italian Grand Prix",
+            "driver": "A B",
+            "driver_code": "ABC",
+            "team": "T",
+            "time": "1:13:24.325",
+        }
+    ],
+    "unavailable_years": [],
+}
+
+
+def test_winners_returns_the_helper_payload(client, monkeypatch):
+    from api import routes
+
+    monkeypatch.setattr(routes, "get_recent_circuit_winners", lambda circuit_id: WINNERS_PAYLOAD)
+
+    response = client.get("/api/circuits/it-1922/winners")
+
+    assert response.status_code == 200
+    assert response.json() == WINNERS_PAYLOAD
+
+
+def test_winners_serves_a_partial_answer_as_200(client, monkeypatch):
+    from api import routes
+
+    partial = {**WINNERS_PAYLOAD, "unavailable_years": [2024]}
+    monkeypatch.setattr(routes, "get_recent_circuit_winners", lambda circuit_id: partial)
+
+    response = client.get("/api/circuits/it-1922/winners")
+
+    assert response.status_code == 200
+    assert response.json()["unavailable_years"] == [2024]
+
+
+def test_winners_for_an_unknown_circuit_is_404(client, monkeypatch):
+    from api import routes
+    from tools.circuit_winners import UNKNOWN_CIRCUIT
+
+    monkeypatch.setattr(
+        routes,
+        "get_recent_circuit_winners",
+        lambda circuit_id: {"error": f"Unknown circuit {circuit_id}", "reason": UNKNOWN_CIRCUIT},
+    )
+
+    response = client.get("/api/circuits/xx-0000/winners")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Unknown circuit."
+
+
+def test_winners_masks_an_upstream_failure_as_502(client, monkeypatch):
+    from api import routes
+
+    monkeypatch.setattr(
+        routes,
+        "get_recent_circuit_winners",
+        lambda circuit_id: {"error": "livetiming.formula1.com: HTTP 503 <html>…"},
+    )
+
+    response = client.get("/api/circuits/it-1922/winners")
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == GENERIC_CIRCUIT_WINNERS_ERROR
+    assert "livetiming" not in response.text
+
+
+@pytest.mark.parametrize("circuit_id", ["monza", "IT-1922", "it-19222", "it_1922"])
+def test_winners_rejects_a_malformed_id_before_the_helper_runs(client, monkeypatch, circuit_id):
+    from api import routes
+
+    def refuse(circuit_id):
+        raise AssertionError("helper reached for a malformed id")
+
+    monkeypatch.setattr(routes, "get_recent_circuit_winners", refuse)
+
+    assert client.get(f"/api/circuits/{circuit_id}/winners").status_code == 422

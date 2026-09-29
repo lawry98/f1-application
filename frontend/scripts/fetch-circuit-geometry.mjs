@@ -53,10 +53,15 @@ const MAX_POINTS = 240;
 /**
  * FastF1 `Location` values that do not match a bacinger `Location`.
  *
- * Everything else in the 2026 calendar matches once both sides are slugged, including the ones
- * that only differ by an accent or a hyphen (Montréal/Montreal, São Paulo/Sao Paulo,
- * Spa-Francorchamps/Spa Francorchamps). These five are genuinely different names for the same
- * place, so no amount of string normalising will join them.
+ * Everything else matches once both sides are slugged, including the ones that only differ by an
+ * accent or a hyphen (Montréal/Montreal, São Paulo/Sao Paulo, Spa-Francorchamps/Spa
+ * Francorchamps). These are genuinely different names for the same place, so no amount of string
+ * normalising will join them.
+ *
+ * The first five come from the 2026 calendar. The rest are how FastF1 spells the same circuits in
+ * **earlier** seasons — measured 2026-09-28 across 1955–2025 — and they matter because the winners
+ * route walks past seasons and the briefing band draws any year a user asks for: `Yas Island` is
+ * Abu Dhabi 2020–25, `Spa` is every Belgian GP before 2022.
  *
  * Keys are slugged FastF1 locations; values are slugged bacinger locations.
  */
@@ -66,6 +71,11 @@ const LOCATION_ALIASES = {
   'monte-carlo': 'monaco',
   'kuala-lumpur': 'sepang',
   'marina-bay': 'singapore',
+  'yas-island': 'yas-marina',
+  'abu-dhabi': 'yas-marina',
+  spa: 'spa-francorchamps',
+  nurburgring: 'nurburg',
+  mugello: 'scarperia-e-san-piero',
 };
 
 /** Lowercase, strip accents, collapse anything else to single hyphens. */
@@ -132,6 +142,7 @@ async function main() {
 
   /** slugged bacinger location -> circuit id, plus the FastF1 aliases pointing at the same ids. */
   const index = {};
+  const catalog = [];
   let written = 0;
 
   for (const feature of collection.features) {
@@ -145,6 +156,14 @@ async function main() {
     );
 
     index[slug(location)] = id;
+    catalog.push({
+      id,
+      slug: slug(location),
+      name,
+      location,
+      lengthM: length ?? null,
+      firstGp: firstgp ?? null,
+    });
     written++;
   }
 
@@ -158,7 +177,14 @@ async function main() {
     `${JSON.stringify(Object.fromEntries(Object.entries(index).sort()), null, 2)}\n`,
   );
 
-  console.log(`wrote ${written} circuits and ${Object.keys(index).length} location keys`);
+  // The points-free view the grid and detail page read, so neither downloads an outline to learn a
+  // circuit's slug, name or length. `tests/circuit-catalog.test.ts` checks it against every outline.
+  catalog.sort((a, b) => a.id.localeCompare(b.id));
+  await writeFile(join(OUT_DIR, 'catalog.json'), `${JSON.stringify(catalog, null, 2)}\n`);
+
+  console.log(
+    `wrote ${written} circuits, ${catalog.length} catalog entries and ${Object.keys(index).length} location keys`,
+  );
 }
 
 await main();

@@ -1,4 +1,10 @@
-import type { StreamEvent, Race, RaceInfo, StandingsResponse } from '@/types';
+import type {
+  StreamEvent,
+  Race,
+  RaceInfo,
+  StandingsResponse,
+  CircuitWinnersResponse,
+} from '@/types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
 
@@ -21,6 +27,16 @@ export async function getStandings(year: number): Promise<StandingsResponse> {
   }
 
   return (await response.json()) as StandingsResponse;
+}
+
+export async function getCircuitWinners(circuitId: string): Promise<CircuitWinnersResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/circuits/${circuitId}/winners`);
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch circuit winners');
+  }
+
+  return (await response.json()) as CircuitWinnersResponse;
 }
 
 /**

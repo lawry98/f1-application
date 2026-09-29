@@ -15,10 +15,12 @@ from agent.state import AgentState
 from api.errors import (
     FAILED_TOOL_SUMMARY,
     GENERIC_BRIEFING_ERROR,
+    GENERIC_CIRCUIT_WINNERS_ERROR,
     GENERIC_SCHEDULE_ERROR,
     GENERIC_STANDINGS_ERROR,
 )
 from api.models import BriefingRequest, BriefingResponse, ToolTraceSummary
+from tools.circuit_winners import UNKNOWN_CIRCUIT, get_recent_circuit_winners
 from tools.openf1_client import OPENF1_FIRST_YEAR
 from tools.openf1_client import clear as clear_openf1_cache
 from tools.schedule_cache import clear as clear_schedule_cache
@@ -212,22 +214,30 @@ async def generate_briefing_stream(request: BriefingRequest) -> EventSourceRespo
     return EventSourceResponse(event_generator())
 
 
+def _race_row(event: Any) -> dict[str, Any]:
+    """One calendar row. ``event_format`` and ``official_name`` are the two fields
+    ``get_track_info`` adds over this row, served here so /circuits needs no per-circuit call.
+    """
+    official = event.get("OfficialEventName")
+    return {
+        "name": event["EventName"],
+        "location": event["Location"],
+        "country": event["Country"],
+        "date": str(event["EventDate"]),
+        "round": int(event["RoundNumber"]) if "RoundNumber" in event else None,
+        "event_format": str(event.get("EventFormat", "conventional")),
+        # A blank or NaN official name falls back to the event name rather than printing nothing.
+        "official_name": official if isinstance(official, str) and official else event["EventName"],
+    }
+
+
 @router.get("/races/{year}")
 async def get_races(year: int = Path(ge=1950, le=date.today().year + 1)) -> dict[str, Any]:
     """Get the F1 calendar for a specific year."""
     try:
         schedule = await asyncio.to_thread(fastf1.get_event_schedule, year)
 
-        races = [
-            {
-                "name": event["EventName"],
-                "location": event["Location"],
-                "country": event["Country"],
-                "date": str(event["EventDate"]),
-                "round": int(event["RoundNumber"]) if "RoundNumber" in event else None,
-            }
-            for _, event in schedule.iterrows()
-        ]
+        races = [_race_row(event) for _, event in schedule.iterrows()]
 
         return {"year": year, "races": races}
     except Exception as exc:
@@ -278,6 +288,29 @@ async def get_standings(year: int = Path(ge=OPENF1_FIRST_YEAR)) -> dict[str, Any
         # caches the finished table per year, above this cache, with its own freshness
         # policy (see tools/standings_tools.py).
         clear_openf1_cache()
+
+
+@router.get("/circuits/{circuit_id}/winners")
+async def get_circuit_winners_route(
+    circuit_id: str = Path(pattern=r"^[a-z]{2}-\d{4}$"),
+) -> dict[str, Any]:
+    """Recent winners at one circuit, for the /circuits detail page.
+
+    Slow when cold — one FastF1 session load per hosted year, ~4.6s for three — and instant
+    after, because the helper caches finished seasons for the life of the process. Only FastF1
+    is touched, so unlike the routes above there is no OpenF1 cache to clear.
+    """
+    result = await asyncio.to_thread(get_recent_circuit_winners, circuit_id)
+
+    if result.get("reason") == UNKNOWN_CIRCUIT:
+        # Actionable — the id names no circuit this app draws — so not masked.
+        raise HTTPException(status_code=404, detail="Unknown circuit.")
+
+    if "error" in result:
+        logger.warning("Winners for %s unavailable: %s", circuit_id, result["error"])
+        raise HTTPException(status_code=502, detail=GENERIC_CIRCUIT_WINNERS_ERROR)
+
+    return result
 
 
 @router.get("/health")

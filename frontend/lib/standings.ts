@@ -86,6 +86,10 @@ export function formatDriverName(full: string): string {
 export interface SeasonStamp {
   /** "After Round 14 of 23 · Spanish Grand Prix", or a shorter form when less is known. */
   label: string;
+  /** `label` without the event: "After Round 14 of 23". Equal to `label` when `event` is null. */
+  lead: string;
+  /** The as-of event, so the page can link it to its circuit; null when the calendar can't name one. */
+  event: Race | null;
   /** Every round on the calendar has been held — the season is over. */
   final: boolean;
 }
@@ -111,17 +115,18 @@ export function seasonStamp(racesCompleted: number, calendar: Race[] | null): Se
   );
   const total = rounds.length;
   if (total === 0 || racesCompleted > total) {
-    return {
-      label: `After ${racesCompleted} ${racesCompleted === 1 ? 'round' : 'rounds'}`,
-      final: false,
-    };
+    const lead = `After ${racesCompleted} ${racesCompleted === 1 ? 'round' : 'rounds'}`;
+    return { label: lead, lead, event: null, final: false };
   }
 
-  const event = rounds.find((race) => race.round === racesCompleted);
+  const event = rounds.find((race) => race.round === racesCompleted) ?? null;
+  const lead = event
+    ? `After Round ${racesCompleted} of ${total}`
+    : `After ${racesCompleted} of ${total} rounds`;
   return {
-    label: event
-      ? `After Round ${racesCompleted} of ${total} · ${event.name}`
-      : `After ${racesCompleted} of ${total} rounds`,
+    label: event ? `${lead} · ${event.name}` : lead,
+    lead,
+    event,
     final: racesCompleted === total,
   };
 }

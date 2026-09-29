@@ -2,9 +2,11 @@
 
 import { useEffect, useState, type ReactNode } from 'react';
 import { motion, type MotionProps } from 'motion/react';
+import Link from 'next/link';
 import { CircuitGlow } from '@/components/candy/circuit-glow';
 import { useReducedMotionSafe } from '@/hooks/use-reduced-motion-safe';
-import { loadCircuitByLocation, type CircuitGeometry } from '@/lib/circuit-geometry';
+import { canonicalSlug, loadCircuitByLocation, type CircuitGeometry } from '@/lib/circuit-geometry';
+import { focusRing } from '@/lib/focus';
 import { cn } from '@/lib/utils';
 import type { RaceInfo } from '@/types';
 
@@ -234,7 +236,20 @@ export function BriefingCircuitBand({ raceInfo, round, className }: BriefingCirc
       // printing it would label the circuit row with the name of a Grand Prix, which is a worse
       // label than printing nothing.
       label: 'CIRCUIT',
-      value: geometry.name,
+      // Linked to the circuit's own page: the band is the briefing's one mention of the track,
+      // and /circuits/[slug] is where its facts and winners live. `canonicalSlug` is non-null for
+      // any geometry the loader returned, since both read the same 40 files.
+      value: (
+        <Link
+          href={`/circuits/${canonicalSlug(geometry.id) ?? ''}`}
+          className={cn(
+            'rounded underline decoration-zinc-600 underline-offset-2 hover:decoration-zinc-300',
+            focusRing,
+          )}
+        >
+          {geometry.name}
+        </Link>
+      ),
       valueClassName: 'text-sm leading-snug text-ink',
     });
   }

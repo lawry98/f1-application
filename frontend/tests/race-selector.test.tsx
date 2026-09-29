@@ -66,6 +66,8 @@ const RACES: Race[] = [
     country: 'Australia',
     date: '2026-03-08 00:00:00',
     round: 1,
+    event_format: 'conventional',
+    official_name: 'Australian Grand Prix',
   },
   {
     name: 'Chinese Grand Prix',
@@ -73,6 +75,8 @@ const RACES: Race[] = [
     country: 'China',
     date: '2026-03-15 00:00:00',
     round: 2,
+    event_format: 'conventional',
+    official_name: 'Chinese Grand Prix',
   },
 ];
 

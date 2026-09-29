@@ -85,7 +85,8 @@ than quietly mis-framing both routes.
 
 Not a page-level scene — the building blocks both scenes compose:
 
-- `RealCar` — loads `/models/f1-car.glb` via `useLoader(GLTFLoader)`, clones the scene
+- `RealCar` — loads `/models/f1-car.glb` via `useLoader(GLTFLoader)` with three-stdlib's
+  `MeshoptDecoder` registered (the GLB's geometry is meshopt-compressed; see below), clones the scene
   **once per mount** (the clone stays inside `useMemo`; the GLTF is cached by
   `useLoader`, so livery materials are cloned before recolouring and disposed on unmount).
   Team color changes repaint the cloned texture in place — no re-clone per color.
@@ -119,7 +120,13 @@ fraction of the size of the car that replaces it, and the swap jumps.
 
 ## 3D Model
 
-The model is **committed** at `public/models/f1-car.glb` — no download step.
+The model is **committed** at `public/models/f1-car.glb` — no download step. It is not the file
+Sketchfab serves: [`scripts/compress-car-model.mjs`](../../scripts/compress-car-model.mjs) builds
+it from that export (kept in git history, pinned by SHA-256) with gltfpack, quantizing and
+meshopt-compressing the geometry and passing the textures through untouched — 7.57 MB to 1.35 MB,
+every triangle kept. Change the model by changing that script and re-running it, never by
+dropping in a re-export: `tests/car-model-asset.test.ts`, `tests/scene-fit.test.ts` and
+`tests/livery.test.ts` all read this exact file.
 
 **Credits:** "F1 2026 Release Car" (https://skfb.ly/oWL8J) by Nimaxo is licensed under
 Creative Commons Attribution (http://creativecommons.org/licenses/by/4.0/).
@@ -127,7 +134,9 @@ Creative Commons Attribution (http://creativecommons.org/licenses/by/4.0/).
 ## Dependencies
 
 Everything needed is already declared in `package.json`: `three`, `three-stdlib`
-(GLTFLoader), `@react-three/fiber`, and `@types/three`.
+(GLTFLoader and `MeshoptDecoder`, whose wasm is inlined — no decoder file to host),
+`@react-three/fiber`, and `@types/three`. `gltfpack` is a devDependency, exact-pinned because the
+committed GLB's bytes depend on its version.
 
 ## Team Colors
 

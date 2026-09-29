@@ -44,9 +44,12 @@ test('a flush control on base takes the red ring', async ({ page }) => {
 // `/candy` is omitted: it's a pure demo styleguide with no focusable controls by design
 // (app/candy/page.tsx), so `tabThroughPage` reaches zero controls there — it's still covered
 // by the invisible-text and axe specs.
-for (const route of ['/', '/teams', '/tyres']) {
+// Routes are listed by hand, not discovered — a new route joins the sweep only when it is added here.
+for (const route of ['/', '/teams', '/tyres', '/circuits', '/circuits/monza']) {
   test(`no focusable control on ${route} paints Tailwind's default blue ring`, async ({ page }) => {
     await page.goto(route);
+    if (route === '/circuits') await expect(page.getByRole('list', { name: /calendar$/ })).toBeVisible();
+    if (route === '/circuits/monza') await expect(page.getByRole('table')).toBeVisible();
     const states = await tabThroughPage(page);
     expect(states.length, 'Tab reached no controls at all').toBeGreaterThan(0);
     const blue = states.filter((s) => s.boxShadow.includes(TAILWIND_DEFAULT_RING)).map((s) => s.label);

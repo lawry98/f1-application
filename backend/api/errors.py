@@ -10,7 +10,7 @@ Putting them here would mean routing them through a boundary that cannot tell
 the difference, and the whole point of this module is that the boundary does not
 have to.
 
-Four constants rather than one because the copy has to match what failed:
+Five constants rather than one because the copy has to match what failed:
 "Something went wrong generating this briefing" is wrong for a season calendar
 fetch, where no briefing is being generated at all.
 
@@ -24,5 +24,9 @@ GENERIC_BRIEFING_ERROR: str = "Something went wrong generating this briefing. Pl
 GENERIC_SCHEDULE_ERROR: str = "Could not load the race calendar. Please try again."
 
 GENERIC_STANDINGS_ERROR: str = "Could not load the championship standings. Please try again."
+
+GENERIC_CIRCUIT_WINNERS_ERROR: str = (
+    "Could not load this circuit's recent winners. Please try again."
+)
 
 FAILED_TOOL_SUMMARY: str = "Tool failed — see server logs."
