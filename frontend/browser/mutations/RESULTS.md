@@ -213,3 +213,31 @@ landed, the canvas still showed the first-pass stand-in. Before the patch was ge
 tree passed the spec `40 passed` under `--repeat-each=10 --retries=0`. `pnpm test:browser:mutants 06` rebuilt
 the clean tree afterwards; `git status --porcelain` was empty.
 
+
+## 07
+
+Date: 2026-09-29
+Commit: `adbceeb25ca2ba3709533ccb850daebf92c9e24d`
+Run: `pnpm test:browser:mutants 07`
+
+```
+┌─────────┬──────────────────────────────────────┬──────────┬─────────────┐
+│ (index) │ patch                                │ outcome  │ detail      │
+├─────────┼──────────────────────────────────────┼──────────┼─────────────┤
+│ 0       │ '07-car-shadow-no-normal-bias.patch' │ 'killed' │ 'failed: 2' │
+└─────────┴──────────────────────────────────────┴──────────┴─────────────┘
+```
+
+`killed`. Both titles in `mustFail` failed, at both poses, after the clean-tree baseline passed
+(`2 passed`):
+
+```
+/showcase  at 0.6 rad the car is 5.83 noisy with its own shadows, 2.19 without
+/showcase  at 2.4 rad the car is 3.72 noisy with its own shadows, 1.88 without
+/teams     at 0.6 rad the car is 12.44 noisy with its own shadows, 2.69 without
+/teams     at 2.4 rad the car is 8.00 noisy with its own shadows, 2.40 without
+```
+
+Ratios of 1.98 to 4.62 against a limit of 1.5; the clean tree reads 1.01 to 1.08. Before this
+run the clean tree passed the spec `20 passed` under `--repeat-each=10 --retries=0`. The runner
+rebuilt the clean tree afterwards; `git status --porcelain` was empty.

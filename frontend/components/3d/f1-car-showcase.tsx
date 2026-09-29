@@ -7,7 +7,7 @@ import { TEAMS, type Team } from '@/data/teams-data';
 import { LiverySelect } from '@/components/showcase/livery-select';
 import { CAR_SWEPT, CAR_TARGET, SHOWCASE_FIT_MARGIN } from '@/lib/scene-fit';
 import { FitCamera } from './fit-camera';
-import { PrimitiveCar, RealCar } from './f1-car-model';
+import { CAR_SHADOW_NORMAL_BIAS, PrimitiveCar, RealCar } from './f1-car-model';
 
 const FOG_COLOR = '#0a0a0a';
 
@@ -83,6 +83,7 @@ export default function F1CarShowcase() {
               intensity={1.5}
               castShadow
               shadow-mapSize={[2048, 2048]}
+              shadow-normalBias={CAR_SHADOW_NORMAL_BIAS}
               /*
                * three.js defaults a directional light's shadow camera to a 10x10 box, which the
                * car overflows the moment it is rendered at its real size — it sweeps a 12-unit
@@ -97,7 +98,14 @@ export default function F1CarShowcase() {
             <pointLight position={[-8, 3, -5]} intensity={0.6} color="#ff0000" />
             <pointLight position={[8, 3, -5]} intensity={0.5} color="#ffffff" />
             <pointLight position={[0, -2, 0]} intensity={0.3} color="#0066ff" />
-            <spotLight position={[0, 8, 8]} angle={0.3} penumbra={1} intensity={1} castShadow />
+            <spotLight
+              position={[0, 8, 8]}
+              angle={0.3}
+              penumbra={1}
+              intensity={1}
+              castShadow
+              shadow-normalBias={CAR_SHADOW_NORMAL_BIAS}
+            />
 
             <Suspense fallback={null}>
               <ShowcaseCarModel teamColor={selectedTeam.color} />
