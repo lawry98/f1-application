@@ -145,39 +145,41 @@ function formatBandDate(raw: string): string | null {
  * **The `active` flag is not boilerplate.** A user can submit a second race while the first
  * circuit's chunk is still in flight, and without the guard that resolution would paint the
  * *previous* race's circuit name and outline onto the new race's band — a wrong fact, not a
- * cosmetic glitch. Clearing to `null` synchronously when the location changes closes the other
- * half of the same window, where the old geometry stays on screen next to the new race's rows.
+ * cosmetic glitch. Tagging each result with the location it was loaded for closes the other half
+ * of the same window, where the old geometry stays on screen next to the new race's rows: a
+ * result for any other location reads as `null` in the very render that changes it, with no
+ * effect needed to clear it first.
  */
 function useCircuitGeometry(location: string | null): CircuitGeometry | null {
-  const [geometry, setGeometry] = useState<CircuitGeometry | null>(null);
+  const [loaded, setLoaded] = useState<{
+    location: string;
+    geometry: CircuitGeometry | null;
+  } | null>(null);
 
   useEffect(() => {
-    let active = true;
-    setGeometry(null);
-
     // A `null` location is the shell: the stream has not said which race this is yet, so there is
-    // nothing to look up. Guarded rather than early-returned so the cleanup below stays on the
-    // one path every branch shares.
-    if (location !== null) {
-      void loadCircuitByLocation(location).then(
-        (loaded) => {
-          if (active) setGeometry(loaded);
-        },
-        // A rejected load is a miss, and a miss hides the visual entirely — no placeholder shape,
-        // no error banner, and deliberately no `console.warn` either. Nothing on this band is
-        // worth interrupting a briefing for.
-        () => {
-          if (active) setGeometry(null);
-        },
-      );
-    }
+    // nothing to look up.
+    if (location === null) return;
+
+    let active = true;
+    void loadCircuitByLocation(location).then(
+      (geometry) => {
+        if (active) setLoaded({ location, geometry });
+      },
+      // A rejected load is a miss, and a miss hides the visual entirely — no placeholder shape,
+      // no error banner, and deliberately no `console.warn` either. Nothing on this band is
+      // worth interrupting a briefing for.
+      () => {
+        if (active) setLoaded({ location, geometry: null });
+      },
+    );
 
     return () => {
       active = false;
     };
   }, [location]);
 
-  return geometry;
+  return loaded !== null && loaded.location === location ? loaded.geometry : null;
 }
 
 interface BandRow {

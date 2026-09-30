@@ -661,9 +661,12 @@ Vitest with jsdom, in `frontend/tests/`. A few things about them are not guessab
   walked only the directories in `next.config.js`'s `eslint.dirs` — `tests/`, `browser/` and
   `scripts/` were linted only because someone had added them, and a directory left off passed
   while never being looked at. `eslint.config.mjs` (flat config) now takes the whole package, so
-  a new top-level directory is linted by default; only generated output is ignored. Four React
-  Compiler rules that eslint-config-next 16 switched on are off there — the comment says which
-  and why.
+  a new top-level directory is linted by default; only generated output is ignored. Every React
+  Compiler rule eslint-config-next 16 switched on is enforced, with two scoped exceptions and the
+  reason beside each: `immutability` for `components/3d/fit-camera.tsx` (R3F's three.js objects
+  are meant to be mutated) and `purity` for vendored `components/ui/`. Fix a new violation in the
+  code — `useSyncExternalStore`, `useEffectEvent`, a `key`, state derived during render — before
+  reaching for another override.
 - **The `.sse` fixtures are real captured bytes, not hand-written.** `frontend/tests/fixtures/`
   holds output from the actual FastAPI route; regenerate with
   `cd backend && python scripts/dump_sse_fixtures.py`, which imports its step fixtures from

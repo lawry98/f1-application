@@ -1,5 +1,5 @@
 diff --git a/frontend/hooks/use-scroll-spy.ts b/frontend/hooks/use-scroll-spy.ts
-index 28f1628..532fbda 100644
+index eff68b7..75ce631 100644
 --- a/frontend/hooks/use-scroll-spy.ts
 +++ b/frontend/hooks/use-scroll-spy.ts
 @@ -43,27 +43,18 @@ export function pickActive(ids: string[], covered: Map<string, number>): string
@@ -40,7 +40,7 @@ index 28f1628..532fbda 100644
   */
  export function useScrollSpy(ids: string[]): {
    activeId: string;
-@@ -97,60 +88,39 @@ export function useScrollSpy(ids: string[]): {
+@@ -94,60 +85,39 @@ export function useScrollSpy(ids: string[]): {
    );
  
    useEffect(() => {
@@ -57,14 +57,14 @@ index 28f1628..532fbda 100644
  
 -      const bandTop = window.innerHeight * BAND_TOP;
 -      const bandBottom = window.innerHeight * BAND_BOTTOM;
-+        const winner = pickActive(idsRef.current, coveredRef.current);
++        const winner = pickActive(ids, coveredRef.current);
 +        // Nothing covers the band — between sections, or mid-hero. Keep the last answer
 +        // rather than blanking, which would clear the rail's highlight for a frame.
 +        if (winner === null) return;
  
 -      // One uninterrupted read pass. Eleven `getBoundingClientRect` calls with no writes
 -      // between them cost a single layout flush, not eleven.
--      for (const id of idsRef.current) {
+-      for (const id of ids) {
 -        const el = document.getElementById(`team-${id}`);
 -        if (el === null) {
 -          coveredRef.current.delete(id);
@@ -80,7 +80,7 @@ index 28f1628..532fbda 100644
 -        );
 -      }
 -
--      const winner = pickActive(idsRef.current, coveredRef.current);
+-      const winner = pickActive(ids, coveredRef.current);
 -      // Nothing covers the band — between sections, or mid-hero. Keep the last answer
 -      // rather than blanking, which would clear the rail's highlight for a frame.
 -      if (winner === null) return;
@@ -128,6 +128,6 @@ index 28f1628..532fbda 100644
 +    }
 +
 +    return () => observer.disconnect();
-     // `ids` is a stable module-level array in practice, so its identity is a valid dep.
+     // `ids` is a stable module-level array in practice, so its identity is a valid dep — and
+     // re-subscribing on a new one is what keeps `measure` reading the current list.
    }, [ids, releaseClaim]);
- 
