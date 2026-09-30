@@ -100,3 +100,49 @@ def test_an_invalid_standings_ttl_falls_back_to_the_default(reload_config, raw, 
         assert reload_config(STANDINGS_TTL_SECONDS=raw).STANDINGS_TTL_SECONDS == 300
 
     assert "STANDINGS_TTL_SECONDS" in caplog.text
+
+
+# ── The "is this key real?" predicate ────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "",
+        "   ",
+        # The three values env.example ships, verbatim — copying the file without editing it
+        # must leave every integration off, not send these strings upstream to earn a 401.
+        "your-google-ai-studio-api-key-here",
+        "tvly-your-tavily-api-key-here",
+        "your-openweather-api-key-here",
+        # Case and surrounding whitespace do not make a placeholder real.
+        "  YOUR-OPENWEATHER-API-KEY-HERE  ",
+        "tvly-your-key-here",
+    ],
+)
+def test_empty_and_placeholder_keys_are_not_configured(value):
+    assert config.is_configured(value) is False
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["AIza-valid-key", "tvly-dev-AbC123", "0123456789abcdef0123456789abcdef"],
+)
+def test_a_real_looking_key_is_configured(value):
+    assert config.is_configured(value) is True
+
+
+def test_validate_config_warns_for_a_placeholder_openweather_key_it_used_to_accept(
+    monkeypatch, caplog
+):
+    """The old OpenWeather check was an exact match on one string, so a variant placeholder
+    passed validation and went upstream. The predicate is shared, so it cannot drift again.
+    """
+    monkeypatch.setattr(config, "GOOGLE_API_KEY", "AIza-valid-key")
+    monkeypatch.setattr(config, "TAVILY_API_KEY", "tvly-real-key")
+    monkeypatch.setattr(config, "OPENWEATHER_API_KEY", "your-openweather-key")
+
+    with caplog.at_level(logging.WARNING, logger="config"):
+        config.validate_config()
+
+    assert "weather features will be disabled" in caplog.text

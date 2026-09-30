@@ -5,7 +5,7 @@ from typing import Any
 from langchain_core.tools import tool
 from tavily import TavilyClient
 
-from config import TAVILY_API_KEY
+from config import TAVILY_API_KEY, is_configured
 
 
 @tool
@@ -20,7 +20,7 @@ def search_f1_news(query: str, max_results: int = 5) -> dict[str, Any]:
         Dictionary with 'articles' list and 'count', or an 'error' key on failure.
     """
     try:
-        if not TAVILY_API_KEY:
+        if not is_configured(TAVILY_API_KEY):
             return {"error": "TAVILY_API_KEY not configured"}
 
         client = TavilyClient(api_key=TAVILY_API_KEY)

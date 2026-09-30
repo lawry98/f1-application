@@ -2,6 +2,7 @@
 
 import logging
 import os
+import re
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -17,6 +18,25 @@ LLM_MODEL: str = "gemini-3.6-flash"
 # default sampling in any case, and Google warns that lowering temperature risks looping or
 # degraded reasoning, so there is nothing to tune here even where the knob is honoured.
 # Do not reintroduce one for the synthesizer's prose.
+
+# ── Key hygiene ──────────────────────────────────────────────────────────────
+
+# env.example ships `your-…-here` for every key and `tvly-your-…` for Tavily's. No real key from
+# any of the three providers has that shape, so the pattern is the whole of "placeholder".
+_PLACEHOLDER_KEY = re.compile(r"(tvly-)?your-[a-z0-9-]*")
+
+
+def is_configured(value: str) -> bool:
+    """Whether an API key holds a real value: not empty, and not an env.example placeholder.
+
+    The one test for every key, in validate_config and in the tools alike. A placeholder that
+    passed a tool's own non-empty check went upstream and earned a 401 while the startup log
+    said the feature was disabled — the log and the behaviour disagreed because they used two
+    different tests.
+    """
+    candidate = value.strip().lower()
+    return bool(candidate) and not _PLACEHOLDER_KEY.fullmatch(candidate)
+
 
 # ── Optional integrations ────────────────────────────────────────────────────
 
@@ -99,7 +119,7 @@ COUNTRY_CODE_MAP: dict[str, str] = {
 
 def validate_config() -> None:
     """Validate required environment variables; exit on fatal misconfiguration."""
-    if not GOOGLE_API_KEY or GOOGLE_API_KEY.startswith("your-google"):
+    if not is_configured(GOOGLE_API_KEY):
         logger.critical(
             "GOOGLE_API_KEY not configured. "
             "Edit backend/.env and add your actual Google AI Studio API key. "
@@ -107,13 +127,13 @@ def validate_config() -> None:
         )
         raise SystemExit(1)
 
-    if not TAVILY_API_KEY or TAVILY_API_KEY.startswith("tvly-your"):
+    if not is_configured(TAVILY_API_KEY):
         logger.warning(
             "TAVILY_API_KEY not configured — news search will be disabled. "
             "Get your key from: https://tavily.com"
         )
 
-    if not OPENWEATHER_API_KEY or OPENWEATHER_API_KEY == "your-openweather-api-key-here":
+    if not is_configured(OPENWEATHER_API_KEY):
         logger.warning(
             "OPENWEATHER_API_KEY not configured — weather features will be disabled. "
             "Get your key from: https://openweathermap.org/api"

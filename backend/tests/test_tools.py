@@ -76,6 +76,23 @@ def test_weather_without_a_key_reports_it_and_does_not_call_out():
     assert result == {"error": "OPENWEATHER_API_KEY not configured"}
 
 
+def _refuse_network(*args, **kwargs):
+    raise AssertionError("a tool with no usable key must not reach the network")
+
+
+@pytest.mark.parametrize("key", ["", "your-openweather-api-key-here", "  your-openweather-key "])
+def test_weather_with_an_unusable_key_is_not_configured_and_makes_no_request(monkeypatch, key):
+    """An env.example placeholder used to reach OpenWeather and earn a 401 while the startup
+    log claimed weather was disabled. It must be treated exactly like no key at all.
+    """
+    monkeypatch.setattr(weather_tools, "OPENWEATHER_API_KEY", key)
+    monkeypatch.setattr(weather_tools.requests, "get", _refuse_network)
+
+    result = get_race_weather.invoke({"city": "Monaco", "country_code": "MC"})
+
+    assert result == {"error": "OPENWEATHER_API_KEY not configured"}
+
+
 def test_weather_reports_a_failed_geocode_status(monkeypatch, openweather_key):
     """A non-200 geocode response is an HTTP failure, distinct from city-not-found."""
     monkeypatch.setattr(weather_tools.requests, "get", lambda *a, **kw: FakeResponse([], 401))
@@ -181,6 +198,22 @@ def make_tavily_client(response: dict[str, Any] | None = None, raises: Exception
 
 def test_search_without_a_key_reports_it():
     result = search_f1_news.invoke({"query": "Monaco Grand Prix 2025"})
+    assert result == {"error": "TAVILY_API_KEY not configured"}
+
+
+@pytest.mark.parametrize("key", ["", "tvly-your-tavily-api-key-here", "TVLY-YOUR-KEY-HERE"])
+def test_search_with_an_unusable_key_is_not_configured_and_makes_no_request(monkeypatch, key):
+    """Same trap as the weather key: a placeholder is a missing key, not a credential to try."""
+
+    class _RefusingClient:
+        def __init__(self, *args, **kwargs):
+            _refuse_network()
+
+    monkeypatch.setattr(search_tools, "TAVILY_API_KEY", key)
+    monkeypatch.setattr(search_tools, "TavilyClient", _RefusingClient)
+
+    result = search_f1_news.invoke({"query": "Monaco Grand Prix 2025"})
+
     assert result == {"error": "TAVILY_API_KEY not configured"}
 
 

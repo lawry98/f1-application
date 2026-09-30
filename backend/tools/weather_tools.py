@@ -5,7 +5,7 @@ from typing import Any
 import requests
 from langchain_core.tools import tool
 
-from config import OPENWEATHER_API_KEY
+from config import OPENWEATHER_API_KEY, is_configured
 
 
 @tool
@@ -20,7 +20,7 @@ def get_race_weather(city: str, country_code: str) -> dict[str, Any]:
         Dictionary with weather forecast data or an 'error' key on failure.
     """
     try:
-        if not OPENWEATHER_API_KEY:
+        if not is_configured(OPENWEATHER_API_KEY):
             return {"error": "OPENWEATHER_API_KEY not configured"}
 
         geo_response = requests.get(
