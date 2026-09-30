@@ -333,10 +333,18 @@ circuit and reveals when all have settled; `tests/circuit-imports.test.ts` fails
 import of an outline outside the three files that draw one known circuit.
 
 **`/circuits/<alias>` redirects, and an unknown slug 404s — both as an HTTP 200.** The route
-resolves through `redirect()` or `notFound()` in `app/circuits/[slug]/page.tsx`, but the root
-`app/loading.tsx` streams the response, so both a client-side redirect and a soft 404 land with
-status 200. `browser/circuits.spec.ts` asserts the landed URL and the rendered not-found content,
+resolves through `redirect()` or `notFound()` in `app/circuits/[slug]/page.tsx`, but
+`app/circuits/loading.tsx` streams the response, so both a client-side redirect and a soft 404 land
+with status 200. `browser/circuits.spec.ts` asserts the landed URL and the rendered not-found content,
 never the response status.
+
+**`loading.tsx` goes on a dynamic segment only, never at the root.** A root one wraps every page in
+a Suspense boundary, and React 19 streams a finished boundary *outlined* once its content passes
+12,800 bytes, then reveals it no sooner than 300ms after first paint. On Next 16 that put seven
+static routes on the spinner first — `/` read its spinner at +150ms in 3 of 5 loads, where Next 14
+inlined every route. So only `app/circuits/` and `app/standings/` carry one: there a client
+navigation shows it at once while the server renders. The price is `/circuits/[slug]`, whose page
+is big enough to be outlined too, so a hard load of it still opens on the spinner (5 of 5).
 
 **`gltf.scene.clone()` must stay inside `useMemo`** — without it Three.js re-clones the scene on
 every render.
@@ -694,13 +702,13 @@ required CI check (`browser` job). Things that are not guessable:
 - **Build first, every time.** The suite never builds, and `reuseExistingServer` is off, so it
   always tests the bundle in `.next`. After `pnpm test:browser:mutants` locally, the runner
   rebuilds the clean tree; if you kill it midway, rebuild before trusting a result.
-- **`page.goto` resolving does not mean the page is showing — `waitForMain` first.** React 19
-  streams a finished Suspense boundary *outlined* once its content passes 12,800 bytes, and
-  reveals it no sooner than 300ms after first paint. So on Next 16 seven routes' HTML opens on
-  the root `app/loading.tsx` spinner with the page in a `hidden` div (on `/`: `load` at 83ms,
-  reveal at 333ms); on Next 14 none did. The focus sweep tabbed through a spinner and reached
-  zero controls, 6 runs in 21. A sweep that reads text or colour would *pass* on a page it never
-  saw. `browser/support/page-content.ts` explains the rest; any new route sweep calls it.
+- **`page.goto` resolving does not mean the page is showing — `waitForMain` first.** A
+  placeholder can outlive it: `/circuits/[slug]`'s outlined `loading.tsx` spinner (see "loading.tsx
+  goes on a dynamic segment only") and the `next/dynamic` loading screens of `/showcase` and
+  `/teardown`. When the root still had a `loading.tsx`, the focus sweep tabbed through a spinner and
+  reached zero controls, 6 runs in 21 (on `/`: `load` at 83ms, reveal at 333ms). A sweep that reads
+  text or colour would *pass* on a page it never saw. `browser/support/page-content.ts` explains
+  the rest; any new route sweep calls it.
 - **A contrast assertion names a WCAG floor and a site, never a measured ratio:**
   `expectContrast(loc, { atLeast: AA_SMALL_TEXT, site: 'rail active row over bg-zinc-800/60' })`.
   The text colour is computed style; the backdrop is pixels, from `backdropBehindGlyphs`, which

@@ -32,8 +32,8 @@ test('the season picker replaces the URL, so Back leaves the page rather than th
 });
 
 test('an alias slug redirects to its canonical URL, and ?year= survives', async ({ page }) => {
-  // `app/loading.tsx` streams the redirect with HTTP 200, so status/Location-header assertions
-  // don't work here — assert the landed URL instead. `Monza` (mis-cased) resolves to
+  // `app/circuits/loading.tsx` streams the redirect with HTTP 200, so status/Location-header
+  // assertions don't work here — assert the landed URL instead. `Monza` (mis-cased) resolves to
   // the same circuit as the canonical `monza` slug and has a captured winners fixture, unlike
   // `bahrain` → `sakhir` (bh-2002), which is not mocked and would fail closed.
   await page.goto('/circuits/Monza?year=2024');
