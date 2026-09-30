@@ -269,6 +269,16 @@ def test_a_transport_failure_becomes_an_error_not_a_raise():
     assert "reason" not in result
 
 
+def test_a_failure_is_logged_with_its_exception_type(caplog):
+    """This tool has no FastF1 fallback, so its failure is the one a reader sees — a briefing
+    with no Championship Context — and it used to leave no trace in the log."""
+    with caplog.at_level("WARNING", logger="tools.standings_tools"):
+        get_championship_standings.invoke({"year": 2024})
+
+    assert "ConnectionError" in caplog.text
+    assert "2024" in caplog.text
+
+
 @freeze_time("2024-06-01")
 def test_the_whole_table_costs_three_requests(openf1_season):
     """One sessions fetch per session_name, one range query for results, one for drivers.

@@ -14,6 +14,7 @@ The ``SessionN`` / ``SessionNDateUtc`` pairs are the resolver's source for a wee
 and its ``as_of`` cutoff. FastF1 serves the UTC column tz-naive, so the fixtures do too.
 """
 
+import threading
 from datetime import timedelta
 from typing import Any
 
@@ -285,11 +286,61 @@ def make_openf1_get(routes: dict[str, Any], status_code: int = 200, *, by_year: 
 
 
 class _FakeOpenF1Response:
-    """Stand-in for a ``requests.Response`` — only status_code and json() are consumed."""
+    """Stand-in for a ``requests.Response`` — status_code, headers and json() are consumed."""
 
-    def __init__(self, payload: Any, status_code: int) -> None:
+    def __init__(self, payload: Any, status_code: int, headers: dict[str, str] | None = None):
         self.status_code = status_code
+        self.headers = headers or {}
         self._payload = payload
 
     def json(self) -> Any:
         return self._payload
+
+
+class FakeClock:
+    """A monotonic clock whose ``sleep`` advances it instead of waiting. Thread-safe.
+
+    The OpenF1 client's rate limiter and retry backoff take their clock and sleep from here in
+    the suite (conftest installs one per test), so a throttled or retried request costs no real
+    time and every wait is recorded in ``sleeps``.
+    """
+
+    def __init__(self) -> None:
+        self._now = 0.0
+        self._lock = threading.Lock()
+        self.sleeps: list[float] = []
+
+    def now(self) -> float:
+        with self._lock:
+            return self._now
+
+    def sleep(self, seconds: float) -> None:
+        with self._lock:
+            self.sleeps.append(seconds)
+            self._now += seconds
+
+
+def make_openf1_sequence(statuses: list[int], payload: Any, headers: dict[str, str] | None = None):
+    """A ``requests.get`` stand-in answering the Nth call with ``statuses[N]`` (the last repeats).
+
+    Records ``.calls`` like ``make_openf1_get``. ``headers`` go on every non-200 response, which
+    is where a 429's Retry-After lives.
+    """
+
+    class _SequenceGet:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, Any]] = []
+            self._lock = threading.Lock()
+
+        def __call__(self, url: str, params: dict[str, Any] | None = None, **kwargs: Any):
+            with self._lock:
+                index = len(self.calls)
+                self.calls.append({"url": url, "params": params or {}})
+            status = statuses[min(index, len(statuses) - 1)]
+            return _FakeOpenF1Response(
+                payload if status == 200 else {"detail": "error"},
+                status,
+                None if status == 200 else headers,
+            )
+
+    return _SequenceGet()

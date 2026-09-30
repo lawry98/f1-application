@@ -312,4 +312,7 @@ def _derive_standings(year: int, as_of: str | None) -> dict[str, Any]:
             table["as_of"] = as_of
         return table
     except Exception as exc:
+        # No FastF1 fallback here, so this is a briefing's missing Championship Context or a
+        # /standings 502 — logged, still returned as a value.
+        logger.warning("Standings for %d unavailable (%s: %s)", year, type(exc).__name__, exc)
         return {"error": f"Failed to get championship standings: {exc}"}

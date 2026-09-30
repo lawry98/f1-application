@@ -12,8 +12,9 @@ import time
 
 import pytest
 import requests
+from freezegun import freeze_time
 
-from tests.factories import make_openf1_get
+from tests.factories import make_openf1_get, make_openf1_sequence
 from tools import openf1_client
 from tools.openf1_client import (
     OPENF1_BASE_URL,
@@ -427,3 +428,184 @@ def test_a_failed_in_flight_fetch_propagates_to_every_waiter_and_is_not_cached(m
 
     assert list_meetings(2026) == [{"meeting_key": 2}]
     assert len(fake.calls) == 2
+
+
+# ── Throttle and retry ────────────────────────────────────────────────────────────────
+#
+# The first briefing after a restart fanned seven tools out cold against OpenF1's free tier
+# (3 req/s, 30 req/min) and one request got a 429 — the standings, which have no FastF1
+# fallback, were lost. conftest's ``openf1_clock`` gives every test a fake clock, so these
+# waits cost nothing and are all recorded.
+
+ROWS = [{"meeting_key": 1}]
+
+
+def test_two_429s_then_a_200_returns_the_rows(monkeypatch, openf1_clock):
+    fake = make_openf1_sequence([429, 429, 200], ROWS)
+    monkeypatch.setattr(openf1_client.requests, "get", fake)
+
+    assert list_meetings(2026) == ROWS
+    assert len(fake.calls) == 3
+    assert len(openf1_clock.sleeps) == 2
+
+
+def test_a_retry_after_header_is_honoured(monkeypatch, openf1_clock):
+    fake = make_openf1_sequence([429, 200], ROWS, headers={"Retry-After": "2"})
+    monkeypatch.setattr(openf1_client.requests, "get", fake)
+
+    list_meetings(2026)
+
+    assert openf1_clock.sleeps == [2.0]
+
+
+@pytest.mark.parametrize("status", [502, 503, 504])
+def test_a_gateway_failure_is_retried_too(monkeypatch, status):
+    fake = make_openf1_sequence([status, 200], ROWS)
+    monkeypatch.setattr(openf1_client.requests, "get", fake)
+
+    assert list_meetings(2026) == ROWS
+
+
+def test_retries_stop_after_three_and_name_the_status(monkeypatch, openf1_clock):
+    fake = make_openf1_sequence([503], ROWS)
+    monkeypatch.setattr(openf1_client.requests, "get", fake)
+
+    with pytest.raises(OpenF1Error, match="503"):
+        list_meetings(2026)
+
+    assert len(fake.calls) == 4
+    assert sum(openf1_clock.sleeps) <= 5.0
+
+
+def test_retries_stop_once_the_wait_would_pass_the_cap(monkeypatch, openf1_clock):
+    """Two 2s Retry-Afters fit in the ~5s budget; a third does not, so a briefing is never held
+    up for longer than that by one request."""
+    fake = make_openf1_sequence([429], ROWS, headers={"Retry-After": "2"})
+    monkeypatch.setattr(openf1_client.requests, "get", fake)
+
+    with pytest.raises(OpenF1Error, match="429"):
+        list_meetings(2026)
+
+    assert len(fake.calls) == 3
+    assert openf1_clock.sleeps == [2.0, 2.0]
+
+
+def test_a_retry_after_longer_than_the_budget_gives_up_at_once(monkeypatch, openf1_clock):
+    fake = make_openf1_sequence([429], ROWS, headers={"Retry-After": "30"})
+    monkeypatch.setattr(openf1_client.requests, "get", fake)
+
+    with pytest.raises(OpenF1Error, match="429"):
+        list_meetings(2026)
+
+    assert len(fake.calls) == 1
+    assert openf1_clock.sleeps == []
+
+
+@pytest.mark.parametrize("status", [400, 401, 404, 500])
+def test_any_other_error_status_is_not_retried(monkeypatch, status):
+    fake = make_openf1_sequence([status, 200], ROWS)
+    monkeypatch.setattr(openf1_client.requests, "get", fake)
+
+    with pytest.raises(OpenF1Error, match=str(status)):
+        list_meetings(2026)
+
+    assert len(fake.calls) == 1
+
+
+def test_a_timeout_is_not_retried(monkeypatch):
+    """A timeout has already spent OPENF1_TIMEOUT; retrying would triple it."""
+    calls = []
+
+    def _timeout(*args, **kwargs):
+        calls.append(args)
+        raise requests.Timeout("read timed out")
+
+    monkeypatch.setattr(openf1_client.requests, "get", _timeout)
+
+    with pytest.raises(requests.Timeout):
+        list_meetings(2026)
+
+    assert len(calls) == 1
+
+
+def test_waiters_on_a_retried_fetch_get_its_rows(monkeypatch):
+    """The retry lives in the single-flight fetcher, so the waiters keep waiting on its Event
+    and share the eventual 200 — no waiter issues a request of its own."""
+    sequence = make_openf1_sequence([429, 200], ROWS)
+
+    def _slow(url, params=None, **kwargs):
+        time.sleep(0.05)
+        return sequence(url, params=params)
+
+    monkeypatch.setattr(openf1_client.requests, "get", _slow)
+
+    results: list[list] = []
+    results_lock = threading.Lock()
+
+    def _call():
+        rows = list_meetings(2026)
+        with results_lock:
+            results.append(rows)
+
+    _run_concurrently(_call, 4)
+
+    assert results == [ROWS] * 4
+    assert len(sequence.calls) == 2
+
+
+def test_distinct_concurrent_requests_start_no_faster_than_the_limit(monkeypatch, openf1_clock):
+    """Seven different keys at once: three may start in the first second, six in the first
+    two, and none of that needs a real second to pass."""
+    starts: list[float] = []
+    starts_lock = threading.Lock()
+
+    def _get(url, params=None, **kwargs):
+        with starts_lock:
+            starts.append(openf1_clock.now())
+        return _BlockingResponse(ROWS)
+
+    monkeypatch.setattr(openf1_client.requests, "get", _get)
+
+    threads = [threading.Thread(target=list_meetings, args=(2000 + n,)) for n in range(7)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=5)
+
+    assert len(starts) == 7
+    assert sum(1 for t in starts if t < 1.0) <= 3
+    assert sum(1 for t in starts if t < 2.0) <= 6
+    assert max(starts) >= 2.0
+
+
+def test_the_limiter_admits_a_burst_up_to_the_limit_without_waiting():
+    from tests.factories import FakeClock
+
+    clock = FakeClock()
+    limiter = openf1_client.StartRateLimiter(3, 1.0, clock=clock.now, sleep=clock.sleep)
+
+    waits = [limiter.acquire() for _ in range(4)]
+
+    assert waits == [0.0, 0.0, 0.0, 1.0]
+
+
+@freeze_time("2026-09-30T12:00:00")
+def test_a_retry_after_http_date_is_honoured(monkeypatch, openf1_clock):
+    fake = make_openf1_sequence(
+        [429, 200], ROWS, headers={"Retry-After": "Wed, 30 Sep 2026 12:00:03 GMT"}
+    )
+    monkeypatch.setattr(openf1_client.requests, "get", fake)
+
+    list_meetings(2026)
+
+    assert openf1_clock.sleeps == [3.0]
+
+
+def test_an_unreadable_retry_after_falls_back_to_backoff(monkeypatch, openf1_clock):
+    fake = make_openf1_sequence([429, 200], ROWS, headers={"Retry-After": "soon"})
+    monkeypatch.setattr(openf1_client.requests, "get", fake)
+
+    list_meetings(2026)
+
+    assert len(openf1_clock.sleeps) == 1
+    assert 0.25 <= openf1_clock.sleeps[0] <= 0.5

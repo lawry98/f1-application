@@ -16,10 +16,18 @@ endpoint+params. The range pattern only removes the per-race loop; it says nothi
 about two different tools independently missing the same cache key at the same time.
 
 **Single-flight fetching.** ``_get`` coalesces concurrent misses for the same key so
-that duplicate case above costs one request, not four. Four tools fanning out still
-bursts several distinct requests against a 3 req/s ceiling — the range pattern and
-single-flight both help, but a 429 is still a real, expected outcome, and the FastF1
-fallback each tool carries is what absorbs it, not this module.
+that duplicate case above costs one request, not four. Distinct keys still burst: the
+first briefing after a restart fanned seven tools out cold, and one request got a 429 —
+the standings, which have no FastF1 fallback, were lost, and /standings answered 502.
+
+**Throttle, then retry.** Every request start takes a slot from one process-wide
+limiter, so the client never starts more than OpenF1's per-second limit, however many
+tools and routes are asking. A 429 or a 502/503/504 that still comes back is retried by
+the single-flight fetcher alone — waiters keep waiting on its Event and share the result
+— honouring Retry-After, else exponential backoff with jitter, at most three times and
+within about five seconds of added wait, so a briefing is slowed rather than stalled.
+Past that it raises ``OpenF1Error`` naming the status, and the tools' FastF1 fallbacks
+take over as before. A timeout or any other 4xx is never retried.
 
 **This module raises.** The never-raise contract belongs at the ``@tool`` boundary,
 where a failure has to become ``{"error": ...}``. A client that swallowed transport
@@ -28,7 +36,13 @@ distinction to decide whether to fall back to FastF1.
 """
 
 import logging
+import random
 import threading
+import time
+from collections import deque
+from collections.abc import Callable
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from typing import Any
 
 import requests
@@ -37,6 +51,24 @@ logger = logging.getLogger(__name__)
 
 OPENF1_BASE_URL = "https://api.openf1.org/v1"
 OPENF1_TIMEOUT = 15.0
+
+# OpenF1's published free-tier limits — "Up to 3 requests per second and 30 requests per
+# minute" (https://openf1.org/, checked 2026-09-30; sponsors get 6 and 60). The client
+# throttles to the per-second one. The per-minute one is a budget, not a throttle: waiting
+# out a minute would stall a briefing, so a breach surfaces as a 429 and the bounded retry
+# below. A cold briefing costs about eight requests and a cold /standings view four.
+OPENF1_REQUESTS_PER_SECOND = 3
+
+# Retried: rate limiting, and the gateway errors that mean "try again". Nothing else — a
+# timeout has already spent OPENF1_TIMEOUT, and any other 4xx will not change on a retry.
+RETRY_STATUSES = frozenset({429, 502, 503, 504})
+MAX_RETRIES = 3
+# Total seconds of backoff one request may add, so a briefing slows rather than stalls.
+MAX_RETRY_WAIT = 5.0
+# Exponential backoff with jitter, when there is no Retry-After: 0.25-0.5s, 0.5-1s, then
+# 1-2s — 3.5s at worst, so all three retries fit inside MAX_RETRY_WAIT. Only a long
+# Retry-After can reach the cap.
+BACKOFF_BASE = 0.5
 
 # OpenF1 coverage begins with the 2023 season; `sessions?year=2022` returns
 # {"detail": "No results found."}. Every coverage check in the codebase reads this
@@ -58,6 +90,109 @@ _in_flight_errors: dict[tuple[str, frozenset], BaseException] = {}
 
 class OpenF1Error(RuntimeError):
     """A non-200 from OpenF1. Transport failures surface as requests exceptions."""
+
+
+class StartRateLimiter:
+    """At most ``limit`` request starts in any rolling ``per`` seconds, across threads.
+
+    A rolling window rather than a fixed spacing, so a burst up to the limit starts at once —
+    two tools' requests still overlap — and only the request past it waits for the oldest start
+    to leave the window. The clock and the sleep are injectable so the suite never really waits.
+    """
+
+    def __init__(
+        self,
+        limit: int,
+        per: float,
+        *,
+        clock: Callable[[], float] = time.monotonic,
+        sleep: Callable[[float], None] = time.sleep,
+    ) -> None:
+        self._limit = limit
+        self._per = per
+        self._clock = clock
+        self._sleep = sleep
+        self._starts: deque[float] = deque()
+        self._lock = threading.Lock()
+
+    def acquire(self) -> float:
+        """Block until a start is allowed, record it, and return how long that took."""
+        waited = 0.0
+        while True:
+            with self._lock:
+                now = self._clock()
+                while self._starts and now - self._starts[0] >= self._per:
+                    self._starts.popleft()
+                if len(self._starts) < self._limit:
+                    self._starts.append(now)
+                    return waited
+                delay = self._per - (now - self._starts[0])
+            self._sleep(delay)
+            waited += delay
+
+
+# Process-wide on purpose: the limit is OpenF1's per client, not per tool or per request.
+# Never reset by `clear()`, which every route calls — that would free the slots of requests
+# another route is still making.
+_limiter = StartRateLimiter(OPENF1_REQUESTS_PER_SECOND, 1.0)
+_sleep: Callable[[float], None] = time.sleep
+
+
+def _retry_delay(response: Any, attempt: int) -> float:
+    """Seconds before retry ``attempt`` (0-based): Retry-After when OpenF1 sends one — in
+    seconds or as an HTTP date — else exponential backoff with jitter."""
+    retry_after = response.headers.get("Retry-After")
+    if retry_after is not None:
+        try:
+            return max(0.0, float(retry_after))
+        except ValueError:
+            try:
+                when = parsedate_to_datetime(retry_after)
+                return max(0.0, (when - datetime.now(UTC)).total_seconds())
+            except (TypeError, ValueError):
+                pass
+    return BACKOFF_BASE * 2**attempt * (0.5 + random.random() / 2)
+
+
+def _request(endpoint: str, params: dict[str, Any]) -> Any:
+    """One throttled GET, retried on RETRY_STATUSES within MAX_RETRIES and MAX_RETRY_WAIT.
+
+    Returns the final response, whatever its status, unless the retries ran out on a retryable
+    one — then raises ``OpenF1Error`` naming it. Transport exceptions, timeouts included,
+    propagate untouched on the first attempt.
+    """
+    waited = 0.0
+    for attempt in range(MAX_RETRIES + 1):
+        throttled = _limiter.acquire()
+        if throttled:
+            logger.info("Throttled OpenF1 %s: waited %.2fs for a request slot", endpoint, throttled)
+
+        response = requests.get(
+            f"{OPENF1_BASE_URL}/{endpoint}", params=params, timeout=OPENF1_TIMEOUT
+        )
+        status = response.status_code
+        if status not in RETRY_STATUSES:
+            return response
+        if attempt == MAX_RETRIES:
+            break
+
+        delay = _retry_delay(response, attempt)
+        if waited + delay > MAX_RETRY_WAIT:
+            break
+        logger.warning(
+            "OpenF1 %s returned HTTP %d; retry %d of %d in %.2fs",
+            endpoint,
+            status,
+            attempt + 1,
+            MAX_RETRIES,
+            delay,
+        )
+        _sleep(delay)
+        waited += delay
+
+    raise OpenF1Error(
+        f"OpenF1 {endpoint} returned HTTP {status} after {attempt} retries ({waited:.1f}s)"
+    )
 
 
 def clear() -> None:
@@ -82,7 +217,8 @@ def _get(endpoint: str, params: dict[str, Any]) -> list[dict[str, Any]]:
     on that fetch's ``Event`` and share its outcome — because a duplicate fetch of the
     same key is not the harmless "last write wins" it would be for the schedule cache:
     OpenF1's unauthenticated ceiling is 3 req/s, and this module is asked for the same
-    key from every tool in one fan-out.
+    key from every tool in one fan-out. Only the fetcher throttles and retries, so a
+    retried 200 reaches every waiter without any of them issuing a request of its own.
 
     Failures are deliberately not cached — one blip would otherwise poison the process
     for its lifetime — but they are recorded long enough for every waiter on that fetch
@@ -118,9 +254,7 @@ def _get(endpoint: str, params: dict[str, Any]) -> list[dict[str, Any]]:
         return _get(endpoint, params)
 
     try:
-        response = requests.get(
-            f"{OPENF1_BASE_URL}/{endpoint}", params=params, timeout=OPENF1_TIMEOUT
-        )
+        response = _request(endpoint, params)
         if response.status_code != 200:
             raise OpenF1Error(f"OpenF1 {endpoint} returned HTTP {response.status_code}")
 
