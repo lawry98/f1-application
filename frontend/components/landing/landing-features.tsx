@@ -29,9 +29,9 @@ const FEATURES = [
   },
   {
     icon: Cloud,
-    title: 'Race Weather Forecast',
+    title: 'Circuit Weather Forecast',
     description:
-      'OpenWeather integration pulls the race-weekend forecast for the correct circuit location — temperature, humidity, wind, and conditions that could shape strategy.',
+      'OpenWeather integration pulls the next 24 hours of forecast for the circuit location — temperature, humidity, wind, and chance of rain. Ask during the race weekend and that is race weather.',
   },
   {
     icon: Layers,
