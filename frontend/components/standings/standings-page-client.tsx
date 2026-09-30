@@ -64,8 +64,8 @@ export function StandingsPageClient({ latestYear }: StandingsPageClientProps) {
     (next: number) => {
       // The only write: `useSearchParams()` picks the new query up and re-renders with it.
       // Replace, not push: a picker is not navigation, so it should not fill the back stack.
-      // Next 14.2 syncs native history calls into its router, so this costs no server round
-      // trip. The newest season keeps the bare URL.
+      // Next syncs native history calls into its router (14.2 and 16.3 alike), so this costs no
+      // server round trip. The newest season keeps the bare URL.
       window.history.replaceState(
         null,
         '',

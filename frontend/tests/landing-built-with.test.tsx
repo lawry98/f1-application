@@ -32,7 +32,7 @@ const STACK_LABELS = [
   'Gemini 3.6 Flash',
   'OpenWeather',
   'Tavily',
-  'Next.js 14',
+  'Next.js 16',
 ];
 
 const STACK_NOTES = [

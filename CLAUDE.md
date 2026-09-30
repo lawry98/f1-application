@@ -91,7 +91,9 @@ blocks postinstall scripts by default *and* re-runs its dependency check before 
 a single unapproved build makes `pnpm typecheck`, `pnpm lint`, and `pnpm build` all fail with
 `ERR_PNPM_IGNORED_BUILDS`, which looks nothing like the real cause. Approvals live in
 `frontend/pnpm-workspace.yaml` under `allowBuilds`; the `pnpm` field in `package.json` is
-**ignored** by pnpm 11.
+**ignored** by pnpm 11. The same file carries `minimumReleaseAgeExclude`: pnpm 11 refuses a
+version published less than a day ago, lockfile or not, so taking a same-day security release
+means an exact-version entry per package there, deleted once it is a day old.
 
 **A Tailwind class that no `content` glob reaches generates no rule, and nothing but a browser
 can tell.** `tailwind.config.ts`'s `content` lists `components/`, `app/` **and `lib/`** — the last
@@ -262,13 +264,16 @@ own backdrop variant, built the way the five on `/teams` are.
 prop.** The first version seeded `useState` from a server-parsed `initialYear` and desynced both
 ways, measured in a browser: pick 2024, follow "Compare the teams →", press Back, and the URL
 said `?year=2024` while the page showed 2026; pick 2024, click the nav's "Standings" link, and
-the URL said `/standings` while the page showed 2024. Next 14.2 keys the page segment without
-its search params, so client state survives a same-page navigation, and its patched
-`window.history.replaceState` (installed unconditionally in `app-router.js`) moves the router's
-URL — and so `useSearchParams()` — but not the RSC payload, so Back re-mounts the page from the
-original payload's props. `useSearchParams()` follows the patched `replaceState`, Back and
-Forward alike, so the rule for URL state on this page is: derive it from `useSearchParams`, and
-make the picker's only write a `replaceState`. The page is `force-dynamic` because `latestYear`
+the URL said `/standings` while the page showed 2024. Next keys the page segment without its
+search params, so client state survives a same-page navigation — measured identically on 14.2 and
+16.3: after picking 2024, the nav link lands on `/standings` with the page's DOM nodes still the
+same ones. Its patched `window.history.replaceState` (still installed unconditionally in
+`app-router.js` on 16) moves the router's URL — and so `useSearchParams()` — but not the RSC
+payload, so Back re-mounts the page from the original payload's props (measured on 14.2, against
+the first version). `useSearchParams()` follows the patched `replaceState`, Back and Forward
+alike — on 16.3 both desync paths above now land right: Back shows 2024 at `?year=2024`, the nav
+link shows 2026 at `/standings` — so the rule for URL state on this page is: derive it from
+`useSearchParams`, and make the picker's only write a `replaceState`. The page is `force-dynamic` because `latestYear`
 is read from the server clock per request — a prerendered page would freeze it at build time —
 and because `useSearchParams` on a static page needs a Suspense boundary. `pnpm build` lists it
 as `ƒ /standings`.
@@ -633,6 +638,9 @@ an unfinished `new Image()` delays the document's `load` event, so the default n
 - **Shared types** come from `@/types` — *except* `Team` and `Driver`, which live in
   `@/data/teams-data` alongside the `TEAMS` data they describe.
 - **3D components**: always `next/dynamic` with `ssr: false`; server-rendering Three.js throws.
+  The `dynamic()` call must sit in a Client Component — since Next 15 `next build` refuses
+  `ssr: false` in a Server Component — which is why `app/showcase` and `app/teardown` render a
+  `*-page-client.tsx` wrapper and keep their `metadata`.
 - **No `any` on SSE events** — everything flows through the `StreamEvent` discriminated union.
 - **shadcn/ui** components in `components/ui/` are generated; re-add with `pnpm dlx shadcn add
   <name>` from `frontend/` (where `components.json` lives) rather than editing them by hand.
@@ -641,9 +649,13 @@ an unfinished `new Image()` delays the document's `load` event, so the default n
 
 Vitest with jsdom, in `frontend/tests/`. A few things about them are not guessable:
 
-- **`next lint` only walks the directories listed in `next.config.js`'s `eslint.dirs`.**
-  `tests/` is in that list *because* it is not one of Next's defaults — without the entry,
-  `pnpm lint` passes while never looking at a test file. Add any new top-level directory there.
+- **`pnpm lint` is `eslint .`, and nothing narrows it.** Next 16 removed `next lint`, which
+  walked only the directories in `next.config.js`'s `eslint.dirs` — `tests/`, `browser/` and
+  `scripts/` were linted only because someone had added them, and a directory left off passed
+  while never being looked at. `eslint.config.mjs` (flat config) now takes the whole package, so
+  a new top-level directory is linted by default; only generated output is ignored. Four React
+  Compiler rules that eslint-config-next 16 switched on are off there — the comment says which
+  and why.
 - **The `.sse` fixtures are real captured bytes, not hand-written.** `frontend/tests/fixtures/`
   holds output from the actual FastAPI route; regenerate with
   `cd backend && python scripts/dump_sse_fixtures.py`, which imports its step fixtures from
@@ -682,6 +694,13 @@ required CI check (`browser` job). Things that are not guessable:
 - **Build first, every time.** The suite never builds, and `reuseExistingServer` is off, so it
   always tests the bundle in `.next`. After `pnpm test:browser:mutants` locally, the runner
   rebuilds the clean tree; if you kill it midway, rebuild before trusting a result.
+- **`page.goto` resolving does not mean the page is showing — `waitForMain` first.** React 19
+  streams a finished Suspense boundary *outlined* once its content passes 12,800 bytes, and
+  reveals it no sooner than 300ms after first paint. So on Next 16 seven routes' HTML opens on
+  the root `app/loading.tsx` spinner with the page in a `hidden` div (on `/`: `load` at 83ms,
+  reveal at 333ms); on Next 14 none did. The focus sweep tabbed through a spinner and reached
+  zero controls, 6 runs in 21. A sweep that reads text or colour would *pass* on a page it never
+  saw. `browser/support/page-content.ts` explains the rest; any new route sweep calls it.
 - **A contrast assertion names a WCAG floor and a site, never a measured ratio:**
   `expectContrast(loc, { atLeast: AA_SMALL_TEXT, site: 'rail active row over bg-zinc-800/60' })`.
   The text colour is computed style; the backdrop is pixels, from `backdropBehindGlyphs`, which

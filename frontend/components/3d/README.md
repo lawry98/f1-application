@@ -3,7 +3,9 @@
 Interactive 3D F1 car visualizations using React Three Fiber (R3F) and Three.js.
 
 Three.js cannot be server-rendered, so every consumer loads these components via a
-**direct-path dynamic import with `ssr: false`** — never through a barrel:
+**direct-path dynamic import with `ssr: false`** — never through a barrel — from a Client
+Component (Next 15+ refuses `ssr: false` in a Server Component; see
+`components/showcase/showcase-page-client.tsx`):
 
 ```tsx
 import dynamic from 'next/dynamic';
