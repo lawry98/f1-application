@@ -996,3 +996,105 @@ def test_standings_does_not_retry_on_a_transport_failure():
     assert fake.calls == [{"year": 2026, "as_of": "2026-09-30T00:00:00+00:00"}]
     assert result["success"] is False
     assert result["data"]["error"] == "Failed to get championship standings: HTTP 429"
+
+
+# ── Race context in the prompts ──────────────────────────────────────────────
+#
+# The Sakhir defect's last link: the synthesizer was handed "Generate briefing for Bahrain
+# Grand Prix 2026" and the tool payloads, and nothing else, so it described the venue the name
+# made it think of. Both prompts now carry the resolved race as an authoritative block.
+
+SEPANG = make_race_info(
+    name="Bahrain Grand Prix",
+    year=2026,
+    round=16,
+    track_id="my-1999",
+    circuit_name="Sepang International Circuit",
+    circuit_length_m=5543,
+    location="Kuala Lumpur",
+    country="Bahrain",
+    date="2026-10-04 00:00:00",
+    is_upcoming=True,
+    as_of="2026-09-30T00:00:00+00:00",
+    sessions=[
+        {"name": "Practice 1", "start": "2026-10-02T04:30:00+00:00"},
+        {"name": "Race", "start": "2026-10-04T07:00:00+00:00"},
+    ],
+)
+
+SECTIONS = [
+    "## Track Profile",
+    "## Championship Context",
+    "## Form Guide",
+    "## Key Storylines",
+    "## Weather Watch",
+    "## Predictions",
+]
+
+
+def _synthesizer_prompt(fake_llm, race_info) -> tuple[str, str]:
+    llm = fake_llm("briefing")
+    run_synthesizer_streamed(
+        make_state(
+            race_info=race_info,
+            tool_results=[{"tool_name": "get_track_info", "success": True, "data": {}}],
+        )
+    )
+    system, human = llm.calls[0]
+    return system.content, human.content
+
+
+@freeze_time("2026-09-30T09:00:00")
+def test_the_synthesizer_is_told_the_circuit_the_race_is_actually_at(fake_llm):
+    system, human = _synthesizer_prompt(fake_llm, SEPANG)
+
+    assert "Grand Prix: Bahrain Grand Prix 2026, round 16" in system
+    assert "Circuit: Sepang International Circuit (5.543 km)" in system
+    assert "Location: Kuala Lumpur (calendar country: Bahrain)" in system
+    assert "Practice 1 2026-10-02 04:30 UTC" in system
+    assert "Race 2026-10-04 07:00 UTC" in system
+    assert "Status: upcoming" in system
+    assert "Briefing as of: 2026-09-30 00:00 UTC" in system
+    assert "Today: 2026-09-30" in system
+    assert "Sepang International Circuit" in human
+
+
+@freeze_time("2026-09-30T09:00:00")
+def test_the_synthesizer_is_told_a_past_race_is_briefed_from_before_its_weekend(fake_llm):
+    past = make_race_info(is_upcoming=False, as_of="2026-06-05T11:30:00+00:00")
+
+    system, _ = _synthesizer_prompt(fake_llm, past)
+
+    assert "Status: already run — pre-race briefing as of its first session" in system
+    assert "Briefing as of: 2026-06-05 11:30 UTC" in system
+    assert "Not gathered for a race that has been run: weather forecast, news" in system
+
+
+@freeze_time("2026-09-30T09:00:00")
+def test_a_track_with_no_circuit_file_is_named_as_unknown_not_guessed(fake_llm):
+    system, _ = _synthesizer_prompt(
+        fake_llm, make_race_info(track_id=None, circuit_name=None, circuit_length_m=None)
+    )
+
+    assert "Circuit: not in this app's circuit data — do not name one" in system
+
+
+def test_the_synthesizer_keeps_its_six_sections_in_order():
+    """The structure is a contract with the reader and the frontend's card; the new rules are
+    additions around it, never a change to it."""
+    from agent.prompts import SYNTHESIZER_PROMPT
+
+    positions = [SYNTHESIZER_PROMPT.index(section) for section in SECTIONS]
+    assert positions == sorted(positions)
+
+
+@freeze_time("2026-09-30T09:00:00")
+def test_the_planner_sees_the_same_race_context(fake_llm):
+    llm = fake_llm("[]")
+
+    planner_node(make_state(race_info=SEPANG))
+
+    system = llm.calls[0][0].content
+    assert "Circuit: Sepang International Circuit (5.543 km)" in system
+    assert "Briefing as of: 2026-09-30 00:00 UTC" in system
+    assert "Today: 2026-09-30" in system

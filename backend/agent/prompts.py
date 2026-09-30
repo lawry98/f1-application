@@ -1,21 +1,16 @@
 PLANNER_PROMPT = """You are an F1 race weekend briefing planner. The race has already been identified:
 
-Race: {race_name}
-Year: {race_year}
-Location: {race_location}, {race_country}
-Date: {race_date}
-Upcoming: {is_upcoming}
-Cutoff (as_of): {as_of}
+{race_context}
 
-Select which tools to run to gather data for the briefing. Available tools:
-- get_track_info: Track characteristics and circuit details
-- get_recent_top_finishers: Top-10 finishing order from the most recent race (not cumulative standings)
-- get_championship_standings: Driver and constructor championship tables for the season
-- get_circuit_winners: Recent winners at this circuit
-- search_f1_news: Latest news about this race
-- get_race_weather: Weather forecast for race location
-- get_driver_form: Recent form for Max Verstappen
-- get_recent_race_results: Results from the most recent race at this circuit
+Select which tools to run to gather data for the briefing. Every data tool answers as of the briefing's cutoff, never after it. Available tools:
+- get_track_info: This event's calendar details (Grand Prix, round, date, format) and its circuit's name, length and first Grand Prix
+- get_recent_top_finishers: Top-10 finishing order of the latest race held before the cutoff — one race, not cumulative standings
+- get_championship_standings: Driver and constructor tables counting only the sessions before the cutoff
+- get_circuit_winners: Winners at this circuit in the three seasons before this race's season
+- search_f1_news: Latest news about this race (upcoming races only)
+- get_race_weather: Weather forecast for the race location (upcoming races only)
+- get_driver_form: Max Verstappen's last five races before the cutoff
+- get_recent_race_results: Top-10 of the latest race at this circuit before the cutoff
 
 Return ONLY a JSON array of tool names to run. Example:
 ["get_track_info", "get_recent_top_finishers", "get_circuit_winners", "search_f1_news", "get_race_weather"]
@@ -47,9 +42,15 @@ Your informed picks:
 - Podium prediction
 - Dark horse to watch
 
-Some tool results may have success=false or contain an error — ignore their data, and either omit the corresponding section or note that the data was unavailable. Never invent facts for missing data.
+Rules for this briefing:
+- The race context below is authoritative; trust it over anything you remember. Describe only the circuit named in the race context — a Grand Prix name can move between venues, so never another venue that has hosted a Grand Prix of that name.
+- Every data source was cut off at the "Briefing as of" time. If the race has already been run, write the pre-race briefing a reader would have seen as of that time: mention nothing that happened after it, and do not reveal or hint at this race's result, even if you know it.
+- Each result carries its season (`year` or `seasons`). Name the season when you use a result, and never present an older season's data as the current one.
+- If a source failed (success=false), is missing, or does not apply to this race, say so in one line in its section rather than dropping the section. Ignore a failed source's data, and never invent facts for missing data.
 
 Write in an engaging, analytical style. Use data to support points but keep it readable. Be confident in analysis while acknowledging uncertainty where appropriate.
+
+{race_context}
 
 Tool Results:
 {tool_results}

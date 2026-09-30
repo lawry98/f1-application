@@ -5,6 +5,7 @@ import json
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import date
 from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -20,6 +21,7 @@ from config import (
     GOOGLE_API_KEY,
     LLM_MODEL,
 )
+from tools.cutoff import parse_utc
 from tools.f1_data_tools import get_circuit_winners, get_recent_top_finishers
 from tools.fastf1_tools import get_driver_form, get_recent_race_results, get_track_info
 from tools.race_resolver import resolve_next_race
@@ -144,6 +146,43 @@ def resolver_node(state: AgentState) -> dict[str, Any]:
     return {"race_info": race_info, "current_step": "planning"}
 
 
+def _utc_minute(iso: str) -> str:
+    return parse_utc(iso).strftime("%Y-%m-%d %H:%M UTC")
+
+
+def race_context(race_info: RaceInfo) -> str:
+    """The resolved race as an authoritative block, for the planner and the synthesizer alike.
+
+    Without it the synthesizer had only "Bahrain Grand Prix 2026" and described the track that
+    name brought to mind — Sakhir — when the race is at Sepang. Every field is the resolver's;
+    a circuit with no file is said to be unknown rather than left for the model to fill in.
+    """
+    length_m = race_info["circuit_length_m"]
+    circuit = (
+        f"{race_info['circuit_name']}" + (f" ({length_m / 1000:.3f} km)" if length_m else "")
+        if race_info["circuit_name"]
+        else "not in this app's circuit data — do not name one"
+    )
+    sessions = "; ".join(
+        f"{session['name']} {_utc_minute(session['start'])}" for session in race_info["sessions"]
+    )
+    lines = [
+        "Race context (authoritative):",
+        f"- Grand Prix: {race_info['name']} {race_info['year']}, round {race_info['round']}",
+        f"- Circuit: {circuit}",
+        f"- Location: {race_info['location']} (calendar country: {race_info['country']})",
+        f"- Sessions: {sessions or 'no session times published'}",
+        "- Status: upcoming"
+        if race_info["is_upcoming"]
+        else "- Status: already run — pre-race briefing as of its first session",
+        f"- Briefing as of: {_utc_minute(race_info['as_of'])}",
+        f"- Today: {date.today().isoformat()}",
+    ]
+    if not race_info["is_upcoming"]:
+        lines.append("- Not gathered for a race that has been run: weather forecast, news")
+    return "\n".join(lines)
+
+
 def _applicable(tasks: list[str], race_info: RaceInfo) -> list[str]:
     """The plan with the upcoming-only tools removed for a race that has been run."""
     if race_info["is_upcoming"]:
@@ -155,15 +194,7 @@ def planner_node(state: AgentState) -> dict[str, Any]:
     """Select which tools to run based on resolved race info."""
     race_info = state["race_info"]
 
-    prompt = PLANNER_PROMPT.format(
-        race_name=race_info["name"],
-        race_year=race_info["year"],
-        race_location=race_info["location"],
-        race_country=race_info["country"],
-        race_date=race_info["date"],
-        is_upcoming=race_info["is_upcoming"],
-        as_of=race_info["as_of"],
-    )
+    prompt = PLANNER_PROMPT.format(race_context=race_context(race_info))
 
     messages = [
         SystemMessage(content=prompt),
@@ -406,9 +437,17 @@ def synthesizer_node(state: AgentState) -> dict[str, Any]:
         indent=2,
     )
 
+    circuit = race_info["circuit_name"] or race_info["location"]
     messages = [
-        SystemMessage(content=SYNTHESIZER_PROMPT.format(tool_results=results_text)),
-        HumanMessage(content=f"Generate briefing for {race_info['name']} {race_info['year']}"),
+        SystemMessage(
+            content=SYNTHESIZER_PROMPT.format(
+                race_context=race_context(race_info), tool_results=results_text
+            )
+        ),
+        HumanMessage(
+            content=f"Generate the briefing for the {race_info['name']} {race_info['year']} "
+            f"at {circuit}"
+        ),
     ]
 
     # No-ops when the graph is invoked rather than streamed, so /api/briefing needs no
