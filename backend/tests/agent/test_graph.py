@@ -833,11 +833,10 @@ def test_synthesizer_returns_partial_prose_when_the_stream_dies_mid_iteration(fa
 
 
 def test_a_truncated_synthesis_still_reports_the_run_complete(fake_llm):
-    """The single thing stopping the sync endpoint discarding a readable partial Briefing.
+    """Truncation is a property of the Briefing, not a phase of the pipeline.
 
-    ``routes.py`` 500s on ``current_step == "error"``. Truncation is a property of the
-    Briefing, not a phase of the pipeline — the pipeline reached the end either way — so
-    the Step stays ``complete`` and ``error`` keeps meaning exactly "Resolution failed".
+    The pipeline reached the end either way, so the Step stays ``complete`` and ``error``
+    keeps meaning exactly "Resolution failed".
     """
     fake_llm(chunks=["some prose"], stream_raises_after=1)
 

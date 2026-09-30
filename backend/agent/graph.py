@@ -402,9 +402,9 @@ def synthesizer_node(state: AgentState) -> dict[str, Any]:
         HumanMessage(content=f"Generate briefing for {race_info['name']} {race_info['year']}"),
     ]
 
-    # No-ops when the graph is invoked rather than streamed, so /api/briefing needs no
-    # special-casing. It does require an ambient graph run, which is why the tests that
-    # reach this node drive it through one instead of calling it directly.
+    # No-ops when the graph is invoked rather than streamed. It does require an ambient
+    # graph run, which is why the tests that reach this node drive it through one instead
+    # of calling it directly.
     writer = get_stream_writer()
     chunks: list[str] = []
 

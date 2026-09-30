@@ -13,13 +13,12 @@ from sse_starlette.sse import EventSourceResponse
 from agent.graph import agent
 from agent.state import AgentState
 from api.errors import (
-    FAILED_TOOL_SUMMARY,
     GENERIC_BRIEFING_ERROR,
     GENERIC_CIRCUIT_WINNERS_ERROR,
     GENERIC_SCHEDULE_ERROR,
     GENERIC_STANDINGS_ERROR,
 )
-from api.models import BriefingRequest, BriefingResponse, ToolTraceSummary
+from api.models import BriefingRequest
 from tools.circuit_winners import UNKNOWN_CIRCUIT, get_recent_circuit_winners
 from tools.openf1_client import OPENF1_FIRST_YEAR
 from tools.openf1_client import clear as clear_openf1_cache
@@ -41,65 +40,6 @@ def initial_state(query: str) -> AgentState:
         "briefing_truncated": False,
         "current_step": "resolving",
     }
-
-
-def _tool_trace_summary(tool_result: dict[str, Any]) -> str:
-    """Build the UI-facing trace summary for one tool result.
-
-    A failed tool's payload is ``{"error": ...}`` and may carry upstream exception text,
-    so it is replaced rather than truncated. Successful payloads are public F1 data and
-    are only clipped to keep the trace readable.
-    """
-    if not tool_result["success"]:
-        return FAILED_TOOL_SUMMARY
-
-    data = str(tool_result["data"])
-    return data[:200] + "..." if len(data) > 200 else data
-
-
-@router.post("/briefing", response_model=BriefingResponse)
-async def generate_briefing(request: BriefingRequest) -> BriefingResponse:
-    """Generate a complete race briefing in a single response."""
-    try:
-        result: dict[str, Any] = await agent.ainvoke(initial_state(request.query))
-
-        if result.get("current_step") == "error":
-            raise HTTPException(
-                status_code=404,
-                detail=result.get("briefing") or "Could not resolve race",
-            )
-        if not result.get("briefing"):
-            raise HTTPException(status_code=500, detail=GENERIC_BRIEFING_ERROR)
-
-        race_name: str = result.get("race_info", {}).get("name", "Unknown Race")
-
-        tool_trace = [
-            ToolTraceSummary(
-                tool=tr["tool_name"],
-                success=tr["success"],
-                summary=_tool_trace_summary(tr),
-            )
-            for tr in result.get("tool_results", [])
-        ]
-
-        return BriefingResponse(
-            race=race_name,
-            briefing=result["briefing"],
-            tool_trace=tool_trace,
-            truncated=bool(result.get("briefing_truncated")),
-        )
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.exception("Error generating briefing for '%s': %s", request.query, exc)
-        raise HTTPException(status_code=500, detail=GENERIC_BRIEFING_ERROR) from exc
-    finally:
-        # Both caches exist to dedupe fetches *within* one request's tool fan-out.
-        # Clearing them here is what buys freshness *across* requests — a range query
-        # cached before a race's results are published would otherwise report the
-        # wrong championship leader until the process restarts.
-        clear_schedule_cache()
-        clear_openf1_cache()
 
 
 @router.post("/briefing/stream")
@@ -206,8 +146,10 @@ async def generate_briefing_stream(request: BriefingRequest) -> EventSourceRespo
             logger.exception("Error during briefing stream generation: %s", exc)
             yield {"event": "error", "data": json.dumps({"message": GENERIC_BRIEFING_ERROR})}
         finally:
-            # Same trade-off as the non-streaming route above: dedupe within the request,
-            # clear afterwards so the next request cannot serve a stale cached result.
+            # Both caches exist to dedupe fetches *within* one request's tool fan-out.
+            # Clearing them here is what buys freshness *across* requests — a range query
+            # cached before a race's results are published would otherwise report the
+            # wrong championship leader until the process restarts.
             clear_schedule_cache()
             clear_openf1_cache()
 

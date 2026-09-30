@@ -195,7 +195,6 @@ OUTPUT (Race Briefing)
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/briefing` | POST | Synchronous briefing generation |
 | `/api/briefing/stream` | POST | SSE streaming briefing (used by frontend) |
 | `/api/races/{year}` | GET | F1 calendar from FastF1, with each event's format and official name |
 | `/api/standings/{year}` | GET | Driver and constructor championship tables, derived from OpenF1 (2023 onwards) |
@@ -219,9 +218,7 @@ OUTPUT (Race Briefing)
 ### Example: Generate Briefing
 
 ```bash
-curl -X POST http://localhost:8000/api/briefing \
-  -H "Content-Type: application/json" \
-  -d '{"query": "Monaco GP 2025"}'
+curl -N -X POST http://localhost:8000/api/briefing/stream -H 'Content-Type: application/json' -d '{"query":"Monaco"}'
 ```
 
 ## Development Commands
