@@ -19,7 +19,9 @@ from config import (
     COUNTRY_CODE_MAP,
     EXECUTOR_MAX_WORKERS,
     GOOGLE_API_KEY,
+    LLM_MAX_ATTEMPTS,
     LLM_MODEL,
+    LLM_TIMEOUT_SECONDS,
 )
 from tools.f1_data_tools import get_circuit_winners, get_recent_top_finishers
 from tools.fastf1_tools import get_driver_form, get_recent_race_results, get_track_info
@@ -97,10 +99,13 @@ def clear_result_cache() -> None:
 
 
 # No temperature argument — gemini-3.6-flash uses fixed sampling defaults and ignores one.
-# See the note in config.py.
+# See the note in config.py, which also carries the timeout arithmetic. `max_retries` is the
+# SDK's attempt count, first request included, not a count of retries.
 llm = ChatGoogleGenerativeAI(
     model=LLM_MODEL,
     api_key=GOOGLE_API_KEY,
+    timeout=LLM_TIMEOUT_SECONDS,
+    max_retries=LLM_MAX_ATTEMPTS,
 )
 
 
