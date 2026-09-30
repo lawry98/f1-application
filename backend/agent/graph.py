@@ -5,7 +5,6 @@ import json
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import date
 from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -47,8 +46,19 @@ all_tools = [
 # deliberately absent: serving either stale is worse than refetching. Only successful
 # results are stored, so a transient upstream failure cannot poison later briefings.
 # Deliberately cross-request, unlike the per-request schedule cache routes.py clears
-# — see ADR-0003. Key space is bounded (~races x 6 tools x a few years), so there is
-# no eviction.
+# — see ADR-0003. Key space is bounded (~races x 6 tools x a few cutoffs), so there
+# is no eviction.
+#
+# The key is the tool's args and nothing else. The five tools whose answer moves with the
+# calendar — the latest race here, the latest race anywhere, the last N races, the winners
+# window, the standings table — all take the briefing's `as_of`, and that is their date
+# component. An upcoming race's `as_of` is the start of today, so its key rolls over daily
+# and a new race weekend is picked up the day after it is held — what a separate
+# today's-date component used to do. A past race's `as_of` is its first session, fixed,
+# and what came before it cannot change, so its entry is good for the life of the
+# process; a date component on top would only refetch that immutable answer every day.
+# `get_track_info` carries no cutoff: it is this event's calendar row and its circuit
+# file, pure functions of its args.
 CACHEABLE_TOOLS = frozenset(
     {
         "get_track_info",
@@ -60,31 +70,10 @@ CACHEABLE_TOOLS = frozenset(
     }
 )
 
-# Of the six cacheable tools, these four answer a question whose meaning shifts
-# with the calendar even though the race data behind it is immutable — it is the
-# query, not the data, that is date-relative:
-#   - get_recent_top_finishers: "the season's most recent completed race" — a new
-#     race weekend changes which race that is.
-#   - get_driver_form: "the last N races" — same sliding window.
-#   - get_circuit_winners: "the last `years_back` years" — the window's boundary
-#     year advances every 1 January.
-#   - get_championship_standings: takes an explicit year, but its answer grows with
-#     every race of that year. Without a date component the args ({"year": 2026})
-#     never change, so one early-season fetch would be served as "current standings"
-#     for the rest of the season.
-# Their cache key includes today's date so a new day (or, for get_circuit_winners,
-# a new year) forces a refetch instead of serving an answer that was only true
-# yesterday. The other two tools (get_track_info, get_recent_race_results) take an
-# explicit year and are pure functions of their arguments — they need no date
-# component.
-DATE_DEPENDENT_TOOLS = frozenset(
-    {
-        "get_recent_top_finishers",
-        "get_driver_form",
-        "get_circuit_winners",
-        "get_championship_standings",
-    }
-)
+# A race that has been run is briefed as of its first session (ADR-0004). A forecast for
+# that weekend, or today's news about it, would reach past the cutoff — so these are
+# dropped from the plan whatever the planner chose, before the plan is announced.
+UPCOMING_ONLY_TOOLS = frozenset({"get_race_weather", "search_f1_news"})
 
 _result_cache_lock = threading.Lock()
 _result_cache: dict[tuple, dict] = {}
@@ -131,21 +120,35 @@ def resolver_node(state: AgentState) -> dict[str, Any]:
     race_info = RaceInfo(
         name=result["name"],
         year=result["year"],
+        round=result["round"],
         circuit_id=result["circuit_id"],
+        track_id=result["track_id"],
+        circuit_name=result["circuit_name"],
+        circuit_length_m=result["circuit_length_m"],
         location=result["location"],
         country=result["country"],
         date=result["date"],
         is_upcoming=result["is_upcoming"],
-        historical_year=result["historical_year"],
+        as_of=result["as_of"],
+        sessions=result["sessions"],
     )
     logger.info(
-        "Resolved to: %s %d (upcoming=%s)",
+        "Resolved to: %s %d at %s (upcoming=%s, as_of=%s)",
         race_info["name"],
         race_info["year"],
+        race_info["track_id"],
         race_info["is_upcoming"],
+        race_info["as_of"],
     )
 
     return {"race_info": race_info, "current_step": "planning"}
+
+
+def _applicable(tasks: list[str], race_info: RaceInfo) -> list[str]:
+    """The plan with the upcoming-only tools removed for a race that has been run."""
+    if race_info["is_upcoming"]:
+        return tasks
+    return [task for task in tasks if task not in UPCOMING_ONLY_TOOLS]
 
 
 def planner_node(state: AgentState) -> dict[str, Any]:
@@ -159,7 +162,7 @@ def planner_node(state: AgentState) -> dict[str, Any]:
         race_country=race_info["country"],
         race_date=race_info["date"],
         is_upcoming=race_info["is_upcoming"],
-        historical_year=race_info["historical_year"],
+        as_of=race_info["as_of"],
     )
 
     messages = [
@@ -179,7 +182,7 @@ def planner_node(state: AgentState) -> dict[str, Any]:
             type(exc).__name__,
             exc,
         )
-        return {"tasks": DEFAULT_TOOLS, "current_step": "gathering"}
+        return {"tasks": _applicable(DEFAULT_TOOLS, race_info), "current_step": "gathering"}
 
     try:
         # `.text`, not `.content`: Gemini 3 returns content as a list of blocks, so
@@ -199,7 +202,7 @@ def planner_node(state: AgentState) -> dict[str, Any]:
             # panel's footer, whose result lookup is keyed by tool name. dict.fromkeys
             # dedupes while keeping first-appearance order — the plan's order is now the
             # order the footer renders in, and a set would shuffle it between runs.
-            tasks = list(dict.fromkeys(tasks))
+            tasks = _applicable(list(dict.fromkeys(tasks)), race_info)
             logger.info("Planner selected %d tools: %s", len(tasks), tasks)
             return {"tasks": tasks, "current_step": "gathering"}
     except (json.JSONDecodeError, AttributeError, TypeError, IndexError):
@@ -208,28 +211,36 @@ def planner_node(state: AgentState) -> dict[str, Any]:
         pass
 
     logger.warning("Planner failed to parse response; falling back to default tools")
-    return {"tasks": DEFAULT_TOOLS, "current_step": "gathering"}
+    return {"tasks": _applicable(DEFAULT_TOOLS, race_info), "current_step": "gathering"}
 
 
 def _build_tool_args(task_name: str, race_info: dict) -> dict[str, Any] | None:
     """Build the invocation arguments for a tool, or None when no handler exists.
 
     Also the cache identity: two queries that resolve to the same race produce
-    identical args here, which is what lets them share a cache entry.
+    identical args here, which is what lets them share a cache entry. Every result tool
+    takes the cutoff, `as_of`, and none takes a bare year to count back from — the cutoff
+    is what keeps a past race's briefing from quoting anything after its Thursday.
     """
+    as_of = race_info["as_of"]
     if task_name == "get_track_info":
-        return {"circuit_name": race_info["name"], "year": race_info["historical_year"]}
+        return {
+            "year": race_info["year"],
+            "round": race_info["round"],
+            "track_id": race_info["track_id"],
+        }
     if task_name == "get_recent_top_finishers":
-        return {"year": race_info["historical_year"]}
+        return {"as_of": as_of}
     if task_name == "get_championship_standings":
-        # The season currently underway, not `historical_year` (year - 1): from round 2
-        # onward, "current standings" means this season's table. `historical_year` only
-        # applies before round 1 — `_invoke_tool` retries with it in that one case.
-        return {"year": race_info["year"]}
+        # The race's own season as of the cutoff. Before its round 1 there is nothing to
+        # count — `_invoke_tool` retries with the season before in that one case.
+        return {"year": race_info["year"], "as_of": as_of}
     if task_name == "get_circuit_winners":
         return {
-            "circuit_name": race_info["name"],
+            "circuit_name": race_info["circuit_name"] or race_info["name"],
             "location": race_info["location"],
+            "race_year": race_info["year"],
+            "as_of": as_of,
             "years_back": 3,
         }
     if task_name == "search_f1_news":
@@ -239,9 +250,9 @@ def _build_tool_args(task_name: str, race_info: dict) -> dict[str, Any] | None:
         return {"city": race_info["location"], "country_code": country_code}
     if task_name == "get_driver_form":
         # Hardcoded to Verstappen — the planner prompt advertises exactly this scope.
-        return {"driver_code": "VER", "year": race_info["historical_year"], "num_races": 5}
+        return {"driver_code": "VER", "as_of": as_of, "num_races": 5}
     if task_name == "get_recent_race_results":
-        return {"event_name": race_info["name"], "year": race_info["historical_year"]}
+        return {"track_id": race_info["track_id"], "as_of": as_of}
     return None
 
 
@@ -254,12 +265,8 @@ def _invoke_with_cache(tool: Any, task_name: str, args: dict) -> ToolResult:
     concurrent misses on the same key both fetch, and the last write wins.
     """
     cacheable = task_name in CACHEABLE_TOOLS
-    # The date belongs in the key, not the args: `_build_tool_args` stays a pure
-    # function of race_info, and the date-dependent tools (see DATE_DEPENDENT_TOOLS
-    # above) get an extra key component that changes once a day, forcing a refetch
-    # instead of serving yesterday's "most recent" race.
-    date_component = date.today().isoformat() if task_name in DATE_DEPENDENT_TOOLS else None
-    cache_key = (task_name, tuple(sorted(args.items())), date_component)
+    # Built only for a cacheable tool: weather's args carry a list, which cannot be hashed.
+    cache_key = (task_name, tuple(sorted(args.items()))) if cacheable else None
 
     if cacheable:
         with _result_cache_lock:
@@ -304,17 +311,19 @@ def _invoke_tool(tool: Any, task_name: str, race_info: dict) -> ToolResult:
 
         outcome = _invoke_with_cache(tool, task_name, args)
 
-        # Pre-season fallback, and only that. A season that has not run yet has no
-        # standings to report, so last year's final classification is the sensible
-        # substitute. Keyed off the structural `reason` marker rather than the error
-        # text: a transport failure (an HTTP 429, say) must NOT fall back, because
-        # serving last season's table labelled as current is worse than serving the
-        # error, which the synthesizer already knows how to omit.
+        # Pre-season fallback, and only that. A season with nothing run by the cutoff has no
+        # standings to report, so the previous season as of the same cutoff — its final
+        # classification — is the sensible substitute, and its `year` says which it is.
+        # Keyed off the structural `reason` marker rather than the error text: a transport
+        # failure (an HTTP 429, say) must NOT fall back, because serving last season's table
+        # labelled as current is worse than serving the error.
         if (
             task_name == "get_championship_standings"
             and outcome["data"].get("reason") == SEASON_NOT_STARTED
         ):
-            outcome = _invoke_with_cache(tool, task_name, {"year": race_info["historical_year"]})
+            outcome = _invoke_with_cache(
+                tool, task_name, {"year": race_info["year"] - 1, "as_of": race_info["as_of"]}
+            )
 
         return outcome
     except Exception as exc:

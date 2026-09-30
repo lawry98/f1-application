@@ -9,11 +9,17 @@ not a column of Python ``date`` objects. ``f1_data_tools`` and ``fastf1_tools`` 
 reach for ``schedule["EventDate"].dt.date``, and ``.dt`` only exists on datetime-typed
 series — a plain-object column raises ``AttributeError`` at runtime while looking
 perfectly reasonable in a fixture.
+
+The ``SessionN`` / ``SessionNDateUtc`` pairs are the resolver's source for a weekend's sessions
+and its ``as_of`` cutoff. FastF1 serves the UTC column tz-naive, so the fixtures do too.
 """
 
+from datetime import timedelta
 from typing import Any
 
 import pandas as pd
+
+SESSION_SLOTS = 5
 
 SCHEDULE_COLUMNS = [
     "RoundNumber",
@@ -23,7 +29,32 @@ SCHEDULE_COLUMNS = [
     "EventDate",
     "EventName",
     "EventFormat",
+    *(
+        column
+        for n in range(1, SESSION_SLOTS + 1)
+        for column in (f"Session{n}", f"Session{n}DateUtc")
+    ),
 ]
+
+
+def conventional_sessions(race_day: str) -> list[tuple[str, str]]:
+    """A conventional weekend's five sessions, in UTC, around a race day's 13:00 start.
+
+    FP1 is two days earlier at 11:30 — the European-afternoon slot most of the calendar uses —
+    so a past event's ``as_of`` in these fixtures is ``race_day - 2 days, 11:30 UTC``.
+    """
+    day = pd.Timestamp(race_day)
+
+    def at(days_before: int, hh_mm: str) -> str:
+        return f"{(day - timedelta(days=days_before)).date()} {hh_mm}"
+
+    return [
+        ("Practice 1", at(2, "11:30")),
+        ("Practice 2", at(2, "15:00")),
+        ("Practice 3", at(1, "10:30")),
+        ("Qualifying", at(1, "14:00")),
+        ("Race", at(0, "13:00")),
+    ]
 
 
 def make_schedule(events: list[dict[str, Any]]) -> pd.DataFrame:
@@ -32,28 +63,37 @@ def make_schedule(events: list[dict[str, Any]]) -> pd.DataFrame:
     Args:
         events: One dict per event. Requires ``name`` and ``date``; ``location``,
             ``country``, ``round``, ``format`` and ``official_name`` are optional
-            and default to something plausible.
+            and default to something plausible. ``sessions`` is a list of
+            ``(name, "YYYY-MM-DD HH:MM" UTC)`` pairs and defaults to
+            ``conventional_sessions(date)``; pass ``[]`` for a row FastF1 carries no
+            session times for, as it does for older seasons.
 
     Returns:
-        DataFrame with SCHEDULE_COLUMNS and a datetime64 ``EventDate``.
+        DataFrame with SCHEDULE_COLUMNS, a datetime64 ``EventDate`` and tz-naive UTC
+        datetime64 ``SessionNDateUtc`` columns.
     """
     rows = []
     for index, event in enumerate(events, start=1):
         name = event["name"]
-        rows.append(
-            {
-                "RoundNumber": event.get("round", index),
-                "Country": event.get("country", "Testland"),
-                "Location": event.get("location", "Testville"),
-                "OfficialEventName": event.get("official_name", f"FORMULA 1 {name.upper()}"),
-                "EventDate": event["date"],
-                "EventName": name,
-                "EventFormat": event.get("format", "conventional"),
-            }
-        )
+        row = {
+            "RoundNumber": event.get("round", index),
+            "Country": event.get("country", "Testland"),
+            "Location": event.get("location", "Testville"),
+            "OfficialEventName": event.get("official_name", f"FORMULA 1 {name.upper()}"),
+            "EventDate": event["date"],
+            "EventName": name,
+            "EventFormat": event.get("format", "conventional"),
+        }
+        sessions = event.get("sessions", conventional_sessions(event["date"]))
+        for slot in range(1, SESSION_SLOTS + 1):
+            session = sessions[slot - 1] if slot <= len(sessions) else (None, None)
+            row[f"Session{slot}"], row[f"Session{slot}DateUtc"] = session
+        rows.append(row)
 
     frame = pd.DataFrame(rows, columns=SCHEDULE_COLUMNS)
     frame["EventDate"] = pd.to_datetime(frame["EventDate"])
+    for slot in range(1, SESSION_SLOTS + 1):
+        frame[f"Session{slot}DateUtc"] = pd.to_datetime(frame[f"Session{slot}DateUtc"])
     return frame
 
 
@@ -175,27 +215,46 @@ def make_state(**overrides: Any) -> dict[str, Any]:
 
 
 def make_race_info(**overrides: Any) -> dict[str, Any]:
-    """Build a resolved race-info dict with sensible defaults, overridable per test."""
+    """Build a resolved race-info dict with sensible defaults, overridable per test.
+
+    The default is an upcoming Monaco Grand Prix briefed on 2025-05-01, so ``as_of`` is that
+    day's start in UTC. ``sessions`` mirrors ``conventional_sessions`` for the race day.
+    """
     info: dict[str, Any] = {
         "name": "Monaco Grand Prix",
         "year": 2025,
+        "round": 3,
         "circuit_id": "monaco_grand_prix",
+        "track_id": "mc-1929",
+        "circuit_name": "Circuit de Monaco",
+        "circuit_length_m": 3337,
         "location": "Monaco",
         "country": "Monaco",
         "date": "2025-05-25 00:00:00",
         "is_upcoming": True,
-        "historical_year": 2024,
+        "as_of": "2025-05-01T00:00:00+00:00",
+        "sessions": [
+            {"name": "Practice 1", "start": "2025-05-23T11:30:00+00:00"},
+            {"name": "Practice 2", "start": "2025-05-23T15:00:00+00:00"},
+            {"name": "Practice 3", "start": "2025-05-24T10:30:00+00:00"},
+            {"name": "Qualifying", "start": "2025-05-24T14:00:00+00:00"},
+            {"name": "Race", "start": "2025-05-25T13:00:00+00:00"},
+        ],
     }
     info.update(overrides)
     return info
 
 
-def make_openf1_get(routes: dict[str, Any], status_code: int = 200):
+def make_openf1_get(routes: dict[str, Any], status_code: int = 200, *, by_year: bool = False):
     """Build a stand-in for ``requests.get`` against OpenF1.
 
     Args:
         routes: Endpoint name (the last path segment, e.g. ``"sessions"``) → JSON payload.
         status_code: Status every response reports.
+        by_year: Serve only the rows whose ``date_start`` falls in the request's ``year``
+            param, as OpenF1 does. Off by default, where every year gets the whole payload —
+            which is what most fixtures here, all one season, were written against. A test
+            that crosses a season boundary needs it on.
 
     The returned callable records each call as ``{"url": ..., "params": ...}`` on ``.calls``,
     which is what lets tests assert the request *count* — the range-query pattern's whole
@@ -216,7 +275,11 @@ def make_openf1_get(routes: dict[str, Any], status_code: int = 200):
                     f"make_openf1_get has no payload for '{endpoint}'. "
                     f"Known endpoints: {sorted(routes)}"
                 )
-            return _FakeOpenF1Response(routes[endpoint], status_code)
+            payload = routes[endpoint]
+            year = (params or {}).get("year")
+            if by_year and year is not None and isinstance(payload, list):
+                payload = [row for row in payload if row.get("date_start", "")[:4] == str(year)]
+            return _FakeOpenF1Response(payload, status_code)
 
     return _FakeGet()
 

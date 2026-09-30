@@ -581,7 +581,10 @@ def test_stream_sends_the_resolved_race_info(client, install_agent):
     events = parse_sse(client.post("/api/briefing/stream", json={"query": "monaco"}).text)
     race_info = next(data for event_type, data in events if event_type == "race_info")
     assert race_info["name"] == "Monaco Grand Prix"
-    assert race_info["historical_year"] == 2024
+    # The whole context crosses the wire: the band labels a past race from `as_of`.
+    assert race_info["as_of"] == "2025-05-01T00:00:00+00:00"
+    assert race_info["track_id"] == "mc-1929"
+    assert race_info["sessions"][-1] == {"name": "Race", "start": "2025-05-25T13:00:00+00:00"}
 
 
 def test_stream_reports_each_tool_with_its_success_and_cached_flags_and_nothing_else(

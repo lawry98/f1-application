@@ -5,9 +5,9 @@ monkeypatches ``agent.graph.llm``. No test here makes a network call.
 """
 
 import logging
-from datetime import date
 
 import pytest
+from freezegun import freeze_time
 from langgraph.graph import END, StateGraph
 
 from agent import graph as graph_module
@@ -22,6 +22,8 @@ from agent.graph import (
 from agent.prompts import DEFAULT_TOOLS
 from agent.state import AgentState
 from tests.factories import make_llm, make_race_info, make_state, make_tool
+
+AS_OF = "2025-05-01T00:00:00+00:00"
 
 
 @pytest.fixture
@@ -143,8 +145,7 @@ def test_resolver_maps_a_successful_lookup_into_race_info(monkeypatch):
     result = resolver_node(make_state(race_query="monaco"))
 
     assert result["current_step"] == "planning"
-    assert result["race_info"]["name"] == "Monaco Grand Prix"
-    assert result["race_info"]["historical_year"] == 2024
+    assert result["race_info"] == make_race_info()
 
 
 def test_resolver_passes_the_raw_query_through(monkeypatch):
@@ -313,29 +314,72 @@ def test_planner_logs_which_llm_failure_caused_the_fallback(fake_llm, caplog):
     assert "429 rate limit exceeded" in caplog.text
 
 
+PAST = {"is_upcoming": False, "as_of": "2026-06-05T11:30:00+00:00"}
+
+
+def test_a_past_race_plans_no_weather_or_news_whatever_the_planner_says(fake_llm):
+    """A forecast for a weekend that has been run, or today's news about it, would reach past
+    the briefing's cutoff. The plan drops them before the plan is announced, so tool_plan,
+    the trace and the synthesizer all see the same list — not left to the LLM's judgement."""
+    fake_llm('["get_track_info", "get_race_weather", "search_f1_news", "get_driver_form"]')
+
+    result = planner_node(make_state(race_info=make_race_info(**PAST)))
+
+    assert result["tasks"] == ["get_track_info", "get_driver_form"]
+
+
+@pytest.mark.parametrize(
+    "llm_kwargs", [{"content": "not json"}, {"raises": RuntimeError("429")}], ids=["parse", "call"]
+)
+def test_a_past_race_drops_weather_and_news_from_the_default_tools_too(fake_llm, llm_kwargs):
+    fake_llm(**llm_kwargs)
+
+    result = planner_node(make_state(race_info=make_race_info(**PAST)))
+
+    assert result["tasks"] == [
+        tool for tool in DEFAULT_TOOLS if tool not in {"get_race_weather", "search_f1_news"}
+    ]
+    assert "get_championship_standings" in result["tasks"]
+
+
+def test_an_upcoming_race_keeps_weather_and_news(fake_llm):
+    fake_llm('["get_race_weather", "search_f1_news"]')
+
+    result = planner_node(make_state(race_info=make_race_info()))
+
+    assert result["tasks"] == ["get_race_weather", "search_f1_news"]
+
+
 # ── Tool argument dispatch ───────────────────────────────────────────────────
 
 
 @pytest.mark.parametrize(
     ("task_name", "expected_args"),
     [
-        ("get_track_info", {"circuit_name": "Monaco Grand Prix", "year": 2024}),
-        ("get_recent_top_finishers", {"year": 2024}),
+        ("get_track_info", {"year": 2025, "round": 3, "track_id": "mc-1929"}),
+        ("get_recent_top_finishers", {"as_of": AS_OF}),
         (
             "get_circuit_winners",
-            {"circuit_name": "Monaco Grand Prix", "location": "Monaco", "years_back": 3},
+            {
+                "circuit_name": "Circuit de Monaco",
+                "location": "Monaco",
+                "race_year": 2025,
+                "as_of": AS_OF,
+                "years_back": 3,
+            },
         ),
         ("search_f1_news", {"query": "Monaco Grand Prix 2025", "max_results": 5}),
         ("get_race_weather", {"city": "Monaco", "country_code": "MC"}),
-        ("get_driver_form", {"driver_code": "VER", "year": 2024, "num_races": 5}),
-        ("get_recent_race_results", {"event_name": "Monaco Grand Prix", "year": 2024}),
+        ("get_driver_form", {"driver_code": "VER", "as_of": AS_OF, "num_races": 5}),
+        ("get_recent_race_results", {"track_id": "mc-1929", "as_of": AS_OF}),
     ],
 )
 def test_each_tool_receives_arguments_derived_from_race_info(task_name, expected_args):
     """Pins the hand-written arg mapping — the part most likely to drift silently.
 
-    Note that the history-oriented tools get ``historical_year`` (2024) while news gets
-    the race's own year (2025): an upcoming race has no data of its own yet.
+    Track info is *this* event, found by round; every result tool takes the cutoff instead
+    of a year, so none of them can reach past it (ADR-0004). The circuit tools are keyed by
+    the track, never by the Grand Prix's name.
     """
     tool = make_tool(task_name, result={"ok": True})
     _invoke_tool(tool, task_name, make_race_info())
@@ -452,23 +496,21 @@ def test_a_failure_then_success_serves_the_success_from_cache():
 
 
 def test_cache_keys_distinguish_different_races():
-    """Different args must not collide: Monaco's winners are not Silverstone's."""
+    """Different args must not collide: Monaco's results are not Silverstone's."""
     tool = make_tool("get_recent_race_results", {"ok": True})
 
     _invoke_tool(tool, "get_recent_race_results", make_race_info())
-    _invoke_tool(
-        tool,
-        "get_recent_race_results",
-        make_race_info(name="British Grand Prix"),
-    )
+    _invoke_tool(tool, "get_recent_race_results", make_race_info(track_id="gb-1948"))
 
     assert len(tool.calls) == 2
 
 
-def test_cache_keys_distinguish_different_years():
+def test_cache_keys_distinguish_different_cutoffs():
     tool = make_tool("get_recent_top_finishers", {"ok": True})
-    _invoke_tool(tool, "get_recent_top_finishers", make_race_info(historical_year=2024))
-    _invoke_tool(tool, "get_recent_top_finishers", make_race_info(historical_year=2023))
+    _invoke_tool(tool, "get_recent_top_finishers", make_race_info())
+    _invoke_tool(
+        tool, "get_recent_top_finishers", make_race_info(as_of="2023-07-07T11:30:00+00:00")
+    )
     assert len(tool.calls) == 2
 
 
@@ -517,72 +559,52 @@ def test_mutating_a_cache_miss_result_does_not_corrupt_later_hits():
     assert hit["data"] == {"length_km": 3.3, "corners": [1, 2, 3]}
 
 
-def _make_fake_date(initial: date):
-    """Build a stand-in for the ``datetime.date`` class with a controllable ``.today()``.
-
-    A fresh class per test avoids the classvar leaking state between tests — unlike
-    monkeypatching a shared instance, nothing here survives past the test that made it.
-
-    Note the parameter is not named ``today``: a class body treats any name it assigns
-    anywhere (here, the ``today`` classmethod below) as local to the class's own
-    namespace throughout, so a same-named reference to the enclosing function's
-    parameter would raise ``NameError`` instead of finding it by closure.
-    """
-
-    class _FakeDate:
-        _today = initial
-
-        @classmethod
-        def today(cls):
-            return cls._today
-
-    return _FakeDate
+CUTOFF_TOOLS = [
+    "get_recent_top_finishers",
+    "get_driver_form",
+    "get_circuit_winners",
+    "get_championship_standings",
+]
 
 
-@pytest.mark.parametrize(
-    "task_name", ["get_recent_top_finishers", "get_driver_form", "get_circuit_winners"]
-)
-def test_a_date_dependent_tool_is_refetched_when_the_date_advances(monkeypatch, task_name):
-    """The key IS the expiry: a new day forces a refetch with no TTL machinery involved.
-
-    Verified against the `date` seam graph.py imports, not a real clock — this must not
-    sleep or depend on when the suite happens to run.
-    """
-    fake_date = _make_fake_date(date(2026, 8, 4))
-    monkeypatch.setattr(graph_module, "date", fake_date)
+@pytest.mark.parametrize("task_name", CUTOFF_TOOLS)
+def test_an_upcoming_race_refetches_once_its_cutoff_rolls_to_a_new_day(task_name):
+    """An upcoming race's ``as_of`` is the start of today, so the next day's briefing carries a
+    new cutoff — and a new key. That is the whole expiry: "the most recent race" moves on the
+    day a new one is held, and nothing but the cutoff needs to say so."""
     tool = make_tool(task_name, {"ok": True})
 
-    _invoke_tool(tool, task_name, make_race_info())
-    fake_date._today = date(2026, 8, 5)
-    _invoke_tool(tool, task_name, make_race_info())
+    _invoke_tool(tool, task_name, make_race_info(as_of="2026-08-04T00:00:00+00:00"))
+    _invoke_tool(tool, task_name, make_race_info(as_of="2026-08-05T00:00:00+00:00"))
 
     assert len(tool.calls) == 2
 
 
-@pytest.mark.parametrize(
-    "task_name", ["get_recent_top_finishers", "get_driver_form", "get_circuit_winners"]
-)
-def test_a_date_dependent_tool_still_hits_the_cache_within_the_same_day(monkeypatch, task_name):
-    monkeypatch.setattr(graph_module, "date", _make_fake_date(date(2026, 8, 4)))
+@pytest.mark.parametrize("task_name", CUTOFF_TOOLS)
+def test_one_cutoff_hits_the_cache_whatever_the_date(task_name):
+    """A past race's ``as_of`` never changes, and what came before it cannot either — so its
+    answers are not refetched just because the calendar moved on. The key has no date of its
+    own; the cutoff is the date."""
     tool = make_tool(task_name, {"ok": True})
+    past = make_race_info(is_upcoming=False, as_of="2026-06-05T11:30:00+00:00")
 
-    _invoke_tool(tool, task_name, make_race_info())
-    _invoke_tool(tool, task_name, make_race_info())
+    with freeze_time("2026-08-04") as frozen:
+        _invoke_tool(tool, task_name, past)
+        frozen.tick(86400 * 30)
+        _invoke_tool(tool, task_name, past)
 
     assert len(tool.calls) == 1
 
 
-def test_an_argument_pure_tool_still_hits_the_cache_across_a_date_change(monkeypatch):
-    """Proves the date component is scoped to the three date-dependent tools, not global —
-    ``get_track_info`` takes an explicit year and must not refetch just because the
-    calendar moved on."""
-    fake_date = _make_fake_date(date(2026, 8, 4))
-    monkeypatch.setattr(graph_module, "date", fake_date)
+def test_an_argument_pure_tool_still_hits_the_cache_across_a_date_change():
+    """``get_track_info`` is this event's calendar row and its circuit file — a pure function
+    of its arguments, which carry no cutoff because nothing in them moves."""
     tool = make_tool("get_track_info", {"ok": True})
 
-    _invoke_tool(tool, "get_track_info", make_race_info())
-    fake_date._today = date(2026, 8, 5)
-    _invoke_tool(tool, "get_track_info", make_race_info())
+    with freeze_time("2026-08-04") as frozen:
+        _invoke_tool(tool, "get_track_info", make_race_info())
+        frozen.tick(86400)
+        _invoke_tool(tool, "get_track_info", make_race_info())
 
     assert len(tool.calls) == 1
 
@@ -591,8 +613,6 @@ def test_cacheable_tool_names_all_exist_among_the_real_tools():
     """A tool rename must break this test rather than silently disable its caching."""
     real_tool_names = {t.name for t in graph_module.all_tools}
     assert real_tool_names >= graph_module.CACHEABLE_TOOLS
-    assert real_tool_names >= graph_module.DATE_DEPENDENT_TOOLS
-    assert graph_module.CACHEABLE_TOOLS >= graph_module.DATE_DEPENDENT_TOOLS
 
 
 # ── Tool executor node ───────────────────────────────────────────────────────
@@ -899,18 +919,18 @@ def test_the_planner_prompt_advertises_every_registered_tool():
 
 def test_standings_is_invoked_with_the_current_year():
     """From round 2 of a season onward, "current standings" means the season under way,
-    not `historical_year` (year - 1). Only before round 1 has run does the current
-    season have nothing to report — see the retry test below for that case.
+    as of the briefing's cutoff. Only before round 1 has run does the current season have
+    nothing to report — see the retry test below for that case.
     """
     from agent.graph import _invoke_tool
     from tests.factories import make_race_info, make_tool
 
     fake = make_tool("get_championship_standings", {"drivers": []})
-    race_info = make_race_info(year=2026, historical_year=2025)
+    race_info = make_race_info(year=2026, as_of="2026-09-30T00:00:00+00:00")
 
     _invoke_tool(fake, "get_championship_standings", race_info)
 
-    assert fake.calls == [{"year": 2026}]
+    assert fake.calls == [{"year": 2026, "as_of": "2026-09-30T00:00:00+00:00"}]
 
 
 def test_standings_retries_with_the_historical_year_when_the_season_has_not_started():
@@ -937,11 +957,15 @@ def test_standings_retries_with_the_historical_year_when_the_season_has_not_star
             return {"year": 2025, "drivers": [{"driver_code": "NOR"}]}
 
     fake = _RetryingTool()
-    race_info = make_race_info(year=2026, historical_year=2025)
+    race_info = make_race_info(year=2026, as_of="2026-03-06T01:30:00+00:00")
 
     result = _invoke_tool(fake, "get_championship_standings", race_info)
 
-    assert fake.calls == [{"year": 2026}, {"year": 2025}]
+    # The same cutoff both times: the previous season as it stood then, which is its final table.
+    assert fake.calls == [
+        {"year": 2026, "as_of": "2026-03-06T01:30:00+00:00"},
+        {"year": 2025, "as_of": "2026-03-06T01:30:00+00:00"},
+    ]
     assert result["success"] is True
     assert result["data"]["year"] == 2025
 
@@ -965,10 +989,10 @@ def test_standings_does_not_retry_on_a_transport_failure():
             return {"error": "Failed to get championship standings: HTTP 429"}
 
     fake = _FailingTool()
-    race_info = make_race_info(year=2026, historical_year=2025)
+    race_info = make_race_info(year=2026, as_of="2026-09-30T00:00:00+00:00")
 
     result = _invoke_tool(fake, "get_championship_standings", race_info)
 
-    assert fake.calls == [{"year": 2026}]
+    assert fake.calls == [{"year": 2026, "as_of": "2026-09-30T00:00:00+00:00"}]
     assert result["success"] is False
     assert result["data"]["error"] == "Failed to get championship standings: HTTP 429"

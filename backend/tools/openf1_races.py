@@ -1,23 +1,28 @@
 """Race-session lookup over the OpenF1 sessions endpoint. A plain helper, not a tool.
 
 Every result tool starts by answering one of two questions — "which session is this
-event's race?" or "which races have already run?" — and both are one filtered pass over
-``list_sessions``. Keeping them here means the four tools share one definition of what
-counts as a race.
+event's race?" or "which races had run by the cutoff?" — and both are one filtered pass
+over ``list_sessions``. Keeping them here means the four tools share one definition of
+what counts as a race.
 """
 
 import logging
-from datetime import date
+from datetime import datetime, timedelta
 from typing import Any
 
-from tools.openf1_client import list_meetings, list_sessions
+from tools.cutoff import parse_utc
+from tools.openf1_client import list_meetings, list_sessions, session_results
 
 logger = logging.getLogger(__name__)
 
+# How far apart FastF1's and OpenF1's start times for one race may be and still be the same
+# race. Measured 2026-09-30 they agree to the minute on every held race of 2023-26; a day is
+# slack for a late reschedule, and no two Grands Prix have ever been a day apart.
+_SAME_RACE = timedelta(days=1)
 
-def _session_date(session: dict[str, Any]) -> date:
-    """Parse OpenF1's ISO-8601 date_start down to a date."""
-    return date.fromisoformat(session["date_start"][:10])
+
+def _session_start(session: dict[str, Any]) -> datetime:
+    return parse_utc(session["date_start"])
 
 
 def _bidirectional_match(needle: str, haystack: str) -> bool:
@@ -84,15 +89,41 @@ def find_race_session(year: int, event_name: str) -> dict[str, Any] | None:
     return None
 
 
-def completed_races(year: int, today: date) -> list[dict[str, Any]]:
-    """Return the year's Race sessions that have already run, in chronological order.
+def race_session_at(year: int, start: datetime) -> dict[str, Any] | None:
+    """The year's Race session starting within a day of ``start``, or None.
+
+    How a race found on FastF1's calendar — matched to its *track* by location — is joined to
+    OpenF1: by when it starts, never by name. A Grand Prix name is not a track (2026 has two
+    meetings called "Bahrain Grand Prix"), and a start time names exactly one race.
+    """
+    for session in list_sessions(year, "Race"):
+        if abs(_session_start(session) - start) <= _SAME_RACE:
+            return session
+    return None
+
+
+def completed_races(year: int, before: datetime) -> list[dict[str, Any]]:
+    """Return the year's Race sessions that started before ``before``, in chronological order.
 
     Sprint and qualifying sessions are excluded by asking OpenF1 for ``session_name=Race``
     — a Sprint sits a day before its Grand Prix, so a naive "latest session" would name
     the wrong event as the most recent race.
     """
-    races = [s for s in list_sessions(year, "Race") if _session_date(s) < today]
-    return sorted(races, key=_session_date)
+    races = [s for s in list_sessions(year, "Race") if _session_start(s) < before]
+    return sorted(races, key=_session_start)
+
+
+def held_races(year: int, before: datetime) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """The races that started before ``before`` *and* produced a classification, with the rows.
+
+    A cancelled race keeps its session and serves no rows — Sakhir and Jeddah 2026 — so
+    "the latest race" is the latest *held* one. One range query covers every race, and it is
+    the same span the standings table asks for, so within a briefing the two share a request.
+    """
+    races = completed_races(year, before)
+    rows = session_results({race["session_key"] for race in races})
+    classified = {row.get("session_key") for row in rows}
+    return [race for race in races if race["session_key"] in classified], rows
 
 
 def scoring_sessions(year: int) -> list[dict[str, Any]]:
@@ -104,4 +135,4 @@ def scoring_sessions(year: int) -> list[dict[str, Any]]:
     OpenF1 starts returning ``points: 0`` for them.
     """
     sessions = list_sessions(year, "Race") + list_sessions(year, "Sprint")
-    return sorted(sessions, key=_session_date)
+    return sorted(sessions, key=_session_start)

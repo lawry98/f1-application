@@ -5,7 +5,7 @@ Year: {race_year}
 Location: {race_location}, {race_country}
 Date: {race_date}
 Upcoming: {is_upcoming}
-Historical data year: {historical_year}
+Cutoff (as_of): {as_of}
 
 Select which tools to run to gather data for the briefing. Available tools:
 - get_track_info: Track characteristics and circuit details

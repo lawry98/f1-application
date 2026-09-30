@@ -886,3 +886,112 @@ def test_a_constructor_tie_level_on_countback_falls_back_to_the_name(monkeypatch
         {"position": 1, "team": "Alpha", "points": 14.0},
         {"position": 2, "team": "Zeta", "points": 14.0},
     ]
+
+
+# ── as_of: the table a reader would have seen before a given weekend ──────────────────────
+#
+# conftest's 2024 season: Bahrain race (2 Mar 15:00), Miami sprint (5 Apr 16:00), Miami race
+# (6 Apr 20:00), Monaco race (26 May 13:00) — all UTC.
+
+
+@freeze_time("2024-06-01")
+def test_as_of_counts_only_the_sessions_that_started_before_it(openf1_season):
+    """The Silverstone-2023 defect in miniature: without a cutoff a past race is briefed with
+    the season's final table. After Miami's sprint, before its race, VER has 25 + 7."""
+    result = get_championship_standings.invoke({"year": 2024, "as_of": "2024-04-06T12:00:00+00:00"})
+
+    assert {row["driver_code"]: row["points"] for row in result["drivers"]} == {
+        "VER": 32.0,
+        "NOR": 26.0,
+        "HAM": 15.0,
+        "TIE": 12.0,
+        "ZER": 0.0,
+    }
+    assert result["races_completed"] == 1
+
+
+@freeze_time("2024-06-01")
+def test_as_of_is_an_instant_not_a_day(openf1_season):
+    """An hour after Miami's race started, that race counts — a date-level cutoff would drop it."""
+    result = get_championship_standings.invoke({"year": 2024, "as_of": "2024-04-06T21:00:00+00:00"})
+
+    assert result["races_completed"] == 2
+    assert result["drivers"][0]["driver_code"] == "NOR"
+
+
+@freeze_time("2024-06-01")
+def test_as_of_before_the_first_session_has_not_started(openf1_season):
+    result = get_championship_standings.invoke({"year": 2024, "as_of": "2024-03-01T00:00:00+00:00"})
+
+    assert result["reason"] == SEASON_NOT_STARTED
+
+
+def _calls_for_a_repeat_as_of(fake, as_of, *, between=None) -> int:
+    from tools import openf1_client
+
+    get_championship_standings.invoke({"year": 2024, "as_of": as_of})
+    openf1_client.clear()
+    if between is not None:
+        between()
+    before = len(fake.calls)
+    get_championship_standings.invoke({"year": 2024, "as_of": as_of})
+    return len(fake.calls) - before
+
+
+def test_a_past_cutoff_in_the_running_season_is_cached_without_a_ttl(openf1_season):
+    """Nothing that started before a past instant can still change, so the running season's TTL
+    — there because the season grows — does not apply to it."""
+    with freeze_time("2024-06-01") as frozen:
+        calls = _calls_for_a_repeat_as_of(
+            openf1_season, "2024-04-06T12:00:00+00:00", between=lambda: frozen.tick(86400)
+        )
+
+    assert calls == 0
+
+
+def test_a_cutoff_of_today_keeps_the_running_season_ttl(openf1_season):
+    """An upcoming race's as_of is the start of today: yesterday's race may still be publishing,
+    so its table is the running season's and refreshes like one."""
+    with freeze_time("2024-06-01") as frozen:
+        calls = _calls_for_a_repeat_as_of(
+            openf1_season, "2024-06-01T00:00:00+00:00", between=lambda: frozen.tick(301)
+        )
+
+    assert calls > 0
+
+
+def test_each_cutoff_is_cached_separately(openf1_season):
+    with freeze_time("2024-06-01"):
+        early = get_championship_standings.invoke(
+            {"year": 2024, "as_of": "2024-04-06T12:00:00+00:00"}
+        )
+        late = get_championship_standings.invoke(
+            {"year": 2024, "as_of": "2024-04-06T21:00:00+00:00"}
+        )
+        full = get_championship_standings.invoke({"year": 2024})
+
+    assert (early["races_completed"], late["races_completed"], full["races_completed"]) == (
+        1,
+        2,
+        3,
+    )
+
+
+@freeze_time("2024-06-01")
+def test_a_failure_with_a_cutoff_is_never_cached(monkeypatch):
+    from tests.factories import make_openf1_get
+    from tools import openf1_client
+
+    as_of = "2024-04-06T12:00:00+00:00"
+    assert "error" in get_championship_standings.invoke({"year": 2024, "as_of": as_of})
+
+    fake = make_openf1_get(
+        {
+            "sessions": OPENF1_SESSIONS_2024,
+            "session_result": OPENF1_RESULTS,
+            "drivers": OPENF1_DRIVERS,
+        }
+    )
+    monkeypatch.setattr(openf1_client.requests, "get", fake)
+
+    assert "error" not in get_championship_standings.invoke({"year": 2024, "as_of": as_of})
