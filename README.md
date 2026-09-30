@@ -174,13 +174,14 @@ INPUT ("Monaco GP 2025")
         ▼
 ┌───────────────┐
 │ TOOL EXECUTOR │  Execute tools in parallel:
-│               │  - get_track_info           (FastF1)
-│               │  - get_recent_race_results  (FastF1)
-│               │  - get_driver_form          (FastF1)
-│               │  - get_recent_top_finishers (FastF1)
-│               │  - get_circuit_winners      (FastF1)
-│               │  - search_f1_news           (Tavily)
-│               │  - get_race_weather         (OpenWeather)
+│               │  - get_track_info             (FastF1)
+│               │  - get_recent_race_results    (OpenF1; FastF1 before 2023)
+│               │  - get_driver_form            (OpenF1; FastF1 before 2023)
+│               │  - get_recent_top_finishers   (OpenF1; FastF1 before 2023)
+│               │  - get_championship_standings (OpenF1, 2023 onward)
+│               │  - get_circuit_winners        (FastF1)
+│               │  - search_f1_news             (Tavily)
+│               │  - get_race_weather           (OpenWeather)
 └───────┬───────┘
         │
         ▼
