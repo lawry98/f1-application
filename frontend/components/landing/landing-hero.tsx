@@ -243,7 +243,7 @@ function HeroBriefingPreview() {
           same "positioned, z-index:auto" paint bucket as the glow above and later in tree order —
           so it paints on top without a z-index. */}
       <TicketCard
-        kicker="RACE BRIEFING · RND.08"
+        kicker="SAMPLE BRIEFING · RND.08"
         divide="y"
         footer={
           <>
@@ -283,13 +283,13 @@ function HeroBriefingPreview() {
              * axe flagged `heading-order` (moderate) on `/`: the document went **H1 → H3**, because
              * this was the only other heading in the hero. Promoting it to `h2` would silence axe
              * and be wrong. A heading declares "here begins a section of this document", and this
-             * card declares nothing of the kind: it is a mocked-up sample of the product, one of
-             * whose rows is a *fictional* championship table, sitting in a `hidden lg:block` column
-             * as an illustration beside the real copy. Making it an `h2` would put "Monaco Grand
-             * Prix" into the page outline as a peer of "Everything for a complete race weekend
-             * picture" and "From query to briefing in seconds", so a screen-reader user navigating
-             * by heading would land on demo data and reasonably conclude the page was about the
-             * Monaco Grand Prix.
+             * card declares nothing of the kind: it is sample data, labelled so by its kicker and
+             * chip, one of whose rows is an *invented* championship table, sitting in a
+             * `hidden lg:block` column as an illustration beside the real copy. Making it an `h2`
+             * would put "Monaco Grand Prix" into the page outline as a peer of "Everything for a
+             * complete race weekend picture" and "From query to briefing in seconds", so a
+             * screen-reader user navigating by heading would land on demo data and reasonably
+             * conclude the page was about the Monaco Grand Prix.
              *
              * So the fix is the level *below* zero: the string, its styling and its place in the
              * reading order are unchanged, and only its participation in the outline is removed.
@@ -300,9 +300,14 @@ function HeroBriefingPreview() {
             <p className="font-display text-lg uppercase leading-tight tracking-tight text-ink">
               Monaco Grand Prix
             </p>
-            <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-green-500/10 px-2.5 py-1 text-[11px] font-medium text-green-400">
-              <span className="h-1.5 w-1.5 rounded-full bg-green-400" aria-hidden="true" />
-              Ready
+            {/*
+             * Outlined and unfilled, and neutral on purpose. This was a green "Ready" chip with a
+             * status dot, which on a card of invented numbers read as a live result. With no fill
+             * of its own the chip's text sits on the card surface, the same backdrop the rows'
+             * resting-contrast test already judges it against.
+             */}
+            <span className="mt-2 inline-flex items-center rounded-full border border-white/15 px-2.5 py-1 text-[11px] font-medium text-zinc-300">
+              Sample data
             </span>
           </div>
         </div>
