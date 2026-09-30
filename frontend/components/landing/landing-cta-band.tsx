@@ -106,7 +106,7 @@ export function LandingCtaBand() {
           </h2>
           <p className="mx-auto mb-10 max-w-xl text-lg text-zinc-400">
             No setup, no account required. Enter any Grand Prix name and receive a comprehensive
-            AI-generated briefing in seconds.
+            AI-generated briefing in under a minute.
           </p>
 
           {/*

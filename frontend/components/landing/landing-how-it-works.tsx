@@ -133,7 +133,7 @@ export function LandingHowItWorks() {
               <span className="h-1.5 w-5 flex-shrink-0 bg-f1-red" aria-hidden="true" />
               How it works
             </p>
-            {/* Mixed type: ALL-CAPS display, with `in seconds` as the one serif-italic accent run.
+            {/* Mixed type: ALL-CAPS display, with `in under a minute` as the one serif-italic accent run.
                 Case is set in the markup (`uppercase` on the h2, `normal-case` on the span) so the
                 serif stays sentence-case — that contrast is the point of the treatment. Red is
                 allowed at this size: the h2 is 36px+, well over the 24px large-text threshold. */}
@@ -143,7 +143,7 @@ export function LandingHowItWorks() {
             >
               From query to briefing{' '}
               <span className="font-serif-display text-[1.05em] normal-case italic text-f1-red">
-                in seconds
+                in under a minute
               </span>
             </h2>
             <p className="mt-4 text-lg text-zinc-400">

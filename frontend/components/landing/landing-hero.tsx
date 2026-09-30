@@ -287,7 +287,7 @@ function HeroBriefingPreview() {
              * chip, one of whose rows is an *invented* championship table, sitting in a
              * `hidden lg:block` column as an illustration beside the real copy. Making it an `h2`
              * would put "Monaco Grand Prix" into the page outline as a peer of "Everything for a
-             * complete race weekend picture" and "From query to briefing in seconds", so a
+             * complete race weekend picture" and "From query to briefing in under a minute", so a
              * screen-reader user navigating by heading would land on demo data and reasonably
              * conclude the page was about the Monaco Grand Prix.
              *
