@@ -6,14 +6,6 @@ const nextConfig = {
   eslint: {
     dirs: ['app', 'browser', 'components', 'data', 'hooks', 'lib', 'scripts', 'types', 'tests'],
   },
-  transpilePackages: ['three'],
-  webpack: (config) => {
-    config.module.rules.push({
-      test: /\.(glb|gltf)$/,
-      type: 'asset/resource',
-    });
-    return config;
-  },
 };
 
 module.exports = nextConfig;
