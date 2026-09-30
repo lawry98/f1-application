@@ -56,7 +56,7 @@ describe('LandingHero', () => {
           'p',
           'Type any Grand Prix and our AI agent gathers track telemetry, driver form, weather ' +
             'forecasts, and live news — synthesized into a structured race weekend briefing by ' +
-            'Claude AI.',
+            'Gemini.',
         ),
       ).toBeInTheDocument();
     });

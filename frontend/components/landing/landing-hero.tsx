@@ -158,7 +158,7 @@ export function LandingHero() {
               <p className="max-w-lg text-lg leading-relaxed text-zinc-400">
                 Type any Grand Prix and our AI agent gathers track telemetry, driver form, weather
                 forecasts, and live news — synthesized into a structured race weekend briefing by
-                Claude AI.
+                Gemini.
               </p>
             </div>
 

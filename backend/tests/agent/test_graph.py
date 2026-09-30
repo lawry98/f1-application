@@ -224,7 +224,7 @@ def test_planner_parses_a_bare_json_list(fake_llm):
 
 
 def test_planner_strips_a_json_fenced_block(fake_llm):
-    """Claude routinely wraps JSON in ```json fences; the node unwraps them."""
+    """The model routinely wraps JSON in ```json fences; the node unwraps them."""
     fake_llm('Here you go:\n```json\n["get_race_weather"]\n```\nHope that helps!')
     assert planner_node(make_state(race_info=make_race_info()))["tasks"] == ["get_race_weather"]
 

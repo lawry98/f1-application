@@ -1,6 +1,6 @@
 # F1 Race Weekend Briefing Agent
 
-An AI-powered F1 race weekend briefing generator that provides comprehensive pre-race analysis using Claude AI. The agent gathers data from multiple sources and produces detailed briefings covering track info, championship context, driver form, news storylines, weather, and predictions.
+An AI-powered F1 race weekend briefing generator that provides comprehensive pre-race analysis using Gemini. The agent gathers data from multiple sources and produces detailed briefings covering track info, championship context, driver form, news storylines, weather, and predictions.
 
 ## Features
 
@@ -184,7 +184,7 @@ INPUT ("Monaco GP 2025")
         │
         ▼
 ┌───────────────┐
-│  SYNTHESIZER  │  Combine all data into structured briefing via Claude
+│  SYNTHESIZER  │  Combine all data into structured briefing via Gemini
 └───────┬───────┘
         │
         ▼
