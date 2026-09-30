@@ -1,4 +1,5 @@
 import { focusByKeyboard, focusState, hasRule, tabThroughPage, TAILWIND_DEFAULT_RING } from './support/css';
+import { waitForMain } from './support/page-content';
 import { expect, test } from './support/test';
 
 /**
@@ -48,6 +49,7 @@ test('a flush control on base takes the red ring', async ({ page }) => {
 for (const route of ['/', '/teams', '/tyres', '/circuits', '/circuits/monza']) {
   test(`no focusable control on ${route} paints Tailwind's default blue ring`, async ({ page }) => {
     await page.goto(route);
+    await waitForMain(page);
     if (route === '/circuits') await expect(page.getByRole('list', { name: /calendar$/ })).toBeVisible();
     if (route === '/circuits/monza') await expect(page.getByRole('table')).toBeVisible();
     const states = await tabThroughPage(page);

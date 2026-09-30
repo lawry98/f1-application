@@ -1,6 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 
 import { waitForMotionToSettle } from './support/motion';
+import { waitForMain } from './support/page-content';
 import { expect, test } from './support/test';
 
 const WCAG_A_AA = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
@@ -28,6 +29,7 @@ for (const { route, width } of PASSES) {
   test(`${route} has no WCAG A/AA axe violations at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.goto(route);
+    await waitForMain(page);
     if (route === '/standings') await expect(page.getByRole('table').first()).toBeVisible();
     if (route === '/circuits') await expect(page.getByRole('list', { name: /calendar$/ })).toBeVisible();
     if (route === '/circuits/monza') await expect(page.getByRole('table')).toBeVisible();

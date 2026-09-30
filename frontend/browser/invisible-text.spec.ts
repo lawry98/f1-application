@@ -1,5 +1,6 @@
 import { waitForMotionToSettle } from './support/motion';
 import { findInvisibleText } from './support/invisible-text';
+import { waitForMain } from './support/page-content';
 import { expect, test } from './support/test';
 
 /**
@@ -21,6 +22,7 @@ for (const { path, width } of ROUTES) {
   test(`${path} at ${width}px paints no text in its own backdrop colour`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.goto(path);
+    await waitForMain(page);
     if (path === '/standings') await expect(page.getByRole('table').first()).toBeVisible();
     if (path === '/circuits') await expect(page.getByRole('list', { name: /calendar$/ })).toBeVisible();
     if (path === '/circuits/monza') await expect(page.getByRole('table')).toBeVisible();

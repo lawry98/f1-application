@@ -1,5 +1,6 @@
 import type { Page } from '@playwright/test';
 
+import { waitForMain } from './support/page-content';
 import { expect, test } from './support/test';
 
 /**
@@ -90,6 +91,7 @@ for (const viewport of [
         }
       });
       await page.goto('/teardown');
+      await waitForMain(page);
       await expect(page.getByText('Loading frames')).toBeHidden();
       await expect.poll(() => responses.size, { timeout: 20_000 }).toBe(FRAME_COUNT);
 
@@ -121,6 +123,8 @@ test('the overlay lifts on the first pass, and the canvas upgrades in place as c
   // Not the default `load`: an image the scene has started but not finished delays the document's
   // load event, and the held frames never finish until they are released.
   await page.goto('/teardown', { waitUntil: 'domcontentloaded' });
+  // The overlay mounts with the scene, so until `<main>` is up "hidden" would be vacuously true.
+  await waitForMain(page);
   await expect(page.getByText('Loading frames')).toBeHidden();
 
   // Frame 100 is not in the first pass; 96 is the closest frame that is.
@@ -138,6 +142,7 @@ test('the docked still is the preloaded last frame, not a second download', asyn
     if (r.url().includes('frame_0191')) lastFrameRequests.push(r.url());
   });
   await page.goto('/teardown');
+  await waitForMain(page);
   await expect(page.getByText('Loading frames')).toBeHidden();
 
   await scrollToFraction(page, 1);
