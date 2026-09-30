@@ -30,7 +30,9 @@ export function TyrePhoto({ compound, sizes = '(max-width: 768px) 90vw, 44vw', p
       width={1200}
       height={1200}
       sizes={sizes}
-      priority={priority}
+      // What Next 14's `priority` did; see `DriverPortrait`.
+      preload={priority}
+      fetchPriority={priority ? 'high' : undefined}
       className={cn('h-auto w-full select-none', className)}
       draggable={false}
     />

@@ -102,8 +102,9 @@ describe('TopoBackground', () => {
     //
     // The pattern id is excluded: `useId` hands each instance its own, which is the point of
     // using it, and React derives it from the position in the tree so it matches across the
-    // server/client boundary. Geometry is what has to be deterministic.
-    const strokeIds = (html: string) => html.replace(/topo-:[^"')]+/g, 'topo-id');
+    // server/client boundary. Geometry is what has to be deterministic. Matched as "anything
+    // after `topo-`", not as React's id syntax, which changed from `:r0:` to `_r_0_` in 19.
+    const strokeIds = (html: string) => html.replace(/topo-[^"')]+/g, 'topo-id');
 
     const first = strokeIds(render(<TopoBackground />).container.innerHTML);
     const second = strokeIds(render(<TopoBackground />).container.innerHTML);

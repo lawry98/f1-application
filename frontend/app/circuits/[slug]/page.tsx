@@ -10,12 +10,13 @@ import { resolveCircuitRoute } from '@/lib/circuit-route';
 export const dynamic = 'force-dynamic';
 
 interface CircuitPageProps {
-  params: { slug: string };
-  searchParams: Record<string, string | string[] | undefined>;
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
-export function generateMetadata({ params }: CircuitPageProps): Metadata {
-  const route = resolveCircuitRoute(params.slug, undefined);
+export async function generateMetadata({ params }: CircuitPageProps): Promise<Metadata> {
+  const { slug } = await params;
+  const route = resolveCircuitRoute(slug, undefined);
   if (route.kind === 'notFound') return { title: 'Circuit not found' };
   // `render` and `redirect` both carry the canonical entry — a redirect still streams this
   // metadata for the moment before the client redirect lands, so it should name the circuit
@@ -32,7 +33,8 @@ export function generateMetadata({ params }: CircuitPageProps): Metadata {
  * rules live in `resolveCircuitRoute`, because RTL cannot render an async server component.
  */
 export default async function CircuitPage({ params, searchParams }: CircuitPageProps) {
-  const route = resolveCircuitRoute(params.slug, searchParams.year);
+  const [{ slug }, { year }] = await Promise.all([params, searchParams]);
+  const route = resolveCircuitRoute(slug, year);
   if (route.kind === 'notFound') notFound();
   if (route.kind === 'redirect') redirect(route.to);
 

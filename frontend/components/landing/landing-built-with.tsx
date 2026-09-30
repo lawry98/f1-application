@@ -6,7 +6,7 @@ const TECH_STACK = [
   { label: 'Gemini 3.6 Flash', note: 'Synthesis & analysis' },
   { label: 'OpenWeather', note: 'Weather forecasts' },
   { label: 'Tavily', note: 'News & web search' },
-  { label: 'Next.js 14', note: 'Frontend framework' },
+  { label: 'Next.js 16', note: 'Frontend framework' },
 ] as const;
 
 export function LandingBuiltWith() {

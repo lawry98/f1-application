@@ -310,7 +310,7 @@ export default function CreditsPage() {
             <div>
               <h3 className={cn('mb-3', LABEL)}>Frontend</h3>
               <ul className="space-y-1.5 text-sm text-zinc-400">
-                <li>React &amp; Next.js 14</li>
+                <li>React &amp; Next.js 16</li>
                 <li>TypeScript</li>
                 <li>Three.js / React Three Fiber</li>
                 <li>Tailwind CSS</li>

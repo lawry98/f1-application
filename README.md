@@ -25,7 +25,7 @@ An AI-powered F1 race weekend briefing generator that provides comprehensive pre
 - **SSE-Starlette** for server-sent events streaming
 
 ### Frontend
-- **Next.js 14** (App Router) + React 18
+- **Next.js 16** (App Router, Turbopack) + React 19
 - **TypeScript** (strict mode)
 - **Three.js / @react-three/fiber** for 3D car visuals
 - **Tailwind CSS** + **shadcn/ui** + **Magic UI** (vendored into `components/ui/`)

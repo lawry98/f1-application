@@ -4,3 +4,20 @@
 # Without this, pnpm's pre-script deps check fails and EVERY script errors.
 allowBuilds:
   unrs-resolver: true
+# pnpm 11 refuses a version published less than a day ago (minimumReleaseAge).
+# next 16.3.8 shipped on 2026-09-30 carrying a High image-optimizer SSRF fix
+# (GHSA-cjq9-62q9-8jv4), so it is let through here by exact version. Every entry
+# is inert once its version is a day old: delete them all after 2026-10-01 16:10 UTC.
+minimumReleaseAgeExclude:
+  - '@next/env@16.3.8'
+  - '@next/eslint-plugin-next@16.3.8'
+  - '@next/swc-darwin-arm64@16.3.8'
+  - '@next/swc-darwin-x64@16.3.8'
+  - '@next/swc-linux-arm64-gnu@16.3.8'
+  - '@next/swc-linux-arm64-musl@16.3.8'
+  - '@next/swc-linux-x64-gnu@16.3.8'
+  - '@next/swc-linux-x64-musl@16.3.8'
+  - '@next/swc-win32-arm64-msvc@16.3.8'
+  - '@next/swc-win32-x64-msvc@16.3.8'
+  - eslint-config-next@16.3.8
+  - next@16.3.8

@@ -51,7 +51,7 @@ export interface RedactedRevealProps {
   /** Seconds added before this instance's first bar starts to wipe. */
   delay?: number;
   /** Element rendered for each line. */
-  as?: React.ElementType;
+  as?: React.ElementType<{ className?: string; children?: React.ReactNode }>;
   trigger?: 'onView' | 'immediate';
   className?: string;
 }
