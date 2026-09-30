@@ -418,6 +418,7 @@ def test_circuit_record_reads_the_circuit_file():
         "name": "Sepang International Circuit",
         "length_m": 5543,
         "first_gp": 1999,
+        "centroid": {"lat": 2.76075, "lon": 101.73696},
     }
 
 

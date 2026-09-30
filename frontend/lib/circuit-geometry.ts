@@ -39,6 +39,11 @@ export interface CircuitGeometry {
   /** Year of this circuit's first Grand Prix. */
   firstGp: number;
   /**
+   * The mean of the outline's source ring, in WGS84 degrees. Nothing here draws with it — the
+   * backend reads it to ask OpenWeather for a forecast by coordinates.
+   */
+  centroid: { lat: number; lon: number };
+  /**
    * The outline in a normalised 0–1 box with the circuit's aspect ratio preserved, downsampled
    * to at most 240 points. Densely sampled off a surveyed centre line, which is why
    * `catmullRomPath` is the right thing to draw it with.

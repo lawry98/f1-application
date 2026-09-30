@@ -15,12 +15,8 @@ from langgraph.graph import END, StateGraph
 
 from agent.prompts import DEFAULT_TOOLS, PLANNER_PROMPT, SYNTHESIZER_PROMPT
 from agent.state import AgentState, RaceInfo, ToolResult
-from config import (
-    COUNTRY_CODE_MAP,
-    EXECUTOR_MAX_WORKERS,
-    GOOGLE_API_KEY,
-    LLM_MODEL,
-)
+from config import EXECUTOR_MAX_WORKERS, GOOGLE_API_KEY, LLM_MODEL
+from tools.circuit_winners import circuit_record
 from tools.cutoff import parse_utc
 from tools.f1_data_tools import get_circuit_winners, get_recent_top_finishers
 from tools.fastf1_tools import get_driver_form, get_recent_race_results, get_track_info
@@ -245,6 +241,18 @@ def planner_node(state: AgentState) -> dict[str, Any]:
     return {"tasks": _applicable(DEFAULT_TOOLS, race_info), "current_step": "gathering"}
 
 
+def _centroid(track_id: str | None) -> dict[str, float] | None:
+    """A circuit's WGS84 centroid from its own file, or None when there is none to read."""
+    if not track_id:
+        return None
+    try:
+        record = circuit_record(track_id)
+    except Exception as exc:
+        logger.warning("No circuit record for %s (%s: %s)", track_id, type(exc).__name__, exc)
+        return None
+    return record["centroid"] if record else None
+
+
 def _build_tool_args(task_name: str, race_info: dict) -> dict[str, Any] | None:
     """Build the invocation arguments for a tool, or None when no handler exists.
 
@@ -277,8 +285,14 @@ def _build_tool_args(task_name: str, race_info: dict) -> dict[str, Any] | None:
     if task_name == "search_f1_news":
         return {"query": f"{race_info['name']} {race_info['year']}", "max_results": 5}
     if task_name == "get_race_weather":
-        country_code = COUNTRY_CODE_MAP.get(race_info["country"], "US")
-        return {"city": race_info["location"], "country_code": country_code}
+        # The circuit's own coordinates and the weekend's session times — never a geocoded
+        # place name. No track means no coordinates, which the tool reports as an error.
+        centroid = _centroid(race_info["track_id"])
+        return {
+            "lat": centroid["lat"] if centroid else None,
+            "lon": centroid["lon"] if centroid else None,
+            "sessions": race_info["sessions"],
+        }
     if task_name == "get_driver_form":
         # Hardcoded to Verstappen — the planner prompt advertises exactly this scope.
         return {"driver_code": "VER", "as_of": as_of, "num_races": 5}

@@ -90,32 +90,6 @@ CORS_ORIGINS: list[str] = [
     if origin.strip()
 ]
 
-# ── Country codes for weather lookup ─────────────────────────────────────────
-
-COUNTRY_CODE_MAP: dict[str, str] = {
-    "Monaco": "MC",
-    "United Kingdom": "GB",
-    "Italy": "IT",
-    "Belgium": "BE",
-    "Japan": "JP",
-    "Singapore": "SG",
-    "United States": "US",
-    "Bahrain": "BH",
-    "Saudi Arabia": "SA",
-    "Australia": "AU",
-    "Spain": "ES",
-    "Canada": "CA",
-    "Austria": "AT",
-    "Hungary": "HU",
-    "Netherlands": "NL",
-    "Mexico": "MX",
-    "Brazil": "BR",
-    "United Arab Emirates": "AE",
-    "Qatar": "QA",
-    "China": "CN",
-    "Azerbaijan": "AZ",
-}
-
 
 def validate_config() -> None:
     """Validate required environment variables; exit on fatal misconfiguration."""

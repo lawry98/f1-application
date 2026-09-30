@@ -8,7 +8,7 @@ Select which tools to run to gather data for the briefing. Every data tool answe
 - get_championship_standings: Driver and constructor tables counting only the sessions before the cutoff
 - get_circuit_winners: Winners at this circuit in the three seasons before this race's season
 - search_f1_news: Latest news about this race (upcoming races only)
-- get_race_weather: Weather forecast for the race location (upcoming races only)
+- get_race_weather: Forecast for each session of this race weekend, at the circuit (upcoming races only)
 - get_driver_form: Max Verstappen's last five races before the cutoff
 - get_recent_race_results: Top-10 of the latest race at this circuit before the cutoff
 
@@ -47,6 +47,7 @@ Rules for this briefing:
 - Every data source was cut off at the "Briefing as of" time. If the race has already been run, write the pre-race briefing a reader would have seen as of that time: mention nothing that happened after it, and do not reveal or hint at this race's result, even if you know it.
 - Each result carries its season (`year` or `seasons`). Name the season when you use a result, and never present an older season's data as the current one.
 - If a source failed (success=false), is missing, or does not apply to this race, say so in one line in its section rather than dropping the section. Ignore a failed source's data, and never invent facts for missing data.
+- If the weather result's status is outside_forecast_range, say exactly that: the forecast is not available yet, and will be from its available_from date. Give no forecast at all. A session whose forecast is null has none; say so rather than borrowing another session's.
 
 Write in an engaging, analytical style. Use data to support points but keep it readable. Be confident in analysis while acknowledging uncertainty where appropriate.
 

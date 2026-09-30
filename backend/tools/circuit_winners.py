@@ -138,6 +138,9 @@ def circuit_record(circuit_id: str) -> dict[str, Any] | None:
         "name": raw["name"],
         "length_m": raw.get("lengthM"),
         "first_gp": raw.get("firstGp"),
+        # WGS84 degrees, the mean of the outline's source ring — the weather forecast's
+        # coordinates. See scripts/fetch-circuit-geometry.mjs.
+        "centroid": raw.get("centroid"),
     }
     with _cache_lock:
         _records[circuit_id] = record

@@ -369,7 +369,10 @@ def test_an_upcoming_race_keeps_weather_and_news(fake_llm):
             },
         ),
         ("search_f1_news", {"query": "Monaco Grand Prix 2025", "max_results": 5}),
-        ("get_race_weather", {"city": "Monaco", "country_code": "MC"}),
+        (
+            "get_race_weather",
+            {"lat": 43.73716, "lon": 7.4253, "sessions": make_race_info()["sessions"]},
+        ),
         ("get_driver_form", {"driver_code": "VER", "as_of": AS_OF, "num_races": 5}),
         ("get_recent_race_results", {"track_id": "mc-1929", "as_of": AS_OF}),
     ],
@@ -386,11 +389,27 @@ def test_each_tool_receives_arguments_derived_from_race_info(task_name, expected
     assert tool.calls == [expected_args]
 
 
-def test_weather_falls_back_to_us_for_an_unmapped_country():
-    """COUNTRY_CODE_MAP has no entry for every country FastF1 can return."""
+def test_weather_for_a_race_with_no_circuit_file_has_no_coordinates_to_guess_from():
+    """The tool turns this into a structured error. The geocoding it replaced guessed: a
+    country missing from its map silently became "US"."""
     tool = make_tool("get_race_weather")
-    _invoke_tool(tool, "get_race_weather", make_race_info(country="Atlantis", location="Poseidon"))
-    assert tool.calls == [{"city": "Poseidon", "country_code": "US"}]
+
+    _invoke_tool(tool, "get_race_weather", make_race_info(track_id=None))
+
+    assert tool.calls[0]["lat"] is None
+    assert tool.calls[0]["lon"] is None
+
+
+def test_an_unreadable_circuit_file_leaves_weather_without_coordinates(monkeypatch, tmp_path):
+    """Building args must not raise: the tool reports the missing coordinates itself."""
+    from tools import circuit_winners
+
+    monkeypatch.setattr(circuit_winners, "CIRCUIT_INDEX_PATH", tmp_path / "absent.json")
+    tool = make_tool("get_race_weather")
+
+    _invoke_tool(tool, "get_race_weather", make_race_info())
+
+    assert (tool.calls[0]["lat"], tool.calls[0]["lon"]) == (None, None)
 
 
 def test_a_tool_returning_an_error_key_is_marked_unsuccessful():

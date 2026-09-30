@@ -34,6 +34,10 @@
  * Normalisation preserves aspect ratio: the longer axis spans the full 0..1 and the shorter one
  * is centred within it. Scaling each axis to fill independently would stretch Monza's straights
  * and lose the outline that makes it recognisable.
+ *
+ * Each file also carries `centroid` — WGS84 degrees, the unprojected mean of the same ring — for
+ * the backend's weather forecast, which asks OpenWeather for coordinates rather than geocoding a
+ * place name. It is the only field not derived through `project`, so adding it moved no outline.
  */
 
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -125,6 +129,16 @@ function project(coordinates) {
  * A circuit's outline can be a single LineString or a MultiLineString. Take the longest ring:
  * the extra rings are pit lanes and layout variants, and the racing loop is the long one.
  */
+/**
+ * The mean of the ring's vertices, in degrees. The vertices are dense and fairly even along a
+ * surveyed centre line, so this lands on the circuit — near enough for a weather forecast, whose
+ * grid is kilometres wide. Five decimals is about a metre.
+ */
+function centroid(coordinates) {
+  const mean = (axis) => coordinates.reduce((sum, point) => sum + point[axis], 0) / coordinates.length;
+  return { lat: Number(mean(1).toFixed(5)), lon: Number(mean(0).toFixed(5)) };
+}
+
 function longestRing(geometry) {
   if (geometry.type === 'LineString') return geometry.coordinates;
   if (geometry.type === 'MultiLineString') {
@@ -148,11 +162,12 @@ async function main() {
   for (const feature of collection.features) {
     const { id, Name: name, Location: location, length, firstgp } = feature.properties;
 
-    const points = downsample(project(longestRing(feature.geometry)), MAX_POINTS);
+    const ring = longestRing(feature.geometry);
+    const points = downsample(project(ring), MAX_POINTS);
 
     await writeFile(
       join(OUT_DIR, `${id}.json`),
-      `${JSON.stringify({ id, name, location, lengthM: length ?? null, firstGp: firstgp ?? null, points })}\n`,
+      `${JSON.stringify({ id, name, location, lengthM: length ?? null, firstGp: firstgp ?? null, centroid: centroid(ring), points })}\n`,
     );
 
     index[slug(location)] = id;
