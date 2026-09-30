@@ -1,7 +1,8 @@
 import { BlurFadeReduced } from '@/components/candy/blur-fade-reduced';
 
 const TECH_STACK = [
-  { label: 'FastF1', note: 'Telemetry & results' },
+  { label: 'FastF1', note: 'Schedules & circuit history' },
+  { label: 'OpenF1', note: 'Results & standings' },
   { label: 'LangGraph', note: 'Agent orchestration' },
   { label: 'Gemini 3.6 Flash', note: 'Synthesis & analysis' },
   { label: 'OpenWeather', note: 'Weather forecasts' },

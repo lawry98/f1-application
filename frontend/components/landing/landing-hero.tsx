@@ -156,7 +156,7 @@ export function LandingHero() {
                 </RedactedReveal>
               </h1>
               <p className="max-w-lg text-lg leading-relaxed text-zinc-400">
-                Type any Grand Prix and our AI agent gathers track telemetry, driver form, weather
+                Type any Grand Prix and our AI agent gathers race results, driver form, weather
                 forecasts, and live news — synthesized into a structured race weekend briefing by
                 Gemini.
               </p>
@@ -223,7 +223,7 @@ export function LandingHero() {
 
 function HeroBriefingPreview() {
   const tools: Array<{ label: string; ok: boolean }> = [
-    { label: 'Track telemetry', ok: true },
+    { label: 'Track profile', ok: true },
     { label: 'Driver form', ok: true },
     { label: 'Weather forecast', ok: true },
     { label: 'News search', ok: true },

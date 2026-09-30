@@ -19,7 +19,7 @@ import { detach, restingTextNeutrals, whiteWashSurfaces } from './zinc';
 const FEATURE_TITLES = [
   'Live Streaming Briefing',
   'Tool Trace Transparency',
-  'Historical F1 Telemetry',
+  'Historical F1 Results',
   'Driver & Team Form',
   'Circuit Weather Forecast',
   'Interactive Car Anatomy',
@@ -28,7 +28,7 @@ const FEATURE_TITLES = [
 const FEATURE_DESCRIPTIONS = [
   'Watch the briefing generate word-by-word via server-sent events. No waiting for a full response — intelligence streams to you the moment it is ready.',
   'See exactly which tools the AI agent executed, in what order, and whether each succeeded. No black box — full visibility into every data-gathering step.',
-  'Powered by FastF1: lap times, race results, track profiles, qualifying data, and circuit records going back decades — all available without an API key.',
+  'Powered by OpenF1 and FastF1: race results, driver form, championship standings, event details, and recent winners at each circuit — all available without an API key.',
   'Current championship standings, recent race pace, and head-to-head driver context synthesised into every briefing. Know who is peaking before qualifying.',
   'OpenWeather integration pulls the next 24 hours of forecast for the circuit location — temperature, humidity, wind, and chance of rain. Ask during the race weekend and that is race weather.',
   'Scroll through 192 high-res animation frames to reveal what is hidden inside a 2024 F1 car — from carbon bodywork to the V6 turbo-hybrid power unit.',

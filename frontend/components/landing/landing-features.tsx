@@ -17,9 +17,9 @@ const FEATURES = [
   },
   {
     icon: Database,
-    title: 'Historical F1 Telemetry',
+    title: 'Historical F1 Results',
     description:
-      'Powered by FastF1: lap times, race results, track profiles, qualifying data, and circuit records going back decades — all available without an API key.',
+      'Powered by OpenF1 and FastF1: race results, driver form, championship standings, event details, and recent winners at each circuit — all available without an API key.',
   },
   {
     icon: TrendingUp,
