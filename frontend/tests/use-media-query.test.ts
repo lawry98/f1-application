@@ -5,12 +5,21 @@ import { useMediaQuery } from '@/hooks/use-media-query';
 
 const original = window.matchMedia;
 
-/** A matchMedia whose listeners a test can fire. */
-function stubMatchMedia(matches: boolean) {
+/**
+ * A matchMedia whose listeners a test can fire.
+ *
+ * `matches` is live, as a real `MediaQueryList`'s is: `fire` changes what every list reports
+ * before it notifies, because the hook re-reads `matches` on a change rather than trusting the
+ * event.
+ */
+function stubMatchMedia(initial: boolean) {
+  let matches = initial;
   const listeners = new Set<(e: MediaQueryListEvent) => void>();
   window.matchMedia = ((query: string) =>
     ({
-      matches,
+      get matches() {
+        return matches;
+      },
       media: query,
       onchange: null,
       addEventListener: (_: string, l: (e: MediaQueryListEvent) => void) => listeners.add(l),
@@ -21,6 +30,7 @@ function stubMatchMedia(matches: boolean) {
     }) as MediaQueryList) as typeof window.matchMedia;
   return {
     fire(next: boolean) {
+      matches = next;
       listeners.forEach((l) => l({ matches: next } as MediaQueryListEvent));
     },
     get listenerCount() {

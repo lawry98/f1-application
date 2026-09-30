@@ -74,9 +74,6 @@ export function useScrollSpy(ids: string[]): {
   const coveredRef = useRef<Map<string, number>>(new Map());
   const claimedRef = useRef<string | null>(null);
   const timerRef = useRef<number | null>(null);
-  // Read inside the observer callback, which must not be re-created when ids change identity.
-  const idsRef = useRef(ids);
-  idsRef.current = ids;
 
   const releaseClaim = useCallback(() => {
     claimedRef.current = null;
@@ -107,7 +104,7 @@ export function useScrollSpy(ids: string[]): {
 
       // One uninterrupted read pass. Eleven `getBoundingClientRect` calls with no writes
       // between them cost a single layout flush, not eleven.
-      for (const id of idsRef.current) {
+      for (const id of ids) {
         const el = document.getElementById(`team-${id}`);
         if (el === null) {
           coveredRef.current.delete(id);
@@ -120,7 +117,7 @@ export function useScrollSpy(ids: string[]): {
         );
       }
 
-      const winner = pickActive(idsRef.current, coveredRef.current);
+      const winner = pickActive(ids, coveredRef.current);
       // Nothing covers the band — between sections, or mid-hero. Keep the last answer
       // rather than blanking, which would clear the rail's highlight for a frame.
       if (winner === null) return;
@@ -151,7 +148,8 @@ export function useScrollSpy(ids: string[]): {
       window.removeEventListener('scroll', schedule);
       window.removeEventListener('resize', schedule);
     };
-    // `ids` is a stable module-level array in practice, so its identity is a valid dep.
+    // `ids` is a stable module-level array in practice, so its identity is a valid dep — and
+    // re-subscribing on a new one is what keeps `measure` reading the current list.
   }, [ids, releaseClaim]);
 
   useEffect(() => releaseClaim, [releaseClaim]);
