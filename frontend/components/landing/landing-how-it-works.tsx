@@ -136,10 +136,12 @@ export function LandingHowItWorks() {
             {/* Mixed type: ALL-CAPS display, with `in under a minute` as the one serif-italic accent run.
                 Case is set in the markup (`uppercase` on the h2, `normal-case` on the span) so the
                 serif stays sentence-case — that contrast is the point of the treatment. Red is
-                allowed at this size: the h2 is 36px+, well over the 24px large-text threshold. */}
+                allowed at this size: the h2 is 36px+, well over the 24px large-text threshold.
+                `text-balance` keeps the accent from breaking after "in" at 1440, the way the CTA
+                band's heading already balances. */}
             <h2
               id="how-it-works-heading"
-              className="font-display text-4xl uppercase leading-[0.95] tracking-tight text-ink lg:text-5xl"
+              className="text-balance font-display text-4xl uppercase leading-[0.95] tracking-tight text-ink lg:text-5xl"
             >
               From query to briefing{' '}
               <span className="font-serif-display text-[1.05em] normal-case italic text-f1-red">
