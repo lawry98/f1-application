@@ -99,7 +99,10 @@ export function DriverPortrait({ driver, team, priority, className }: DriverPort
               alt={driver.name}
               fill
               sizes="(max-width: 1024px) 50vw, 180px"
-              priority={priority}
+              // Next 14's `priority` preloaded, loaded eagerly *and* sent `fetchpriority="high"`.
+              // Next 16 deprecates it for `preload`, which does only the first two.
+              preload={priority}
+              fetchPriority={priority ? 'high' : undefined}
               onError={() => setFailedId(driver.id)}
               className="object-cover object-top"
             />

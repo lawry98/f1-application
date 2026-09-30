@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
-import dynamic from 'next/dynamic';
 import Link from 'next/link';
 
+import { ShowcasePageClient } from '@/components/showcase/showcase-page-client';
 import { focusRingOffsetBase } from '@/lib/focus';
 import { cn } from '@/lib/utils';
 
@@ -9,18 +9,6 @@ export const metadata: Metadata = {
   title: 'F1 Car Showcase',
   description: 'Explore all 11 F1 team liveries in interactive 3D.',
 };
-
-const F1CarShowcase = dynamic(() => import('@/components/3d/f1-car-showcase'), {
-  ssr: false,
-  loading: () => (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-950">
-      <div className="text-center">
-        <div className="mx-auto mb-4 h-16 w-16 animate-spin rounded-full border-4 border-f1-red border-t-transparent" />
-        <p className="text-zinc-400">Loading 3D showcase...</p>
-      </div>
-    </div>
-  ),
-});
 
 export default function ShowcasePage() {
   return (
@@ -36,7 +24,7 @@ export default function ShowcasePage() {
       focus ring are not content rewrites.
     */
     <main>
-      <F1CarShowcase />
+      <ShowcasePageClient />
 
       <div className="fixed bottom-4 right-4 z-10">
         <Link
