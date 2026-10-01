@@ -24,9 +24,9 @@ interface InterruptedNoteProps {
  * The same neutral, **opaque** box as the cost guard's notice in `briefing-chat.tsx`, for the same
  * reasons: nothing on the page is broken — the prose above is real — so it is not the red alert
  * box, and an opaque `bg-zinc-900` makes the composite behind the glyphs that one colour whatever
- * the topo backdrop does underneath. `zinc-300` there is ~12:1; the button's `ink` on its
- * `bg-zinc-800` fill is ~14:1, and its flush red ring lands on the box's `zinc-900`, the 3.57:1 the
- * circuit field's ring already measures on the same fill. `browser/briefing-interrupted.spec.ts`
+ * the topo backdrop does underneath. `zinc-300` there is 11.99:1; the button's `ink` is 13.48:1 on its
+ * `bg-zinc-800` fill (9.45:1 on the `zinc-700` hover), and its flush red ring lands on the box's
+ * `zinc-900`, the 3.57:1 the circuit field's ring already measures on the same fill. `browser/briefing-interrupted.spec.ts`
  * measures all of it on the real page.
  *
  * `role="status"` sits on the sentence alone, so the live region announces what happened and not
