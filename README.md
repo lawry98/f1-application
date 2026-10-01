@@ -147,10 +147,12 @@ or WSL; it is not part of the OS.
 
 ### Frontend Environment (optional)
 
-Create `frontend/.env.local` to override the backend URL:
+Create `frontend/.env.local` to override the backend URL, or the site origin used for share
+images and the sitemap (see [Deploying it](#cost-guard-and-deploying)):
 
 ```env
 NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_SITE_URL=http://localhost:3000
 ```
 
 ## Agent Architecture
@@ -329,6 +331,16 @@ Deploying it:
   Without it every visitor shares the proxy's address, and so its one hourly allowance.
 - **Set `CORS_ORIGINS`** to the deployed frontend. The API exposes `Retry-After` to it, so the
   page can read a refusal cross-origin.
+- **Set `NEXT_PUBLIC_SITE_URL`** to the frontend's public origin, with no path, **before
+  `pnpm build`** — Next inlines it at build time:
+
+  ```bash
+  NEXT_PUBLIC_SITE_URL=https://f1.example.com pnpm build
+  ```
+
+  Every `og:image`, `twitter:image`, the sitemap and robots.txt are absolute URLs on that origin.
+  Without it they point at `http://localhost:3000`, so shared links preview with no image, and
+  the build prints a warning saying so.
 
 ### Working on this with an AI agent
 

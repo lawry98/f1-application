@@ -85,6 +85,11 @@ default sampling regardless, and Google warns that lowering temperature risks lo
 degraded reasoning. Do not add one back because the synthesizer writes prose.
 
 Frontend: `NEXT_PUBLIC_API_URL` in `frontend/.env.local`, defaults to `http://localhost:8000`.
+`NEXT_PUBLIC_SITE_URL` is the deployed origin, read only in `lib/site.ts`; it becomes
+`metadataBase`, the sitemap's `<loc>`s and robots.txt's `Sitemap:`. Next inlines it **at build
+time**, so it must be set for `pnpm build`. Unset falls back to `http://localhost:3000` and warns
+once per build worker (about a dozen identical lines); a path, a non-http(s) scheme or garbage
+throws.
 
 ## Key technical details
 
@@ -531,6 +536,26 @@ That includes the spot lights: their maps carry the same acne, which is invisibl
 they are about 1% of the key light, so raising one would bring it back. Any light added with
 `castShadow` takes the bias too. jsdom has no WebGL, so `browser/shadow-acne.spec.ts` is the only
 guard, and mutant 07 proves it.
+
+**A segment's `openGraph` drops the inherited share image.** `app/opengraph-image.tsx` and
+`twitter-image.tsx` attach to the root's metadata, and Next replaces `openGraph` whole rather than
+merging it, so a page that sets its own `openGraph` loses `og:image` on that one route and nowhere
+else — `/tyres` shipped that way. Such a page uses `generateMetadata(_, parent)` and passes
+`(await parent).openGraph?.images` forward. A page's own `twitter` is replaced whole the same way,
+though Next then back-fills a missing `twitter:image` from `og:image`. `browser/site-identity.spec.ts`
+sweeps every sitemap route's `<head>`, as a crawler, and mutant 08 proves it; nothing in jsdom
+can see this, and the metadata object reads correctly.
+
+**The share image is drawn by Satori, which reads WOFF but not WOFF2.** `next/font/google` only
+fetches WOFF2, so `lib/share-image.tsx` reads static WOFF instances from `@fontsource/archivo`
+(900, the display headlines' `font-black`) and `@fontsource/inter` — a variable font would draw at
+its default instance, weight 400. A glyph missing from those files makes `@vercel/og` fetch a
+fallback font from the network at build time, so keep the copy Latin. The image's colours are hex
+literals, held to `tailwind.config.ts` by `tests/share-image.test.ts`, which runs under
+`@vitest-environment node` because resvg's wasm rejects a jsdom-realm `Uint8Array`
+(`tests/setup.ts` skips its DOM stubs there). `apple-icon.png` and `favicon.ico` are rasterised
+from `app/icon.svg` by `scripts/build-site-icons.mjs` — never edit them by hand; `--check` proves
+they are fresh.
 
 **The landing page composes, it doesn't contain.** `app/page.tsx` is seven imports from
 `components/landing/`; the hero, features, and footer markup are not inline.
