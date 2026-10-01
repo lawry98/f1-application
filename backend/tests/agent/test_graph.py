@@ -12,6 +12,7 @@ from langgraph.graph import END, StateGraph
 
 from agent import graph as graph_module
 from agent.graph import (
+    _build_tool_args,
     _invoke_tool,
     planner_node,
     resolver_node,
@@ -373,7 +374,7 @@ def test_an_upcoming_race_keeps_weather_and_news(fake_llm):
             "get_race_weather",
             {"lat": 43.7367, "lon": 7.4258, "sessions": make_race_info()["sessions"]},
         ),
-        ("get_driver_form", {"driver_code": "VER", "as_of": AS_OF, "num_races": 5}),
+        ("get_driver_form", {"as_of": AS_OF, "num_races": 5}),
         ("get_recent_race_results", {"track_id": "mc-1929", "as_of": AS_OF}),
     ],
 )
@@ -935,6 +936,27 @@ def test_standings_is_in_the_default_tools():
     from agent.prompts import DEFAULT_TOOLS
 
     assert "get_championship_standings" in DEFAULT_TOOLS
+
+
+def test_driver_form_is_in_the_default_tools():
+    """The Form Guide is written in every briefing, so the degraded plan needs its data too."""
+    from agent.prompts import DEFAULT_TOOLS
+
+    assert "get_driver_form" in DEFAULT_TOOLS
+
+
+def test_the_planner_advertises_the_form_window_the_tool_is_given():
+    """The planner chooses by description: it must say every driver, and the window it names
+    must be the one `_build_tool_args` passes."""
+    from agent.prompts import PLANNER_PROMPT
+
+    args = _build_tool_args("get_driver_form", make_race_info())
+
+    assert (
+        f"- get_driver_form: Recent form for every driver: last {args['num_races']} Grands Prix\n"
+        in PLANNER_PROMPT
+    )
+    assert "Verstappen" not in PLANNER_PROMPT
 
 
 def test_the_planner_prompt_advertises_every_registered_tool():

@@ -15,6 +15,7 @@ Every tool takes the briefing's ``as_of`` cutoff rather than reading today's dat
 clock is not frozen here: the cutoff is the whole of "when".
 """
 
+import json
 from typing import Any
 
 import fastf1
@@ -28,7 +29,7 @@ from tests.factories import make_openf1_get, make_schedule
 # parameter below is flagged by ruff as a redefinition (F811), which is a false positive
 # for this pattern.
 from tests.test_fastf1_tools import race_session  # noqa: F401
-from tools import circuit_winners, f1_data_tools, fastf1_tools, openf1_client
+from tools import circuit_winners, f1_data_tools, openf1_client
 from tools.f1_data_tools import get_recent_top_finishers
 from tools.fastf1_tools import get_driver_form, get_recent_race_results
 from tools.openf1_races import find_race_session
@@ -495,116 +496,291 @@ def test_find_race_session_tries_the_meeting_arm_before_the_circuit_arm(monkeypa
 # ── get_driver_form ──────────────────────────────────────────────────────────
 
 
-def _form(driver_code: str = "VER", as_of: str = JUNE_2024, num_races: int = 5):
-    return get_driver_form.invoke(
-        {"driver_code": driver_code, "as_of": as_of, "num_races": num_races}
+def _driver(number, acronym, full_name, team, *keys):
+    return [
+        {
+            "session_key": key,
+            "driver_number": number,
+            "full_name": full_name,
+            "name_acronym": acronym,
+            "team_name": team,
+        }
+        for key in keys
+    ]
+
+
+# The 2024 races of OPENF1_SESSIONS_2024 — Sakhir 9500, Miami 9512, Monte Carlo 9600, with
+# Miami's Sprint at 9510 — modelled on what OpenF1 really serves:
+#   - HAM retires at Miami with `position: None` and `dnf: True`, as an unclassified car does.
+#   - NOR retires at Monte Carlo but is classified P16 (`position: 16`, `dnf: True`), as a car
+#     that ran 90% of the distance is — Bottas at Baku 2026, measured.
+#   - BEA races #38 for Ferrari at Sakhir, misses Miami, and races #50 for Haas at Monte Carlo.
+#   - ALB is disqualified at Monte Carlo; SAR never starts anything.
+#   - The Sprint would hand VER, NOR and HAM points that race form must not count.
+_GRID_DRIVERS = [
+    *_driver(1, "VER", "Max VERSTAPPEN", "Red Bull Racing", 9500, 9510, 9512, 9600),
+    *_driver(4, "NOR", "Lando NORRIS", "McLaren", 9500, 9510, 9512, 9600),
+    *_driver(44, "HAM", "Lewis HAMILTON", "Mercedes", 9500, 9510, 9512, 9600),
+    *_driver(38, "BEA", "Oliver BEARMAN", "Ferrari", 9500),
+    *_driver(50, "BEA", "Oliver BEARMAN", "Haas F1 Team", 9600),
+    *_driver(23, "ALB", "Alexander ALBON", "Williams", 9512, 9600),
+    *_driver(2, "SAR", "Logan SARGEANT", "Williams", 9500),
+]
+
+
+def _result(session_key, position, number, points=0.0, **flags):
+    return {
+        "session_key": session_key,
+        "position": position,
+        "driver_number": number,
+        "points": points,
+        "dnf": False,
+        "dns": False,
+        "dsq": False,
+        **flags,
+    }
+
+
+_GRID_RESULTS = [
+    _result(9500, 1, 1, 25.0),
+    _result(9500, 2, 4, 18.0),
+    _result(9500, 3, 44, 15.0),
+    _result(9500, 7, 38, 6.0),
+    _result(9500, None, 2, dns=True),
+    _result(9510, 1, 4, 8.0),
+    _result(9510, 2, 1, 7.0),
+    _result(9510, 3, 44, 6.0),
+    {"session_key": 9511, "position": 1, "driver_number": 1, "dnf": False},
+    _result(9512, 1, 4, 25.0),
+    _result(9512, 2, 1, 18.0),
+    _result(9512, 10, 23, 1.0),
+    _result(9512, None, 44, dnf=True),
+    _result(9600, 1, 1, 25.0),
+    _result(9600, 2, 44, 18.0),
+    _result(9600, 10, 50, 1.0),
+    _result(9600, 16, 4, dnf=True),
+    _result(9600, None, 23, dsq=True),
+]
+
+
+@pytest.fixture
+def grid_2024(monkeypatch):
+    fake = make_openf1_get(
+        {
+            "sessions": OPENF1_SESSIONS_2024,
+            "session_result": _GRID_RESULTS,
+            "drivers": _GRID_DRIVERS,
+        },
+        by_year=True,
     )
+    monkeypatch.setattr(openf1_client.requests, "get", fake)
+    return fake
 
 
-def test_driver_form_aggregates_the_races_before_as_of_from_openf1(openf1_season, no_fastf1):
+def _form(as_of: str = JUNE_2024, num_races: int = 5):
+    return get_driver_form.invoke({"as_of": as_of, "num_races": num_races})
+
+
+def _row(result: dict[str, Any], code: str) -> str:
+    rows = [row for row in result["drivers"] if row.startswith(f"{code} ")]
+    assert len(rows) == 1, f"expected one {code} row, got {rows}"
+    return rows[0]
+
+
+def test_driver_form_reports_every_driver_who_started_from_openf1(grid_2024, no_fastf1):
+    """One row per driver, best points first, each race named beside its result."""
+    assert _form() == {
+        "seasons": [2024],
+        "grands_prix": ["2024 Sakhir", "2024 Miami", "2024 Monte Carlo"],
+        "drivers": [
+            "VER Max VERSTAPPEN, Red Bull Racing: Sakhir P1, Miami P2, Monte Carlo P1"
+            " | 68 pts, avg finish 1.3, 0 DNF, 3 of 3 races",
+            "NOR Lando NORRIS, McLaren: Sakhir P2, Miami P1, Monte Carlo P16"
+            " | 43 pts, avg finish 6.3, 0 DNF, 3 of 3 races",
+            "HAM Lewis HAMILTON, Mercedes: Sakhir P3, Miami DNF, Monte Carlo P2"
+            " | 33 pts, avg finish 2.5, 1 DNF, 3 of 3 races",
+            "BEA Oliver BEARMAN, Haas F1 Team (earlier Ferrari): Sakhir P7, Monte Carlo P10"
+            " | 7 pts, avg finish 8.5, 0 DNF, 2 of 3 races",
+            "ALB Alexander ALBON, Williams: Miami P10, Monte Carlo DSQ"
+            " | 1 pts, avg finish 10.0, 0 DNF, 2 of 3 races",
+        ],
+    }
+
+
+def test_driver_form_shows_a_dnf_with_no_position_and_leaves_it_out_of_the_average(
+    grid_2024, no_fastf1
+):
+    """OpenF1 sends `position: None` for a retirement. Coercing it to 0 would rank it first."""
+    row = _row(_form(), "HAM")
+
+    assert "Miami DNF" in row
+    assert "avg finish 2.5, 1 DNF" in row
+
+
+def test_driver_form_counts_a_classified_retirement_as_its_place(grid_2024, no_fastf1):
+    """A car that ran 90% of the distance is classified even though OpenF1 flags `dnf`."""
+    row = _row(_form(), "NOR")
+
+    assert "Monte Carlo P16" in row
+    assert "avg finish 6.3, 0 DNF" in row
+
+
+def test_driver_form_shows_fewer_races_for_a_driver_absent_from_one(grid_2024, no_fastf1):
+    row = _row(_form(), "BEA")
+
+    assert "Miami" not in row
+    assert row.endswith("2 of 3 races")
+
+
+def test_driver_form_keys_a_driver_by_acronym_through_a_number_and_team_change(
+    grid_2024, no_fastf1
+):
+    """Bearman drove #38 for Ferrari and #50 for Haas in 2024: one driver, one row, under the
+    team he races for now, with the earlier one named so his results are not all Haas's."""
+    row = _row(_form(), "BEA")
+
+    assert row.startswith("BEA Oliver BEARMAN, Haas F1 Team (earlier Ferrari): Sakhir P7,")
+
+
+def test_driver_form_labels_a_disqualification_and_leaves_out_a_driver_who_never_started(
+    grid_2024, no_fastf1
+):
     result = _form()
 
-    assert result["driver"] == "VER"
-    assert result["seasons"] == [2024]
-    assert [(r["year"], r["event"]) for r in result["recent_results"]] == [
-        (2024, "Sakhir"),
-        (2024, "Miami"),
-        (2024, "Monte Carlo"),
-    ]
-    assert result["total_points_last_races"] == 68.0
-    assert result["average_finish"] == pytest.approx(1.333, abs=0.001)
+    assert "Monte Carlo DSQ" in _row(result, "ALB")
+    assert not any(row.startswith("SAR ") for row in result["drivers"])
 
 
-def test_driver_form_stops_at_the_cutoff(openf1_season, no_fastf1):
-    result = _form(as_of="2024-05-01T00:00:00+00:00")
-
-    assert [r["event"] for r in result["recent_results"]] == ["Sakhir", "Miami"]
-
-
-def test_driver_form_crosses_into_the_previous_season_only_when_it_needs_to(two_seasons, no_fastf1):
-    result = _form(as_of="2024-04-01T00:00:00+00:00", num_races=2)
-
-    assert result["seasons"] == [2023, 2024]
-    assert [(r["year"], r["event"]) for r in result["recent_results"]] == [
-        (2023, "Yas Marina Circuit"),
-        (2024, "Sakhir"),
-    ]
+def test_driver_form_excludes_sprints(grid_2024, no_fastf1):
+    """Miami's Sprint would add 7 to VER's 68 and put an 8-point scale beside a 25-point one."""
+    assert "| 68 pts," in _row(_form(), "VER")
 
 
-def test_driver_form_costs_one_results_request_for_every_race(openf1_season, no_fastf1):
-    """The headline of the migration. Three races used to be three session loads at
-    ~2.4s each; a range query makes it one request. A regression to per-race looping
-    would restore the latency and put the tool near OpenF1's 3 req/s ceiling.
-    """
-    _form()
-
-    result_calls = [c for c in openf1_season.calls if c["url"].endswith("/session_result")]
-    assert len(result_calls) == 1
+def test_driver_form_stops_at_the_cutoff(grid_2024, no_fastf1):
+    assert _form(as_of="2024-05-01T00:00:00+00:00")["grands_prix"] == ["2024 Sakhir", "2024 Miami"]
 
 
-def test_driver_form_excludes_sprints_from_race_form(openf1_season, no_fastf1):
-    """Miami's Sprint would otherwise appear as a fourth "race" and drag the average."""
-    result = _form("NOR")
-
-    assert len(result["recent_results"]) == 3
-    assert result["total_points_last_races"] == 61.0
-
-
-def test_driver_form_honours_num_races(openf1_season, no_fastf1):
+def test_driver_form_honours_num_races(grid_2024, no_fastf1):
     result = _form(num_races=2)
 
-    assert [r["event"] for r in result["recent_results"]] == ["Miami", "Monte Carlo"]
+    assert result["grands_prix"] == ["2024 Miami", "2024 Monte Carlo"]
+    assert _row(result, "BEA").endswith("1 of 2 races")
 
 
 def test_driver_form_passes_over_a_race_with_no_results(monkeypatch, no_fastf1):
     """A cancelled race is not one of "the last N races" — it has no finish to report."""
-    rows = [row for row in OPENF1_RESULTS if row["session_key"] != 9512]
+    rows = [row for row in _GRID_RESULTS if row["session_key"] != 9512]
     monkeypatch.setattr(
         openf1_client.requests,
         "get",
         make_openf1_get(
-            {"sessions": OPENF1_SESSIONS_2024, "session_result": rows, "drivers": OPENF1_DRIVERS}
+            {"sessions": OPENF1_SESSIONS_2024, "session_result": rows, "drivers": _GRID_DRIVERS}
         ),
     )
 
-    result = _form(num_races=2)
-
-    assert [r["event"] for r in result["recent_results"]] == ["Sakhir", "Monte Carlo"]
+    assert _form(num_races=2)["grands_prix"] == ["2024 Sakhir", "2024 Monte Carlo"]
 
 
-def test_driver_form_reports_dnfs_and_excludes_them_from_the_average(openf1_season, no_fastf1):
-    result = _form("HAM")
+# A 2025 finale and a 2026 opener in which car #1 changed hands with the title, as it did: a
+# window joined on driver number would hand Norris Verstappen's Abu Dhabi.
+_TITLE_CHANGE_SESSIONS = [
+    {
+        "session_key": 9839,
+        "session_name": "Race",
+        "circuit_short_name": "Yas Marina Circuit",
+        "date_start": "2025-12-07T13:00:00+00:00",
+    },
+    {
+        "session_key": 11234,
+        "session_name": "Race",
+        "circuit_short_name": "Melbourne",
+        "date_start": "2026-03-08T04:00:00+00:00",
+    },
+]
+_TITLE_CHANGE_DRIVERS = [
+    *_driver(1, "VER", "Max VERSTAPPEN", "Red Bull Racing", 9839),
+    *_driver(4, "NOR", "Lando NORRIS", "McLaren", 9839),
+    *_driver(1, "NOR", "Lando NORRIS", "McLaren", 11234),
+    *_driver(3, "VER", "Max VERSTAPPEN", "Red Bull Racing", 11234),
+]
+_TITLE_CHANGE_RESULTS = [
+    _result(9839, 1, 1, 25.0),
+    _result(9839, 3, 4, 15.0),
+    _result(11234, 1, 1, 25.0),
+    _result(11234, 2, 3, 18.0),
+]
 
-    assert [r["position"] for r in result["recent_results"]] == [3, 3, "DNF"]
-    assert result["average_finish"] == pytest.approx(3.0)
-    assert result["recent_results"][2]["status"] == "DNF"
 
-
-def test_driver_form_returns_empty_for_an_unknown_driver_code(openf1_season, no_fastf1):
-    result = _form("ZZZ")
-
-    assert result["recent_results"] == []
-    assert result["average_finish"] is None
-
-
-def test_driver_form_falls_back_to_fastf1_before_2023(
-    monkeypatch,
-    openf1_season,
-    race_session,  # noqa: F811
-):
-    schedule = make_schedule(
-        [
-            {"name": "Bahrain Grand Prix", "date": "2022-03-20"},
-            {"name": "Saudi Arabian Grand Prix", "date": "2022-03-27"},
-            {"name": "Australian Grand Prix", "date": "2022-04-10"},
-        ]
+def test_driver_form_crosses_into_the_previous_season_only_when_it_needs_to(monkeypatch, no_fastf1):
+    monkeypatch.setattr(
+        openf1_client.requests,
+        "get",
+        make_openf1_get(
+            {
+                "sessions": _TITLE_CHANGE_SESSIONS,
+                "session_result": _TITLE_CHANGE_RESULTS,
+                "drivers": _TITLE_CHANGE_DRIVERS,
+            },
+            by_year=True,
+        ),
     )
-    monkeypatch.setattr(fastf1_tools, "get_schedule", lambda year: schedule)
 
-    result = _form(as_of="2022-04-01T00:00:00+00:00", num_races=2)
+    one_race = _form(as_of="2026-03-12T00:00:00+00:00", num_races=1)
+    two_races = _form(as_of="2026-03-12T00:00:00+00:00", num_races=2)
 
-    assert [r["event"] for r in result["recent_results"]] == [
-        "Bahrain Grand Prix",
-        "Saudi Arabian Grand Prix",
-    ]
-    assert openf1_season.calls == []
+    assert (one_race["seasons"], one_race["grands_prix"]) == ([2026], ["2026 Melbourne"])
+    assert two_races["seasons"] == [2025, 2026]
+    assert two_races["grands_prix"] == ["2025 Yas Marina Circuit", "2026 Melbourne"]
+    assert _row(two_races, "VER").startswith(
+        "VER Max VERSTAPPEN, Red Bull Racing: Yas Marina Circuit P1, Melbourne P2 | 43 pts"
+    )
+    assert _row(two_races, "NOR").startswith(
+        "NOR Lando NORRIS, McLaren: Yas Marina Circuit P3, Melbourne P1 | 40 pts"
+    )
+
+
+def test_driver_form_costs_no_request_the_other_result_tools_have_not_made(grid_2024, no_fastf1):
+    """The whole grid from requests a briefing already makes: the season's results span, shared
+    with standings and the top finishers, and the same `drivers` span the top finishers ask for.
+    Twenty drivers' form must not cost twenty queries, or even one more."""
+    get_recent_top_finishers.invoke({"as_of": JUNE_2024})
+    before = len(grid_2024.calls)
+
+    _form(num_races=3)
+
+    assert len(grid_2024.calls) == before
+    assert len([c for c in grid_2024.calls if c["url"].endswith("/session_result")]) == 1
+
+
+def _grid_of(drivers: int, races: int) -> dict[str, Any]:
+    """A full OpenF1 season tail: ``races`` Grands Prix, ``drivers`` cars in each."""
+    sessions, rows, roster = [], [], []
+    for race in range(races):
+        key = 20000 + race
+        sessions.append(
+            {
+                "session_key": key,
+                "session_name": "Race",
+                "circuit_short_name": "Spa-Francorchamps",
+                "date_start": f"2026-0{race + 3}-01T13:00:00+00:00",
+            }
+        )
+        for car in range(drivers):
+            position = None if car == race else (car + race) % drivers + 1
+            rows.append(_result(key, position, car + 1, 25.0, dnf=position is None))
+            roster += _driver(
+                car + 1, f"D{car:02d}", "Alexander ANTONELLI-HULKENBERG", "Visa Cash App RB", key
+            )
+    return {"sessions": sessions, "session_result": rows, "drivers": roster}
+
+
+def test_a_full_grids_form_stays_inside_the_synthesizer_budget(monkeypatch, no_fastf1):
+    """Twenty-two drivers over five races, with long names and a long team, as the synthesizer
+    serialises it (`indent=2`). A list of {race, position} objects per driver was 15.8 KB there."""
+    monkeypatch.setattr(openf1_client.requests, "get", make_openf1_get(_grid_of(22, 5)))
+
+    result = _form(as_of="2026-09-01T00:00:00+00:00")
+
+    assert len(result["drivers"]) == 22
+    rendered = json.dumps([{"tool": "get_driver_form", "success": True, "data": result}], indent=2)
+    assert len(rendered) < 3_500

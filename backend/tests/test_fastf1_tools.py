@@ -16,8 +16,8 @@ import fastf1
 import pytest
 from freezegun import freeze_time
 
-from tests.factories import make_schedule, make_session
-from tools import circuit_winners, f1_data_tools, fastf1_tools
+from tests.factories import make_openf1_get, make_schedule, make_session
+from tools import circuit_winners, f1_data_tools, fastf1_tools, openf1_client
 from tools.f1_data_tools import get_circuit_winners, get_recent_top_finishers
 from tools.fastf1_tools import get_driver_form, get_recent_race_results, get_track_info
 
@@ -290,85 +290,214 @@ def test_race_results_convert_a_session_failure_into_an_error(monkeypatch):
 
 
 # ── get_driver_form ──────────────────────────────────────────────────────────
+#
+# The OpenF1 path is covered in test_openf1_tools.py. FastF1 serves seasons before 2023, and any
+# season whose OpenF1 fetch fails. Its rows are modelled on a real 2022 load: a retired car keeps
+# a finishing-order `Position` (17-20) and only `ClassifiedPosition` ("R") says it retired.
 
 
-def _form(driver_code: str = "VER", as_of: str = "2025-05-01T00:00:00+00:00", **kwargs):
-    return get_driver_form.invoke({"driver_code": driver_code, "as_of": as_of, **kwargs})
+def _car(code, name, team, classified, points=0.0, position=None):
+    return {
+        "Abbreviation": code,
+        "FullName": name,
+        "TeamName": team,
+        "Position": float(position if position is not None else classified),
+        "ClassifiedPosition": str(classified),
+        "Points": points,
+        "Status": "Finished" if str(classified).isdigit() else "Retired",
+    }
 
 
-def test_driver_form_aggregates_the_races_before_as_of(
-    monkeypatch, fake_get_schedule, race_session
-):
-    """Bahrain and Miami 2025 ran before the cutoff; 2024 is reached for the other three."""
-    monkeypatch.setattr(fastf1_tools, "get_schedule", fake_get_schedule)
-
-    result = _form(num_races=3)
-
-    assert result["driver"] == "VER"
-    assert result["seasons"] == [2024, 2025]
-    assert [(r["year"], r["event"]) for r in result["recent_results"]] == [
-        (2024, "Qatar Grand Prix"),
-        (2025, "Bahrain Grand Prix"),
-        (2025, "Miami Grand Prix"),
+SEASON_2022_OPENING = make_schedule(
+    [
+        {"name": "Bahrain Grand Prix", "date": "2022-03-20"},
+        {"name": "Saudi Arabian Grand Prix", "date": "2022-03-27"},
+        {"name": "Australian Grand Prix", "date": "2022-04-10"},
     ]
-    assert result["recent_results"][0]["position"] == 1
-    assert result["total_points_last_races"] == 75.0
-    assert result["average_finish"] == 1.0
+)
+SEASON_2021_FINALE = make_schedule(
+    [{"name": "Abu Dhabi Grand Prix", "date": "2021-12-12", "round": 22}]
+)
 
 
-def test_driver_form_stays_in_one_season_when_it_has_enough(
-    monkeypatch, fake_get_schedule, race_session
-):
-    monkeypatch.setattr(fastf1_tools, "get_schedule", fake_get_schedule)
+def _serve(monkeypatch, schedules, races):
+    """FastF1 stand-ins: ``schedules`` by year, and each (year, round)'s race results — or the
+    exception its session load raises."""
+    monkeypatch.setattr(fastf1_tools, "get_schedule", lambda year: schedules[year])
 
-    result = _form(num_races=2)
+    def _get_session(year, round_number, kind):
+        served = races[(year, round_number)]
+        if isinstance(served, Exception):
+            raise served
+        return make_session(served)
 
-    assert result["seasons"] == [2025]
-    assert [r["event"] for r in result["recent_results"]] == [
-        "Bahrain Grand Prix",
-        "Miami Grand Prix",
+    monkeypatch.setattr(fastf1, "get_session", _get_session)
+
+
+def _form(as_of: str, num_races: int = 5):
+    return get_driver_form.invoke({"as_of": as_of, "num_races": num_races})
+
+
+def test_driver_form_reads_fastf1_before_2023_and_asks_openf1_nothing(monkeypatch):
+    _serve(
+        monkeypatch,
+        {2022: SEASON_2022_OPENING},
+        {
+            (2022, 2): [
+                _car("VER", "Max Verstappen", "Red Bull Racing", 1, 25.0),
+                _car("LEC", "Charles Leclerc", "Ferrari", 2, 18.0),
+                _car("SAI", "Carlos Sainz", "Ferrari", 3, 15.0),
+            ],
+            (2022, 3): [
+                _car("LEC", "Charles Leclerc", "Ferrari", 1, 26.0),
+                _car("VER", "Max Verstappen", "Red Bull Racing", "R", position=18),
+                _car("SAI", "Carlos Sainz", "Ferrari", "R", position=19),
+            ],
+        },
+    )
+    openf1 = make_openf1_get({})
+    monkeypatch.setattr(openf1_client.requests, "get", openf1)
+
+    assert _form("2022-04-15T00:00:00+00:00", num_races=2) == {
+        "seasons": [2022],
+        "grands_prix": ["2022 Saudi Arabian GP", "2022 Australian GP"],
+        "drivers": [
+            "LEC Charles Leclerc, Ferrari: Saudi Arabian GP P2, Australian GP P1"
+            " | 44 pts, avg finish 1.5, 0 DNF, 2 of 2 races",
+            "VER Max Verstappen, Red Bull Racing: Saudi Arabian GP P1, Australian GP DNF"
+            " | 25 pts, avg finish 1.0, 1 DNF, 2 of 2 races",
+            "SAI Carlos Sainz, Ferrari: Saudi Arabian GP P3, Australian GP DNF"
+            " | 15 pts, avg finish 3.0, 1 DNF, 2 of 2 races",
+        ],
+    }
+    assert openf1.calls == []
+
+
+def test_driver_form_crosses_into_the_previous_season_on_fastf1(monkeypatch):
+    _serve(
+        monkeypatch,
+        {2021: SEASON_2021_FINALE, 2022: SEASON_2022_OPENING},
+        {
+            (2021, 22): [
+                _car("VER", "Max Verstappen", "Red Bull Racing", 1, 26.0),
+                _car("HAM", "Lewis Hamilton", "Mercedes", 2, 18.0),
+            ],
+            (2022, 1): [
+                _car("LEC", "Charles Leclerc", "Ferrari", 1, 26.0),
+                _car("VER", "Max Verstappen", "Red Bull Racing", "R", position=19),
+            ],
+        },
+    )
+
+    result = _form("2022-03-25T00:00:00+00:00", num_races=2)
+
+    assert result["seasons"] == [2021, 2022]
+    assert result["grands_prix"] == ["2021 Abu Dhabi GP", "2022 Bahrain GP"]
+    assert result["drivers"][0] == (
+        "VER Max Verstappen, Red Bull Racing: Abu Dhabi GP P1, Bahrain GP DNF"
+        " | 26 pts, avg finish 1.0, 1 DNF, 2 of 2 races"
+    )
+
+
+def test_driver_form_reads_every_fastf1_classification_code(monkeypatch):
+    """R(etired) and N(ot classified) are DNFs, D(isqualified) and E(xcluded) DSQs,
+    W(ithdrawn) and F(ailed to qualify) DNSs. A driver with no classified finish still has a
+    row, as long as they started something."""
+    _serve(
+        monkeypatch,
+        {2022: SEASON_2022_OPENING},
+        {
+            (2022, 2): [
+                _car("AAA", "A A", "Team", 1, 25.0),
+                _car("BBB", "B B", "Team", "N", position=17),
+                _car("CCC", "C C", "Team", "E", position=18),
+                _car("DDD", "D D", "Team", "W", position=19),
+                _car("EEE", "E E", "Team", "F", position=20),
+            ],
+            (2022, 3): [
+                _car("AAA", "A A", "Team", "R", position=20),
+                _car("BBB", "B B", "Team", 2, 18.0),
+                _car("CCC", "C C", "Team", "D", position=19),
+                _car("DDD", "D D", "Team", 3, 15.0),
+                _car("EEE", "E E", "Team", 4, 12.0),
+            ],
+        },
+    )
+
+    rows = _form("2022-04-15T00:00:00+00:00", num_races=2)["drivers"]
+
+    assert [row.split(": ", 1)[1] for row in rows] == [
+        "Saudi Arabian GP P1, Australian GP DNF | 25 pts, avg finish 1.0, 1 DNF, 2 of 2 races",
+        "Saudi Arabian GP DNF, Australian GP P2 | 18 pts, avg finish 2.0, 1 DNF, 2 of 2 races",
+        "Saudi Arabian GP DNS, Australian GP P3 | 15 pts, avg finish 3.0, 0 DNF, 2 of 2 races",
+        "Saudi Arabian GP DNS, Australian GP P4 | 12 pts, avg finish 4.0, 0 DNF, 2 of 2 races",
+        "Saudi Arabian GP DSQ, Australian GP DSQ | 0 pts, no classified finish, 0 DNF, 2 of 2 races",
     ]
 
 
-def test_driver_form_reports_dnfs_and_excludes_them_from_the_average(
-    monkeypatch, fake_get_schedule, race_session
-):
-    monkeypatch.setattr(fastf1_tools, "get_schedule", fake_get_schedule)
+def test_driver_form_drops_a_race_whose_session_will_not_load(monkeypatch):
+    """FastF1 loads fail often; one dead session costs that race, not the tool."""
+    _serve(
+        monkeypatch,
+        {2022: SEASON_2022_OPENING},
+        {
+            (2022, 2): ConnectionError("livetiming unavailable"),
+            (2022, 3): [_car("LEC", "Charles Leclerc", "Ferrari", 1, 26.0)],
+        },
+    )
 
-    result = _form("HAM", num_races=2)
+    result = _form("2022-04-15T00:00:00+00:00", num_races=2)
 
-    assert [r["position"] for r in result["recent_results"]] == ["DNF", "DNF"]
-    assert result["average_finish"] is None
-    assert result["total_points_last_races"] == 0.0
-
-
-def test_driver_form_skips_races_whose_session_fails(monkeypatch, fake_get_schedule):
-    """A dead session drops that race from the form rather than sinking the tool."""
-    monkeypatch.setattr(fastf1_tools, "get_schedule", fake_get_schedule)
-    monkeypatch.setattr(fastf1, "get_session", _boom)
-
-    result = _form(num_races=2)
-
-    assert result["recent_results"] == []
-    assert result["average_finish"] is None
+    assert result["grands_prix"] == ["2022 Australian GP"]
+    assert result["drivers"] == [
+        "LEC Charles Leclerc, Ferrari: Australian GP P1 | 26 pts, avg finish 1.0, 0 DNF, 1 of 1 races"
+    ]
 
 
-def test_driver_form_omits_a_race_the_driver_did_not_start(
-    monkeypatch, fake_get_schedule, race_session
-):
-    monkeypatch.setattr(fastf1_tools, "get_schedule", fake_get_schedule)
+def test_driver_form_falls_back_to_fastf1_when_openf1_fails(monkeypatch):
+    season_2024 = make_schedule(
+        [
+            {"name": "Bahrain Grand Prix", "date": "2024-03-02"},
+            {"name": "Saudi Arabian Grand Prix", "date": "2024-03-09"},
+        ]
+    )
+    _serve(
+        monkeypatch,
+        {2024: season_2024},
+        {
+            (2024, 1): [_car("VER", "Max Verstappen", "Red Bull Racing", 1, 26.0)],
+            (2024, 2): [_car("VER", "Max Verstappen", "Red Bull Racing", 1, 25.0)],
+        },
+    )
+    openf1 = make_openf1_get({"sessions": [], "session_result": [], "drivers": []}, status_code=500)
+    monkeypatch.setattr(openf1_client.requests, "get", openf1)
 
-    result = _form("ZZZ", num_races=2)
+    result = _form("2024-03-20T00:00:00+00:00", num_races=2)
 
-    assert result["recent_results"] == []
-    assert result["seasons"] == [2025]
+    assert openf1.calls, "OpenF1 must be tried first for a covered season"
+    assert result["grands_prix"] == ["2024 Bahrain GP", "2024 Saudi Arabian GP"]
+    assert result["drivers"] == [
+        "VER Max Verstappen, Red Bull Racing: Bahrain GP P1, Saudi Arabian GP P1"
+        " | 51 pts, avg finish 1.0, 0 DNF, 2 of 2 races"
+    ]
 
 
-def test_driver_form_converts_a_schedule_failure_into_an_error(monkeypatch):
-    monkeypatch.setattr(fastf1_tools, "get_schedule", _boom)
-    result = _form()
-    assert "error" in result
-    assert "fastf1 unavailable" in result["error"]
+@pytest.mark.parametrize(
+    ("as_of", "schedule"),
+    [
+        ("not a date", lambda year: SEASON_2022_OPENING),
+        ("2025-05-01T00:00:00+00:00", _boom),
+    ],
+    ids=["malformed cutoff", "schedule failure"],
+)
+def test_driver_form_never_raises(monkeypatch, as_of, schedule):
+    """OpenF1 is unreachable here (conftest), so a 2025 cutoff reaches FastF1's schedule too."""
+    monkeypatch.setattr(fastf1_tools, "get_schedule", schedule)
+
+    result = _form(as_of)
+
+    assert set(result) == {"error"}
+    assert result["error"].startswith("Failed to get driver form: ")
 
 
 # ── get_recent_top_finishers ─────────────────────────────────────────────────
