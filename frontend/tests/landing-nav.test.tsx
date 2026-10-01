@@ -89,8 +89,9 @@ describe('LandingNav', () => {
 
       expect(list).toHaveClass('overflow-x-auto');
       // Without this a flex item's automatic minimum size is its content, so the row keeps its
-      // full width and overflows the header instead of scrolling inside itself.
-      expect(list).toHaveClass('min-w-0');
+      // full width and overflows the header instead of scrolling inside itself. The flex item is
+      // the row's wrapper, which also positions the overflow fades.
+      expect(list?.parentElement).toHaveClass('min-w-0');
       // Stops a horizontal swipe on the bar from chaining into the browser's back gesture.
       expect(list).toHaveClass('overscroll-x-contain');
     });
@@ -296,8 +297,7 @@ const rect = (left: number, width: number): DOMRect =>
     toJSON: () => ({}),
   }) as DOMRect;
 
-const isRow = (el: Element): boolean =>
-  el.matches('nav[aria-label="Main navigation"] ul');
+const isRow = (el: Element): boolean => el.matches('nav[aria-label="Main navigation"] ul');
 
 /** The index of a nav link in the model, or -1 for anything else. */
 const linkIndex = (el: Element): number =>
@@ -350,7 +350,9 @@ function installLayoutModel(): void {
   Object.defineProperty(Element.prototype, 'scrollWidth', {
     configurable: true,
     get(this: Element) {
-      return isRow(this) ? Math.max(CONTENT_WIDTH, layout.rowWidth) : original('scrollWidth').get!.call(this);
+      return isRow(this)
+        ? Math.max(CONTENT_WIDTH, layout.rowWidth)
+        : original('scrollWidth').get!.call(this);
     },
   });
   Object.defineProperty(Element.prototype, 'clientWidth', {
@@ -363,7 +365,8 @@ function installLayoutModel(): void {
   vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
     if (isRow(this)) return rect(ROW_LEFT, layout.rowWidth);
     const index = linkIndex(this);
-    if (index >= 0) return rect(ROW_LEFT + linkOffset(index) - layout.scrollLeft, LINK_WIDTHS[index]!);
+    if (index >= 0)
+      return rect(ROW_LEFT + linkOffset(index) - layout.scrollLeft, LINK_WIDTHS[index]!);
     return rect(0, 0);
   });
 
@@ -376,14 +379,18 @@ function installLayoutModel(): void {
 }
 
 function removeLayoutModel(): void {
-  for (const [prop, descriptor] of originals) Object.defineProperty(Element.prototype, prop, descriptor);
+  for (const [prop, descriptor] of originals)
+    Object.defineProperty(Element.prototype, prop, descriptor);
   originals.clear();
 }
 
-/** What the model says should be showing, computed without going near the component. */
+/**
+ * What the model says should be showing, computed without going near the component. Within a pixel
+ * of an end counts as at it: a fractional device-pixel ratio can stop a scroll just short.
+ */
 function expectedFades(): { start: boolean; end: boolean } {
   return {
-    start: layout.scrollLeft > 0.5 && maxScroll() > 0,
+    start: maxScroll() > 1 && layout.scrollLeft > 1,
     end: maxScroll() - layout.scrollLeft > 1,
   };
 }
@@ -522,7 +529,9 @@ describe('the overflow fades', () => {
     renderNav('/');
 
     for (const edge of ['start', 'end'] as const) {
-      const animated = Array.from(fade(edge).classList).filter((c) => /^(transition|animate|duration)/.test(c));
+      const animated = Array.from(fade(edge).classList).filter((c) =>
+        /^(transition|animate|duration)/.test(c),
+      );
       expect(animated).toEqual([]);
     }
   });
@@ -553,10 +562,12 @@ describe('the overflow fades', () => {
       const left = ROW_LEFT + linkOffset(index) - layout.scrollLeft - RING_REACH;
       const right = left + LINK_WIDTHS[index]! + RING_REACH * 2;
       const problems: string[] = [];
-      if (left < ROW_LEFT || right > ROW_LEFT + layout.rowWidth) problems.push('clipped by the row');
+      if (left < ROW_LEFT || right > ROW_LEFT + layout.rowWidth)
+        problems.push('clipped by the row');
       const shown = shownFades();
       if (shown.start && left < ROW_LEFT + FADE_WIDTH) problems.push('under the start fade');
-      if (shown.end && right > ROW_LEFT + layout.rowWidth - FADE_WIDTH) problems.push('under the end fade');
+      if (shown.end && right > ROW_LEFT + layout.rowWidth - FADE_WIDTH)
+        problems.push('under the end fade');
       return problems;
     }
 

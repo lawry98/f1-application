@@ -22,8 +22,10 @@ const LOAD_PASSES = frameLoadPasses(FRAME_COUNT);
 const FIRST_PASS = LOAD_PASSES[0] ?? [];
 
 /**
- * The scroll container's height. The sticky viewport inside it is 100vh, so the usable scroll
- * range is (SCROLL_CONTAINER_VH - 100)vh — 400vh for 192 frames, ~2vh of scroll per frame.
+ * The scroll container's height. The usable scroll range is (SCROLL_CONTAINER_VH - 100)vh — 400vh
+ * for 192 frames, ~2vh of scroll per frame — because progress runs from the container's top meeting
+ * the window's top to its bottom meeting the window's bottom. The sticky viewport inside it is the
+ * window *below the site nav*, which changes what is on screen, not that range.
  */
 const SCROLL_CONTAINER_VH = 500;
 
@@ -232,9 +234,9 @@ export function TeardownScene() {
   // ── Dock geometry (FLIP) ──────────────────────────────────────────────────
   /**
    * Measured rather than hard-coded because both boxes move with the viewport: the car's width is
-   * `min(92vw, 82vh * 800/420)`, so which of the two constraints binds — and therefore the car's
-   * rendered height — flips as the window is resized, and the slot's x position depends on how wide
-   * the title beside it renders.
+   * `min(92vw, 82% of the height below the nav * 800/420)`, so which of the two constraints binds —
+   * and therefore the car's rendered height — flips as the window is resized, and the slot's x
+   * position depends on how wide the title beside it renders.
    *
    * The measurement is taken on `carBoxRef`, which is deliberately a *different element* from the
    * one carrying the transform. `getBoundingClientRect()` reports the post-transform box, so
@@ -453,119 +455,10 @@ export function TeardownScene() {
   // ── Main scene ─────────────────────────────────────────────────────────────
   return (
     <div className="bg-zinc-950">
-      {/* ── Header ──
-       * `bg-zinc-950/95`, not the `/80` this shipped with, and the change is a contrast one. At /80
-       * nothing scrolled under the header but the dark frame sequence; the outro below it puts
-       * `text-4xl` `ink` headings through the same band, and where one lands behind the red accent
-       * the composite reads `rgb(56,56,56)`, against which `f1-red` measures 2.36:1 — under the 3:1
-       * bar the title was raised to 24px specifically to clear. Confirmed in Chromium: the outro
-       * heading was plainly legible *through* the header. Only the backdrop moved; the title's size
-       * and the red accent are settled and stay as they are. */}
-      <header className="fixed top-0 z-30 w-full border-b border-zinc-800/60 bg-zinc-950/95 backdrop-blur-sm">
-        <div className="container mx-auto flex items-center gap-3 px-4 py-2.5 sm:gap-4">
-          <Link
-            href="/"
-            /* The page's only other focusable, and it had no `focus-visible` treatment at all —
-               it fell through to the UA outline. Unfilled text on the header's `bg-zinc-950/95`
-               band, so the flush default: red is 4.01:1 against `#09090B` and there is no fill
-               here for an offset to hold it off. */
-            className={cn(
-              'flex-shrink-0 text-xs text-zinc-400 transition-colors hover:text-zinc-300',
-              focusRing,
-            )}
-          >
-            {/* The label is hidden rather than shortened below `sm`: at 390px the 24px title, the
-                divider and the 120px slot already fill the row, and a wrapped header is the exact
-                defect this page's 390px pass exists to avoid. The arrow alone is still a 24px
-                target and keeps an accessible name via the visually-hidden word. */}
-            <span aria-hidden="true">←</span>
-            <span className="sr-only sm:not-sr-only sm:ml-1 sm:inline">Back</span>
-          </Link>
-          <span aria-hidden="true" className="hidden select-none text-zinc-700 sm:inline">
-            |
-          </span>
-
-          {/*
-           * The title is 24px, not the 14px it was, and the size is a contrast constraint rather
-           * than a style choice. `f1-red` on this background measures 4.01:1 — it clears WCAG's 3:1
-           * large-text bar but not the 4.5:1 small-text one, so the spec's red serif accent is only
-           * legal at 24px+ (or 19px+ bold). At the old `text-sm` the existing red "Anatomy" was
-           * already below the floor. Raising the type is what lets Phase 4 keep the red the spec
-           * asks for instead of falling back to the `ink` accent variant.
-           */}
-          <RedactedReveal variant="ink" trigger="immediate" className="min-w-0 flex-1">
-            <h1 className="truncate font-display text-2xl uppercase leading-none tracking-tight text-ink">
-              Anatomy{' '}
-              <span className="font-serif-display text-[1.05em] normal-case italic text-f1-red">
-                of an F1 car
-              </span>
-            </h1>
-          </RedactedReveal>
-
-          {/*
-           * The dock slot. It is a reserved, always-present empty box — never conditionally
-           * rendered — because the FLIP transform measures it on mount and on resize, and a slot
-           * that only exists once the car has arrived cannot be measured before the car needs to
-           * know where it is going. Reserving it also means the header's layout never changes when
-           * the car lands, so docking costs zero CLS.
-           */}
-          <div
-            ref={slotRef}
-            aria-hidden="true"
-            className="relative flex-shrink-0"
-            style={{ width: SLOT_W, height: SLOT_H }}
-          >
-            {/*
-             * The laurel is mounted only once docked, which is also how it is triggered: it draws
-             * on mount at `draw="immediate"` rather than on scroll-into-view, because "the car has
-             * arrived" is not a viewport event. Scrolling back up unmounts it, and scrolling down
-             * again replays the draw — correct here, since the arrival is what the flourish marks.
-             *
-             * It is absolutely positioned inside the slot rather than filling it, so it can never
-             * change the slot's box: `measureDock` reads that box every resize and a slot that grew
-             * to fit its contents would move the dock target.
-             *
-             * The spacer child is what the branches flank. It is exactly the docked car's width —
-             * the 800×420 frame scaled to SLOT_H tall — because the car itself is not a child here:
-             * it is the real canvas, flown in from the sequence by the FLIP transform and painting
-             * over this slot from its own fixed layer.
-             */}
-            {isArriving && (
-              <motion.span
-                style={{ opacity: miniOpacity }}
-                className="absolute inset-0 flex items-center justify-center"
-              >
-                <LaurelFlourish draw="immediate" className="text-ink">
-                  {/*
-                   * `unoptimized` is deliberate and is the whole point of using next/image here at
-                   * all: it emits the raw `/frames/frame_0191.webp` URL, which is the exact file the
-                   * frame preloader pulls into the browser cache in its first pass
-                   * (`frameLoadPasses` always puts the last frame there), so the still costs no
-                   * network at all. Without it next/image rewrites the src to `/_next/image?url=…`,
-                   * a different URL, and the browser downloads a second copy of a frame we are
-                   * already holding in memory. Decorative — the car is the page's subject and the
-                   * heading beside it already names it — hence the empty alt.
-                   */}
-                  <NextImage
-                    src={framePath(FRAME_COUNT - 1)}
-                    alt=""
-                    aria-hidden="true"
-                    unoptimized
-                    width={Math.round((SLOT_H * 800) / 420)}
-                    height={SLOT_H}
-                    className="block"
-                  />
-                </LaurelFlourish>
-              </motion.span>
-            )}
-          </div>
-        </div>
-      </header>
-
       {/*
        * ── `<main>` ──
        *
-       * Everything below the header is one landmark. Before it, axe reported a single `region`
+       * Everything in the scene is one landmark. Before it, axe reported a single `region`
        * violation on this page with **16 nodes**: the page's only landmarks were this component's
        * `<header>` and the outro's own `<section>`, so the loading overlay, the canvas, all four
        * callout blocks, the scroll hint and the progress bar were content belonging to no landmark
@@ -575,16 +468,130 @@ export function TeardownScene() {
        * It is added here rather than in `app/teardown/page.tsx` — where `/`, `/teams` and
        * `/credits` each put theirs — because that file renders this component through a
        * `next/dynamic` boundary whose `loading` fallback would then sit *outside* the landmark it
-       * is meant to be inside. Nothing is renamed, removed or relabelled to add it: the `<header>`
-       * stays a sibling (inside `<main>` it would stop being a `banner`), the outro keeps its
-       * `region` and its `aria-labelledby`, and the progressbar keeps its name.
+       * is meant to be inside. Nothing is renamed, removed or relabelled to add it: the outro keeps
+       * its `region` and its `aria-labelledby`, and the progressbar keeps its name.
+       *
+       * The page's own `<header>` is inside it, and that is the point of where it sits. The route
+       * renders the site's `LandingNav` above this component, and that `<header>` is the page's
+       * banner; a second top-level one would be a second banner. Inside `<main>` this one is the
+       * page's own header instead, and the `h1` it carries is inside the page's landmark. It is
+       * `fixed`, so where it sits in the document moves nothing on screen.
        *
        * `<main>` is a plain static block box, so it creates no stacking context and no containing
-       * block: the fixed header, the fixed progress readout and the `sticky top-0` viewport below
+       * block: the fixed header, the fixed progress readout and the `sticky top-14` viewport below
        * all resolve exactly as they did, and the `z-50`/`z-40`/`z-30` ordering still compares in
        * the root stacking context. Verified in Chromium at 1440 and 390.
        */}
       <main>
+        {/* ── Header ──
+         * `bg-zinc-950/95`, not the `/80` this shipped with, and the change is a contrast one. At /80
+         * nothing scrolled under the header but the dark frame sequence; the outro below it puts
+         * `text-4xl` `ink` headings through the same band, and where one lands behind the red accent
+         * the composite reads `rgb(56,56,56)`, against which `f1-red` measures 2.36:1 — under the 3:1
+         * bar the title was raised to 24px specifically to clear. Confirmed in Chromium: the outro
+         * heading was plainly legible *through* the header. Only the backdrop moved; the title's size
+         * and the red accent are settled and stay as they are. */}
+        <header className="fixed top-14 z-30 w-full border-b border-zinc-800/60 bg-zinc-950/95 backdrop-blur-sm">
+          <div className="container mx-auto flex items-center gap-3 px-4 py-2.5 sm:gap-4">
+            <Link
+              href="/"
+              /* The page's only other focusable, and it had no `focus-visible` treatment at all —
+                 it fell through to the UA outline. Unfilled text on the header's `bg-zinc-950/95`
+                 band, so the flush default: red is 4.01:1 against `#09090B` and there is no fill
+                 here for an offset to hold it off. */
+              className={cn(
+                'flex-shrink-0 text-xs text-zinc-400 transition-colors hover:text-zinc-300',
+                focusRing,
+              )}
+            >
+              {/* The label is hidden rather than shortened below `sm`: at 390px the 24px title, the
+                  divider and the 120px slot already fill the row, and a wrapped header is the exact
+                  defect this page's 390px pass exists to avoid. The arrow alone is still a 24px
+                  target and keeps an accessible name via the visually-hidden word. */}
+              <span aria-hidden="true">←</span>
+              <span className="sr-only sm:not-sr-only sm:ml-1 sm:inline">Back</span>
+            </Link>
+            <span aria-hidden="true" className="hidden select-none text-zinc-700 sm:inline">
+              |
+            </span>
+
+            {/*
+             * The title is 24px, not the 14px it was, and the size is a contrast constraint rather
+             * than a style choice. `f1-red` on this background measures 4.01:1 — it clears WCAG's 3:1
+             * large-text bar but not the 4.5:1 small-text one, so the spec's red serif accent is only
+             * legal at 24px+ (or 19px+ bold). At the old `text-sm` the existing red "Anatomy" was
+             * already below the floor. Raising the type is what lets Phase 4 keep the red the spec
+             * asks for instead of falling back to the `ink` accent variant.
+             */}
+            <RedactedReveal variant="ink" trigger="immediate" className="min-w-0 flex-1">
+              <h1 className="truncate font-display text-2xl uppercase leading-none tracking-tight text-ink">
+                Anatomy{' '}
+                <span className="font-serif-display text-[1.05em] normal-case italic text-f1-red">
+                  of an F1 car
+                </span>
+              </h1>
+            </RedactedReveal>
+
+            {/*
+             * The dock slot. It is a reserved, always-present empty box — never conditionally
+             * rendered — because the FLIP transform measures it on mount and on resize, and a slot
+             * that only exists once the car has arrived cannot be measured before the car needs to
+             * know where it is going. Reserving it also means the header's layout never changes when
+             * the car lands, so docking costs zero CLS.
+             */}
+            <div
+              ref={slotRef}
+              aria-hidden="true"
+              className="relative flex-shrink-0"
+              style={{ width: SLOT_W, height: SLOT_H }}
+            >
+              {/*
+               * The laurel is mounted only once docked, which is also how it is triggered: it draws
+               * on mount at `draw="immediate"` rather than on scroll-into-view, because "the car has
+               * arrived" is not a viewport event. Scrolling back up unmounts it, and scrolling down
+               * again replays the draw — correct here, since the arrival is what the flourish marks.
+               *
+               * It is absolutely positioned inside the slot rather than filling it, so it can never
+               * change the slot's box: `measureDock` reads that box every resize and a slot that grew
+               * to fit its contents would move the dock target.
+               *
+               * The spacer child is what the branches flank. It is exactly the docked car's width —
+               * the 800×420 frame scaled to SLOT_H tall — because the car itself is not a child here:
+               * it is the real canvas, flown in from the sequence by the FLIP transform and painting
+               * over this slot from its own fixed layer.
+               */}
+              {isArriving && (
+                <motion.span
+                  style={{ opacity: miniOpacity }}
+                  className="absolute inset-0 flex items-center justify-center"
+                >
+                  <LaurelFlourish draw="immediate" className="text-ink">
+                    {/*
+                     * `unoptimized` is deliberate and is the whole point of using next/image here at
+                     * all: it emits the raw `/frames/frame_0191.webp` URL, which is the exact file the
+                     * frame preloader pulls into the browser cache in its first pass
+                     * (`frameLoadPasses` always puts the last frame there), so the still costs no
+                     * network at all. Without it next/image rewrites the src to `/_next/image?url=…`,
+                     * a different URL, and the browser downloads a second copy of a frame we are
+                     * already holding in memory. Decorative — the car is the page's subject and the
+                     * heading beside it already names it — hence the empty alt.
+                     */}
+                    <NextImage
+                      src={framePath(FRAME_COUNT - 1)}
+                      alt=""
+                      aria-hidden="true"
+                      unoptimized
+                      width={Math.round((SLOT_H * 800) / 420)}
+                      height={SLOT_H}
+                      className="block"
+                    />
+                  </LaurelFlourish>
+                </motion.span>
+              )}
+            </div>
+          </div>
+        </header>
+
         {/*
          * The loading screen is an overlay, not an early return, and that is load-bearing rather
          * than cosmetic. `useScroll({ target: containerRef })` resolves its target in a layout
@@ -597,11 +604,12 @@ export function TeardownScene() {
          * container mounted only after 192 images resolved, long after the effect had given up.
          *
          * It moved from before the `<header>` to here as part of adding the landmark, and the move
-         * is inert: it is `fixed inset-0 z-50`, so its position in the document affects neither its
-         * box nor its paint order against the `z-30` header.
+         * is inert: it is `fixed` at `z-50`, so its position in the document affects neither its
+         * box nor its paint order against the `z-30` header. It starts at `top-14`, under the site
+         * nav rather than over it, so the way off the page is there while the frames load.
          */}
         {!isReady && (
-          <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-0 bg-zinc-950">
+          <div className="fixed inset-x-0 bottom-0 top-14 z-50 flex flex-col items-center justify-center gap-0 bg-zinc-950">
             <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-zinc-400">
               Loading frames
             </p>
@@ -622,8 +630,10 @@ export function TeardownScene() {
 
         {/* ── Scroll container (500vh gives ~192 frames of range) ── */}
         <div ref={containerRef} style={{ height: `${SCROLL_CONTAINER_VH}vh` }}>
-          {/* Sticky viewport — stays in place as user scrolls */}
-          <div className="sticky top-0 h-screen">
+          {/* Sticky viewport — stays in place as user scrolls. It is the window below the 56 px site
+              nav, the way the `/teams` rails are: pinned at `top-14`, `h-[calc(100vh-3.5rem)]`
+              tall, so everything inside it is laid out as it was against the whole window. */}
+          <div className="sticky top-14 h-[calc(100vh-3.5rem)]">
             {/*
              * The car sits in its own absolutely-positioned layer rather than in the sticky element's
              * flex flow, and the scroll hint sits in a second one, because the FLIP maths needs a box
@@ -640,15 +650,18 @@ export function TeardownScene() {
             <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center">
               {/*
                * Canvas wrapper: sized to preserve 800×420 aspect ratio while respecting
-               * both 92vw (width) and 82vh (height) constraints simultaneously.
-               * `min(92vw, calc(82vh * 800 / 420))` picks whichever constraint binds first.
-               * `mt-12` keeps the resting car clear of the fixed header, as before.
+               * both 92vw (width) and 82%-of-the-height (height) constraints simultaneously.
+               * `min(92vw, …)` picks whichever constraint binds first. The height is 82% of the
+               * sticky viewport — the window below the nav, `100vh - 3.5rem` — where it was 82vh
+               * of a window that had no nav, so the car keeps the share of its space it had.
+               * `mt-12` keeps the resting car clear of the page's own fixed bar, as before; the
+               * bar now sits at the top of the sticky viewport rather than the top of the window.
                */}
               <div
                 ref={carBoxRef}
                 className="relative mt-12"
                 style={{
-                  width: 'min(92vw, calc(82vh * 800 / 420))',
+                  width: 'min(92vw, calc((100vh - 3.5rem) * 0.82 * 800 / 420))',
                   aspectRatio: '800 / 420',
                 }}
               >

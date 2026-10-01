@@ -114,6 +114,10 @@ for (const viewport of [
       await waitForMain(page);
       await expect(page.getByText('Loading frames')).toBeHidden();
 
+      // The scene's own `<header>` sits inside `<main>`, so the site nav is the only banner.
+      await expect(page.getByRole('banner')).toHaveCount(1);
+      await expect(page.getByRole('banner').getByRole('navigation', { name: 'Main navigation' })).toBeVisible();
+
       const navBox = await page.getByRole('navigation', { name: 'Main navigation' }).boundingBox();
       const barBox = await page.locator('main header').boundingBox();
       const carBox = await page.locator('canvas').boundingBox();

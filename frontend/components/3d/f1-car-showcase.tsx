@@ -47,16 +47,8 @@ export default function F1CarShowcase() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white">
+      {/* No back link of its own: the site nav sits above this, and its wordmark goes home. */}
       <div className="container mx-auto px-4 py-8">
-        <div className="mb-4">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-2 text-zinc-400 transition-colors hover:text-white"
-          >
-            ← Back to Briefing Agent
-          </Link>
-        </div>
-
         <h1 className="mb-2 text-center text-4xl font-bold md:text-5xl">
           <span className="text-f1-red">F1</span> Car Showcase
         </h1>

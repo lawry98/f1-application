@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 import { AttributionTable } from '@/components/credits/attribution-table';
+import { LandingNav } from '@/components/landing/landing-nav';
 import { SiteCredit } from '@/components/landing/site-credit';
 import {
   readDriverCredits,
@@ -61,349 +62,354 @@ export default function CreditsPage() {
   const licenceTerms = readLicenceTerms();
 
   return (
-    <main className="min-h-screen bg-zinc-950 text-white">
-      <div className="container mx-auto max-w-4xl px-4 py-16">
-        <h1 className="mb-3 text-4xl font-bold">
-          <span className="text-f1-red">Credits</span> &amp; Attributions
-        </h1>
-        <p className={cn('mb-16', PROSE)}>
-          Everything on this site that came from somewhere else, with its author, its licence and a
-          route back to the original.
-        </p>
-
-        <section id="driver-photographs" className="mb-16 scroll-mt-24">
-          <h2 className={cn('mb-3', HEADING)}>Driver photographs</h2>
-          <div className={RULE} />
-          <p className={cn('mb-6', PROSE)}>
-            All {drivers.length} headshots are photographs hosted on Wikimedia Commons. Most are CC
-            BY or CC BY-SA, which oblige attribution — and because the files shipped here are
-            downscaled to a 400px longest edge and transcoded from the originals, CC BY-SA&rsquo;s
-            share-alike attaches as well. This table is that attribution;{' '}
-            <a href="/drivers/CREDITS.md" className={LINK}>
-              the source file
-            </a>{' '}
-            carries the same rows.
+    <>
+      <LandingNav />
+      {/* `pt-14` clears the fixed 56 px nav; the page's own `py-16` starts below it. */}
+      <main className="min-h-screen bg-zinc-950 pt-14 text-white">
+        <div className="container mx-auto max-w-4xl px-4 py-16">
+          <h1 className="mb-3 text-4xl font-bold">
+            <span className="text-f1-red">Credits</span> &amp; Attributions
+          </h1>
+          <p className={cn('mb-16', PROSE)}>
+            Everything on this site that came from somewhere else, with its author, its licence and
+            a route back to the original.
           </p>
-          <AttributionTable
-            rows={drivers}
-            basePath="/drivers"
-            variant="photo"
-            subjectLabel="Driver"
-            authorLabel="Author"
-            caption="Driver photograph credits: thumbnail, driver, author, licence and Commons source."
-            licenceTerms={licenceTerms}
-          />
-        </section>
 
-        <section id="team-logos" className="mb-16 scroll-mt-24">
-          <h2 className={cn('mb-3', HEADING)}>Team logos</h2>
-          <div className={RULE} />
-          <p className={cn('mb-6', PROSE)}>
-            Every logo is a vector mark hosted on Wikimedia Commons under a public-domain tag — the
-            designs fall below the threshold of originality, so none of them obliges attribution.
-            They are still registered trademarks, used here only to identify the team being written
-            about. The attribution column names the rights-holding marque, not an illustrator.
-          </p>
-          <AttributionTable
-            rows={logos}
-            basePath="/logos"
-            variant="logo"
-            subjectLabel="Team"
-            authorLabel="Attributed to"
-            caption="Team logo credits: thumbnail, team, rights holder, licence and Commons source."
-          />
+          <section id="driver-photographs" className="mb-16 scroll-mt-24">
+            <h2 className={cn('mb-3', HEADING)}>Driver photographs</h2>
+            <div className={RULE} />
+            <p className={cn('mb-6', PROSE)}>
+              All {drivers.length} headshots are photographs hosted on Wikimedia Commons. Most are
+              CC BY or CC BY-SA, which oblige attribution — and because the files shipped here are
+              downscaled to a 400px longest edge and transcoded from the originals, CC BY-SA&rsquo;s
+              share-alike attaches as well. This table is that attribution;{' '}
+              <a href="/drivers/CREDITS.md" className={LINK}>
+                the source file
+              </a>{' '}
+              carries the same rows.
+            </p>
+            <AttributionTable
+              rows={drivers}
+              basePath="/drivers"
+              variant="photo"
+              subjectLabel="Driver"
+              authorLabel="Author"
+              caption="Driver photograph credits: thumbnail, driver, author, licence and Commons source."
+              licenceTerms={licenceTerms}
+            />
+          </section>
 
-          <h3 className={cn('mb-2 mt-12', LABEL)}>Marque marks standing in for team lockups</h3>
-          <p className={cn('mb-4', PROSE)}>
-            Four files are an authentic public-domain mark of the correct company, but narrower than
-            the full Formula 1 team lockup, for which no free vector exists.
-          </p>
-          <table className="w-full table-fixed border-collapse text-left text-xs">
-            <caption className="sr-only">
-              Logo files that show a marque mark rather than a full Formula 1 team lockup.
-            </caption>
-            <thead>
-              <tr>
-                <th scope="col" className={cn('w-[28%] pb-2', LABEL)}>
-                  File
-                </th>
-                <th scope="col" className={cn('w-[36%] pb-2', LABEL)}>
-                  What it is
-                </th>
-                <th scope="col" className={cn('pb-2', LABEL)}>
-                  What it is missing
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {marques.map((note) => (
-                <tr key={note.file}>
-                  <td className={cn(NOTE_CELL, 'font-mono text-[11px]')}>{note.file}</td>
-                  <td className={NOTE_CELL}>{note.whatItIs}</td>
-                  <td className={cn(NOTE_CELL, 'pr-0')}>{note.whatItIsMissing}</td>
+          <section id="team-logos" className="mb-16 scroll-mt-24">
+            <h2 className={cn('mb-3', HEADING)}>Team logos</h2>
+            <div className={RULE} />
+            <p className={cn('mb-6', PROSE)}>
+              Every logo is a vector mark hosted on Wikimedia Commons under a public-domain tag —
+              the designs fall below the threshold of originality, so none of them obliges
+              attribution. They are still registered trademarks, used here only to identify the team
+              being written about. The attribution column names the rights-holding marque, not an
+              illustrator.
+            </p>
+            <AttributionTable
+              rows={logos}
+              basePath="/logos"
+              variant="logo"
+              subjectLabel="Team"
+              authorLabel="Attributed to"
+              caption="Team logo credits: thumbnail, team, rights holder, licence and Commons source."
+            />
+
+            <h3 className={cn('mb-2 mt-12', LABEL)}>Marque marks standing in for team lockups</h3>
+            <p className={cn('mb-4', PROSE)}>
+              Four files are an authentic public-domain mark of the correct company, but narrower
+              than the full Formula 1 team lockup, for which no free vector exists.
+            </p>
+            <table className="w-full table-fixed border-collapse text-left text-xs">
+              <caption className="sr-only">
+                Logo files that show a marque mark rather than a full Formula 1 team lockup.
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col" className={cn('w-[28%] pb-2', LABEL)}>
+                    File
+                  </th>
+                  <th scope="col" className={cn('w-[36%] pb-2', LABEL)}>
+                    What it is
+                  </th>
+                  <th scope="col" className={cn('pb-2', LABEL)}>
+                    What it is missing
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {marques.map((note) => (
+                  <tr key={note.file}>
+                    <td className={cn(NOTE_CELL, 'font-mono text-[11px]')}>{note.file}</td>
+                    <td className={NOTE_CELL}>{note.whatItIs}</td>
+                    <td className={cn(NOTE_CELL, 'pr-0')}>{note.whatItIsMissing}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
 
-          <p className={cn('mt-6', PROSE)}>
-            Two more notes live in{' '}
-            <a href="/logos/CREDITS.md" className={LINK}>
-              the source file
-            </a>
-            : Visa Cash App Racing Bulls has no freely licensed vector on Commons at all, so the
-            team pages render a lettered monogram instead; and <code>alpine.svg</code> has a single
-            attribute changed — Commons hosts the near-black variant drawn for light backgrounds,
-            and its ink is repainted for a dark background here, leaving the shapes and accent
-            colours untouched.
-          </p>
-        </section>
+            <p className={cn('mt-6', PROSE)}>
+              Two more notes live in{' '}
+              <a href="/logos/CREDITS.md" className={LINK}>
+                the source file
+              </a>
+              : Visa Cash App Racing Bulls has no freely licensed vector on Commons at all, so the
+              team pages render a lettered monogram instead; and <code>alpine.svg</code> has a
+              single attribute changed — Commons hosts the near-black variant drawn for light
+              backgrounds, and its ink is repainted for a dark background here, leaving the shapes
+              and accent colours untouched.
+            </p>
+          </section>
 
-        {/*
-         * Circuit geometry. This section exists because the data started shipping to browsers:
-         * `landing-hero.tsx` statically imports `data/circuits/mc-1929.json`, so MIT-licensed
-         * derivative data is now in the `/` client bundle for every visitor. MIT obliges the
-         * copyright and permission notice to travel with it, and until this section landed the
-         * only copy was `data/circuits/CREDITS.md` — a repo file, outside `public/`, unreachable
-         * by anyone using the site.
-         *
-         * Unlike the two tables above, the notice is written inline rather than linked. Those
-         * link to `/drivers/CREDITS.md` and `/logos/CREDITS.md`, which Next serves because they
-         * sit in `public/`; `data/circuits/CREDITS.md` does not and is not servable, so a link
-         * would 404 and discharge nothing. One source, one row of prose — a table would be a
-         * table with a single row.
-         */}
-        <section className="mb-16">
-          <h2 className={cn('mb-3', HEADING)}>Circuit geometry</h2>
-          <div className={RULE} />
-          <p className={PROSE}>
-            The track outlines drawn on this site are derived from{' '}
-            <a
-              href="https://github.com/bacinger/f1-circuits"
-              target="_blank"
-              rel="noopener noreferrer"
-              className={LINK}
-            >
-              bacinger/f1-circuits
-            </a>
-            , a set of surveyed Formula 1 circuit centre lines in GeoJSON, &copy; 2019&ndash;2025
-            Tomislav Bacinger and used under the{' '}
-            <a
-              href="https://opensource.org/license/mit"
-              target="_blank"
-              rel="noopener noreferrer"
-              className={LINK}
-            >
-              MIT licence
-            </a>
-            . The files here are not the upstream data verbatim: each circuit is reprojected from
-            WGS84 into a normalised box &mdash; longitude scaled by the cosine of mean latitude, the
-            y axis flipped for SVG, aspect ratio preserved &mdash; and downsampled to at most 240
-            points.
-          </p>
-          <p className={cn('mt-4', PROSE)}>
-            The MIT licence permits use, copying, modification and distribution provided its
-            copyright notice and permission notice travel with the software. Both are reproduced in
-            full in <code>frontend/data/circuits/CREDITS.md</code>, alongside the three sources that
-            were evaluated and rejected.
-          </p>
-        </section>
+          {/*
+           * Circuit geometry. This section exists because the data started shipping to browsers:
+           * `landing-hero.tsx` statically imports `data/circuits/mc-1929.json`, so MIT-licensed
+           * derivative data is now in the `/` client bundle for every visitor. MIT obliges the
+           * copyright and permission notice to travel with it, and until this section landed the
+           * only copy was `data/circuits/CREDITS.md` — a repo file, outside `public/`, unreachable
+           * by anyone using the site.
+           *
+           * Unlike the two tables above, the notice is written inline rather than linked. Those
+           * link to `/drivers/CREDITS.md` and `/logos/CREDITS.md`, which Next serves because they
+           * sit in `public/`; `data/circuits/CREDITS.md` does not and is not servable, so a link
+           * would 404 and discharge nothing. One source, one row of prose — a table would be a
+           * table with a single row.
+           */}
+          <section className="mb-16">
+            <h2 className={cn('mb-3', HEADING)}>Circuit geometry</h2>
+            <div className={RULE} />
+            <p className={PROSE}>
+              The track outlines drawn on this site are derived from{' '}
+              <a
+                href="https://github.com/bacinger/f1-circuits"
+                target="_blank"
+                rel="noopener noreferrer"
+                className={LINK}
+              >
+                bacinger/f1-circuits
+              </a>
+              , a set of surveyed Formula 1 circuit centre lines in GeoJSON, &copy; 2019&ndash;2025
+              Tomislav Bacinger and used under the{' '}
+              <a
+                href="https://opensource.org/license/mit"
+                target="_blank"
+                rel="noopener noreferrer"
+                className={LINK}
+              >
+                MIT licence
+              </a>
+              . The files here are not the upstream data verbatim: each circuit is reprojected from
+              WGS84 into a normalised box &mdash; longitude scaled by the cosine of mean latitude,
+              the y axis flipped for SVG, aspect ratio preserved &mdash; and downsampled to at most
+              240 points.
+            </p>
+            <p className={cn('mt-4', PROSE)}>
+              The MIT licence permits use, copying, modification and distribution provided its
+              copyright notice and permission notice travel with the software. Both are reproduced
+              in full in <code>frontend/data/circuits/CREDITS.md</code>, alongside the three sources
+              that were evaluated and rejected.
+            </p>
+          </section>
 
-        <section className="mb-16">
-          <h2 className={cn('mb-3', HEADING)}>3D model</h2>
-          <div className={RULE} />
-          <p className={PROSE}>
-            <a
-              href="https://skfb.ly/oWL8J"
-              target="_blank"
-              rel="noopener noreferrer"
-              className={LINK}
-            >
-              &ldquo;F1 2026 Release Car&rdquo;
-            </a>{' '}
-            by{' '}
-            <a
-              href="https://sketchfab.com/Nimaxo"
-              target="_blank"
-              rel="noopener noreferrer"
-              className={LINK}
-            >
-              Nimaxo
-            </a>
-            , hosted on Sketchfab and licensed under{' '}
-            <a
-              href="https://creativecommons.org/licenses/by/4.0/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className={LINK}
-            >
-              CC BY 4.0
-            </a>
-            .
-          </p>
-        </section>
+          <section className="mb-16">
+            <h2 className={cn('mb-3', HEADING)}>3D model</h2>
+            <div className={RULE} />
+            <p className={PROSE}>
+              <a
+                href="https://skfb.ly/oWL8J"
+                target="_blank"
+                rel="noopener noreferrer"
+                className={LINK}
+              >
+                &ldquo;F1 2026 Release Car&rdquo;
+              </a>{' '}
+              by{' '}
+              <a
+                href="https://sketchfab.com/Nimaxo"
+                target="_blank"
+                rel="noopener noreferrer"
+                className={LINK}
+              >
+                Nimaxo
+              </a>
+              , hosted on Sketchfab and licensed under{' '}
+              <a
+                href="https://creativecommons.org/licenses/by/4.0/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className={LINK}
+              >
+                CC BY 4.0
+              </a>
+              .
+            </p>
+          </section>
 
-        {/*
-         * Prose, not an `AttributionTable`. The tables in `lib/credits.ts` are keyed to files
-         * in `public/drivers` and `public/logos` and require a Commons `https://` link per row;
-         * the tyre artwork is neither a file nor externally sourced, so a table for it would be
-         * an empty ritual. What is worth recording is the provenance itself.
-         */}
-        <section id="tyre-artwork" className="mb-16 scroll-mt-24">
-          <h2 className={cn('mb-3', HEADING)}>Tyre artwork</h2>
-          <div className={RULE} />
-          <p className={PROSE}>
-            The tyres on{' '}
-            <Link href="/tyres" className={LINK}>
-              /tyres
-            </Link>{' '}
-            are original artwork, drawn as inline SVG in this repository (
-            <code>components/tyres/tyre-visual.tsx</code>) and recoloured per compound from the
-            page&rsquo;s own palette. No photograph, render or vector was taken from Pirelli,
-            Formula 1 or any other source, so nothing on that page is owed attribution. The compound
-            colours are chosen to read as the familiar sidewall bands on a dark background; they are
-            not a claim to be anyone&rsquo;s exact brand values.
-          </p>
-        </section>
+          {/*
+           * Prose, not an `AttributionTable`. The tables in `lib/credits.ts` are keyed to files
+           * in `public/drivers` and `public/logos` and require a Commons `https://` link per row;
+           * the tyre artwork is neither a file nor externally sourced, so a table for it would be
+           * an empty ritual. What is worth recording is the provenance itself.
+           */}
+          <section id="tyre-artwork" className="mb-16 scroll-mt-24">
+            <h2 className={cn('mb-3', HEADING)}>Tyre artwork</h2>
+            <div className={RULE} />
+            <p className={PROSE}>
+              The tyres on{' '}
+              <Link href="/tyres" className={LINK}>
+                /tyres
+              </Link>{' '}
+              are original artwork, drawn as inline SVG in this repository (
+              <code>components/tyres/tyre-visual.tsx</code>) and recoloured per compound from the
+              page&rsquo;s own palette. No photograph, render or vector was taken from Pirelli,
+              Formula 1 or any other source, so nothing on that page is owed attribution. The
+              compound colours are chosen to read as the familiar sidewall bands on a dark
+              background; they are not a claim to be anyone&rsquo;s exact brand values.
+            </p>
+          </section>
 
-        {/*
-         * Race data. Prose in its own section, not a row in the image tables: `lib/credits.ts`
-         * keys those to a shipped `.png`/`.svg` and a Commons link, and OpenF1 is neither — it is
-         * a live API the backend queries, and nothing of it is committed here. A third
-         * `CREDITS.md` would be a parser contract for one row.
-         *
-         * OpenF1 does not require credit (its FAQ: credit is "appreciated", a link back to
-         * openf1.org helps others find it), so unlike the circuit geometry this discharges no
-         * obligation. Its repository is CC BY-NC-SA 4.0, but that licenses OpenF1's *source code*,
-         * none of which is used here. What the section does owe the reader is where the standings
-         * come from: they are this site's sum, not an OpenF1 figure.
-         */}
-        <section id="race-data" className="mb-16 scroll-mt-24">
-          <h2 className={cn('mb-3', HEADING)}>Race results &amp; standings</h2>
-          <div className={RULE} />
-          <p className={PROSE}>
-            Race results, finishing positions and points from the 2023 season onward come from{' '}
-            <a
-              href="https://openf1.org/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className={LINK}
-            >
-              OpenF1
-            </a>
-            , a free API of historical Formula 1 timing data. OpenF1 is an unofficial, community-run
-            project, not associated with Formula 1, the FIA or Formula One Management; it asks for
-            no credit, only a link back, and this is it.
-          </p>
-          <p className={cn('mt-4', PROSE)}>
-            The championship standings are not OpenF1&rsquo;s own figures. Its championship
-            endpoints need a paid subscription, so this site sums the Race and Sprint points OpenF1
-            reports session by session &mdash; any error in that table is ours, and there are no
-            standings before 2023. Race results for earlier seasons, or for any request OpenF1
-            cannot answer, come from FastF1 instead.
-          </p>
-        </section>
+          {/*
+           * Race data. Prose in its own section, not a row in the image tables: `lib/credits.ts`
+           * keys those to a shipped `.png`/`.svg` and a Commons link, and OpenF1 is neither — it is
+           * a live API the backend queries, and nothing of it is committed here. A third
+           * `CREDITS.md` would be a parser contract for one row.
+           *
+           * OpenF1 does not require credit (its FAQ: credit is "appreciated", a link back to
+           * openf1.org helps others find it), so unlike the circuit geometry this discharges no
+           * obligation. Its repository is CC BY-NC-SA 4.0, but that licenses OpenF1's *source code*,
+           * none of which is used here. What the section does owe the reader is where the standings
+           * come from: they are this site's sum, not an OpenF1 figure.
+           */}
+          <section id="race-data" className="mb-16 scroll-mt-24">
+            <h2 className={cn('mb-3', HEADING)}>Race results &amp; standings</h2>
+            <div className={RULE} />
+            <p className={PROSE}>
+              Race results, finishing positions and points from the 2023 season onward come from{' '}
+              <a
+                href="https://openf1.org/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className={LINK}
+              >
+                OpenF1
+              </a>
+              , a free API of historical Formula 1 timing data. OpenF1 is an unofficial,
+              community-run project, not associated with Formula 1, the FIA or Formula One
+              Management; it asks for no credit, only a link back, and this is it.
+            </p>
+            <p className={cn('mt-4', PROSE)}>
+              The championship standings are not OpenF1&rsquo;s own figures. Its championship
+              endpoints need a paid subscription, so this site sums the Race and Sprint points
+              OpenF1 reports session by session &mdash; any error in that table is ours, and there
+              are no standings before 2023. Race results for earlier seasons, or for any request
+              OpenF1 cannot answer, come from FastF1 instead.
+            </p>
+          </section>
 
-        <section className="mb-16">
-          <h2 className={cn('mb-3', HEADING)}>Technologies</h2>
-          <div className={RULE} />
-          <div className="grid gap-8 md:grid-cols-2">
-            <div>
-              <h3 className={cn('mb-3', LABEL)}>Frontend</h3>
-              <ul className="space-y-1.5 text-sm text-zinc-400">
-                <li>React &amp; Next.js 16</li>
-                <li>TypeScript</li>
-                <li>Three.js / React Three Fiber</li>
-                <li>Tailwind CSS</li>
-              </ul>
+          <section className="mb-16">
+            <h2 className={cn('mb-3', HEADING)}>Technologies</h2>
+            <div className={RULE} />
+            <div className="grid gap-8 md:grid-cols-2">
+              <div>
+                <h3 className={cn('mb-3', LABEL)}>Frontend</h3>
+                <ul className="space-y-1.5 text-sm text-zinc-400">
+                  <li>React &amp; Next.js 16</li>
+                  <li>TypeScript</li>
+                  <li>Three.js / React Three Fiber</li>
+                  <li>Tailwind CSS</li>
+                </ul>
+              </div>
+              <div>
+                <h3 className={cn('mb-3', LABEL)}>Backend</h3>
+                <ul className="space-y-1.5 text-sm text-zinc-400">
+                  <li>Python &amp; FastAPI</li>
+                  <li>LangChain &amp; LangGraph</li>
+                  <li>Gemini 3.6 Flash (Google)</li>
+                  <li>FastF1</li>
+                  <li>OpenF1 API</li>
+                  <li>Tavily API</li>
+                  <li>OpenWeather API</li>
+                </ul>
+              </div>
             </div>
-            <div>
-              <h3 className={cn('mb-3', LABEL)}>Backend</h3>
-              <ul className="space-y-1.5 text-sm text-zinc-400">
-                <li>Python &amp; FastAPI</li>
-                <li>LangChain &amp; LangGraph</li>
-                <li>Gemini 3.6 Flash (Google)</li>
-                <li>FastF1</li>
-                <li>OpenF1 API</li>
-                <li>Tavily API</li>
-                <li>OpenWeather API</li>
-              </ul>
-            </div>
+          </section>
+
+          <section className="mb-16">
+            <h2 className={cn('mb-3', HEADING)}>Data sources</h2>
+            <div className={RULE} />
+            <dl className="space-y-3 text-sm text-zinc-400">
+              <div>
+                <dt className="inline font-semibold text-zinc-300">FastF1 — </dt>
+                <dd className="inline">schedules, circuit history and race results before 2023</dd>
+              </div>
+              <div>
+                <dt className="inline font-semibold text-zinc-300">OpenF1 — </dt>
+                <dd className="inline">
+                  race results and the points behind the{' '}
+                  <a href="#race-data" className={LINK}>
+                    derived standings
+                  </a>
+                  , 2023 onward
+                </dd>
+              </div>
+              <div>
+                <dt className="inline font-semibold text-zinc-300">Tavily — </dt>
+                <dd className="inline">web search and F1 news aggregation</dd>
+              </div>
+              <div>
+                <dt className="inline font-semibold text-zinc-300">OpenWeather — </dt>
+                <dd className="inline">weather forecasts for race locations</dd>
+              </div>
+              <div>
+                <dt className="inline font-semibold text-zinc-300">Pirelli, Formula 1, FIA — </dt>
+                <dd className="inline">
+                  tyre compounds, weekend allocations, regulations and strategy on{' '}
+                  <Link href="/tyres" className={LINK}>
+                    /tyres
+                  </Link>
+                  , each claim cited on the page itself
+                </dd>
+              </div>
+            </dl>
+          </section>
+
+          <section className="mb-16">
+            <h2 className={cn('mb-3', HEADING)}>Licence</h2>
+            <div className={RULE} />
+            <SiteCredit className={cn('mb-3', PROSE)} linkClassName={LINK} />
+            <p className={cn('mb-3', PROSE)}>This project is licensed under the MIT License.</p>
+            <p className={PROSE}>
+              The third-party assets are not: the 3D model is CC BY 4.0, the driver photographs are
+              CC BY, CC BY-SA, CC0 or OGL 3 as listed above, and the team logos are public-domain
+              marks that remain registered trademarks of their owners.
+            </p>
+          </section>
+
+          <div className="border-t border-zinc-800 pt-10 text-center">
+            <Link
+              href="/"
+              className={cn(
+                'inline-block rounded-lg bg-f1-red px-6 py-3 text-base font-semibold text-white transition-colors hover:bg-red-700',
+                /*
+                 * The inverse ring, because this control is filled with `f1-red`: a red ring on a red
+                 * fill is 1.00:1 — an absent indicator, not a weak one — where `ink` on that fill is
+                 * 4.50:1. The offset names the colour really behind the pill, `base`, which on this
+                 * page is what `bg-zinc-950` paints; `focusRingOnRedFill` ships without an offset
+                 * colour precisely so a call site cannot inherit the wrong page's band. This
+                 * replaces a `ring-zinc-300` that predates the shared token.
+                 */
+                focusRingOnRedFill,
+                'focus-visible:ring-offset-base',
+              )}
+            >
+              ← Back to Briefing Agent
+            </Link>
           </div>
-        </section>
-
-        <section className="mb-16">
-          <h2 className={cn('mb-3', HEADING)}>Data sources</h2>
-          <div className={RULE} />
-          <dl className="space-y-3 text-sm text-zinc-400">
-            <div>
-              <dt className="inline font-semibold text-zinc-300">FastF1 — </dt>
-              <dd className="inline">schedules, circuit history and race results before 2023</dd>
-            </div>
-            <div>
-              <dt className="inline font-semibold text-zinc-300">OpenF1 — </dt>
-              <dd className="inline">
-                race results and the points behind the{' '}
-                <a href="#race-data" className={LINK}>
-                  derived standings
-                </a>
-                , 2023 onward
-              </dd>
-            </div>
-            <div>
-              <dt className="inline font-semibold text-zinc-300">Tavily — </dt>
-              <dd className="inline">web search and F1 news aggregation</dd>
-            </div>
-            <div>
-              <dt className="inline font-semibold text-zinc-300">OpenWeather — </dt>
-              <dd className="inline">weather forecasts for race locations</dd>
-            </div>
-            <div>
-              <dt className="inline font-semibold text-zinc-300">Pirelli, Formula 1, FIA — </dt>
-              <dd className="inline">
-                tyre compounds, weekend allocations, regulations and strategy on{' '}
-                <Link href="/tyres" className={LINK}>
-                  /tyres
-                </Link>
-                , each claim cited on the page itself
-              </dd>
-            </div>
-          </dl>
-        </section>
-
-        <section className="mb-16">
-          <h2 className={cn('mb-3', HEADING)}>Licence</h2>
-          <div className={RULE} />
-          <SiteCredit className={cn('mb-3', PROSE)} linkClassName={LINK} />
-          <p className={cn('mb-3', PROSE)}>This project is licensed under the MIT License.</p>
-          <p className={PROSE}>
-            The third-party assets are not: the 3D model is CC BY 4.0, the driver photographs are CC
-            BY, CC BY-SA, CC0 or OGL 3 as listed above, and the team logos are public-domain marks
-            that remain registered trademarks of their owners.
-          </p>
-        </section>
-
-        <div className="border-t border-zinc-800 pt-10 text-center">
-          <Link
-            href="/"
-            className={cn(
-              'inline-block rounded-lg bg-f1-red px-6 py-3 text-base font-semibold text-white transition-colors hover:bg-red-700',
-              /*
-               * The inverse ring, because this control is filled with `f1-red`: a red ring on a red
-               * fill is 1.00:1 — an absent indicator, not a weak one — where `ink` on that fill is
-               * 4.50:1. The offset names the colour really behind the pill, `base`, which on this
-               * page is what `bg-zinc-950` paints; `focusRingOnRedFill` ships without an offset
-               * colour precisely so a call site cannot inherit the wrong page's band. This
-               * replaces a `ring-zinc-300` that predates the shared token.
-               */
-              focusRingOnRedFill,
-              'focus-visible:ring-offset-base',
-            )}
-          >
-            ← Back to Briefing Agent
-          </Link>
         </div>
-      </div>
-    </main>
+      </main>
+    </>
   );
 }
