@@ -15,7 +15,7 @@ export const SHARE_IMAGE_COLORS = {
   base: '#09090B',
   ink: '#F4F4ED',
   red: '#E10600',
-  /** `zinc-400`, the site's body-copy grey: 8.2:1 on `base`. */
+  /** `zinc-400`, the site's body-copy grey: 7.76:1 on `base`. */
   muted: '#A1A1AA',
 } as const;
 
