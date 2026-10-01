@@ -38,6 +38,13 @@ export interface BriefingState {
   briefing: string;
   /** Whether synthesis stopped partway, leaving `briefing` unfinished. */
   truncated: boolean;
+  /**
+   * The stream ended before its terminal event — `briefing` or `error` — arrived: the connection
+   * dropped. `briefing` keeps whatever prose had arrived, which may be none. Not `truncated`,
+   * which is the server *knowing* the prose stopped short (ADR-0002); here nobody told the page
+   * anything, so the run is neither finished nor failed.
+   */
+  interrupted: boolean;
   toolTrace: ToolResult[];
   /** The tools the planner chose, in its order. Empty until the `tool_plan` event lands. */
   toolPlan: string[];
@@ -59,6 +66,12 @@ export interface BriefingState {
 export interface UseBriefingReturn extends BriefingState {
   setQuery: (query: string) => void;
   submit: (searchQuery?: string) => Promise<void>;
+  /**
+   * Ask again for the race the last run was for, whatever the field says now. Unlike `submit`,
+   * the interrupted run stays on screen until the new one has started, so a refusal from the
+   * cost guard leaves the reader the prose they had, with the countdown beside it.
+   */
+  retry: () => Promise<void>;
 }
 
 export function useBriefing(): UseBriefingReturn {
@@ -68,6 +81,7 @@ export function useBriefing(): UseBriefingReturn {
   const [raceInfo, setRaceInfo] = useState<RaceInfo | null>(null);
   const [briefing, setBriefing] = useState('');
   const [truncated, setTruncated] = useState(false);
+  const [interrupted, setInterrupted] = useState(false);
   const [toolTrace, setToolTrace] = useState<ToolResult[]>([]);
   const [toolPlan, setToolPlan] = useState<string[]>([]);
   const [error, setError] = useState('');
@@ -79,6 +93,8 @@ export function useBriefing(): UseBriefingReturn {
   // a refusal lands and by the tick, never read off `Date.now()` during render.
   const [now, setNow] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
+  // The race the last run asked for — what `retry` asks for again.
+  const lastQueryRef = useRef('');
   // The prose accumulated so far, including deltas not yet painted.
   const bufferRef = useRef('');
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -108,9 +124,8 @@ export function useBriefing(): UseBriefingReturn {
     return () => clearInterval(id);
   }, [notice]);
 
-  const submit = useCallback(
-    async (searchQuery?: string): Promise<void> => {
-      const searchTerm = searchQuery ?? query;
+  const run = useCallback(
+    async (searchTerm: string, keepView: boolean): Promise<void> => {
       if (!searchTerm.trim()) return;
       // The controls are locked while a wait is pending, but Enter in the field still calls
       // this; asking again before `retryAt` only earns the same refusal.
@@ -121,18 +136,29 @@ export function useBriefing(): UseBriefingReturn {
       bufferRef.current = '';
       const controller = new AbortController();
       abortRef.current = controller;
+      lastQueryRef.current = searchTerm;
+
+      // What the previous run left on screen. A retry keeps it until its own run has sent a
+      // first event — the server admitted it — so a refused or failed retry takes nothing away.
+      let viewCleared = false;
+      const clearView = (): void => {
+        if (viewCleared) return;
+        viewCleared = true;
+        setBriefing('');
+        setTruncated(false);
+        setInterrupted(false);
+        setRace('');
+        setRaceInfo(null);
+        setToolTrace([]);
+        setToolPlan([]);
+      };
 
       setLoading(true);
       setError('');
-      setBriefing('');
-      setTruncated(false);
-      setRace('');
-      setRaceInfo(null);
-      setToolTrace([]);
-      setToolPlan([]);
       setStatusMessage('');
       setStep('');
       setStartedAt(Date.now());
+      if (!keepView) clearView();
 
       try {
         const stream = streamBriefing(searchTerm, controller.signal);
@@ -144,6 +170,7 @@ export function useBriefing(): UseBriefingReturn {
           // to: `bufferRef` is shared across requests, so a stale delta would not
           // just paint late, it would prepend itself to the next briefing.
           if (abortRef.current !== controller) break;
+          clearView();
 
           if (event.type === 'status') {
             setStatusMessage(event.data.message);
@@ -182,6 +209,14 @@ export function useBriefing(): UseBriefingReturn {
             // The deadline is keyed on its code, so the page owns its wording; every other
             // error event's message is already written for a reader.
             setError(event.data.code === 'deadline' ? BRIEFING_DEADLINE_ERROR : event.data.message);
+          } else if (event.type === 'interrupted') {
+            // No terminal event is coming to do the final flush, so this does it: the timer may
+            // still be holding the last deltas, and cancelling it unpainted would strand them.
+            cancelFlush();
+            setBriefing(bufferRef.current);
+            setInterrupted(true);
+            setStatusMessage('');
+            setStep('');
           }
         }
       } catch (err) {
@@ -219,8 +254,15 @@ export function useBriefing(): UseBriefingReturn {
         }
       }
     },
-    [query, notice, cancelFlush],
+    [notice, cancelFlush],
   );
+
+  const submit = useCallback(
+    (searchQuery?: string): Promise<void> => run(searchQuery ?? query, false),
+    [run, query],
+  );
+
+  const retry = useCallback((): Promise<void> => run(lastQueryRef.current, true), [run]);
 
   const retryInSeconds =
     notice === null ? 0 : Math.max(0, Math.ceil((notice.retryAt - now) / 1000));
@@ -232,6 +274,7 @@ export function useBriefing(): UseBriefingReturn {
     raceInfo,
     briefing,
     truncated,
+    interrupted,
     toolTrace,
     toolPlan,
     error,
@@ -242,5 +285,6 @@ export function useBriefing(): UseBriefingReturn {
     retryInSeconds,
     setQuery,
     submit,
+    retry,
   };
 }

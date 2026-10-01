@@ -17,7 +17,14 @@ export type StreamEvent =
    * existed. A deadline after prose is not an error at all: it arrives as a `briefing` with
    * `truncated: true` (ADR-0002).
    */
-  | { type: 'error'; data: { message: string; code?: 'deadline' } };
+  | { type: 'error'; data: { message: string; code?: 'deadline' } }
+  /**
+   * Not sent by the server: `streamBriefing` yields it when the stream ends before either
+   * terminal event — `briefing` or `error` — arrived. `ended` is a body that closed early,
+   * `failed` a read that rejected (the connection dropped). Distinct from a `briefing` with
+   * `truncated: true`, which is the server *knowing* the prose stopped short (ADR-0002).
+   */
+  | { type: 'interrupted'; data: { reason: 'ended' | 'failed' } };
 
 /**
  * Why the briefing routes refused to start a run, from the JSON body of their 429 / 503.

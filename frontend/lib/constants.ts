@@ -11,6 +11,17 @@ export const GENERIC_BRIEFING_ERROR =
 export const BRIEFING_DEADLINE_ERROR = 'This briefing took too long and was stopped. Try again.';
 
 /**
+ * Shown when the stream ended before its terminal event — the connection dropped, and the server
+ * never said the run was over. Worded apart from the truncation note in `briefing-card.tsx` on
+ * purpose: that one is the server *knowing* the prose stopped short (ADR-0002), and "try again"
+ * is not the advice there.
+ */
+export const INTERRUPTED_WITH_PROSE =
+  'The connection dropped before this briefing finished — what you see is incomplete.';
+export const INTERRUPTED_BEFORE_PROSE =
+  'The connection dropped before the briefing started. Try again.';
+
+/**
  * Display names for the backend's **eight** `@tool` functions (see `backend/tools/`).
  *
  * `tool_result` events carry the raw Python function name, and `get_recent_top_finishers`

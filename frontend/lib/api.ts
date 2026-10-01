@@ -96,6 +96,11 @@ async function briefingRequestError(response: Response): Promise<BriefingRequest
  * Consume the SSE briefing stream and yield typed StreamEvent objects.
  * Uses the SSE `event:` line for type discrimination.
  *
+ * A run is finished once `briefing` or `error` arrives. A stream that ends before either — the
+ * body closing early, or a read rejecting because the connection dropped — ends with an
+ * `interrupted` event instead, so a cut stream cannot pass for a finished one. Our own abort is
+ * not an interruption: it rethrows, for the caller that aborted.
+ *
  * Throws {@link BriefingRequestError} when the server refuses to open the stream.
  */
 export async function* streamBriefing(
@@ -122,11 +127,22 @@ export async function* streamBriefing(
 
   let remainder = '';
   let eventType = '';
+  let finished = false;
 
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      let chunk: ReadableStreamReadResult<Uint8Array>;
+      try {
+        chunk = await reader.read();
+      } catch (err) {
+        if (signal?.aborted) throw err;
+        if (!finished) yield { type: 'interrupted', data: { reason: 'failed' } };
+        return;
+      }
+      const { done, value } = chunk;
 
+      // A partial line left in `remainder` is dropped, never parsed: an SSE frame the body
+      // ended inside of was never sent whole.
       if (done) break;
 
       const text = remainder + decoder.decode(value, { stream: true });
@@ -166,6 +182,7 @@ export async function* streamBriefing(
                 yield { type: 'briefing_delta', data: parsed as { content: string } };
                 break;
               case 'briefing':
+                finished = true;
                 yield {
                   type: 'briefing',
                   data: parsed as { content: string; truncated: boolean },
@@ -175,6 +192,7 @@ export async function* streamBriefing(
                 yield { type: 'complete', data: parsed as { message: string } };
                 break;
               case 'error':
+                finished = true;
                 yield { type: 'error', data: parsed as { message: string; code?: 'deadline' } };
                 break;
               default:
@@ -188,6 +206,8 @@ export async function* streamBriefing(
         }
       }
     }
+
+    if (!finished) yield { type: 'interrupted', data: { reason: 'ended' } };
   } finally {
     await reader.cancel().catch(() => undefined);
     reader.releaseLock();

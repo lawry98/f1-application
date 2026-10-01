@@ -15,7 +15,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BriefingChat } from '@/components/briefing/briefing-chat';
 import { focusRing, focusRingOnRedFill } from '@/lib/focus';
 import { blendOver, contrastRatio, MIN_CONTRAST } from '@/lib/team-utils';
-import { ChunkFeed, frame } from './sse';
+import { ChunkFeed, fixtureText, frame } from './sse';
+import { cutAfter, cutBefore, cutInsideData } from './sse-cuts';
 import { placeholderNeutrals, restingTextNeutrals, ZINC } from './zinc';
 
 beforeEach(() => {
@@ -492,6 +493,167 @@ describe('BriefingChat busy and limit states', () => {
     await generate();
 
     const box = screen.getByRole('status');
+    for (const el of [box, ...Array.from(box.querySelectorAll('*'))]) {
+      expect(el.className).not.toMatch(/(^|\s)\w+:text-base(\s|$)/);
+    }
+  });
+});
+
+/**
+ * A stream that ends before its terminal event, through the page. Every broken stream is the
+ * real `clean.sse` cut at runtime (`sse-cuts.ts`).
+ */
+const WITH_PROSE =
+  'The connection dropped before this briefing finished — what you see is incomplete.';
+const BEFORE_PROSE = 'The connection dropped before the briefing started. Try again.';
+
+/** Serve each briefing request the next of `responses`; `/api/races/` as everywhere else. */
+function stubBriefings(...responses: { fetch: () => Promise<Response> }[]): string[] {
+  const queries: string[] = [];
+  let call = 0;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input.toString();
+    if (url.includes('/api/races/')) {
+      return { ok: true, json: async () => ({ races: RACES }) } as unknown as Response;
+    }
+    queries.push((JSON.parse(String(init?.body)) as { query: string }).query);
+    return responses[call++]!.fetch();
+  }) as typeof fetch;
+  return queries;
+}
+
+function served(text: string): ChunkFeed {
+  const feed = new ChunkFeed();
+  feed.push(text);
+  feed.close();
+  return feed;
+}
+
+function traceHasLaurel(): boolean {
+  return screen.getByRole('button', { name: /agent tool trace/i }).querySelector('svg') !== null;
+}
+
+describe('BriefingChat interrupted stream', () => {
+  const clean = fixtureText('clean.sse');
+
+  async function interruptedBy(...responses: { fetch: () => Promise<Response> }[]) {
+    const queries = stubBriefings(...responses);
+    render(<BriefingChat />);
+    await settle();
+    await generate();
+    await settle(200);
+    return queries;
+  }
+
+  it('keeps the prose that arrived and says it is incomplete', async () => {
+    await interruptedBy(served(cutAfter(clean, 'briefing_delta', 3)));
+
+    expect(screen.getByRole('heading', { name: 'Monaco' })).toBeInTheDocument();
+    expect(screen.getByText('Tight.')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(WITH_PROSE);
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeEnabled();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('never tells the trace an interrupted run finished', async () => {
+    await interruptedBy(served(cutAfter(clean, 'briefing_delta', 3)));
+
+    expect(traceHasLaurel(), 'an interrupted run drew the finished laurel').toBe(false);
+  });
+
+  it('keeps its wording apart from the truncation note', async () => {
+    await interruptedBy(served(cutAfter(clean, 'briefing_delta', 3)));
+
+    expect(screen.queryByText(/stopped early/)).toBeNull();
+  });
+
+  it('says the briefing never started when the stream was cut before any prose', async () => {
+    await interruptedBy(served(cutBefore(clean, 'briefing_delta')));
+
+    expect(screen.getByRole('status')).toHaveTextContent(BEFORE_PROSE);
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeEnabled();
+    // Neither the loader nor the empty state: the page says what happened instead.
+    expect(screen.queryByText('Generating briefing')).toBeNull();
+    expect(screen.queryByText('Select a race')).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('shows only the whole frames of a stream cut mid-data line', async () => {
+    await interruptedBy(served(cutInsideData(clean, 'briefing_delta', 2)));
+
+    expect(screen.getByRole('heading', { name: 'Mon' })).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(WITH_PROSE);
+  });
+
+  it('treats a stream cut after briefing but before complete as finished', async () => {
+    await interruptedBy(served(cutAfter(clean, 'briefing')));
+
+    expect(screen.getByText('Tight.')).toBeInTheDocument();
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    expect(traceHasLaurel()).toBe(true);
+  });
+
+  it('shows the note, not the generic error, when the connection drops mid-read', async () => {
+    const feed = new ChunkFeed();
+    feed.push(cutAfter(clean, 'briefing_delta', 3));
+    feed.fail(new TypeError('network error'));
+
+    await interruptedBy(feed);
+
+    expect(screen.getByRole('status')).toHaveTextContent(WITH_PROSE);
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('asks for the same race again from Try again, and finishes normally', async () => {
+    const queries = await interruptedBy(
+      served(cutAfter(clean, 'briefing_delta', 1)),
+      served(clean),
+    );
+    fireEvent.change(screen.getByLabelText('Circuit name'), { target: { value: 'Spa' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await settle(200);
+
+    expect(queries).toEqual(['Monaco', 'Monaco']);
+    expect(screen.getByText('Tight.')).toBeInTheDocument();
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(traceHasLaurel()).toBe(true);
+  });
+
+  it('keeps the prose and counts down on Try again when the retry is refused', async () => {
+    const refusal = {
+      fetch: () =>
+        Promise.resolve({
+          ok: false,
+          status: 503,
+          json: async () => ({ code: 'busy', retry_after_seconds: 10, limit: 2 }),
+          headers: { get: () => null },
+        } as unknown as Response),
+    };
+    await interruptedBy(served(cutAfter(clean, 'briefing_delta', 3)), refusal);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await settle();
+
+    expect(screen.getByText('Tight.')).toBeInTheDocument();
+    const statuses = screen.getAllByRole('status').map((el) => el.textContent);
+    expect(statuses).toContain(WITH_PROSE);
+    expect(statuses.some((text) => text?.includes('Another briefing is being generated'))).toBe(
+      true,
+    );
+    const retries = screen.getAllByRole('button', { name: /retry in 10s/i });
+    expect(retries).toHaveLength(2); // Generate and Try again, both waiting it out
+    for (const button of retries) expect(button).toBeDisabled();
+
+    await settle(10_000);
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeEnabled();
+  });
+
+  it('sets the note in a fixed size, never a breakpoint-scoped text-base', async () => {
+    await interruptedBy(served(cutAfter(clean, 'briefing_delta', 3)));
+
+    const box = screen.getByRole('status').parentElement!;
     for (const el of [box, ...Array.from(box.querySelectorAll('*'))]) {
       expect(el.className).not.toMatch(/(^|\s)\w+:text-base(\s|$)/);
     }
