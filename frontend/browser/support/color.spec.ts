@@ -12,6 +12,13 @@ test.describe('color', () => {
     expect(() => parseCssColor('oklch(0.5 0.1 20)')).toThrow(/not an rgb/);
   });
 
+  test('parses the hex a control with no ring utility inherits from preflight', () => {
+    // `--tw-ring-color` on a control no `ring-*` class reaches: the specified value, unresolved.
+    expect(parseCssColor('#3b82f680')).toEqual({ r: 59, g: 130, b: 246, a: 128 / 255 });
+    expect(parseCssColor('#E10600')).toEqual({ r: 225, g: 6, b: 0, a: 1 });
+    expect(parseCssColor('#fff')).toEqual({ r: 255, g: 255, b: 255, a: 1 });
+  });
+
   test('computes WCAG 2 contrast ratios', () => {
     expect(wcagRatio({ r: 255, g: 255, b: 255 }, { r: 0, g: 0, b: 0 })).toBeCloseTo(21, 5);
     expect(wcagRatio({ r: 0x76, g: 0x76, b: 0x76 }, { r: 255, g: 255, b: 255 })).toBeCloseTo(4.54, 2);

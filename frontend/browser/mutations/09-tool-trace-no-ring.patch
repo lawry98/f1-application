@@ -1,0 +1,41 @@
+diff --git a/frontend/components/briefing/tool-trace.tsx b/frontend/components/briefing/tool-trace.tsx
+index 4295a5c..c478667 100644
+--- a/frontend/components/briefing/tool-trace.tsx
++++ b/frontend/components/briefing/tool-trace.tsx
+@@ -4,8 +4,6 @@ import { useId, useState } from 'react';
+ import type { ToolResult } from '@/types';
+ import { LaurelFlourish } from '@/components/candy/laurel-flourish';
+ import { toolLabel } from '@/lib/constants';
+-import { focusRingInk } from '@/lib/focus';
+-import { cn } from '@/lib/utils';
+ 
+ /**
+  * The filled squares of the checkered flag, as `[x, y]` in viewBox units.
+@@ -135,25 +133,11 @@ export function ToolTrace({ tools, complete = false }: ToolTraceProps) {
+   );
+ 
+   return (
+-    <div className="mt-6 rounded-xl border border-white/10 bg-white/[0.03]">
++    <div className="mt-6 overflow-hidden rounded-xl border border-white/10 bg-white/[0.03]">
+       <button
+         type="button"
+         onClick={() => setIsExpanded(!isExpanded)}
+-        className={cn(
+-          'flex w-full items-center justify-between gap-4 px-4 py-3 text-left transition-colors hover:bg-white/[0.06]',
+-          /*
+-           * The button rounds itself rather than sitting in an `overflow-hidden` panel. That clip
+-           * existed only to round the hover wash, and it hid the ring two ways: an outset ring is
+-           * cut off entirely, and an inset one loses its corners where the curve crosses the
+-           * 2px band. Rounding the button bends both the wash and the ring around the corner.
+-           */
+-          isExpanded ? 'rounded-t-xl' : 'rounded-xl',
+-          // `focusRingInk`, not `focusRing`: red is 2.96:1 on this panel's wash over the topo page
+-          // and 2.46:1 under the hover wash. Inset because the button spans the panel edge to
+-          // edge, so an outset ring would be painted over the panel's own border.
+-          focusRingInk,
+-          'focus-visible:ring-inset',
+-        )}
++        className="flex w-full items-center justify-between gap-4 px-4 py-3 text-left transition-colors hover:bg-white/[0.06]"
+         aria-expanded={isExpanded}
+         /*
+          * The rows this opens, named rather than merely adjacent. The id points at an element
