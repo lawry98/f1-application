@@ -34,5 +34,8 @@ export default defineConfig({
     url: 'http://localhost:3100',
     reuseExistingServer: false,
     timeout: 60_000,
+    // `/candy` is internal and 404s without this; the route sweeps cover it, so the suite's server
+    // serves it. `internal-routes.spec.ts` starts a second server without it for the production side.
+    env: { ENABLE_INTERNAL_ROUTES: '1' },
   },
 });

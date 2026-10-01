@@ -39,16 +39,17 @@ help: ## List available targets
 
 # --- Dev servers ---------------------------------------------------------
 
+# The two flags turn on what production hides (the API docs, /candy); see CLAUDE.md's env table.
 dev: ## Run both servers: backend on :8000, frontend on :3000
 	@$(MAKE) -j2 backend frontend
 
-backend: $(VENV_STAMP) ## Run the FastAPI server on :8000
+backend: $(VENV_STAMP) ## Run the FastAPI server on :8000, with /docs
 	@test -f backend/.env \
 		|| printf 'WARNING: backend/.env is missing. Copy backend/env.example and add GOOGLE_API_KEY.\n'
-	cd backend && $(PY) -m uvicorn main:app --reload --port 8000
+	cd backend && EXPOSE_API_DOCS=1 $(PY) -m uvicorn main:app --reload --port 8000
 
-frontend: $(NODE_STAMP) ## Run the Next.js dev server on :3000
-	cd frontend && $(MISE) pnpm dev
+frontend: $(NODE_STAMP) ## Run the Next.js dev server on :3000, with /candy
+	cd frontend && ENABLE_INTERNAL_ROUTES=1 $(MISE) pnpm dev
 
 # --- Dependencies -------------------------------------------------------
 
