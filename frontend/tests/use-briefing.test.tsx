@@ -13,7 +13,8 @@ import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useBriefing } from '@/hooks/use-briefing';
 import { BRIEFING_DEADLINE_ERROR, GENERIC_BRIEFING_ERROR } from '@/lib/constants';
-import { ChunkFeed, frame } from './sse';
+import { ChunkFeed, fixtureText, frame } from './sse';
+import { cutAfter, cutBefore, cutInsideData, deltasIn } from './sse-cuts';
 
 const FLUSH_INTERVAL_MS = 80;
 
@@ -654,5 +655,224 @@ describe('the deadline', () => {
     await settle();
 
     expect(result.current.error).toBe("No race found matching 'xyz'");
+  });
+});
+
+/**
+ * A stream that ends without `briefing` or `error` — cut out of the real `clean.sse` at runtime
+ * (`sse-cuts.ts`) and served through a feed, so nothing here is a hand-written stream.
+ */
+describe('an interrupted stream', () => {
+  const clean = fixtureText('clean.sse');
+
+  async function cut(text: string) {
+    const feed = new ChunkFeed();
+    const hook = start(feed);
+    await hook.submit('Monaco');
+    feed.push(text);
+    feed.close();
+    await settle();
+    return hook;
+  }
+
+  it('paints the deltas the flush timer was still holding, and leaves no timer running', async () => {
+    const feed = new ChunkFeed();
+    const { result, submit } = start(feed);
+    await submit('Monaco');
+
+    feed.push(cutAfter(clean, 'briefing_delta', 3));
+    await settle();
+    // Buffered, not painted: the 80 ms timer is pending when the body ends.
+    expect(result.current.briefing).toBe('');
+
+    feed.close();
+    await settle();
+
+    expect(result.current.briefing).toBe(deltasIn(clean).join(''));
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('keeps the prose and marks the run interrupted, not finished or failed', async () => {
+    const { result } = await cut(cutAfter(clean, 'briefing_delta', 2));
+
+    expect(result.current.briefing).toBe(deltasIn(clean).slice(0, 2).join(''));
+    expect(result.current.interrupted).toBe(true);
+    expect(result.current.truncated).toBe(false);
+    expect(result.current.error).toBe('');
+    expect(result.current.loading).toBe(false);
+    expect(result.current.step).toBe('');
+  });
+
+  it('marks a run cut before the first delta interrupted, with no prose and no error', async () => {
+    const { result } = await cut(cutBefore(clean, 'briefing_delta'));
+
+    expect(result.current.briefing).toBe('');
+    expect(result.current.interrupted).toBe(true);
+    expect(result.current.error).toBe('');
+    // The race it was for stays named: the band above the note still says which briefing failed.
+    expect(result.current.raceInfo?.name).toBe('Monaco Grand Prix');
+  });
+
+  it('keeps only the whole frames of a stream cut mid-data line', async () => {
+    const { result } = await cut(cutInsideData(clean, 'briefing_delta', 2));
+
+    expect(result.current.briefing).toBe(deltasIn(clean)[0]);
+    expect(result.current.interrupted).toBe(true);
+  });
+
+  it('counts a stream cut after briefing but before complete as finished', async () => {
+    const { result } = await cut(cutAfter(clean, 'briefing'));
+
+    expect(result.current.interrupted).toBe(false);
+    expect(result.current.briefing).toBe(deltasIn(clean).join(''));
+  });
+
+  it('treats a connection that drops mid-read as interrupted, not as the generic error', async () => {
+    const feed = new ChunkFeed();
+    const { result, submit } = start(feed);
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    await submit('Monaco');
+
+    feed.push(cutAfter(clean, 'briefing_delta', 1));
+    feed.fail(new TypeError('network error'));
+    await settle();
+
+    expect(result.current.interrupted).toBe(true);
+    expect(result.current.briefing).toBe(deltasIn(clean)[0]);
+    expect(result.current.error).toBe('');
+    expect(consoleError).not.toHaveBeenCalled();
+  });
+
+  it('shows nothing for an abort we caused by submitting again', async () => {
+    const first = new ChunkFeed();
+    const second = new ChunkFeed();
+    let call = 0;
+    // The request's own signal reaches the feed here, so the abort really rejects its read.
+    globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) =>
+      [first, second][call++]!.fetch(input, init)) as typeof fetch;
+    const { result } = renderHook(() => useBriefing());
+
+    await act(() => void result.current.submit('Monaco'));
+    first.push(cutAfter(clean, 'briefing_delta', 1));
+    await settle();
+    await act(() => void result.current.submit('Silverstone'));
+    await settle();
+
+    expect(result.current.interrupted).toBe(false);
+    expect(result.current.error).toBe('');
+    expect(result.current.loading).toBe(true);
+  });
+
+  it('clears interrupted when a new request starts', async () => {
+    const first = new ChunkFeed();
+    const second = new ChunkFeed();
+    const { result, submit } = start(first, second);
+    await submit('Monaco');
+    first.push(cutAfter(clean, 'briefing_delta', 1));
+    first.close();
+    await settle();
+    expect(result.current.interrupted).toBe(true);
+
+    await submit('Silverstone');
+
+    expect(result.current.interrupted).toBe(false);
+    expect(result.current.briefing).toBe('');
+  });
+});
+
+describe('retrying an interrupted run', () => {
+  const clean = fixtureText('clean.sse');
+
+  /** Serve `responses` one per `fetch`, recording the query each request sent. */
+  function serving(...responses: { fetch: () => Promise<Response> }[]) {
+    const queries: string[] = [];
+    let call = 0;
+    globalThis.fetch = ((_input: RequestInfo | URL, init?: RequestInit) => {
+      queries.push((JSON.parse(String(init?.body)) as { query: string }).query);
+      return responses[call++]!.fetch();
+    }) as typeof fetch;
+    const rendered = renderHook(() => useBriefing());
+    return { ...rendered, queries };
+  }
+
+  async function interruptedRun(...later: { fetch: () => Promise<Response> }[]) {
+    const first = new ChunkFeed();
+    const hook = serving(first, ...later);
+    await act(() => void hook.result.current.submit('Monaco'));
+    first.push(cutAfter(clean, 'briefing_delta', 2));
+    first.close();
+    await settle();
+    return hook;
+  }
+
+  it('asks for the same race again, whatever the field now says', async () => {
+    const { result, queries } = await interruptedRun(new ChunkFeed());
+    act(() => result.current.setQuery('Spa'));
+
+    await act(() => void result.current.retry());
+
+    expect(queries).toEqual(['Monaco', 'Monaco']);
+    expect(result.current.loading).toBe(true);
+  });
+
+  it('keeps the interrupted prose on screen until the new run starts', async () => {
+    const again = new ChunkFeed();
+    const { result } = await interruptedRun(again);
+    const partial = result.current.briefing;
+
+    await act(() => void result.current.retry());
+    expect(result.current.briefing).toBe(partial);
+    expect(result.current.interrupted).toBe(true);
+
+    again.push(cutBefore(clean, 'race_info'));
+    await settle();
+
+    expect(result.current.briefing).toBe('');
+    expect(result.current.interrupted).toBe(false);
+  });
+
+  it('keeps the interrupted prose when the retry is refused, and counts the wait down', async () => {
+    const { result } = await interruptedRun(
+      refusedWith(503, { code: 'busy', retry_after_seconds: 10, limit: 2 }),
+    );
+    const partial = result.current.briefing;
+
+    await act(() => void result.current.retry());
+    await settle();
+
+    expect(result.current.notice?.code).toBe('busy');
+    expect(result.current.retryInSeconds).toBe(10);
+    expect(result.current.briefing).toBe(partial);
+    expect(result.current.interrupted).toBe(true);
+    expect(result.current.loading).toBe(false);
+  });
+
+  it('keeps the interrupted prose when the retry fails to open, beside the generic error', async () => {
+    const { result } = await interruptedRun(refusedWith(500, { detail: 'boom' }));
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const partial = result.current.briefing;
+
+    await act(() => void result.current.retry());
+    await settle();
+
+    expect(result.current.error).toBe(GENERIC_BRIEFING_ERROR);
+    expect(result.current.briefing).toBe(partial);
+    expect(result.current.interrupted).toBe(true);
+  });
+
+  it('does not ask again while the refusal’s wait is pending', async () => {
+    const { result, queries } = await interruptedRun(
+      refusedWith(503, { code: 'busy', retry_after_seconds: 10, limit: 2 }),
+      new ChunkFeed(),
+    );
+    await act(() => void result.current.retry());
+    await settle();
+
+    await act(() => void result.current.retry());
+    expect(queries).toHaveLength(2);
+
+    await tick(10_000);
+    await act(() => void result.current.retry());
+    expect(queries).toHaveLength(3);
   });
 });

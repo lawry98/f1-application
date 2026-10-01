@@ -73,6 +73,11 @@ Truncated Briefing is still delivered, and is marked as Truncated so a reader kn
 the prose is unfinished. A synthesis that produced no prose at all is not Truncated —
 there is no Briefing to deliver.
 
+**Interruption** — a run whose stream ended before the reader was told it was over: neither
+the Briefing nor an error arrived, because the connection dropped. Whatever prose arrived is
+kept and shown as incomplete. Distinct from Truncation, where the server knows the prose
+stopped short and still delivers a Briefing; an Interruption delivers no Briefing at all.
+
 **Tool** — a capability the agent can call to gather data about an Event. There are eight.
 Modules that support the pipeline without being callable by the agent — the resolver and
 the schedule cache — are **helpers**, not Tools. Adding a file does not create a Tool.

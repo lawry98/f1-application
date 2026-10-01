@@ -46,6 +46,29 @@ export async function mockBriefingRefusal(page: Page, refusal: BriefingRefusal):
   );
 }
 
+/** A captured `.sse` body as text — whole, or for cutting with `tests/sse-cuts.ts`. */
+export function sseFixture(name: 'clean.sse' | 'truncated.sse'): string {
+  return readFileSync(path.join(FIXTURES, name), 'utf8');
+}
+
+/**
+ * Answer `/api/briefing/stream` with `bodies` in turn, one per request, as the event stream the
+ * route serves. Each body is captured bytes — a fixture from {@link sseFixture}, or a cut of one
+ * made at runtime — so a stream that stops mid-way is real frames up to the cut, never a
+ * hand-written approximation.
+ *
+ * A request past the last body gets a 501, which the page reports as an error and the test
+ * then fails on. Registered after `mockApi` for the same reason as {@link mockBriefingRefusal}.
+ */
+export async function mockBriefingStreams(page: Page, bodies: string[]): Promise<void> {
+  let call = 0;
+  await page.route('**/api/briefing/stream', (route) => {
+    const body = bodies[call++];
+    if (body === undefined) return route.fulfill({ status: 501, body: 'no stream left to serve' });
+    return route.fulfill({ status: 200, contentType: 'text/event-stream', body });
+  });
+}
+
 export async function mockApi(page: Page): Promise<string[]> {
   const unmocked: string[] = [];
   await page.route('**/api/**', async (route) => {
