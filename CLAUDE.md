@@ -230,10 +230,28 @@ heuristics on the payload.
 result tools now read OpenF1 instead.** `backend/cache/` (gitignored) never gets populated:
 FastF1 only persists a session that loaded cleanly, and these loads never do, so warming it
 achieves nothing. `get_recent_race_results`, `get_recent_top_finishers`, and `get_driver_form`
-went from a 2.4s FastF1 session load per race (`get_driver_form` measured at 9.31s for five
-races) to a single OpenF1 range query (`get_driver_form` measured at 1.38s, three requests).
+went from a 2.4s FastF1 session load per race (the old one-driver `get_driver_form` measured at
+9.31s for five races) to a single OpenF1 range query (1.38s, three requests). The grid-wide
+`get_driver_form` is 1.50s and three requests cold, and **none of its own inside a briefing**:
+its results span is `held_races`' and its `drivers` span is the season's held races — exactly
+what `get_recent_top_finishers` already asks for. Narrowing the roster to the window's races
+looks tidier and costs a request; `test_driver_form_costs_no_request_the_other_result_tools_have_not_made`
+fails on it.
 FastF1 remains the **schedule** source — `get_event_schedule` is 0.16s, works, and reaches
 back to 1950 — and the fallback for seasons before `OPENF1_FIRST_YEAR`.
+
+**`get_driver_form` is every driver's last five Grands Prix, one text line each, on purpose.**
+The synthesizer serialises tool data with `indent=2`, where a `{race, position}` object per finish
+came to 15.8 KB for 22 drivers; a line per driver is ~3.5 KB there, and
+`test_a_full_grids_form_stays_inside_the_synthesizer_budget` holds it. Each race's rows are joined
+to a driver by session (`drivers_by_session`) and aggregated by `name_acronym`, never by car
+number: #1 changes hands with the title, so a window crossing 2025 into 2026 joined on number hands
+Norris Verstappen's Abu Dhabi. Two classification traps, both measured. OpenF1 classifies a car
+that retired past 90% distance (`position: 16`, `dnf: True` — Bottas, Baku 2026), so a place beats
+the `dnf` flag; an unclassified car is `position: None`. FastF1 gives a retired car a
+finishing-order `Position` (17–20 in a real 2022 load), not 0, so only `ClassifiedPosition` (`R`,
+`N`, `D`, `E`, `W`, `F`) says it retired — the shared `RESULTS_ROWS` fixture's `Position: 0.0` is
+not what FastF1 serves. The FastF1 fallback is five loads, 8.1s cold, inside the fan-out's 25s.
 
 **`get_circuit_winners` is deliberately still on FastF1 — the migration made it slower, not
 faster, so it was reverted.** It needs one race from each of N different years, and OpenF1's

@@ -746,7 +746,7 @@ def test_driver_form_costs_no_request_the_other_result_tools_have_not_made(grid_
     get_recent_top_finishers.invoke({"as_of": JUNE_2024})
     before = len(grid_2024.calls)
 
-    _form(num_races=3)
+    _form(num_races=2)
 
     assert len(grid_2024.calls) == before
     assert len([c for c in grid_2024.calls if c["url"].endswith("/session_result")]) == 1
