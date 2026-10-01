@@ -143,6 +143,24 @@ CIRCUIT_COORDINATES_PATH: Path = CIRCUIT_INDEX_PATH.with_name("coordinates.json"
 
 # ── API ──────────────────────────────────────────────────────────────────────
 
+
+def _flag_from_env(name: str) -> bool:
+    """Read an on/off switch: ``1`` is on, unset, empty or ``0`` is off.
+
+    Anything else warns and is off, so a typo fails closed rather than switching something on.
+    """
+    raw = os.getenv(name, "").strip()
+    if raw == "1":
+        return True
+    if raw not in ("", "0"):
+        logger.warning("Invalid %s=%r — expected 1 or 0, falling back to 0", name, raw)
+    return False
+
+
+# Swagger UI, ReDoc and the OpenAPI schema they render. Off unless asked for: the schema maps every
+# route for anyone who looks, and nothing the site serves needs it. `make dev` turns it on.
+EXPOSE_API_DOCS: bool = _flag_from_env("EXPOSE_API_DOCS")
+
 CORS_ORIGINS: list[str] = [
     origin.strip()
     for origin in os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:3001").split(
