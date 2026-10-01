@@ -34,6 +34,15 @@
  * Normalisation preserves aspect ratio: the longer axis spans the full 0..1 and the shorter one
  * is centred within it. Scaling each axis to fill independently would stretch Monza's straights
  * and lose the outline that makes it recognisable.
+ *
+ * Why `coordinates.json` exists
+ * -----------------------------
+ * Projection throws the real position away, and the backend's race-day weather forecast needs it.
+ * The alternative, geocoding FastF1's `Location` by name, missed four circuits measured
+ * 2026-09-30: "Kuala Lumpur,BH" (the event's country, not the venue's), Sakhir, Yas Marina and
+ * Spa-Francorchamps all came back empty, while "Silverstone,US" found North Carolina. So each
+ * circuit's centre, the midpoint of its outline's bounding box in WGS84 degrees, is kept here and
+ * the backend reads it through the same `index.json` join the winners use.
  */
 
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -121,6 +130,16 @@ function project(coordinates) {
   ]);
 }
 
+/** The midpoint of a lon/lat ring's bounding box, as `{ lat, lon }` so the order is never guessed. */
+function centre(coordinates) {
+  const lons = coordinates.map(([lon]) => lon);
+  const lats = coordinates.map(([, lat]) => lat);
+  return {
+    lat: Number(((Math.min(...lats) + Math.max(...lats)) / 2).toFixed(4)),
+    lon: Number(((Math.min(...lons) + Math.max(...lons)) / 2).toFixed(4)),
+  };
+}
+
 /**
  * A circuit's outline can be a single LineString or a MultiLineString. Take the longest ring:
  * the extra rings are pit lanes and layout variants, and the racing loop is the long one.
@@ -143,12 +162,16 @@ async function main() {
   /** slugged bacinger location -> circuit id, plus the FastF1 aliases pointing at the same ids. */
   const index = {};
   const catalog = [];
+  /** circuit id -> `{ lat, lon }`, for the backend's weather tool. */
+  const coordinates = {};
   let written = 0;
 
   for (const feature of collection.features) {
     const { id, Name: name, Location: location, length, firstgp } = feature.properties;
 
-    const points = downsample(project(longestRing(feature.geometry)), MAX_POINTS);
+    const ring = longestRing(feature.geometry);
+    const points = downsample(project(ring), MAX_POINTS);
+    coordinates[id] = centre(ring);
 
     await writeFile(
       join(OUT_DIR, `${id}.json`),
@@ -175,6 +198,11 @@ async function main() {
   await writeFile(
     join(OUT_DIR, 'index.json'),
     `${JSON.stringify(Object.fromEntries(Object.entries(index).sort()), null, 2)}\n`,
+  );
+
+  await writeFile(
+    join(OUT_DIR, 'coordinates.json'),
+    `${JSON.stringify(Object.fromEntries(Object.entries(coordinates).sort()), null, 2)}\n`,
   );
 
   // The points-free view the grid and detail page read, so neither downloads an outline to learn a
