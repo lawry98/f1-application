@@ -21,15 +21,34 @@
         "is_upcoming": false,
         "as_of": "2026-06-05T11:30:00+00:00",
         "sessions": [
-          { "name": "Practice 1", "start": "2026-06-05T11:30:00+00:00" },
-          { "name": "Race", "start": "2026-06-07T13:00:00+00:00" }
+          {
+            "name": "Practice 1",
+            "start": "2026-06-05T11:30:00+00:00"
+          },
+          {
+            "name": "Race",
+            "start": "2026-06-07T13:00:00+00:00"
+          }
         ]
       },
-      "tool_plan": ["get_track_info", "get_championship_standings", "get_driver_form"],
+      "tool_plan": [
+        "get_track_info",
+        "get_championship_standings",
+        "get_driver_form"
+      ],
       "tools": [
-        { "tool": "get_track_info", "success": true },
-        { "tool": "get_championship_standings", "success": true },
-        { "tool": "get_driver_form", "success": true }
+        {
+          "tool": "get_track_info",
+          "success": true
+        },
+        {
+          "tool": "get_championship_standings",
+          "success": true
+        },
+        {
+          "tool": "get_driver_form",
+          "success": true
+        }
       ],
       "evidence": {
         "track": {
@@ -48,31 +67,125 @@
           "year": 2026,
           "races_completed": 5,
           "drivers": [
-            { "position": 1, "driver": "Kimi ANTONELLI", "driver_code": "ANT", "team": "Mercedes", "points": 131.0 },
-            { "position": 2, "driver": "George RUSSELL", "driver_code": "RUS", "team": "Mercedes", "points": 88.0 },
-            { "position": 3, "driver": "Charles LECLERC", "driver_code": "LEC", "team": "Ferrari", "points": 75.0 },
-            { "position": 4, "driver": "Lewis HAMILTON", "driver_code": "HAM", "team": "Ferrari", "points": 72.0 },
-            { "position": 5, "driver": "Lando NORRIS", "driver_code": "NOR", "team": "McLaren", "points": 58.0 },
-            { "position": 6, "driver": "Max VERSTAPPEN", "driver_code": "VER", "team": "Red Bull Racing", "points": 43.0 },
-            { "position": 7, "driver": "Franco COLAPINTO", "driver_code": "COL", "team": "Alpine", "points": 15.0 }
+            {
+              "position": 1,
+              "driver": "Kimi ANTONELLI",
+              "driver_code": "ANT",
+              "team": "Mercedes",
+              "points": 131.0
+            },
+            {
+              "position": 2,
+              "driver": "George RUSSELL",
+              "driver_code": "RUS",
+              "team": "Mercedes",
+              "points": 88.0
+            },
+            {
+              "position": 3,
+              "driver": "Charles LECLERC",
+              "driver_code": "LEC",
+              "team": "Ferrari",
+              "points": 75.0
+            },
+            {
+              "position": 4,
+              "driver": "Lewis HAMILTON",
+              "driver_code": "HAM",
+              "team": "Ferrari",
+              "points": 72.0
+            },
+            {
+              "position": 5,
+              "driver": "Lando NORRIS",
+              "driver_code": "NOR",
+              "team": "McLaren",
+              "points": 58.0
+            },
+            {
+              "position": 6,
+              "driver": "Max VERSTAPPEN",
+              "driver_code": "VER",
+              "team": "Red Bull Racing",
+              "points": 43.0
+            },
+            {
+              "position": 7,
+              "driver": "Franco COLAPINTO",
+              "driver_code": "COL",
+              "team": "Alpine",
+              "points": 15.0
+            }
           ],
           "constructors": [
-            { "position": 1, "team": "Mercedes", "points": 219.0 },
-            { "position": 2, "team": "Ferrari", "points": 147.0 },
-            { "position": 3, "team": "McLaren", "points": 106.0 },
-            { "position": 4, "team": "Red Bull Racing", "points": 57.0 },
-            { "position": 5, "team": "Alpine", "points": 35.0 }
+            {
+              "position": 1,
+              "team": "Mercedes",
+              "points": 219.0
+            },
+            {
+              "position": 2,
+              "team": "Ferrari",
+              "points": 147.0
+            },
+            {
+              "position": 3,
+              "team": "McLaren",
+              "points": 106.0
+            },
+            {
+              "position": 4,
+              "team": "Red Bull Racing",
+              "points": 57.0
+            },
+            {
+              "position": 5,
+              "team": "Alpine",
+              "points": 35.0
+            }
           ]
         },
         "drivers": [
-          { "code": "ANT", "name": "Kimi Antonelli", "surname": "Antonelli" },
-          { "code": "RUS", "name": "George Russell", "surname": "Russell" },
-          { "code": "LEC", "name": "Charles Leclerc", "surname": "Leclerc" },
-          { "code": "HAM", "name": "Lewis Hamilton", "surname": "Hamilton" },
-          { "code": "NOR", "name": "Lando Norris", "surname": "Norris" },
-          { "code": "VER", "name": "Max Verstappen", "surname": "Verstappen" },
-          { "code": "COL", "name": "Franco Colapinto", "surname": "Colapinto" },
-          { "code": "PIA", "name": "Oscar Piastri", "surname": "Piastri" }
+          {
+            "code": "ANT",
+            "name": "Kimi Antonelli",
+            "surname": "Antonelli"
+          },
+          {
+            "code": "RUS",
+            "name": "George Russell",
+            "surname": "Russell"
+          },
+          {
+            "code": "LEC",
+            "name": "Charles Leclerc",
+            "surname": "Leclerc"
+          },
+          {
+            "code": "HAM",
+            "name": "Lewis Hamilton",
+            "surname": "Hamilton"
+          },
+          {
+            "code": "NOR",
+            "name": "Lando Norris",
+            "surname": "Norris"
+          },
+          {
+            "code": "VER",
+            "name": "Max Verstappen",
+            "surname": "Verstappen"
+          },
+          {
+            "code": "COL",
+            "name": "Franco Colapinto",
+            "surname": "Colapinto"
+          },
+          {
+            "code": "PIA",
+            "name": "Oscar Piastri",
+            "surname": "Piastri"
+          }
         ],
         "results": [
           {
@@ -81,7 +194,13 @@
             "event": "Canadian Grand Prix",
             "location": "Montréal",
             "depth": 10,
-            "positions": { "ANT": 1, "HAM": 2, "VER": 3, "LEC": 4 }
+            "positions": {
+              "ANT": 1,
+              "HAM": 2,
+              "VER": 3,
+              "LEC": 4
+            },
+            "circuit": "Montreal"
           },
           {
             "source": "get_recent_race_results",
@@ -89,7 +208,14 @@
             "event": "Monaco Grand Prix",
             "location": "Monte Carlo",
             "depth": 10,
-            "positions": { "NOR": 1, "LEC": 2, "PIA": 3, "VER": 4, "HAM": 5 }
+            "positions": {
+              "NOR": 1,
+              "LEC": 2,
+              "PIA": 3,
+              "VER": 4,
+              "HAM": 5
+            },
+            "circuit": null
           },
           {
             "source": "get_circuit_winners",
@@ -97,7 +223,10 @@
             "event": "Monaco Grand Prix",
             "location": "Monte Carlo",
             "depth": 1,
-            "positions": { "NOR": 1 }
+            "positions": {
+              "NOR": 1
+            },
+            "circuit": null
           },
           {
             "source": "get_circuit_winners",
@@ -105,7 +234,10 @@
             "event": "Monaco Grand Prix",
             "location": "Monte Carlo",
             "depth": 1,
-            "positions": { "LEC": 1 }
+            "positions": {
+              "LEC": 1
+            },
+            "circuit": null
           },
           {
             "source": "get_circuit_winners",
@@ -113,7 +245,23 @@
             "event": "Monaco Grand Prix",
             "location": "Monte Carlo",
             "depth": 1,
-            "positions": { "VER": 1 }
+            "positions": {
+              "VER": 1
+            },
+            "circuit": null
+          },
+          {
+            "source": "get_driver_form",
+            "year": 2026,
+            "event": "Australian Grand Prix",
+            "location": "Melbourne",
+            "circuit": "Albert Park",
+            "depth": null,
+            "positions": {
+              "ANT": 2,
+              "RUS": 1,
+              "LEC": 3
+            }
           },
           {
             "source": "get_driver_form",
@@ -121,7 +269,14 @@
             "event": "Canadian Grand Prix",
             "location": "Montréal",
             "depth": null,
-            "positions": { "ANT": 1, "HAM": 2, "VER": 3, "LEC": 4, "RUS": "DNF" }
+            "positions": {
+              "ANT": 1,
+              "HAM": 2,
+              "VER": 3,
+              "LEC": 4,
+              "RUS": "DNF"
+            },
+            "circuit": "Montreal"
           }
         ],
         "form": {
@@ -133,20 +288,56 @@
             "2026 Canadian Grand Prix"
           ],
           "drivers": {
-            "ANT": { "results": ["P2", "P1", "P1", "P1", "P1"], "points": 118.0 },
-            "RUS": { "results": ["P1", "P2", "P4", "P4", "DNF"], "points": 67.0 }
+            "ANT": {
+              "results": [
+                "P2",
+                "P1",
+                "P1",
+                "P1",
+                "P1"
+              ],
+              "points": 118.0,
+              "avg": 1.2
+            },
+            "RUS": {
+              "results": [
+                "P1",
+                "P2",
+                "P4",
+                "P4",
+                "DNF"
+              ],
+              "points": 67.0,
+              "avg": 2.8
+            }
           }
         },
-        "weather": { "status": "not_gathered" },
+        "weather": {
+          "status": "not_gathered"
+        },
         "other_venues": [],
-        "later_events": ["Barcelona Grand Prix", "Austrian Grand Prix", "British Grand Prix"],
-        "news": []
+        "later_events": [
+          "Barcelona Grand Prix",
+          "Austrian Grand Prix",
+          "British Grand Prix"
+        ],
+        "news": [],
+        "circuit_seasons": {
+          "from": 2023,
+          "to": 2025
+        },
+        "searched_years": [
+          2025
+        ]
       },
       "briefing": {
         "content": "# Monaco Grand Prix 2026 Briefing\n\n## Track Profile\nThe Circuit de Monaco is 3.337 km of barriers and elevation. It has hosted a Grand Prix since 1929. Overtaking is close to impossible, so qualifying decides most races.\n\n## Championship Context\nKimi Antonelli leads the championship on 131 points after five races. George Russell is second on 88 points, 43 points behind his Mercedes team-mate. Mercedes lead the constructors' standings with 219 points.\n\n## Form Guide\nAntonelli won the Canadian Grand Prix last time out, ahead of Lewis Hamilton in P2. Lando Norris won here in 2025.\n\n## Key Storylines\nLeclerc's home race always draws a crowd.\n\n## Weather Watch\nWeather data was not gathered for a race that has already been run.\n\n## Predictions\n- **Pole Position favorites:** Leclerc, Antonelli, Norris\n- **Podium prediction:** Antonelli, Leclerc, Hamilton\n- **Dark horse:** Colapinto\n",
         "truncated": false
       },
-      "checks": { "passed": [], "flagged": [] }
+      "checks": {
+        "passed": [],
+        "flagged": []
+      }
     },
     "sepang": {
       "schema": 1,
@@ -168,14 +359,29 @@
         "is_upcoming": true,
         "as_of": "2026-10-01T00:00:00+00:00",
         "sessions": [
-          { "name": "Practice 1", "start": "2026-10-02T04:30:00+00:00" },
-          { "name": "Race", "start": "2026-10-04T07:00:00+00:00" }
+          {
+            "name": "Practice 1",
+            "start": "2026-10-02T04:30:00+00:00"
+          },
+          {
+            "name": "Race",
+            "start": "2026-10-04T07:00:00+00:00"
+          }
         ]
       },
-      "tool_plan": ["get_track_info", "get_race_weather"],
+      "tool_plan": [
+        "get_track_info",
+        "get_race_weather"
+      ],
       "tools": [
-        { "tool": "get_track_info", "success": true },
-        { "tool": "get_race_weather", "success": true }
+        {
+          "tool": "get_track_info",
+          "success": true
+        },
+        {
+          "tool": "get_race_weather",
+          "success": true
+        }
       ],
       "evidence": {
         "track": {
@@ -194,14 +400,40 @@
           "year": 2026,
           "races_completed": 15,
           "drivers": [
-            { "position": 1, "driver": "Kimi ANTONELLI", "driver_code": "ANT", "team": "Mercedes", "points": 300.0 },
-            { "position": 2, "driver": "George RUSSELL", "driver_code": "RUS", "team": "Mercedes", "points": 250.0 }
+            {
+              "position": 1,
+              "driver": "Kimi ANTONELLI",
+              "driver_code": "ANT",
+              "team": "Mercedes",
+              "points": 300.0
+            },
+            {
+              "position": 2,
+              "driver": "George RUSSELL",
+              "driver_code": "RUS",
+              "team": "Mercedes",
+              "points": 250.0
+            }
           ],
-          "constructors": [{ "position": 1, "team": "Mercedes", "points": 550.0 }]
+          "constructors": [
+            {
+              "position": 1,
+              "team": "Mercedes",
+              "points": 550.0
+            }
+          ]
         },
         "drivers": [
-          { "code": "ANT", "name": "Kimi Antonelli", "surname": "Antonelli" },
-          { "code": "RUS", "name": "George Russell", "surname": "Russell" }
+          {
+            "code": "ANT",
+            "name": "Kimi Antonelli",
+            "surname": "Antonelli"
+          },
+          {
+            "code": "RUS",
+            "name": "George Russell",
+            "surname": "Russell"
+          }
         ],
         "results": [
           {
@@ -210,7 +442,11 @@
             "event": "Azerbaijan Grand Prix",
             "location": "Baku",
             "depth": 10,
-            "positions": { "ANT": 1, "RUS": 2 }
+            "positions": {
+              "ANT": 1,
+              "RUS": 2
+            },
+            "circuit": "Baku"
           }
         ],
         "form": null,
@@ -218,19 +454,47 @@
           "status": "ok",
           "available_from": null,
           "sessions": [
-            { "name": "Practice 1", "start": "2026-10-02T04:30:00+00:00", "temperature_c": 30.6, "rain_probability": 77.0, "wind_speed_ms": 0.9 },
-            { "name": "Race", "start": "2026-10-04T07:00:00+00:00", "temperature_c": 31.3, "rain_probability": 88.0, "wind_speed_ms": 2.9 }
+            {
+              "name": "Practice 1",
+              "start": "2026-10-02T04:30:00+00:00",
+              "temperature_c": 30.6,
+              "rain_probability": 77.0,
+              "wind_speed_ms": 0.9
+            },
+            {
+              "name": "Race",
+              "start": "2026-10-04T07:00:00+00:00",
+              "temperature_c": 31.3,
+              "rain_probability": 88.0,
+              "wind_speed_ms": 2.9
+            }
           ]
         },
-        "other_venues": ["Sakhir", "Bahrain International Circuit"],
+        "other_venues": [
+          "Sakhir",
+          "Bahrain International Circuit"
+        ],
         "later_events": [],
-        "news": []
+        "news": [],
+        "circuit_seasons": {
+          "from": 2023,
+          "to": 2025
+        },
+        "searched_years": [
+          2026,
+          2025,
+          2024,
+          2023
+        ]
       },
       "briefing": {
         "content": "## Track Profile\nThe Sepang International Circuit is 5.543 km long and returns to the calendar in 2026.\n\n## Championship Context\nAntonelli leads the championship.\n\n## Form Guide\nAntonelli won last time out.\n\n## Key Storylines\nThe Bahrain Grand Prix moves to Malaysia this year.\n\n## Weather Watch\nPractice 1 looks wet: 31°C with a 77% chance of rain.\n\n## Predictions\n- Antonelli\n",
         "truncated": false
       },
-      "checks": { "passed": [], "flagged": [] }
+      "checks": {
+        "passed": [],
+        "flagged": []
+      }
     }
   },
   "cases": [
@@ -239,16 +503,26 @@
       "base": "monaco",
       "expect": {
         "failed": [],
-        "flagged": ["Overtaking is close to impossible, so qualifying decides most races."]
+        "flagged": [
+          "Overtaking is close to impossible, so qualifying decides most races."
+        ]
       }
     },
     {
       "name": "a truncated briefing fails",
       "base": "monaco",
-      "patch": { "briefing": { "truncated": true } },
+      "patch": {
+        "briefing": {
+          "truncated": true
+        }
+      },
       "expect": {
-        "failed": ["complete"],
-        "flagged": ["Overtaking is close to impossible, so qualifying decides most races."]
+        "failed": [
+          "complete"
+        ],
+        "flagged": [
+          "Overtaking is close to impossible, so qualifying decides most races."
+        ]
       }
     },
     {
@@ -256,110 +530,217 @@
       "base": "monaco",
       "patch": {
         "tools": [
-          { "tool": "get_track_info", "success": true },
-          { "tool": "get_championship_standings", "success": false },
-          { "tool": "get_driver_form", "success": true }
+          {
+            "tool": "get_track_info",
+            "success": true
+          },
+          {
+            "tool": "get_championship_standings",
+            "success": false
+          },
+          {
+            "tool": "get_driver_form",
+            "success": true
+          }
         ]
       },
       "expect": {
-        "failed": ["tools"],
-        "flagged": ["Overtaking is close to impossible, so qualifying decides most races."]
+        "failed": [
+          "tools"
+        ],
+        "flagged": [
+          "Overtaking is close to impossible, so qualifying decides most races."
+        ]
       }
     },
     {
       "name": "a missing section fails, and so does the weather it should have carried",
       "base": "monaco",
-      "replace": [["## Weather Watch\nWeather data was not gathered for a race that has already been run.\n\n", ""]],
+      "replace": [
+        [
+          "## Weather Watch\nWeather data was not gathered for a race that has already been run.\n\n",
+          ""
+        ]
+      ],
       "expect": {
-        "failed": ["sections", "weather"],
-        "flagged": ["Overtaking is close to impossible, so qualifying decides most races."]
+        "failed": [
+          "sections",
+          "weather"
+        ],
+        "flagged": [
+          "Overtaking is close to impossible, so qualifying decides most races."
+        ]
       }
     },
     {
       "name": "a points total the table does not have fails",
       "base": "monaco",
-      "replace": [["on 131 points", "on 135 points"]],
+      "replace": [
+        [
+          "on 131 points",
+          "on 135 points"
+        ]
+      ],
       "expect": {
-        "failed": ["standings"],
-        "flagged": ["Overtaking is close to impossible, so qualifying decides most races."]
+        "failed": [
+          "standings"
+        ],
+        "flagged": [
+          "Overtaking is close to impossible, so qualifying decides most races."
+        ]
       }
     },
     {
       "name": "another driver's points, attributed to the one named, fail",
       "base": "monaco",
-      "replace": [["second on 88 points", "second on 131 points"]],
+      "replace": [
+        [
+          "second on 88 points",
+          "second on 131 points"
+        ]
+      ],
       "expect": {
-        "failed": ["standings"],
-        "flagged": ["Overtaking is close to impossible, so qualifying decides most races."]
+        "failed": [
+          "standings"
+        ],
+        "flagged": [
+          "Overtaking is close to impossible, so qualifying decides most races."
+        ]
       }
     },
     {
       "name": "a wrong count of races completed fails",
       "base": "monaco",
-      "replace": [["after five races", "after six races"]],
+      "replace": [
+        [
+          "after five races",
+          "after six races"
+        ]
+      ],
       "expect": {
-        "failed": ["standings"],
-        "flagged": ["Overtaking is close to impossible, so qualifying decides most races."]
+        "failed": [
+          "standings"
+        ],
+        "flagged": [
+          "Overtaking is close to impossible, so qualifying decides most races."
+        ]
       }
     },
     {
       "name": "a wrong championship position fails",
       "base": "monaco",
-      "replace": [["George Russell is second", "George Russell is third"]],
+      "replace": [
+        [
+          "George Russell is second",
+          "George Russell is third"
+        ]
+      ],
       "expect": {
-        "failed": ["standings"],
-        "flagged": ["Overtaking is close to impossible, so qualifying decides most races."]
+        "failed": [
+          "standings"
+        ],
+        "flagged": [
+          "Overtaking is close to impossible, so qualifying decides most races."
+        ]
       }
     },
     {
       "name": "the right round and calendar length pass",
       "base": "monaco",
-      "replace": [["always draws a crowd.", "always draws a crowd. This is round 6 of 23."]],
+      "replace": [
+        [
+          "always draws a crowd.",
+          "always draws a crowd. This is round 6 of 23."
+        ]
+      ],
       "expect": {
         "failed": [],
-        "flagged": ["Overtaking is close to impossible, so qualifying decides most races."]
+        "flagged": [
+          "Overtaking is close to impossible, so qualifying decides most races."
+        ]
       }
     },
     {
       "name": "the wrong round fails",
       "base": "monaco",
-      "replace": [["always draws a crowd.", "always draws a crowd. This is round 7 of 23."]],
+      "replace": [
+        [
+          "always draws a crowd.",
+          "always draws a crowd. This is round 7 of 23."
+        ]
+      ],
       "expect": {
-        "failed": ["standings"],
-        "flagged": ["Overtaking is close to impossible, so qualifying decides most races."]
+        "failed": [
+          "standings"
+        ],
+        "flagged": [
+          "Overtaking is close to impossible, so qualifying decides most races."
+        ]
       }
     },
     {
       "name": "the wrong winner of a named season fails",
       "base": "monaco",
-      "replace": [["Lando Norris won here in 2025.", "George Russell won here in 2025."]],
+      "replace": [
+        [
+          "Lando Norris won here in 2025.",
+          "George Russell won here in 2025."
+        ]
+      ],
       "expect": {
-        "failed": ["results"],
-        "flagged": ["Overtaking is close to impossible, so qualifying decides most races."]
+        "failed": [
+          "results"
+        ],
+        "flagged": [
+          "Overtaking is close to impossible, so qualifying decides most races."
+        ]
       }
     },
     {
       "name": "a runner-up named as the winner of a named season fails",
       "base": "monaco",
-      "replace": [["Lando Norris won here in 2025.", "Charles Leclerc won here in 2025."]],
+      "replace": [
+        [
+          "Lando Norris won here in 2025.",
+          "Charles Leclerc won here in 2025."
+        ]
+      ],
       "expect": {
-        "failed": ["results"],
-        "flagged": ["Overtaking is close to impossible, so qualifying decides most races."]
+        "failed": [
+          "results"
+        ],
+        "flagged": [
+          "Overtaking is close to impossible, so qualifying decides most races."
+        ]
       }
     },
     {
       "name": "a wrong finishing position in the one race named fails",
       "base": "monaco",
-      "replace": [["ahead of Lewis Hamilton in P2", "ahead of Lewis Hamilton in P3"]],
+      "replace": [
+        [
+          "ahead of Lewis Hamilton in P2",
+          "ahead of Lewis Hamilton in P3"
+        ]
+      ],
       "expect": {
-        "failed": ["results"],
-        "flagged": ["Overtaking is close to impossible, so qualifying decides most races."]
+        "failed": [
+          "results"
+        ],
+        "flagged": [
+          "Overtaking is close to impossible, so qualifying decides most races."
+        ]
       }
     },
     {
       "name": "a win in a season the data does not reach is flagged, not failed",
       "base": "monaco",
-      "replace": [["always draws a crowd.", "always draws a crowd. Lewis Hamilton won here in 2019."]],
+      "replace": [
+        [
+          "always draws a crowd.",
+          "always draws a crowd. Lewis Hamilton won here in 2019."
+        ]
+      ],
       "expect": {
         "failed": [],
         "flagged": [
@@ -371,61 +752,118 @@
     {
       "name": "a streak the form lines bear out passes",
       "base": "monaco",
-      "replace": [["Lando Norris won here in 2025.", "Lando Norris won here in 2025. Antonelli has won four races in a row."]],
+      "replace": [
+        [
+          "Lando Norris won here in 2025.",
+          "Lando Norris won here in 2025. Antonelli has won four races in a row."
+        ]
+      ],
       "expect": {
         "failed": [],
-        "flagged": ["Overtaking is close to impossible, so qualifying decides most races."]
+        "flagged": [
+          "Overtaking is close to impossible, so qualifying decides most races."
+        ]
       }
     },
     {
       "name": "a streak the form lines contradict fails",
       "base": "monaco",
-      "replace": [["Lando Norris won here in 2025.", "Lando Norris won here in 2025. Antonelli has won five races in a row."]],
+      "replace": [
+        [
+          "Lando Norris won here in 2025.",
+          "Lando Norris won here in 2025. Antonelli has won five races in a row."
+        ]
+      ],
       "expect": {
-        "failed": ["results"],
-        "flagged": ["Overtaking is close to impossible, so qualifying decides most races."]
+        "failed": [
+          "results"
+        ],
+        "flagged": [
+          "Overtaking is close to impossible, so qualifying decides most races."
+        ]
       }
     },
     {
       "name": "a circuit length that is not this circuit's fails",
       "base": "monaco",
-      "replace": [["3.337 km", "3.9 km"]],
+      "replace": [
+        [
+          "3.337 km",
+          "3.9 km"
+        ]
+      ],
       "expect": {
-        "failed": ["circuit"],
-        "flagged": ["Overtaking is close to impossible, so qualifying decides most races."]
+        "failed": [
+          "circuit"
+        ],
+        "flagged": [
+          "Overtaking is close to impossible, so qualifying decides most races."
+        ]
       }
     },
     {
       "name": "prose that never names the circuit fails",
       "base": "monaco",
-      "replace": [["The Circuit de Monaco is 3.337 km", "The principality's track is 3.337 km"]],
+      "replace": [
+        [
+          "The Circuit de Monaco is 3.337 km",
+          "The principality's track is 3.337 km"
+        ]
+      ],
       "expect": {
-        "failed": ["circuit"],
-        "flagged": ["Overtaking is close to impossible, so qualifying decides most races."]
+        "failed": [
+          "circuit"
+        ],
+        "flagged": [
+          "Overtaking is close to impossible, so qualifying decides most races."
+        ]
       }
     },
     {
       "name": "a later race of the season in an as-of briefing fails",
       "base": "monaco",
-      "replace": [["always draws a crowd.", "always draws a crowd. Antonelli will be strong at the Austrian Grand Prix too."]],
+      "replace": [
+        [
+          "always draws a crowd.",
+          "always draws a crowd. Antonelli will be strong at the Austrian Grand Prix too."
+        ]
+      ],
       "expect": {
-        "failed": ["as_of"],
-        "flagged": ["Overtaking is close to impossible, so qualifying decides most races."]
+        "failed": [
+          "as_of"
+        ],
+        "flagged": [
+          "Overtaking is close to impossible, so qualifying decides most races."
+        ]
       }
     },
     {
       "name": "this race's own result in an as-of briefing fails",
       "base": "monaco",
-      "replace": [["always draws a crowd.", "always draws a crowd. Antonelli won the 2026 Monaco Grand Prix."]],
+      "replace": [
+        [
+          "always draws a crowd.",
+          "always draws a crowd. Antonelli won the 2026 Monaco Grand Prix."
+        ]
+      ],
       "expect": {
-        "failed": ["as_of"],
-        "flagged": ["Overtaking is close to impossible, so qualifying decides most races."]
+        "failed": [
+          "as_of"
+        ],
+        "flagged": [
+          "Overtaking is close to impossible, so qualifying decides most races."
+        ]
       }
     },
     {
       "name": "a year after the cutoff is flagged",
       "base": "monaco",
-      "replace": [["always draws a crowd.", "always draws a crowd. Hamilton's contract runs to 2027."]],
+      "replace": [
+        [
+          "always draws a crowd.",
+          "always draws a crowd. Hamilton's contract runs to 2027."
+        ]
+      ],
       "expect": {
         "failed": [],
         "flagged": [
@@ -437,7 +875,12 @@
     {
       "name": "a figure outside Track Profile that nothing checks is flagged",
       "base": "monaco",
-      "replace": [["always draws a crowd.", "always draws a crowd. The lap has 19 corners."]],
+      "replace": [
+        [
+          "always draws a crowd.",
+          "always draws a crowd. The lap has 19 corners."
+        ]
+      ],
       "expect": {
         "failed": [],
         "flagged": [
@@ -449,16 +892,30 @@
     {
       "name": "conditions quoted for a race with no weather gathered fail",
       "base": "monaco",
-      "replace": [["Weather data was not gathered for a race that has already been run.", "Expect 24°C and a 10% chance of rain."]],
+      "replace": [
+        [
+          "Weather data was not gathered for a race that has already been run.",
+          "Expect 24°C and a 10% chance of rain."
+        ]
+      ],
       "expect": {
-        "failed": ["weather"],
-        "flagged": ["Overtaking is close to impossible, so qualifying decides most races."]
+        "failed": [
+          "weather"
+        ],
+        "flagged": [
+          "Overtaking is close to impossible, so qualifying decides most races."
+        ]
       }
     },
     {
       "name": "a Weather Watch that never says why there is no forecast is flagged",
       "base": "monaco",
-      "replace": [["Weather data was not gathered for a race that has already been run.", "Monaco is usually dry in June."]],
+      "replace": [
+        [
+          "Weather data was not gathered for a race that has already been run.",
+          "Monaco is usually dry in June."
+        ]
+      ],
       "expect": {
         "failed": [],
         "flagged": [
@@ -470,58 +927,414 @@
     {
       "name": "a clean forecast briefing fails nothing",
       "base": "sepang",
-      "expect": { "failed": [], "flagged": [] }
+      "expect": {
+        "failed": [],
+        "flagged": []
+      }
     },
     {
       "name": "another venue that hosted a Grand Prix of this name fails",
       "base": "sepang",
-      "replace": [["returns to the calendar in 2026.", "returns to the calendar in 2026. Unlike Sakhir, it is humid."]],
-      "expect": { "failed": ["circuit"], "flagged": [] }
+      "replace": [
+        [
+          "returns to the calendar in 2026.",
+          "returns to the calendar in 2026. Unlike Sakhir, it is humid."
+        ]
+      ],
+      "expect": {
+        "failed": [
+          "circuit"
+        ],
+        "flagged": []
+      }
     },
     {
       "name": "a temperature the forecast does not give fails",
       "base": "sepang",
-      "replace": [["31°C", "35°C"]],
-      "expect": { "failed": ["weather"], "flagged": [] }
+      "replace": [
+        [
+          "31°C",
+          "35°C"
+        ]
+      ],
+      "expect": {
+        "failed": [
+          "weather"
+        ],
+        "flagged": []
+      }
     },
     {
       "name": "a rain chance the forecast does not give fails",
       "base": "sepang",
-      "replace": [["77% chance", "40% chance"]],
-      "expect": { "failed": ["weather"], "flagged": [] }
+      "replace": [
+        [
+          "77% chance",
+          "40% chance"
+        ]
+      ],
+      "expect": {
+        "failed": [
+          "weather"
+        ],
+        "flagged": []
+      }
     },
     {
       "name": "a track temperature is flagged, because the forecast is air only",
       "base": "sepang",
-      "replace": [["chance of rain.", "chance of rain. Track temperatures could top 50°C."]],
-      "expect": { "failed": [], "flagged": ["Track temperatures could top 50°C."] }
+      "replace": [
+        [
+          "chance of rain.",
+          "chance of rain. Track temperatures could top 50°C."
+        ]
+      ],
+      "expect": {
+        "failed": [],
+        "flagged": [
+          "Track temperatures could top 50°C."
+        ]
+      }
     },
     {
       "name": "a weekend outside the forecast, said with its date, passes",
       "base": "sepang",
       "patch": {
-        "evidence": { "weather": { "status": "outside_forecast_range", "available_from": "2026-09-27", "sessions": null } }
+        "evidence": {
+          "weather": {
+            "status": "outside_forecast_range",
+            "available_from": "2026-09-27",
+            "sessions": null
+          }
+        }
       },
-      "replace": [["Practice 1 looks wet: 31°C with a 77% chance of rain.", "The weekend is not in the forecast yet; it will be from 27 September."]],
-      "expect": { "failed": [], "flagged": [] }
+      "replace": [
+        [
+          "Practice 1 looks wet: 31°C with a 77% chance of rain.",
+          "The weekend is not in the forecast yet; it will be from 27 September."
+        ]
+      ],
+      "expect": {
+        "failed": [],
+        "flagged": []
+      }
     },
     {
       "name": "conditions quoted for a weekend outside the forecast fail",
       "base": "sepang",
       "patch": {
-        "evidence": { "weather": { "status": "outside_forecast_range", "available_from": "2026-09-27", "sessions": null } }
+        "evidence": {
+          "weather": {
+            "status": "outside_forecast_range",
+            "available_from": "2026-09-27",
+            "sessions": null
+          }
+        }
       },
-      "replace": [["Practice 1 looks wet: 31°C with a 77% chance of rain.", "Expect 30°C."]],
-      "expect": { "failed": ["weather"], "flagged": [] }
+      "replace": [
+        [
+          "Practice 1 looks wet: 31°C with a 77% chance of rain.",
+          "Expect 30°C."
+        ]
+      ],
+      "expect": {
+        "failed": [
+          "weather"
+        ],
+        "flagged": []
+      }
     },
     {
       "name": "a weekend outside the forecast without its date is flagged",
       "base": "sepang",
       "patch": {
-        "evidence": { "weather": { "status": "outside_forecast_range", "available_from": "2026-09-27", "sessions": null } }
+        "evidence": {
+          "weather": {
+            "status": "outside_forecast_range",
+            "available_from": "2026-09-27",
+            "sessions": null
+          }
+        }
       },
-      "replace": [["Practice 1 looks wet: 31°C with a 77% chance of rain.", "The forecast does not reach the weekend yet."]],
-      "expect": { "failed": [], "flagged": ["The forecast does not reach the weekend yet."] }
+      "replace": [
+        [
+          "Practice 1 looks wet: 31°C with a 77% chance of rain.",
+          "The forecast does not reach the weekend yet."
+        ]
+      ],
+      "expect": {
+        "failed": [],
+        "flagged": [
+          "The forecast does not reach the weekend yet."
+        ]
+      }
+    },
+    {
+      "name": "a form sequence the data bears out passes",
+      "base": "monaco",
+      "replace": [
+        [
+          "always draws a crowd.",
+          "always draws a crowd. Antonelli's last five read P2, P1, P1, P1, P1."
+        ]
+      ],
+      "expect": {
+        "failed": [],
+        "flagged": [
+          "Overtaking is close to impossible, so qualifying decides most races."
+        ]
+      }
+    },
+    {
+      "name": "a form sequence the data contradicts fails",
+      "base": "monaco",
+      "replace": [
+        [
+          "always draws a crowd.",
+          "always draws a crowd. Antonelli's last five read P1, P1, P1, P1, P1."
+        ]
+      ],
+      "expect": {
+        "failed": [
+          "results"
+        ],
+        "flagged": [
+          "Overtaking is close to impossible, so qualifying decides most races."
+        ]
+      }
+    },
+    {
+      "name": "each position is judged at the race it sits beside, by OpenF1's label too",
+      "base": "monaco",
+      "replace": [
+        [
+          "always draws a crowd.",
+          "always draws a crowd. Antonelli was P2 at Albert Park and P1 in Montreal."
+        ]
+      ],
+      "expect": {
+        "failed": [],
+        "flagged": [
+          "Overtaking is close to impossible, so qualifying decides most races."
+        ]
+      }
+    },
+    {
+      "name": "a position beside the wrong race fails",
+      "base": "monaco",
+      "replace": [
+        [
+          "always draws a crowd.",
+          "always draws a crowd. Antonelli was P1 at Albert Park and P2 in Montreal."
+        ]
+      ],
+      "expect": {
+        "failed": [
+          "results",
+          "results"
+        ],
+        "flagged": [
+          "Overtaking is close to impossible, so qualifying decides most races."
+        ]
+      }
+    },
+    {
+      "name": "an average finish the form gives passes",
+      "base": "monaco",
+      "replace": [
+        [
+          "always draws a crowd.",
+          "always draws a crowd. Antonelli is averaging P1.2 over that run."
+        ]
+      ],
+      "expect": {
+        "failed": [],
+        "flagged": [
+          "Overtaking is close to impossible, so qualifying decides most races."
+        ]
+      }
+    },
+    {
+      "name": "an average finish the form does not give fails",
+      "base": "monaco",
+      "replace": [
+        [
+          "always draws a crowd.",
+          "always draws a crowd. Antonelli is averaging P1.5 over that run."
+        ]
+      ],
+      "expect": {
+        "failed": [
+          "results"
+        ],
+        "flagged": [
+          "Overtaking is close to impossible, so qualifying decides most races."
+        ]
+      }
+    },
+    {
+      "name": "a podium count over the window passes",
+      "base": "monaco",
+      "replace": [
+        [
+          "always draws a crowd.",
+          "always draws a crowd. Russell has two podium finishes in his last five starts."
+        ]
+      ],
+      "expect": {
+        "failed": [],
+        "flagged": [
+          "Overtaking is close to impossible, so qualifying decides most races."
+        ]
+      }
+    },
+    {
+      "name": "a bracketed gap is a points figure",
+      "base": "monaco",
+      "replace": [
+        [
+          "George Russell is second on 88 points, 43 points behind his Mercedes team-mate.",
+          "George Russell – 88 pts (-43)."
+        ]
+      ],
+      "expect": {
+        "failed": [],
+        "flagged": [
+          "Overtaking is close to impossible, so qualifying decides most races."
+        ]
+      }
+    },
+    {
+      "name": "a bracketed gap no table gives fails",
+      "base": "monaco",
+      "replace": [
+        [
+          "George Russell is second on 88 points, 43 points behind his Mercedes team-mate.",
+          "George Russell – 88 pts (-40)."
+        ]
+      ],
+      "expect": {
+        "failed": [
+          "standings"
+        ],
+        "flagged": [
+          "Overtaking is close to impossible, so qualifying decides most races."
+        ]
+      }
+    },
+    {
+      "name": "races completed out of the season's rounds pass",
+      "base": "monaco",
+      "replace": [
+        [
+          "after five races",
+          "after 5 of 23 rounds"
+        ]
+      ],
+      "expect": {
+        "failed": [],
+        "flagged": [
+          "Overtaking is close to impossible, so qualifying decides most races."
+        ]
+      }
+    },
+    {
+      "name": "a season length the calendar does not have fails",
+      "base": "monaco",
+      "replace": [
+        [
+          "after five races",
+          "with 5 of 24 races completed"
+        ]
+      ],
+      "expect": {
+        "failed": [
+          "standings"
+        ],
+        "flagged": [
+          "Overtaking is close to impossible, so qualifying decides most races."
+        ]
+      }
+    },
+    {
+      "name": "this round named anywhere passes",
+      "base": "monaco",
+      "replace": [
+        [
+          "always draws a crowd.",
+          "always draws a crowd. Monaco hosts Round 6."
+        ]
+      ],
+      "expect": {
+        "failed": [],
+        "flagged": [
+          "Overtaking is close to impossible, so qualifying decides most races."
+        ]
+      }
+    },
+    {
+      "name": "a label line naming the circuit is verified",
+      "base": "monaco",
+      "replace": [
+        [
+          "The Circuit de Monaco is 3.337 km",
+          "Circuit: Circuit de Monaco\n\nIt is 3.337 km"
+        ]
+      ],
+      "expect": {
+        "failed": [],
+        "flagged": [
+          "Overtaking is close to impossible, so qualifying decides most races."
+        ]
+      }
+    },
+    {
+      "name": "a horizontal rule is not a sentence",
+      "base": "monaco",
+      "replace": [
+        [
+          "## Championship Context",
+          "---\n\n## Championship Context"
+        ]
+      ],
+      "expect": {
+        "failed": [],
+        "flagged": [
+          "Overtaking is close to impossible, so qualifying decides most races."
+        ]
+      }
+    },
+    {
+      "name": "a turn range written with an en dash is a name, not a figure",
+      "base": "monaco",
+      "replace": [
+        [
+          "always draws a crowd.",
+          "always draws a crowd. Turns 5–6 are slow."
+        ]
+      ],
+      "expect": {
+        "failed": [],
+        "flagged": [
+          "Overtaking is close to impossible, so qualifying decides most races."
+        ]
+      }
+    },
+    {
+      "name": "a year inside the seasons the data searched is not an unchecked figure",
+      "base": "monaco",
+      "replace": [
+        [
+          "always draws a crowd.",
+          "always draws a crowd. The data covers 2023 to 2025."
+        ]
+      ],
+      "expect": {
+        "failed": [],
+        "flagged": [
+          "Overtaking is close to impossible, so qualifying decides most races."
+        ]
+      }
     }
   ]
 }

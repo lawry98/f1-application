@@ -132,6 +132,7 @@ MONACO_TOOLS = [
             "year": 2025,
             "event": "Monaco Grand Prix",
             "round": 8,
+            "searched_years": [2026, 2025],
             "results": [
                 {"Position": 1, "Abbreviation": "NOR", "Status": "Finished"},
                 {"Position": None, "Abbreviation": "STR", "Status": "DNF"},
@@ -142,6 +143,7 @@ MONACO_TOOLS = [
         "get_circuit_winners",
         {
             "circuit": "Circuit de Monaco",
+            "seasons": {"from": 2023, "to": 2025},
             "recent_winners": [
                 {
                     "year": 2025,
@@ -190,6 +192,7 @@ def test_a_form_line_parses_into_its_finishes_and_points() -> None:
         "name": "Kimi ANTONELLI",
         "finishes": [("Shanghai", "P1"), ("Montreal", "P1")],
         "points": 50.0,
+        "avg": 1.0,
     }
     assert parse_form_line("not a form line") is None
 
@@ -267,6 +270,7 @@ def test_evidence_turns_every_result_source_into_one_shape() -> None:
         "year": 2026,
         "event": "Canadian Grand Prix",
         "location": "Montréal",
+        "circuit": "Montreal",
         "depth": 10,
         "positions": {"ANT": 1, "HAM": 2},
     }
@@ -278,12 +282,14 @@ def test_evidence_turns_every_result_source_into_one_shape() -> None:
         "year": 2025,
         "event": "Monaco Grand Prix",
         "location": "Monte Carlo",
+        "circuit": None,
         "depth": 1,
         "positions": {"NOR": 1},
     }
     form_entries = [r for r in results if r["source"] == "get_driver_form"]
     assert [r["event"] for r in form_entries] == ["Chinese Grand Prix", "Canadian Grand Prix"]
     assert form_entries[0]["depth"] is None
+    assert form_entries[0]["circuit"] == "Shanghai"
     assert form_entries[1]["positions"] == {"ANT": 1}
 
 
@@ -291,7 +297,7 @@ def test_evidence_keeps_each_drivers_form_in_order() -> None:
     form = evidence()["form"]
 
     assert form["grands_prix"] == ["2026 Chinese Grand Prix", "2026 Canadian Grand Prix"]
-    assert form["drivers"] == {"ANT": {"results": ["P1", "P1"], "points": 50.0}}
+    assert form["drivers"] == {"ANT": {"results": ["P1", "P1"], "points": 50.0, "avg": 1.0}}
 
 
 def test_evidence_names_every_driver_once_with_a_readable_name() -> None:
@@ -470,3 +476,16 @@ def test_a_graph_failure_is_a_capture_error_that_names_it() -> None:
 
     with pytest.raises(CaptureError, match="RuntimeError: read timed out"):
         asyncio.run(run_briefing(agent, "Monaco", deadline_seconds=90))
+
+
+def test_evidence_keeps_the_seasons_the_circuit_tools_searched() -> None:
+    built = evidence()
+
+    assert built["circuit_seasons"] == {"from": 2023, "to": 2025}
+    assert built["searched_years"] == [2026, 2025]
+
+
+def test_a_form_line_with_no_classified_finish_has_no_average() -> None:
+    line = "STR Lance STROLL, Aston Martin: Shanghai DNF | 0 pts, no classified finish, 1 DNF, 1/2 races"
+
+    assert parse_form_line(line)["avg"] is None
