@@ -1,6 +1,7 @@
 import { focusByKeyboard, focusState, hasRule, tabThroughPage, TAILWIND_DEFAULT_RING } from './support/css';
 import { waitForMain } from './support/page-content';
 import { expect, test } from './support/test';
+import { stopFrameLoops, waitForRealCar, watchThreeScenes } from './support/three';
 
 /**
  * Class 1: a Tailwind rule that was never generated. `focus-visible:ring-ink` is written only in
@@ -48,6 +49,7 @@ test('a flush control on base takes the red ring', async ({ page }) => {
 // Routes are listed by hand, not discovered — a new route joins the sweep only when it is added here.
 for (const route of ['/', '/teams', '/tyres', '/circuits', '/circuits/monza', '/credits', '/showcase', '/teardown']) {
   test(`no focusable control on ${route} paints Tailwind's default blue ring`, async ({ page }) => {
+    if (route === '/showcase') await watchThreeScenes(page);
     await page.goto(route);
     await waitForMain(page);
     if (route === '/circuits') await expect(page.getByRole('list', { name: /calendar$/ })).toBeVisible();
@@ -56,6 +58,11 @@ for (const route of ['/', '/teams', '/tyres', '/circuits', '/circuits/monza', '/
     // Its scene renders WebGL on the CPU without pause, so it gets `shadow-acne.spec.ts`'s allowance.
     if (route === '/showcase') test.slow();
     if (route === '/showcase') await expect(page.getByRole('heading', { level: 1, name: /Car Showcase/ })).toBeVisible();
+    // The scene renders on the CPU and every Tab waits for a frame; the sweep reads rings, not pixels.
+    if (route === '/showcase') {
+      await waitForRealCar(page);
+      await stopFrameLoops(page);
+    }
     if (route === '/teardown') await expect(page.getByText('Loading frames')).toBeHidden();
     const states = await tabThroughPage(page);
     expect(states.length, 'Tab reached no controls at all').toBeGreaterThan(0);

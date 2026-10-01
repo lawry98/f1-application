@@ -2,6 +2,7 @@ import type { Page } from '@playwright/test';
 
 import { waitForMotionToSettle } from './support/motion';
 import { expect, test } from './support/test';
+import { type HarnessWindow, type Object3D, waitForRealCar, watchThreeScenes } from './support/three';
 
 /**
  * Class 6: shadow acne on the 3D car. Every material in the GLB is `DoubleSide`, so three.js
@@ -33,67 +34,6 @@ const POSES = [0.6, 2.4];
  * 1.98–4.61 with the bias at zero (mutant 07).
  */
 const MAX_NOISE_RATIO = 1.5;
-
-type Object3D = {
-  isMesh?: boolean;
-  material?: { name?: string };
-  parent: Object3D | null;
-  receiveShadow: boolean;
-  rotation: { y: number };
-  position: { y: number };
-  traverse: (visit: (o: Object3D) => void) => void;
-  updateMatrixWorld: (force: boolean) => void;
-};
-type Store = {
-  getState: () => {
-    gl: {
-      render: (scene: Object3D, camera: unknown) => void;
-      getContext: () => WebGLRenderingContext | WebGL2RenderingContext;
-    };
-    camera: unknown;
-    setFrameloop: (mode: 'never') => void;
-  };
-};
-type Scene = Object3D & { isScene: true; __r3f?: { root: Store } };
-type HarnessWindow = Window & { __THREE_DEVTOOLS__?: EventTarget; __harnessScenes?: Scene[] };
-
-/**
- * Collects every three.js `Scene` the page constructs. A production build keeps nothing of R3F's
- * on `window`, but three announces each scene to `__THREE_DEVTOOLS__` when that global exists, and
- * R3F hangs its store off the scene as `__r3f.root`.
- */
-async function watchThreeScenes(page: Page) {
-  await page.addInitScript(() => {
-    const w = window as HarnessWindow;
-    const scenes: Scene[] = [];
-    const devtools = new EventTarget();
-    devtools.addEventListener('observe', (e) => {
-      const detail = (e as CustomEvent<Scene>).detail;
-      if (detail?.isScene) scenes.push(detail);
-    });
-    w.__THREE_DEVTOOLS__ = devtools;
-    w.__harnessScenes = scenes;
-  });
-}
-
-/** Resolves once the GLB car, not the primitive stand-in, is in a scene R3F is driving. */
-async function waitForRealCar(page: Page) {
-  await expect
-    .poll(
-      () =>
-        page.evaluate(() =>
-          ((window as HarnessWindow).__harnessScenes ?? []).some((scene) => {
-            let livery = false;
-            scene.traverse((o) => {
-              if (o.isMesh && o.material?.name === 'Livery') livery = true;
-            });
-            return livery && Boolean(scene.__r3f);
-          }),
-        ),
-      { message: 'the GLB car should load', timeout: 30_000 },
-    )
-    .toBe(true);
-}
 
 /**
  * Draws one frame of the car at `angle`, receiving its own shadows or not, and returns its mean
