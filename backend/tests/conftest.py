@@ -106,6 +106,33 @@ def _block_openf1_network(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _unpaced_openf1(monkeypatch):
+    """Turn off the OpenF1 client's request pacing, which would otherwise sleep 0.4s per
+    fake request — and, under ``freeze_time``, far worse: a frozen ``monotonic`` reads an
+    epoch-sized value, so the next start it reserves would stall every later test.
+    ``test_openf1_client.py`` covers the real ``_pace`` directly.
+    """
+    from tools import openf1_client
+
+    monkeypatch.setattr(openf1_client, "_pace", lambda: None)
+
+
+@pytest.fixture
+def openf1_retry_sleeps(monkeypatch):
+    """Record the OpenF1 client's waits — 429 back-off and pacing — instead of sleeping.
+
+    Patches ``time.sleep`` itself — the client reaches it as ``time.sleep`` — so a test
+    using this must not rely on a real ``time.sleep`` elsewhere; wait on a
+    ``threading.Event`` instead.
+    """
+    from tools import openf1_client
+
+    sleeps: list[float] = []
+    monkeypatch.setattr(openf1_client.time, "sleep", sleeps.append)
+    return sleeps
+
+
+@pytest.fixture(autouse=True)
 def _clear_openf1_cache():
     """Reset the process-global OpenF1 response cache around every test.
 

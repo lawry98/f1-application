@@ -14,6 +14,7 @@ perfectly reasonable in a fixture.
 from typing import Any
 
 import pandas as pd
+from requests.structures import CaseInsensitiveDict
 
 SCHEDULE_COLUMNS = [
     "RoundNumber",
@@ -190,12 +191,23 @@ def make_race_info(**overrides: Any) -> dict[str, Any]:
     return info
 
 
-def make_openf1_get(routes: dict[str, Any], status_code: int = 200):
+# OpenF1's real answer past its 3 req/s ceiling, captured live on 2026-09-30.
+OPENF1_RATE_LIMITED = {
+    "detail": "Rate limit exceeded. Max 3 requests/second.",
+    "error": "Too Many Requests",
+}
+
+
+def make_openf1_get(
+    routes: dict[str, Any], status_code: int = 200, throttled: dict[str, int] | None = None
+):
     """Build a stand-in for ``requests.get`` against OpenF1.
 
     Args:
         routes: Endpoint name (the last path segment, e.g. ``"sessions"``) → JSON payload.
         status_code: Status every response reports.
+        throttled: Endpoint → how many of its first calls answer HTTP 429 with
+            ``Retry-After: 1``, as OpenF1 does to a fan-out that bursts past 3 req/s.
 
     The returned callable records each call as ``{"url": ..., "params": ...}`` on ``.calls``,
     which is what lets tests assert the request *count* — the range-query pattern's whole
@@ -216,16 +228,26 @@ def make_openf1_get(routes: dict[str, Any], status_code: int = 200):
                     f"make_openf1_get has no payload for '{endpoint}'. "
                     f"Known endpoints: {sorted(routes)}"
                 )
+            if remaining_429s.get(endpoint, 0) > 0:
+                remaining_429s[endpoint] -= 1
+                return _FakeOpenF1Response(OPENF1_RATE_LIMITED, 429, {"retry-after": "1"})
             return _FakeOpenF1Response(routes[endpoint], status_code)
 
+    remaining_429s = dict(throttled or {})
     return _FakeGet()
 
 
 class _FakeOpenF1Response:
-    """Stand-in for a ``requests.Response`` — only status_code and json() are consumed."""
+    """Stand-in for a ``requests.Response`` — only status_code, headers and json() are
+    consumed. ``headers`` is case-insensitive, as a real response's is: OpenF1 serves
+    ``retry-after`` lower-cased.
+    """
 
-    def __init__(self, payload: Any, status_code: int) -> None:
+    def __init__(
+        self, payload: Any, status_code: int, headers: dict[str, str] | None = None
+    ) -> None:
         self.status_code = status_code
+        self.headers = CaseInsensitiveDict(headers or {})
         self._payload = payload
 
     def json(self) -> Any:
