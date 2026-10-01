@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { notFound } from 'next/navigation';
 
 import { CircuitGlow } from '@/components/candy/circuit-glow';
 import { DoubleMarquee } from '@/components/candy/double-marquee';
@@ -11,12 +12,17 @@ import { TopoBackground } from '@/components/candy/topo-background';
 import monaco from '@/data/circuits/mc-1929.json';
 import monza from '@/data/circuits/it-1922.json';
 import { toPoints } from '@/lib/circuit-geometry';
+import { internalRoutesEnabled } from '@/lib/internal-routes';
 import { cn } from '@/lib/utils';
 
 export const metadata: Metadata = {
   title: 'Candy kit',
   description: 'Living styleguide for the candy component kit.',
+  robots: { index: false },
 };
+
+// Per request, so `ENABLE_INTERNAL_ROUTES` is read when the page is served, not frozen at build.
+export const dynamic = 'force-dynamic';
 
 /*
  * Why this page exists, and why you will not find a link to it.
@@ -26,6 +32,8 @@ export const metadata: Metadata = {
  * circuit that distorts all pass their tests happily. This page is where those failures are
  * actually visible, at every variant, on one screen. It is deliberately **absent from
  * `components/landing/links.ts`**, so it never appears in the nav; reach it by typing `/candy`.
+ * It is internal, so it is served only with `ENABLE_INTERNAL_ROUTES=1` (`make dev` and the
+ * Playwright server set it); without the flag, which is production, it is the not-found page.
  *
  * A server component holding client components: the geometry is read from the vendored JSON at
  * build time and handed down as plain arrays, which is the same shape Phase 3 and Phase 6 will
@@ -88,6 +96,8 @@ function Section({
 }
 
 export default function CandyPage() {
+  if (!internalRoutesEnabled()) notFound();
+
   return (
     <main className="min-h-screen bg-base pb-24 text-zinc-300">
       <header className="px-6 pb-16 pt-24 md:px-12">
