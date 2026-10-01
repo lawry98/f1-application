@@ -1,0 +1,15 @@
+diff --git a/frontend/hooks/use-scene-motion.ts b/frontend/hooks/use-scene-motion.ts
+--- a/frontend/hooks/use-scene-motion.ts
++++ b/frontend/hooks/use-scene-motion.ts
+@@ -37,8 +37,8 @@
+   const reducedMotion = useReducedMotion() ?? false;
+ 
+   return {
+-    frameloop: !visible ? 'never' : reducedMotion ? 'demand' : 'always',
+-    rotationSpeed: reducedMotion ? 0 : rotationSpeed,
+-    float: !reducedMotion && float,
++    frameloop: !visible ? 'never' : 'always',
++    rotationSpeed,
++    float,
+   };
+ }
