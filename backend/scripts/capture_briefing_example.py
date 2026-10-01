@@ -138,6 +138,12 @@ async def run_briefing(agent: Any, query: str, deadline_seconds: float) -> dict[
             elif node == "synthesizer":
                 run["briefing"] = data.get("briefing")
                 run["truncated"] = bool(data.get("briefing_truncated"))
+    except CaptureError:
+        raise
+    except Exception as exc:
+        # The route serves its generic error here; a capture says what it was, because an
+        # overloaded Gemini and a real bug call for different next steps.
+        raise CaptureError(f"the run failed: {type(exc).__name__}: {exc}") from exc
     finally:
         timer.cancel()
         budget.cancel.set()
@@ -587,6 +593,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--reject-dir", type=Path, default=None)
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
+    # The planner's choice and the fan-out's tally, so a degraded run is visible.
+    logging.getLogger("agent.graph").setLevel(logging.INFO)
 
     ok = True
     for query in args.query:

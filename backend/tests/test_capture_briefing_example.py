@@ -463,3 +463,10 @@ def test_writing_an_example_rewrites_the_index_from_every_file(tmp_path) -> None
     assert (
         json.loads((tmp_path / "2026-06-monaco-grand-prix.json").read_text())["id"] == first["id"]
     )
+
+
+def test_a_graph_failure_is_a_capture_error_that_names_it() -> None:
+    agent = FakeAgent(raises=RuntimeError("read timed out"))
+
+    with pytest.raises(CaptureError, match="RuntimeError: read timed out"):
+        asyncio.run(run_briefing(agent, "Monaco", deadline_seconds=90))
