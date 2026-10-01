@@ -45,10 +45,15 @@ involved. Resolution either yields one Event or fails.
 Upcoming. The property is relative to the moment of asking, so the same Query resolves to
 different Events on different days.
 
-**Historical Year** — the Season a Briefing draws its past-performance data from. For an
-Upcoming Event that is the previous Season, because the Event itself has not happened yet;
-for a completed Event it is the Event's own Season. Distinct from the Event's Season, and
-the two are equal only for completed Events.
+**As-of** — the instant a Briefing is written from. Every source stops there. For an Upcoming
+Event it is the start of today; for an Event already run it is the start of its first session.
+Past-performance data is whatever ran before it, from as many Seasons as that takes.
+
+**Pre-race Briefing** — the only kind there is. An Event already run still gets the Briefing a
+reader would have seen before its weekend, never a review of how it went.
+
+**Track** — the Circuit an Event is held at, found from the Event's location. Distinct from the
+Event's name, which can move between Circuits: the 2026 Bahrain Grand Prix is held at Sepang.
 
 ## Briefing generation
 
@@ -68,7 +73,7 @@ Truncated Briefing is still delivered, and is marked as Truncated so a reader kn
 the prose is unfinished. A synthesis that produced no prose at all is not Truncated —
 there is no Briefing to deliver.
 
-**Tool** — a capability the agent can call to gather data about an Event. There are seven.
+**Tool** — a capability the agent can call to gather data about an Event. There are eight.
 Modules that support the pipeline without being callable by the agent — the resolver and
 the schedule cache — are **helpers**, not Tools. Adding a file does not create a Tool.
 

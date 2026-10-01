@@ -56,7 +56,7 @@ OPENF1_TIMEOUT = 15.0
 # minute" (https://openf1.org/, checked 2026-09-30; sponsors get 6 and 60). The client
 # throttles to the per-second one. The per-minute one is a budget, not a throttle: waiting
 # out a minute would stall a briefing, so a breach surfaces as a 429 and the bounded retry
-# below. A cold briefing costs about eight requests and a cold /standings view four.
+# below. A cold briefing costs five to eight requests and a cold /standings view four.
 OPENF1_REQUESTS_PER_SECOND = 3
 
 # Retried: rate limiting, and the gateway errors that mean "try again". Nothing else — a

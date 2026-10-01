@@ -20,7 +20,7 @@ The resolver's conditional edge is the pipeline's **only** error gate: downstrea
 All agent state flows through a single `AgentState` TypedDict (`backend/agent/state.py`). Fields:
 
 - `race_query` - Original user input string
-- `race_info` - Resolved `RaceInfo` TypedDict or `None` (name, year, circuit_id, location, country, date, is_upcoming, historical_year)
+- `race_info` - Resolved `RaceInfo` TypedDict or `None` (name, year, round, circuit_id — an event slug — track_id, circuit_name, circuit_length_m, location, country, date, is_upcoming, as_of, sessions). `as_of` is the cutoff every result tool answers at; see [ADR-0004](../../docs/adr/0004-past-races-brief-as-of-the-weekend.md).
 - `tasks` - List of tool names to execute (strings matching tool function names)
 - `tool_results` - List of `ToolResult` TypedDicts tracking each tool's outcome
 - `briefing` - Final markdown briefing string or `None`
@@ -169,8 +169,8 @@ The non-streaming endpoint uses `response_model=BriefingResponse` for automatic 
 
 Both LLM prompts in `backend/agent/prompts.py` use Python `str.format`-style `{variable}` placeholders:
 
-- `PLANNER_PROMPT`: receives the already-resolved race fields (`{race_name}`, `{race_year}`, `{race_location}`, `{race_country}`, `{race_date}`, `{is_upcoming}`, `{historical_year}`) and returns **only a JSON array of tool names**. It does not resolve races and contains no race-name mapping.
-- `SYNTHESIZER_PROMPT`: takes `{tool_results}` (JSON-serialized ToolResults), returns the markdown briefing. It instructs the model to skip or caveat sections whose tool data failed.
+- `PLANNER_PROMPT`: receives `{race_context}` — the resolved race rendered by `race_context()` in `agent/graph.py` — and returns **only a JSON array of tool names**. It does not resolve races and contains no race-name mapping.
+- `SYNTHESIZER_PROMPT`: takes the same `{race_context}` and `{tool_results}` (JSON-serialized ToolResults), returns the markdown briefing in six fixed sections. Its rules: describe only the circuit in the context, write a past race as of its cutoff without its result, name each result's season, and give a failed or not-applicable source one line in its section.
 - `DEFAULT_TOOLS`: the planner's fallback tool list, used when the LLM response fails to parse as a JSON string array.
 
 Race-name resolution is deterministic, not prompted: the `ALIASES` dict in `backend/tools/race_resolver.py` maps common names ("monaco", "spa", …) to official event names. When adding new races or name aliases, update `ALIASES` — not the prompts.
