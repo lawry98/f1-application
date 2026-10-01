@@ -89,6 +89,7 @@ def make_llm(
     raises: Exception | None = None,
     chunks: list[str] | None = None,
     stream_raises_after: int | None = None,
+    before_chunk: Any = None,
 ):
     """Build a stand-in for the module-level ``ChatGoogleGenerativeAI`` client.
 
@@ -109,6 +110,13 @@ def make_llm(
             concatenation is what a complete streamed briefing comes to.
         stream_raises_after: If given, ``.stream()`` raises after yielding this many
             chunks. ``0`` models a failure before any prose exists.
+        before_chunk: If given, called with each chunk's index just before that chunk is
+            produced — the moment a real stream is waiting on the network, which is where a
+            deadline or a hang-up lands.
+
+    The fake records ``chunks_served`` (how far the consumer read) and ``stream_closed``
+    (whether it let go of the stream), which is how a test sees that a stopped synthesis
+    stopped *reading* rather than merely stopped *forwarding*.
     """
 
     class _FakeResponse:
@@ -119,6 +127,8 @@ def make_llm(
     class _FakeLLM:
         def __init__(self) -> None:
             self.calls: list[Any] = []
+            self.chunks_served = 0
+            self.stream_closed = False
 
         def invoke(self, messages: Any) -> _FakeResponse:
             self.calls.append(messages)
@@ -130,12 +140,19 @@ def make_llm(
             self.calls.append(messages)
             if raises is not None:
                 raise raises
-            for index, chunk in enumerate(chunks if chunks is not None else [content]):
-                if stream_raises_after is not None and index >= stream_raises_after:
+            try:
+                for index, chunk in enumerate(chunks if chunks is not None else [content]):
+                    if before_chunk is not None:
+                        before_chunk(index)
+                    if stream_raises_after is not None and index >= stream_raises_after:
+                        raise RuntimeError("stream died mid-iteration")
+                    self.chunks_served += 1
+                    yield _FakeResponse(chunk)
+                if stream_raises_after is not None:
                     raise RuntimeError("stream died mid-iteration")
-                yield _FakeResponse(chunk)
-            if stream_raises_after is not None:
-                raise RuntimeError("stream died mid-iteration")
+            except GeneratorExit:
+                self.stream_closed = True
+                raise
 
     return _FakeLLM()
 
@@ -252,3 +269,20 @@ class _FakeOpenF1Response:
 
     def json(self) -> Any:
         return self._payload
+
+
+class FakeClock:
+    """A clock a test moves by hand — for anything timed in hours, where sleeping is no option.
+
+    Callable like ``time.time``/``time.monotonic``, which is the whole seam the guard and the
+    run budget take.
+    """
+
+    def __init__(self, now: float = 1_000_000.0) -> None:
+        self.now = now
+
+    def __call__(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds

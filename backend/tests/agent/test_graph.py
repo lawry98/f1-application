@@ -873,6 +873,17 @@ def test_chunks_that_carried_no_prose_do_not_count_as_a_truncated_briefing(fake_
         run_synthesizer_streamed()
 
 
+def test_the_llm_client_is_built_with_a_timeout_and_a_bounded_attempt_count():
+    """The library defaults are ``timeout=None`` and six attempts, so an unanswered call held
+    a worker thread forever and a flaky one was paid for six times. ``max_retries`` is the
+    SDK's *attempt* count, first request included — see the note in config.py.
+    """
+    from config import LLM_MAX_ATTEMPTS, LLM_TIMEOUT_SECONDS
+
+    assert graph_module.llm.timeout == LLM_TIMEOUT_SECONDS
+    assert graph_module.llm.max_retries == LLM_MAX_ATTEMPTS
+
+
 def test_standings_is_a_registered_tool():
     from agent.graph import all_tools
 

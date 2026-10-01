@@ -63,6 +63,10 @@ part worth knowing:
 | `FASTF1_CACHE_DIR` | Defaults to `cache/` |
 | `EXECUTOR_MAX_WORKERS` | Defaults to `4` |
 | `STANDINGS_TTL_SECONDS` | Defaults to `300`; `0` disables current-season caching; invalid/negative warns and uses `300` |
+| `BRIEFING_PER_IP_PER_HOUR` | Defaults to `5`; invalid, negative or `0` warns and uses `5` |
+| `BRIEFING_DAILY_CAP` | Defaults to `100` per UTC day; `0` means no cap; invalid/negative warns and uses `100` |
+| `BRIEFING_MAX_CONCURRENT` | Defaults to `2`; invalid, negative or `0` warns and uses `2` |
+| `BRIEFING_DEADLINE_SECONDS` | Defaults to `90`; invalid, negative or `0` warns and uses `90` |
 | `CORS_ORIGINS` | Comma-separated; defaults to `http://localhost:3000,http://localhost:3001` |
 
 `LLM_MODEL` is a **hardcoded constant** in `config.py`, not an env var — changing the model
@@ -123,6 +127,26 @@ unprefixed utilities**, so its colour beats the `text-zinc-300` you wrote and th
 Use `sm:text-[1rem]` (or `text-[15px]`, as `landing-features.tsx` already does) for any
 breakpoint-scoped body size. Neither `pnpm test` nor a type check can see this; jsdom computes no
 CSS, and the class string reads correctly.
+
+**The cost guard's limits are per process — run exactly one worker.** `api/guard.py` keeps the
+per-IP hour, the UTC-day count and the concurrency slots in memory, so a second uvicorn worker
+doubles every limit and a restart resets the day. It keys on `request.client.host` and never
+parses `X-Forwarded-For` (anyone can send one): behind a proxy, run uvicorn with
+`--proxy-headers` and `FORWARDED_ALLOW_IPS` set to the proxy, or every visitor shares one
+allowance. Admission runs *before* `EventSourceResponse` exists, which is the only reason a
+refusal can be a 429/503 at all — once the stream opens its status is 200. Three things there are
+not guessable. **The slot is released by the response, not only the generator**: a client that
+hangs up before the first event (generator never started) or mid-send (generator parked at a
+`yield`) is not covered by the generator's `finally`, so `_ReleasingEventSourceResponse.__call__`
+closes the generator and runs the run's idempotent `finish()` itself; the ASGI-level disconnect
+tests only prove this because their `send` yields to the loop — with one that never yields, both
+passed with that teardown deleted. **Spend is stopped by a `RunBudget`, not by cancellation**:
+the nodes run on worker threads that no `CancelledError` reaches, so each node checks the
+budget's cancel event and deadline (`agent/budget.py`) before an LLM call, before submitting a
+tool and between streamed chunks; the route sets the event at the deadline and when the response
+ends. **`max_retries` on `ChatGoogleGenerativeAI` is an attempt count**, first request included,
+and its `timeout` bounds each read of a stream, not the stream — `config.py` carries the source
+citations and the deadline arithmetic, and a test re-does the sum.
 
 **The graph is not a flat pipeline.** It has four nodes, but `resolver` sits behind a
 conditional edge: when `state["current_step"] == "error"` it routes straight to `END`, skipping

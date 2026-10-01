@@ -12,7 +12,18 @@ export type StreamEvent =
   | { type: 'briefing_delta'; data: { content: string } }
   | { type: 'briefing'; data: { content: string; truncated: boolean } }
   | { type: 'complete'; data: { message: string } }
-  | { type: 'error'; data: { message: string } };
+  /**
+   * `code` is present only when the server stopped the run at its deadline before any prose
+   * existed. A deadline after prose is not an error at all: it arrives as a `briefing` with
+   * `truncated: true` (ADR-0002).
+   */
+  | { type: 'error'; data: { message: string; code?: 'deadline' } };
+
+/**
+ * Why the briefing routes refused to start a run, from the JSON body of their 429 / 503.
+ * They are refused before the event stream opens, so none of this ever arrives as an event.
+ */
+export type BriefingRejectionCode = 'busy' | 'rate_limited' | 'daily_cap';
 
 /**
  * `GET /api/standings/{year}`. Rows arrive already ranked — ties broken on the Grand Prix

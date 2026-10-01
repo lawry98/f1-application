@@ -173,6 +173,25 @@ describe('RaceSelector', () => {
       }
     });
 
+    it('keeps the strip itself reachable by keyboard while every card in it is locked', async () => {
+      // A scrolling strip whose every child is `disabled` has nothing to tab to, so a keyboard
+      // cannot scroll it — axe's scrollable-region-focusable, found by the browser suite on a
+      // briefing-limit lock. The strip takes the stop only while the cards cannot.
+      await renderSelector({ disabled: true });
+
+      const strip = screen.getByRole('group', { name: /quick select/i });
+      expect(strip).toHaveAttribute('tabindex', '0');
+      for (const token of focusRing.split(' ')) {
+        expect(strip.className).toContain(token);
+      }
+    });
+
+    it('leaves the strip out of the tab order while its cards are live', async () => {
+      await renderSelector();
+
+      expect(screen.getByRole('group', { name: /quick select/i })).not.toHaveAttribute('tabindex');
+    });
+
     it('does not select a race from a locked card', async () => {
       // The actual bug: a click here used to abort the in-flight run and discard its output. The
       // lock has to be the native `disabled`, not a class that only looks locked.

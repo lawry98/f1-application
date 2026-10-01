@@ -12,6 +12,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useBriefing } from '@/hooks/use-briefing';
+import { BRIEFING_DEADLINE_ERROR, GENERIC_BRIEFING_ERROR } from '@/lib/constants';
 import { ChunkFeed, frame } from './sse';
 
 const FLUSH_INTERVAL_MS = 80;
@@ -460,5 +461,193 @@ describe('the request timestamp', () => {
     await submit('Silverstone');
 
     expect(result.current.startedAt).toBe(firstStamp + 5000);
+  });
+});
+
+/**
+ * A refusal from the cost guard: the stream never opens, the body is JSON. Only `fetch` is
+ * faked, as everywhere in this file, so the typed error really comes out of `streamBriefing`.
+ */
+function refusedWith(status: number, body: Record<string, unknown>): { fetch: () => Promise<Response> } {
+  const response = {
+    ok: false,
+    status,
+    json: async () => body,
+    headers: { get: () => null },
+  } as unknown as Response;
+  return { fetch: () => Promise.resolve(response) };
+}
+
+function startServing(...responses: { fetch: () => Promise<Response> }[]) {
+  let call = 0;
+  const fetchSpy = vi.fn(() => responses[call++]!.fetch());
+  globalThis.fetch = fetchSpy as unknown as typeof fetch;
+  const rendered = renderHook(() => useBriefing());
+  return {
+    ...rendered,
+    fetchSpy,
+    submit: (query: string) => act(() => void rendered.result.current.submit(query)),
+  };
+}
+
+async function tick(ms: number): Promise<void> {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(ms);
+  });
+}
+
+describe('busy and limit refusals', () => {
+  it('turns a 503 busy into a notice, not an error', async () => {
+    const { result, submit } = startServing(
+      refusedWith(503, { code: 'busy', retry_after_seconds: 10, limit: 2 }),
+    );
+
+    await submit('Monaco');
+    await settle();
+
+    expect(result.current.notice).toEqual({
+      code: 'busy',
+      retryAt: Date.now() + 10_000,
+      waitSeconds: 10,
+      limit: 2,
+    });
+    expect(result.current.retryInSeconds).toBe(10);
+    expect(result.current.error).toBe('');
+    expect(result.current.loading).toBe(false);
+  });
+
+  it('keeps the hourly limit the server sent with a 429', async () => {
+    const { result, submit } = startServing(
+      refusedWith(429, { code: 'rate_limited', retry_after_seconds: 1200, limit: 5 }),
+    );
+
+    await submit('Monaco');
+    await settle();
+
+    expect(result.current.notice?.code).toBe('rate_limited');
+    expect(result.current.notice?.limit).toBe(5);
+    expect(result.current.retryInSeconds).toBe(1200);
+  });
+
+  it('turns a 503 daily_cap into a notice that lasts until the reset', async () => {
+    const { result, submit } = startServing(
+      refusedWith(503, { code: 'daily_cap', retry_after_seconds: 3600, limit: 100 }),
+    );
+
+    await submit('Monaco');
+    await settle();
+
+    expect(result.current.notice?.code).toBe('daily_cap');
+    expect(result.current.notice?.retryAt).toBe(Date.now() + 3_600_000);
+  });
+
+  it('counts the wait down one second at a time', async () => {
+    const { result, submit } = startServing(
+      refusedWith(503, { code: 'busy', retry_after_seconds: 10, limit: 2 }),
+    );
+    await submit('Monaco');
+    await settle();
+
+    await tick(1000);
+    expect(result.current.retryInSeconds).toBe(9);
+
+    await tick(3000);
+    expect(result.current.retryInSeconds).toBe(6);
+  });
+
+  it('clears the notice on its own when the wait runs out', async () => {
+    const { result, submit } = startServing(
+      refusedWith(503, { code: 'busy', retry_after_seconds: 3, limit: 2 }),
+    );
+    await submit('Monaco');
+    await settle();
+
+    await tick(2999);
+    expect(result.current.notice).not.toBeNull();
+
+    await tick(1);
+    expect(result.current.notice).toBeNull();
+    expect(result.current.retryInSeconds).toBe(0);
+  });
+
+  it('refuses to submit while a wait is pending, and submits again once it is over', async () => {
+    const after = new ChunkFeed();
+    const { result, submit, fetchSpy } = startServing(
+      refusedWith(503, { code: 'busy', retry_after_seconds: 2, limit: 2 }),
+      after,
+    );
+    await submit('Monaco');
+    await settle();
+
+    await submit('Monaco');
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+    await tick(2000);
+    await submit('Monaco');
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(result.current.loading).toBe(true);
+  });
+
+  it('stops ticking once the hook unmounts', async () => {
+    const { submit, unmount } = startServing(
+      refusedWith(503, { code: 'busy', retry_after_seconds: 10, limit: 2 }),
+    );
+    await submit('Monaco');
+    await settle();
+
+    unmount();
+
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('still reports an ordinary failure as the generic error', async () => {
+    const { result, submit } = startServing(refusedWith(500, { detail: 'boom' }));
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    await submit('Monaco');
+    await settle();
+
+    expect(result.current.notice).toBeNull();
+    expect(result.current.error).toBe(GENERIC_BRIEFING_ERROR);
+  });
+
+  it('treats a refusal with no usable wait as an ordinary failure', async () => {
+    const { result, submit } = startServing(refusedWith(503, { code: 'busy' }));
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    await submit('Monaco');
+    await settle();
+
+    expect(result.current.notice).toBeNull();
+    expect(result.current.error).toBe(GENERIC_BRIEFING_ERROR);
+  });
+});
+
+describe('the deadline', () => {
+  it('shows its own message when the stream ends on a deadline error', async () => {
+    const feed = new ChunkFeed();
+    const { result, submit } = start(feed);
+    await submit('Monaco');
+
+    feed.push(
+      frame('error', { message: 'This briefing took too long and was stopped.', code: 'deadline' }),
+    );
+    feed.close();
+    await settle();
+
+    expect(result.current.error).toBe(BRIEFING_DEADLINE_ERROR);
+    expect(result.current.notice).toBeNull();
+  });
+
+  it('leaves an uncoded error event as the server worded it', async () => {
+    const feed = new ChunkFeed();
+    const { result, submit } = start(feed);
+    await submit('Monaco');
+
+    feed.push(frame('error', { message: "No race found matching 'xyz'" }));
+    feed.close();
+    await settle();
+
+    expect(result.current.error).toBe("No race found matching 'xyz'");
   });
 });
