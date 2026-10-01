@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useScrollEdges } from '@/hooks/use-scroll-edges';
 import { focusRing, focusRingOffsetBase } from '@/lib/focus';
+import { centredScrollLeft } from '@/lib/scroll-row';
 import { cn } from '@/lib/utils';
 import { NAV_LINKS } from './links';
 
@@ -59,16 +60,18 @@ export function LandingNav() {
   /*
    * Bring the current page's link into view in the scrolling row.
    *
-   * Seven links overflow a phone, so the row scrolls — and the link for the page you are on can
+   * Eight links overflow a phone, so the row scrolls — and the link for the page you are on can
    * start off screen, leaving the nav showing no sign of where you are. `teams-chip-strip.tsx`
    * has the same problem and the same fix.
    *
-   * `block: 'nearest'` matters: without it this also scrolls the *page* vertically, so arriving
-   * on a route would silently jump you past the top of it. `behavior: 'auto'` because this is an
-   * arrival, not a transition — there is nothing for a smooth scroll to explain.
+   * The row is scrolled, not the link: `scrollIntoView()` on the link moved the keyboard's starting
+   * point to it, and the first Tab skipped the wordmark (see `lib/scroll-row.ts`). Instant because
+   * this is an arrival, not a transition — there is nothing for a smooth scroll to explain.
    */
   useEffect(() => {
-    currentRef.current?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'auto' });
+    const row = rowRef.current;
+    const link = currentRef.current;
+    if (row && link) row.scrollLeft = centredScrollLeft(row, link);
   }, [pathname]);
 
   // Called after the effect above on purpose: its first measurement then reads the row already

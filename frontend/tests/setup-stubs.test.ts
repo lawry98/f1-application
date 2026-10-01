@@ -9,6 +9,12 @@ describe('jsdom stubs installed by tests/setup.ts', () => {
     expect(() => el.scrollIntoView({ inline: 'center' })).not.toThrow();
   });
 
+  it('gives every element a scrollTo', () => {
+    const el = document.createElement('div');
+    expect(typeof el.scrollTo).toBe('function');
+    expect(() => el.scrollTo({ left: 0, behavior: 'smooth' })).not.toThrow();
+  });
+
   it('gives window a scrollTo', () => {
     expect(typeof window.scrollTo).toBe('function');
     expect(() => window.scrollTo({ top: 0 })).not.toThrow();

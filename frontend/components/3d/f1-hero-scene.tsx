@@ -1,10 +1,9 @@
 'use client';
 
-import { Suspense, useEffect } from 'react';
-import { Canvas, useThree } from '@react-three/fiber';
-import { useReducedMotion } from 'motion/react';
+import { Suspense } from 'react';
+import { Canvas } from '@react-three/fiber';
 import { cn } from '@/lib/utils';
-import { useDocumentVisible } from '@/hooks/use-document-visible';
+import { useSceneMotion } from '@/hooks/use-scene-motion';
 import { CAR_SWEPT, CAR_TARGET, INSPECT_FIT_MARGIN } from '@/lib/scene-fit';
 import { FitCamera } from './fit-camera';
 import { CAR_SHADOW_NORMAL_BIAS, PrimitiveCar, RealCar } from './f1-car-model';
@@ -32,32 +31,6 @@ function HeroFallbackCar({ rotationSpeed, float }: { rotationSpeed: number; floa
   );
 }
 
-/**
- * Renders one frame whenever `teamColor` changes.
- *
- * Only load-bearing under `frameloop="demand"`, which is the reduced-motion path. R3F's own
- * reconciler already auto-invalidates on any scene-graph mutation — mounting/unmounting Object3D
- * children, which is exactly what the Suspense swap from the primitive fallback to `RealCar` does
- * once the GLB resolves — so that transition needs no help here. What isn't covered is `RealCar`'s
- * repaint of the livery texture: it writes pixels into an existing canvas and flips
- * `texture.needsUpdate`, mutating a Three.js object outside R3F's declarative prop diffing, so
- * nothing invalidates it on its own. Must live inside `<Canvas>`; `useThree` throws outside one.
- *
- * This was dormant until the material filter was fixed, and is now genuinely load-bearing —
- * measured in a browser, in this dialog, under `demand`: idle draws **0** frames per second, a
- * bare `texture.needsUpdate = true` still draws **0**, and the same mutation followed by
- * `invalidate()` draws exactly **1**. Remove this component and a livery change under
- * `prefers-reduced-motion` shows the previous team's colour until something else happens to
- * schedule a frame.
- */
-function Invalidator({ teamColor }: { teamColor: string }) {
-  const invalidate = useThree((state) => state.invalidate);
-  useEffect(() => {
-    invalidate();
-  }, [invalidate, teamColor]);
-  return null;
-}
-
 interface F1HeroSceneProps {
   teamColor?: string;
   hideOverlay?: boolean;
@@ -69,23 +42,8 @@ export default function F1HeroScene({
   hideOverlay = false,
   className,
 }: F1HeroSceneProps) {
-  const visible = useDocumentVisible();
-  const reducedMotion = useReducedMotion() ?? false;
-
-  /*
-   * The frame loop, as state.
-   *
-   * `never` while the tab is backgrounded — spec item 11's "idle on visibilitychange", and the
-   * only one of the three that is purely a saving.
-   *
-   * `demand` under reduced motion, which is the spec's literal `frameloop="demand"` applied in the
-   * one case where it is right: the car turns and floats through `useFrame`, so `demand` in the
-   * normal case would simply freeze the feature, while continuous rotation is exactly the
-   * sustained movement `prefers-reduced-motion` asks to be spared. `Invalidator` is what keeps
-   * the still frame correct.
-   */
-  const frameloop = !visible ? 'never' : reducedMotion ? 'demand' : 'always';
-  const motion = { rotationSpeed: reducedMotion ? 0 : 0.3, float: !reducedMotion };
+  // `never` hidden, `demand` with the car still under reduced motion, `always` otherwise.
+  const { frameloop, ...motion } = useSceneMotion({ rotationSpeed: 0.3, float: true });
 
   return (
     <div
@@ -100,7 +58,6 @@ export default function F1HeroScene({
         tighter margin — a closer crop that, unlike the one that shipped, contains the whole car.
       */}
       <Canvas camera={{ fov: 45 }} dpr={[1, 2]} shadows frameloop={frameloop}>
-        <Invalidator teamColor={teamColor} />
         <color attach="background" args={[FOG_COLOR]} />
         <FitCamera
           subject={CAR_SWEPT}

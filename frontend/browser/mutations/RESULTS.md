@@ -292,15 +292,35 @@ afterwards; `git status --porcelain` was empty.
 ## 09
 
 Date: 2026-10-01
-Commit: `da2357f1f8960ee1dfa1ccb3f80c86472aff2a30`
+Commit: `082f6f1c7e2c70f75fe625fb67f92f4a7780cdb7`
 Run: `pnpm test:browser:mutants 09`
 
 ```
-│ (index) │ patch                         │ outcome  │ detail      │
-│ 0       │ '09-tool-trace-no-ring.patch' │ 'killed' │ 'failed: 1' │
+│ (index) │ patch                           │ outcome  │ detail      │
+│ 0       │ '09-nav-scroll-into-view.patch' │ 'killed' │ 'failed: 6' │
 ```
 
-`killed`, after the clean-tree baseline passed (11 of 11). The toggle's computed `box-shadow` was
-`none`. The other ten tests in `focus-rings.spec.ts` passed on the mutant, the blue-ring sweep
-included: a control with no ring paints no shadow to find blue in. The runner rebuilt the clean
+`killed`, after the clean-tree baseline passed (`8 passed`). All six first-Tab titles failed, and
+the first Tab landed where it did when the defect shipped: "Circuits" on `/tyres`, the first link
+in `<main>` ("the source file") on `/credits`, "FerrariP2" on `/teams` at 375 and "Showcase" at
+1440. The spec's two centring tests passed, as they should: `scrollIntoView()` centres the item
+too, and moving the starting point is the only thing it does wrong. The runner rebuilt the clean
 tree afterwards; `git status --porcelain` was empty.
+
+## 10
+
+Date: 2026-10-01
+Commit: `005cfde43e989df3221f743a31b92675d04c649a`
+Run: `pnpm test:browser:mutants 10`
+
+```
+│ (index) │ patch                                   │ outcome  │ detail      │
+│ 0       │ '10-scene-ignores-reduced-motion.patch' │ 'killed' │ 'failed: 3' │
+```
+
+`killed`, after the clean-tree baseline passed (`5 passed`). Both `mustFail` titles failed the way
+the route shipped: under reduce the car turned 1.67 rad across one requested frame, and the idle
+scene drew 13 frames across 10 animation frames. The team-pick test failed too, on its precondition
+(16 frames, never idle), which is not in `mustFail` because it is not what the mutant breaks. The
+two no-preference tests passed. The runner rebuilt the clean tree afterwards; `git status
+--porcelain` was empty.

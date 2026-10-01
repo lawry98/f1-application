@@ -58,32 +58,46 @@ describe('TeamsChipStrip', () => {
     expect(current[0]).toHaveAccessibleName(/ferrari/i);
   });
 
-  // Brief item 6. Eleven chips overflow every phone, so the active one is routinely off
-  // screen — the strip showed no sign of which team you were on.
-  it('centres the active chip when it changes', () => {
-    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
-    const { rerender } = renderStrip({ activeTeamId: 'ferrari' });
-    scrollIntoView.mockClear();
+  /*
+   * Brief item 6. Eleven chips overflow every phone, so the active one is routinely off screen —
+   * the strip showed no sign of which team you were on. jsdom lays nothing out, so the strip and
+   * the chip are given boxes: the strip 375 wide and already scrolled 40 in, the chip at 800–900 in
+   * the viewport. Centring it is 40 + 850 − 187.5 = 702.5.
+   *
+   * The strip is scrolled, never the chip: `scrollIntoView()` on the chip also moved Chromium's
+   * focus navigation starting point to it, so the first Tab on /teams at 375 skipped the site nav
+   * and landed on the chip after it (`browser/first-tab.spec.ts`).
+   */
+  function centreCadillac(reducedMotion: boolean) {
+    const { rerender } = renderStrip({ activeTeamId: 'ferrari', reducedMotion });
+    const strip = screen.getByRole('navigation', { name: 'Constructor navigation, compact' })
+      .firstElementChild as HTMLElement;
+    vi.spyOn(strip, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 375, 40));
+    Object.defineProperty(strip, 'clientWidth', { configurable: true, value: 375 });
+    strip.scrollLeft = 40;
+    const chip = screen.getByRole('link', { name: /cadillac/i });
+    vi.spyOn(chip, 'getBoundingClientRect').mockReturnValue(new DOMRect(800, 4, 100, 32));
+    const scrollTo = vi.fn();
+    strip.scrollTo = scrollTo;
 
     rerender(
-      <TeamsChipStrip activeTeamId="cadillac" onSelectTeam={vi.fn()} reducedMotion={false} />,
+      <TeamsChipStrip
+        activeTeamId="cadillac"
+        onSelectTeam={vi.fn()}
+        reducedMotion={reducedMotion}
+      />,
     );
+    return scrollTo;
+  }
 
-    expect(scrollIntoView).toHaveBeenCalledWith(
-      expect.objectContaining({ inline: 'center', block: 'nearest', behavior: 'smooth' }),
-    );
+  it('centres the active chip when it changes', () => {
+    expect(centreCadillac(false)).toHaveBeenCalledWith({ left: 702.5, behavior: 'smooth' });
   });
 
   // Reduced motion must stop the travel, not shorten it: this is a horizontal pan that
   // fires on every section crossing.
   it('jumps rather than pans under reduced motion', () => {
-    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
-    const { rerender } = renderStrip({ activeTeamId: 'ferrari', reducedMotion: true });
-    scrollIntoView.mockClear();
-
-    rerender(<TeamsChipStrip activeTeamId="cadillac" onSelectTeam={vi.fn()} reducedMotion />);
-
-    expect(scrollIntoView).toHaveBeenCalledWith(expect.objectContaining({ behavior: 'auto' }));
+    expect(centreCadillac(true)).toHaveBeenCalledWith({ left: 702.5, behavior: 'auto' });
   });
 
   it('shows overflow fades that screen readers ignore', () => {

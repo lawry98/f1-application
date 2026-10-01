@@ -32,20 +32,19 @@ optional text overlay.
 deliberately has **no** canvas: removing it moved the entire `three` / `@react-three/fiber` bundle
 off page load and behind the Inspect click. Do not add one back.
 
-**Frame loop.** `frameloop` is state, not a constant: `never` while the document is hidden,
-`demand` under `prefers-reduced-motion` — where the car is deliberately still, and the in-canvas
-`Invalidator` is what makes the one frame it does draw correct — and `always` otherwise. A literal
+**Frame loop.** `frameloop` is state, not a constant, and both scenes take it from
+`hooks/use-scene-motion.ts` together with the car's motion: `never` while the document is hidden,
+`demand` with the car still under `prefers-reduced-motion`, and `always` otherwise. A literal
 `frameloop="demand"` in the normal case would freeze the car, because `RealCar`'s rotation and
-float run through `useFrame`. `Invalidator` covers `RealCar`'s repaint of the livery texture, which
-mutates a canvas and flips `texture.needsUpdate` outside R3F's prop diffing. Measured in this
-dialog under `demand`: idle draws 0 frames, a bare `texture.needsUpdate = true` draws 0, and the
-same mutation plus `invalidate()` draws exactly 1. Without it, a livery change under reduced motion
-keeps showing the previous team.
+float run through `useFrame`. Under `demand`, `RealCar` asks for the frame its livery repaint
+needs: the repaint mutates a canvas and flips `texture.needsUpdate` outside R3F's prop diffing.
+Measured under `demand`: idle draws 0 frames, a bare `texture.needsUpdate = true` draws 0, and the
+same mutation plus `invalidate()` draws exactly 1.
 
 ### F1CarShowcase (`f1-car-showcase.tsx`, default export)
 
-Full-page livery showcase: one auto-rotating car plus a picker for every team on the
-grid. Teams, names, and colors are derived from `data/teams-data.ts` (`TEAMS`) — there
+Full-page livery showcase: one auto-rotating car (still under reduced motion, on the same frame
+loop as `F1HeroScene`) plus a picker for every team on the grid. Teams, names, and colors are derived from `data/teams-data.ts` (`TEAMS`) — there
 is no local color map to keep in sync.
 
 The picker is [`components/showcase/livery-select.tsx`](../showcase/livery-select.tsx),
@@ -77,7 +76,7 @@ Four things it handles that a literal cannot, all measured and guarded in
   in the JSX, because a declarative one would recreate itself from stale literals and win.
   `/showcase`'s shipped `[8, 20]` puts a correctly framed car entirely past the far plane.
 - It runs in a **layout** effect and calls `invalidate()` — the first so no wrong frame paints,
-  the second for the modal's `frameloop="demand"` path.
+  the second for either scene's reduced-motion `demand` path.
 
 The arithmetic is pure and lives in [`lib/scene-fit.ts`](../../lib/scene-fit.ts), including
 `CAR_BOUNDS`, which is checked against the shipped GLB so a re-exported model fails CI rather
@@ -91,7 +90,8 @@ Not a page-level scene — the building blocks both scenes compose:
   `MeshoptDecoder` registered (the GLB's geometry is meshopt-compressed; see below), clones the scene
   **once per mount** (the clone stays inside `useMemo`; the GLTF is cached by
   `useLoader`, so livery materials are cloned before recolouring and disposed on unmount).
-  Team color changes repaint the cloned texture in place — no re-clone per color.
+  Team color changes repaint the cloned texture in place — no re-clone per color — and ask for a
+  frame, which the `demand` loop would otherwise never draw.
   Props: `teamColor`, `rotationSpeed`, `float?`.
 
   **No `scale` or `position`, on purpose.** `FitCamera` does the framing, so a scale

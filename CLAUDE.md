@@ -513,21 +513,23 @@ reports half-extents of 5.10 and 5.56, whose corner is 7.55 from the axis, but n
 there — the real reach is 5.79, inside even the 5.98 box diagonal the fit uses. Measure vertices,
 not boxes.
 
-**The 3D scene's `frameloop` is state, and `demand` is not the default for a reason.** `f1-hero-scene.tsx`
-is reached from exactly one place — the teams page's Inspect modal — and the right rail deliberately
-has no canvas, which is what keeps `three` / `@react-three/fiber` out of the page-load bundle. The
-loop is `never` while `document.visibilityState` is not `visible`, `demand` under
-`prefers-reduced-motion`, and `always` otherwise. Setting `demand` unconditionally looks like the
-obvious optimisation and freezes the car: `RealCar`'s rotation and float run through `useFrame`,
-which under `demand` fires only on invalidation. An `Invalidator` component sits inside the
-`Canvas` for a narrower reason than it looks: R3F's reconciler already auto-invalidates on any
-scene-graph mutation, so the Suspense swap when the GLB resolves needs no help. What actually
-requires `Invalidator` is `RealCar`'s repaint of the livery texture, which writes pixels into a
-canvas and flips `texture.needsUpdate` outside R3F's prop diffing and so is never
-auto-invalidated — without it, a livery change under `demand` would show the wrong colour until
-the next invalidation. Measured in a browser in that dialog under `demand`: idle draws **0**
-frames, a bare `texture.needsUpdate = true` draws **0**, and the same mutation plus `invalidate()`
-draws exactly **1**.
+**The 3D scenes' `frameloop` is state, and `demand` is not the default for a reason.** Both scenes
+— `/showcase` and the teams page's Inspect modal (`f1-hero-scene.tsx`, reached from exactly one
+place; the right rail deliberately has no canvas, which keeps `three` / `@react-three/fiber` out of
+the page-load bundle) — take the loop and the car's motion together from `hooks/use-scene-motion.ts`:
+`never` while `document.visibilityState` is not `visible`, `demand` with the car still under
+`prefers-reduced-motion`, `always` otherwise. `/showcase` shipped with neither half: under `reduce`
+its car turned and its canvas drew every frame on the CPU, about a second per key press in the
+browser suite. Setting `demand` unconditionally looks like the obvious optimisation and freezes the
+car: `RealCar`'s rotation and float run through `useFrame`, which under `demand` fires only on
+invalidation, and a car still moving under `demand` jumps by the idle time whenever a frame does
+draw. R3F's reconciler already auto-invalidates on any scene-graph mutation, so the Suspense swap
+when the GLB resolves needs no help. `RealCar`'s repaint of the livery texture does: it writes
+pixels into a canvas and flips `texture.needsUpdate` outside R3F's prop diffing, so `RealCar` calls
+`invalidate()` after each repaint, in both scenes. Measured under `demand`: idle draws **0** frames,
+a bare `texture.needsUpdate = true` draws **0**, and the same mutation plus `invalidate()` draws
+exactly **1**. `browser/showcase-motion.spec.ts` counts the frames the app draws and reads the drawn
+livery back out of the buffer; mutant 10 proves it.
 
 **The livery recolour rewrites the texture, and `material.color` is the trap.** `color`
 *multiplies* into `.map`, and the committed GLB's base texel is `#003572` — **red channel zero**,
@@ -705,6 +707,16 @@ click by itself, and the hook only handles hash restore, `popstate`, and `replac
 scrolling. Scroll offsets are `--teams-scroll-offset` in `app/globals.css` consumed as
 `scroll-mt-[…]`, never maths in a handler.
 
+**Centre an item in a horizontal scroller by scrolling the scroller — `centredScrollLeft` in
+`lib/scroll-row.ts`.** `item.scrollIntoView({ inline: 'center' })` looks equivalent and also moves
+Chromium's sequential focus navigation starting point to the item. The site nav and the `/teams`
+chip strip centred their current item that way on mount, so on every route with a nav link the
+first Tab skipped the wordmark and landed on whatever followed the current item (`/tyres` →
+"Circuits", `/teams` at 375 → "FerrariP2"). jsdom has no starting point, so only
+`browser/first-tab.spec.ts` can see it, and mutant 09 proves it does; a spec that Tabs from page
+load waits for hydration first, since the defect lives in a mount effect. A deliberate jump to content (a section, a stage) is the
+other case: there, moving the starting point with the scroll is what Tab should do next.
+
 **Team colours are brand assets and must go through `lib/team-utils.ts` before carrying text.**
 `readableOnDark` lifts a livery until it clears WCAG AA as small text on `zinc-950`; `ringOnDark`
 does the same against the lower non-text bar for focus rings; `onColor` picks black or white to
@@ -822,8 +834,8 @@ Vitest with jsdom, in `frontend/tests/`. A few things about them are not guessab
   from the format the backend really serves, which is the one thing they exist to catch.
 - **`tests/setup.ts` stubs `IntersectionObserver`.** jsdom has none, and `BlurFade` wraps most
   page sections, so without it any test that renders one dies inside framer-motion's `useInView`.
-  It also stubs `scrollIntoView`, `scrollTo`, and `matchMedia` for the same reason — the teams
-  page calls all three, and jsdom implements none of them. `matchMedia` reports no match, so
+  It also stubs `scrollIntoView`, `scrollTo` (on `window` and on every element), and `matchMedia`
+  for the same reason — the teams page calls all of them, and jsdom implements none of them. `matchMedia` reports no match, so
   components take their narrow branch unless a test overrides it.
 - **`next/image` renders two different `src` shapes, and a test that assumes one fails on the
   other.** Next's default loader refuses to proxy an SVG without `dangerouslyAllowSVG`, so
@@ -888,7 +900,7 @@ required CI check (`browser` job). Things that are not guessable:
 - **The blue-ring sweep passes a control with no ring at all, and a computed `box-shadow` passes a
   ring nothing paints.** The sweep looks for Tailwind's default blue *inside* a painted shadow, so
   a control no `ring-*` class reaches reads `box-shadow: none` and passes — the `/briefing` tool
-  trace toggle shipped that way (mutant 09). And the ring colour in the computed value says nothing
+  trace toggle shipped that way (mutant 11). And the ring colour in the computed value says nothing
   about clipping: inside an `overflow-hidden` parent an outset ring reads correctly and paints
   nothing, and an inset one loses its corners unless the control carries the parent's radius.
   Prove a ring from pixels, focused against unfocused — `ringSamples` in `focus-rings.spec.ts`.

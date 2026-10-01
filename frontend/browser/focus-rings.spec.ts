@@ -8,6 +8,7 @@ import { focusByKeyboard, focusState, hasRule, tabThroughPage, TAILWIND_DEFAULT_
 import { waitForMotionToSettle } from './support/motion';
 import { waitForMain } from './support/page-content';
 import { expect, test } from './support/test';
+import { stopFrameLoops, waitForRealCar, watchThreeScenes } from './support/three';
 
 /**
  * Class 1: a Tailwind rule that was never generated. `focus-visible:ring-ink` is written only in
@@ -130,14 +131,20 @@ test('the tool trace toggle paints an ink ring on every side and corner of its p
 // Routes are listed by hand, not discovered — a new route joins the sweep only when it is added here.
 for (const route of ['/', '/teams', '/tyres', '/circuits', '/circuits/monza', '/credits', '/showcase', '/teardown']) {
   test(`no focusable control on ${route} paints Tailwind's default blue ring`, async ({ page }) => {
+    if (route === '/showcase') await watchThreeScenes(page);
     await page.goto(route);
     await waitForMain(page);
     if (route === '/circuits') await expect(page.getByRole('list', { name: /calendar$/ })).toBeVisible();
     if (route === '/circuits/monza') await expect(page.getByRole('table')).toBeVisible();
     // `/showcase`'s `<main>` is in the page shell, so it is up while the scene's chunk still loads.
-    // Its scene renders WebGL on the CPU without pause, so it gets `shadow-acne.spec.ts`'s allowance.
-    if (route === '/showcase') test.slow();
     if (route === '/showcase') await expect(page.getByRole('heading', { level: 1, name: /Car Showcase/ })).toBeVisible();
+    // Under `reduce` the scene is already idle (the sweep measured the same with the loop stopped,
+    // 41ms). With motion, every Tab waits for a CPU-rendered frame: 25.1s for this sweep. It reads
+    // rings, not pixels, so it never needs the loop.
+    if (route === '/showcase') {
+      await waitForRealCar(page);
+      await stopFrameLoops(page);
+    }
     if (route === '/teardown') await expect(page.getByText('Loading frames')).toBeHidden();
     const states = await tabThroughPage(page);
     expect(states.length, 'Tab reached no controls at all').toBeGreaterThan(0);

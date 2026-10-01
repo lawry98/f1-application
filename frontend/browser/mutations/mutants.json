@@ -56,7 +56,29 @@
     "mustFail": ["every sitemap route names an absolute og:image and twitter:image that resolve"]
   },
   {
-    "patch": "09-tool-trace-no-ring.patch",
+    "patch": "09-nav-scroll-into-view.patch",
+    "reintroduces": "the site nav and the /teams chip strip centring their current item with scrollIntoView(), which also moves Chromium's sequential focus navigation starting point to it, so the first Tab skips the wordmark (CLAUDE.md: 'Centre an item in a horizontal scroller by scrolling the scroller')",
+    "specs": ["browser/first-tab.spec.ts"],
+    "mustFail": [
+      "the first Tab on /tyres at 375px reaches the wordmark",
+      "the first Tab on /credits at 375px reaches the wordmark",
+      "the first Tab on /teams at 375px reaches the wordmark",
+      "the first Tab on /tyres at 1440px reaches the wordmark",
+      "the first Tab on /credits at 1440px reaches the wordmark",
+      "the first Tab on /teams at 1440px reaches the wordmark"
+    ]
+  },
+  {
+    "patch": "10-scene-ignores-reduced-motion.patch",
+    "reintroduces": "the 3D scenes' reduced-motion branch removed, as /showcase shipped: under prefers-reduced-motion the car keeps turning and the frame loop draws every frame on the CPU, even with nothing moving on purpose (CLAUDE.md: 'The 3D scenes' frameloop is state')",
+    "specs": ["browser/showcase-motion.spec.ts"],
+    "mustFail": [
+      "the /showcase car holds still",
+      "the idle /showcase scene draws no frames"
+    ]
+  },
+  {
+    "patch": "11-tool-trace-no-ring.patch",
     "reintroduces": "the /briefing tool trace toggle as it shipped: no ring utility at all inside an overflow-hidden panel, so keyboard focus shows only the browser outline. The blue-ring sweep passes it, because no ring class means no painted shadow to find blue in (lib/focus.ts: red is 2.96:1 on that panel's wash, so the fix is an inset focusRingInk on a button that carries its own radius)",
     "specs": ["browser/focus-rings.spec.ts"],
     "mustFail": ["the tool trace toggle paints an ink ring on every side and corner of its panel"]
