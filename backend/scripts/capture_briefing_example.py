@@ -54,7 +54,9 @@ HISTORY_BACKOFF_SECONDS = (5, 15, 30)
 # Statuses OpenF1 and FastF1 give a car with no classified place that the checks name as such.
 STATUSES = {"DNF", "DNS", "DSQ"}
 
-FORM_LINE = re.compile(r"^([A-Z]{3}) (.+?), .+?: (.+) \| (-?\d+(?:\.\d+)?) pts\b")
+FORM_LINE = re.compile(
+    r"^([A-Z]{3}) (.+?), .+?: (.+) \| (-?\d+(?:\.\d+)?) pts, (?:avg P(\d+(?:\.\d+)?)|[^,]+),"
+)
 
 
 class CaptureError(Exception):
@@ -97,6 +99,7 @@ def parse_form_line(line: str) -> dict[str, Any] | None:
         "name": match.group(2),
         "finishes": finishes,
         "points": float(match.group(4)),
+        "avg": float(match.group(5)) if match.group(5) else None,
     }
 
 
@@ -224,6 +227,7 @@ def build_evidence(
                 "year": top["year"],
                 "event": named["event"] if named else top["last_race"],
                 "location": named["location"] if named else top["last_race"],
+                "circuit": top["last_race"],
                 "depth": 10,
                 "positions": {r["driver_code"]: r["position"] for r in top["top_finishers"]},
             }
@@ -239,6 +243,7 @@ def build_evidence(
                 "year": circuit_results["year"],
                 "event": circuit_results["event"],
                 "location": race_info["location"],
+                "circuit": None,
                 "depth": 10,
                 "positions": {r["Abbreviation"]: _position(r) for r in circuit_results["results"]},
             }
@@ -253,6 +258,7 @@ def build_evidence(
                 "year": winner["year"],
                 "event": winner["event"],
                 "location": race_info["location"],
+                "circuit": None,
                 "depth": 1,
                 "positions": {winner["driver_code"]: 1},
             }
@@ -289,6 +295,7 @@ def build_evidence(
             drivers[parsed["code"]] = {
                 "results": [result for _, result in parsed["finishes"]],
                 "points": parsed["points"],
+                "avg": parsed["avg"],
             }
             meet(parsed["code"], parsed["name"])
         form = {
@@ -302,6 +309,7 @@ def build_evidence(
                     "year": gp["year"],
                     "event": gp["event"],
                     "location": gp["location"],
+                    "circuit": gp["short"],
                     "depth": None,
                     "positions": gp["positions"],
                 }
@@ -352,12 +360,17 @@ def build_evidence(
         else [row["name"] for row in season if row["date"] > race_day]
     )
 
+    winners_window = (data.get("get_circuit_winners") or {}).get("seasons")
     return {
         "track": track,
         "season": season_counts,
         "standings": standings,
         "drivers": list(roster.values()),
         "results": results,
+        # The seasons the circuit tools looked through, so a year among them reads as the
+        # data's own rather than as an unchecked figure.
+        "circuit_seasons": winners_window,
+        "searched_years": circuit_results.get("searched_years") or [],
         "form": form,
         "weather": weather,
         "other_venues": other_venues,
