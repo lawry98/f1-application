@@ -10,7 +10,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BriefingRequestError, getCircuitWinners, getStandings, streamBriefing } from '@/lib/api';
 import type { StreamEvent } from '@/types';
-import { type FixtureName, fetchInChunks, fixture } from './sse';
+import { ChunkFeed, type FixtureName, fetchInChunks, fixture, fixtureText } from './sse';
+import { cutAfter, cutBefore, cutInsideData, deltasIn } from './sse-cuts';
 import standings2026 from './fixtures/standings-2026.json';
 import monzaWinners from './fixtures/circuit-winners-it-1922.json';
 
@@ -140,14 +141,124 @@ describe('streamBriefing error handling', () => {
     // Forward compatibility: a backend that grows a new event must not break an old client.
     const body = new TextEncoder().encode(
       'event: something_new\ndata: {"a": 1}\n\n' +
-        'event: complete\ndata: {"message": "Briefing complete"}\n\n',
+        'event: briefing\ndata: {"content": "ok", "truncated": false}\n\n',
     );
     globalThis.fetch = fetchInChunks(body, 100_000) as typeof fetch;
 
     const events: StreamEvent[] = [];
     for await (const event of streamBriefing('Monaco')) events.push(event);
 
-    expect(events.map((e) => e.type)).toEqual(['complete']);
+    expect(events.map((e) => e.type)).toEqual(['briefing']);
+  });
+});
+
+/**
+ * A run is finished when `briefing` (authoritative; `complete` follows) or `error` arrives.
+ * Anything else that ends is an interruption, and the consumer is told so with an event rather
+ * than left to infer it from the generator returning — which is all a finished run does too.
+ *
+ * Every broken stream here is the real `clean.sse` cut at runtime (`sse-cuts.ts`).
+ */
+describe.each(CHUNK_SIZES)('streamBriefing on a cut stream (reader chunk size %i)', (chunkSize) => {
+  const clean = fixtureText('clean.sse');
+
+  async function collectCut(text: string): Promise<StreamEvent[]> {
+    globalThis.fetch = fetchInChunks(new TextEncoder().encode(text), chunkSize) as typeof fetch;
+    const events: StreamEvent[] = [];
+    for await (const event of streamBriefing('Monaco')) events.push(event);
+    return events;
+  }
+
+  it('ends with interrupted after the deltas that arrived, when cut after a delta', async () => {
+    const events = await collectCut(cutAfter(clean, 'briefing_delta', 2));
+
+    expect(events.map((e) => e.type).slice(-3)).toEqual([
+      'briefing_delta',
+      'briefing_delta',
+      'interrupted',
+    ]);
+    expect(contentOf(events, 'briefing_delta')).toEqual(deltasIn(clean).slice(0, 2));
+    expect(events.at(-1)).toEqual({ type: 'interrupted', data: { reason: 'ended' } });
+  });
+
+  it('ends with interrupted when cut before the first delta', async () => {
+    const events = await collectCut(cutBefore(clean, 'briefing_delta'));
+
+    expect(events.some((e) => e.type === 'briefing_delta')).toBe(false);
+    expect(events.at(-2)).toMatchObject({ type: 'status', data: { step: 'synthesizing' } });
+    expect(events.at(-1)?.type).toBe('interrupted');
+  });
+
+  it('drops a frame cut mid-data line rather than parsing half of it', async () => {
+    const events = await collectCut(cutInsideData(clean, 'briefing_delta', 2));
+
+    expect(contentOf(events, 'briefing_delta')).toEqual(deltasIn(clean).slice(0, 1));
+    expect(events.at(-1)?.type).toBe('interrupted');
+  });
+
+  it('counts a stream cut after briefing but before complete as finished', async () => {
+    const events = await collectCut(cutAfter(clean, 'briefing'));
+
+    expect(events.at(-1)?.type).toBe('briefing');
+    expect(events.some((e) => e.type === 'interrupted')).toBe(false);
+  });
+
+  it('counts a stream that ends on an error event as finished', async () => {
+    const events = await collectCut(
+      cutBefore(clean, 'briefing_delta') + 'event: error\r\ndata: {"message": "boom"}\r\n\r\n',
+    );
+
+    expect(events.at(-1)).toEqual({ type: 'error', data: { message: 'boom' } });
+  });
+});
+
+describe('streamBriefing when the reader rejects', () => {
+  const clean = fixtureText('clean.sse');
+
+  async function collectFrom(feed: ChunkFeed, signal?: AbortSignal): Promise<StreamEvent[]> {
+    globalThis.fetch = feed.fetch as typeof fetch;
+    const events: StreamEvent[] = [];
+    for await (const event of streamBriefing('Monaco', signal)) events.push(event);
+    return events;
+  }
+
+  it('ends with interrupted when the connection drops mid-stream', async () => {
+    const feed = new ChunkFeed();
+    feed.push(cutAfter(clean, 'briefing_delta', 1));
+    feed.fail(new TypeError('network error'));
+
+    const events = await collectFrom(feed);
+
+    expect(contentOf(events, 'briefing_delta')).toEqual(deltasIn(clean).slice(0, 1));
+    expect(events.at(-1)).toEqual({ type: 'interrupted', data: { reason: 'failed' } });
+  });
+
+  it('stays finished when the connection drops after the briefing landed', async () => {
+    const feed = new ChunkFeed();
+    feed.push(cutAfter(clean, 'briefing'));
+    feed.fail(new TypeError('network error'));
+
+    const events = await collectFrom(feed);
+
+    expect(events.at(-1)?.type).toBe('briefing');
+  });
+
+  it('rethrows our own abort instead of reporting an interruption', async () => {
+    const feed = new ChunkFeed();
+    feed.push(cutAfter(clean, 'briefing_delta', 1));
+    const controller = new AbortController();
+    const events: StreamEvent[] = [];
+    globalThis.fetch = feed.fetch as typeof fetch;
+
+    const run = (async () => {
+      for await (const event of streamBriefing('Monaco', controller.signal)) {
+        events.push(event);
+        if (event.type === 'briefing_delta') controller.abort();
+      }
+    })();
+
+    await expect(run).rejects.toMatchObject({ name: 'AbortError' });
+    expect(events.some((e) => e.type === 'interrupted')).toBe(false);
   });
 });
 

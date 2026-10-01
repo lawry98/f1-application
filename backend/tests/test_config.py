@@ -243,3 +243,34 @@ def test_validate_config_warns_for_a_placeholder_openweather_key_it_used_to_acce
         config.validate_config()
 
     assert "weather features will be disabled" in caplog.text
+
+
+# ── API docs ─────────────────────────────────────────────────────────────────
+
+
+def test_the_api_docs_are_off_by_default(reload_config, monkeypatch):
+    """Production is whatever runs with nothing set, so off is the default."""
+    monkeypatch.delenv("EXPOSE_API_DOCS", raising=False)
+
+    assert reload_config().EXPOSE_API_DOCS is False
+
+
+def test_expose_api_docs_turns_them_on_with_1(reload_config):
+    assert reload_config(EXPOSE_API_DOCS="1").EXPOSE_API_DOCS is True
+
+
+@pytest.mark.parametrize("raw", ["0", ""])
+def test_expose_api_docs_turns_them_off_quietly(reload_config, raw, caplog):
+    with caplog.at_level(logging.WARNING, logger="config"):
+        assert reload_config(EXPOSE_API_DOCS=raw).EXPOSE_API_DOCS is False
+
+    assert "EXPOSE_API_DOCS" not in caplog.text
+
+
+@pytest.mark.parametrize("raw", ["true", "yes", "2"])
+def test_an_invalid_expose_api_docs_warns_and_keeps_them_off(reload_config, raw, caplog):
+    """Fails closed: only 1 publishes the schema, so a typo can never expose it."""
+    with caplog.at_level(logging.WARNING, logger="config"):
+        assert reload_config(EXPOSE_API_DOCS=raw).EXPOSE_API_DOCS is False
+
+    assert "EXPOSE_API_DOCS" in caplog.text

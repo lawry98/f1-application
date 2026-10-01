@@ -5,7 +5,6 @@ import os
 
 import fastf1
 from dotenv import load_dotenv
-from fastapi import FastAPI
 
 load_dotenv()
 
@@ -15,7 +14,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-from config import FASTF1_CACHE_DIR, validate_config
+from config import EXPOSE_API_DOCS, FASTF1_CACHE_DIR, validate_config
 
 validate_config()
 
@@ -23,28 +22,9 @@ os.makedirs(FASTF1_CACHE_DIR, exist_ok=True)
 fastf1.Cache.enable_cache(FASTF1_CACHE_DIR)
 logger.info("FastF1 cache enabled at '%s'", FASTF1_CACHE_DIR)
 
-from api.cors import add_cors
-from api.routes import router
+from api.app import create_app
 
-app = FastAPI(
-    title="F1 Briefing Agent API",
-    description="AI-powered F1 race weekend briefing generator",
-    version="1.0.0",
-)
-
-add_cors(app)
-
-app.include_router(router)
-
-
-@app.get("/")
-async def root() -> dict:
-    """API root — links to docs and health check."""
-    return {
-        "message": "F1 Briefing Agent API",
-        "docs": "/docs",
-        "health": "/api/health",
-    }
+app = create_app(expose_docs=EXPOSE_API_DOCS)
 
 
 if __name__ == "__main__":

@@ -584,7 +584,7 @@ def synthesizer_node(state: AgentState, config: RunnableConfig | None = None) ->
         #
         # The test is prose, not chunk count: Gemini emits metadata-only chunks whose
         # `.text` is empty, and an empty briefing marked truncated would be dropped by the
-        # transport's `if briefing:` guard, ending the stream with nothing at all.
+        # transport's `if briefing:` guard and served as the generic error, not as prose.
         partial = "".join(chunks)
         if not partial:
             raise

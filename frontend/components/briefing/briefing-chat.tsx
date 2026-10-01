@@ -14,6 +14,7 @@ import monaco from '@/data/circuits/mc-1929.json';
 import { BriefingCard } from './briefing-card';
 import { BriefingCircuitBand } from './briefing-circuit-band';
 import { BriefingLoader } from './briefing-loader';
+import { InterruptedNote } from './interrupted-note';
 import { ToolTrace } from './tool-trace';
 import { RaceSelector } from './race-selector';
 
@@ -38,6 +39,7 @@ export function BriefingChat() {
     raceInfo,
     briefing,
     truncated,
+    interrupted,
     toolTrace,
     toolPlan,
     error,
@@ -48,6 +50,7 @@ export function BriefingChat() {
     retryInSeconds,
     setQuery,
     submit,
+    retry,
   } = useBriefing();
   // A refusal is waiting out its Retry-After: nothing that could start a briefing is live, and
   // the hook clears `notice` itself when the wait is over, which is what unlocks them again.
@@ -161,7 +164,8 @@ export function BriefingChat() {
         />
       )}
 
-      {loading && !briefing && (
+      {/* Not over an interrupted run: a retry keeps its note on screen until the server admits it. */}
+      {loading && !briefing && !interrupted && (
         <BriefingLoader
           race={race}
           step={step}
@@ -214,11 +218,31 @@ export function BriefingChat() {
       {briefing && (
         <>
           <BriefingCard race={race} briefing={briefing} truncated={truncated} loading={loading} />
-          <ToolTrace tools={toolTrace} complete={!loading} />
+          {interrupted && (
+            <InterruptedNote
+              hasProse
+              onRetry={() => void retry()}
+              loading={loading}
+              waitSeconds={waiting ? retryInSeconds : null}
+              className="mt-6"
+            />
+          )}
+          {/* An interrupted run never finished, so it never earns the finished trace's laurel. */}
+          <ToolTrace tools={toolTrace} complete={!loading && !interrupted} />
         </>
       )}
 
-      {!briefing && !loading && !error && !notice && (
+      {interrupted && !briefing && (
+        <InterruptedNote
+          hasProse={false}
+          onRetry={() => void retry()}
+          loading={loading}
+          waitSeconds={waiting ? retryInSeconds : null}
+          className="mb-8"
+        />
+      )}
+
+      {!briefing && !loading && !error && !notice && !interrupted && (
         <div className="relative py-20 text-center">
           {/*
             The car emoji's replacement. Grey, plain-variant Monaco behind the copy at 20%, which

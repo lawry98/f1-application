@@ -15,7 +15,7 @@ from langchain_core.tools import tool
 
 from tools.circuit_winners import circuit_record, events_at_circuit
 from tools.cutoff import parse_utc
-from tools.fastf1_helpers import load_race_session, race_start
+from tools.fastf1_helpers import classified_position, load_race_session, race_start
 from tools.openf1_client import (
     OPENF1_FIRST_YEAR,
     driver_index,
@@ -23,7 +23,7 @@ from tools.openf1_client import (
     session_results,
 )
 from tools.openf1_races import held_races, race_session_at
-from tools.openf1_shaping import derive_status, race_result_rows
+from tools.openf1_shaping import race_result_rows, result_position
 from tools.schedule_cache import get_schedule
 
 logger = logging.getLogger(__name__)
@@ -170,7 +170,8 @@ def get_recent_race_results(track_id: str | None, as_of: str) -> dict[str, Any]:
     try:
         session = load_race_session(year, label["round"])
 
-        top_10 = session.results.head(10)[
+        top_10 = session.results.head(10)
+        top_10 = top_10.assign(Position=top_10["ClassifiedPosition"].map(classified_position))[
             ["Position", "DriverNumber", "Abbreviation", "TeamName", "Points", "Status"]
         ]
 
@@ -182,10 +183,6 @@ def get_recent_race_results(track_id: str | None, as_of: str) -> dict[str, Any]:
 
 # A Grand Prix result is a classified place, or why there is none.
 Result = int | str
-
-# FastF1's ``ClassifiedPosition`` for a car with no classified place. ``Position`` cannot say: a
-# retired car keeps its place in the finishing order (17-20 in a real 2022 load), not 0.
-_FASTF1_UNCLASSIFIED = {"R": "DNF", "N": "DNF", "D": "DSQ", "E": "DSQ", "W": "DNS", "F": "DNS"}
 
 
 @dataclass(frozen=True)
@@ -204,17 +201,6 @@ class _GrandPrix:
     year: int
     label: str
     finishes: list[_Finish]
-
-
-def _openf1_result(row: dict[str, Any]) -> Result:
-    """A classified place wins over the ``dnf`` flag: a car that ran 90% of the distance is
-    classified though it retired (Bottas, Baku 2026: ``position: 16``, ``dnf: True``). An
-    unclassified one carries ``position: None``."""
-    status = derive_status(row)
-    if status in ("DSQ", "DNS"):
-        return status
-    position = row.get("position")
-    return position if isinstance(position, int) and position > 0 else "DNF"
 
 
 def _openf1_grands_prix(year: int, cutoff: datetime, wanted: int) -> tuple[list[_GrandPrix], int]:
@@ -250,17 +236,12 @@ def _openf1_grands_prix(year: int, cutoff: datetime, wanted: int) -> tuple[list[
                     code=identity["name_acronym"] or f"#{number}",
                     name=identity["full_name"],
                     team=identity["team_name"],
-                    result=_openf1_result(row),
+                    result=result_position(row),
                     points=float(row.get("points") or 0.0),
                 )
             )
         grands_prix.append(_GrandPrix(year, race["circuit_short_name"], finishes))
     return grands_prix, len(window)
-
-
-def _fastf1_result(row: pd.Series) -> Result:
-    classified = str(row["ClassifiedPosition"])
-    return int(classified) if classified.isdigit() else _FASTF1_UNCLASSIFIED.get(classified, "DNF")
 
 
 def _fastf1_grands_prix(year: int, cutoff: datetime, wanted: int) -> tuple[list[_GrandPrix], int]:
@@ -291,7 +272,7 @@ def _fastf1_grands_prix(year: int, cutoff: datetime, wanted: int) -> tuple[list[
                 code=row["Abbreviation"],
                 name=row["FullName"],
                 team=row["TeamName"],
-                result=_fastf1_result(row),
+                result=classified_position(row["ClassifiedPosition"]),
                 points=float(row["Points"]),
             )
             for _, row in results.iterrows()
