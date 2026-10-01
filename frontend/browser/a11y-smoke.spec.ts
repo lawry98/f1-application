@@ -6,6 +6,9 @@ import { expect, test } from './support/test';
 
 const WCAG_A_AA = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
 
+/** `/briefing` showing a saved example: a view of its own, with its label, card and trace. */
+const EXAMPLE_ROUTE = '/briefing?example=2026-06-monaco-grand-prix';
+
 /**
  * Known axe findings on `main` that are not this harness's to fix, each with its reason.
  * Keyed by route, value is axe rule ids. Empty is the goal; every entry is a debt with an owner.
@@ -26,6 +29,7 @@ const PASSES = [
     '/credits',
     '/showcase',
     '/teardown',
+    EXAMPLE_ROUTE,
   ].map((route) => ({
     route,
     width: 1440,
@@ -38,6 +42,7 @@ const PASSES = [
   { route: '/credits', width: 390 },
   { route: '/showcase', width: 390 },
   { route: '/teardown', width: 390 },
+  { route: EXAMPLE_ROUTE, width: 390 },
 ];
 
 for (const { route, width } of PASSES) {
@@ -48,6 +53,7 @@ for (const { route, width } of PASSES) {
     if (route === '/standings') await expect(page.getByRole('table').first()).toBeVisible();
     if (route === '/circuits') await expect(page.getByRole('list', { name: /calendar$/ })).toBeVisible();
     if (route === '/circuits/monza') await expect(page.getByRole('table')).toBeVisible();
+    if (route === EXAMPLE_ROUTE) await expect(page.getByText(/^Saved example · /)).toBeVisible();
     // `/showcase`'s `<main>` is in the page shell, so it is up while the scene's chunk still loads.
     // Its scene renders WebGL on the CPU without pause, so it gets `shadow-acne.spec.ts`'s allowance.
     if (route === '/showcase') test.slow();

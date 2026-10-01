@@ -7,6 +7,9 @@ import { expect, test } from './support/test';
  * Class 3: text painted in its own backdrop colour. `/teams` runs at 390 as well because the
  * collision is breakpoint-scoped: `sm:text-base` is harmless below 640px and invisible above.
  */
+/** `/briefing` showing a saved example. */
+const EXAMPLE_ROUTE = '/briefing?example=2026-06-monaco-grand-prix';
+
 const ROUTES = [
   { path: '/', width: 1440 },
   { path: '/teams', width: 390 },
@@ -19,6 +22,8 @@ const ROUTES = [
   { path: '/credits', width: 1440 },
   { path: '/showcase', width: 1440 },
   { path: '/teardown', width: 1440 },
+  { path: EXAMPLE_ROUTE, width: 390 },
+  { path: EXAMPLE_ROUTE, width: 1440 },
 ] as const;
 
 for (const { path, width } of ROUTES) {
@@ -29,6 +34,7 @@ for (const { path, width } of ROUTES) {
     if (path === '/standings') await expect(page.getByRole('table').first()).toBeVisible();
     if (path === '/circuits') await expect(page.getByRole('list', { name: /calendar$/ })).toBeVisible();
     if (path === '/circuits/monza') await expect(page.getByRole('table')).toBeVisible();
+    if (path === EXAMPLE_ROUTE) await expect(page.getByText(/^Saved example · /)).toBeVisible();
     // `/showcase`'s `<main>` is in the page shell, so it is up while the scene's chunk still loads.
     // Its scene renders WebGL on the CPU without pause, so it gets `shadow-acne.spec.ts`'s allowance.
     if (path === '/showcase') test.slow();
