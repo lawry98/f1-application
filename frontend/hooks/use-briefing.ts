@@ -1,9 +1,13 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { streamBriefing } from '@/lib/api';
-import { GENERIC_BRIEFING_ERROR } from '@/lib/constants';
+import { BriefingRequestError, streamBriefing } from '@/lib/api';
+import { isRejectionCode, type BriefingNotice } from '@/lib/briefing-notice';
+import { BRIEFING_DEADLINE_ERROR, GENERIC_BRIEFING_ERROR } from '@/lib/constants';
 import type { RaceInfo, ToolResult } from '@/types';
+
+/** How often a pending notice's countdown repaints. */
+const COUNTDOWN_TICK_MS = 1000;
 
 /**
  * How long deltas pile up in the buffer before the accumulated prose is painted.
@@ -43,6 +47,13 @@ export interface BriefingState {
   step: string;
   /** Epoch ms the current request began. Zero before the first submit. */
   startedAt: number;
+  /**
+   * The server refused to start a run — busy, or a limit spent — and says when to ask again.
+   * While it is set, `submit` does nothing; it clears itself when the wait runs out.
+   */
+  notice: BriefingNotice | null;
+  /** Whole seconds until `notice` clears; zero when there is none. */
+  retryInSeconds: number;
 }
 
 export interface UseBriefingReturn extends BriefingState {
@@ -63,6 +74,10 @@ export function useBriefing(): UseBriefingReturn {
   const [statusMessage, setStatusMessage] = useState('');
   const [step, setStep] = useState('');
   const [startedAt, setStartedAt] = useState(0);
+  const [notice, setNotice] = useState<BriefingNotice | null>(null);
+  // The clock the countdown is read against, held in state so render stays pure: it is set when
+  // a refusal lands and by the tick, never read off `Date.now()` during render.
+  const [now, setNow] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
   // The prose accumulated so far, including deltas not yet painted.
   const bufferRef = useRef('');
@@ -82,10 +97,24 @@ export function useBriefing(): UseBriefingReturn {
     };
   }, [cancelFlush]);
 
+  useEffect(() => {
+    if (notice === null) return;
+    const id = setInterval(() => {
+      const tickedAt = Date.now();
+      setNow(tickedAt);
+      // Clearing it is what re-enables the controls: nothing else has to watch the clock.
+      if (tickedAt >= notice.retryAt) setNotice(null);
+    }, COUNTDOWN_TICK_MS);
+    return () => clearInterval(id);
+  }, [notice]);
+
   const submit = useCallback(
     async (searchQuery?: string): Promise<void> => {
       const searchTerm = searchQuery ?? query;
       if (!searchTerm.trim()) return;
+      // The controls are locked while a wait is pending, but Enter in the field still calls
+      // this; asking again before `retryAt` only earns the same refusal.
+      if (notice !== null) return;
 
       abortRef.current?.abort();
       cancelFlush();
@@ -150,11 +179,31 @@ export function useBriefing(): UseBriefingReturn {
             setStatusMessage('');
             setStep('');
           } else if (event.type === 'error') {
-            setError(event.data.message);
+            // The deadline is keyed on its code, so the page owns its wording; every other
+            // error event's message is already written for a reader.
+            setError(event.data.code === 'deadline' ? BRIEFING_DEADLINE_ERROR : event.data.message);
           }
         }
       } catch (err) {
-        if (!controller.signal.aborted) {
+        if (controller.signal.aborted) {
+          // Superseded or unmounted: nothing to report.
+        } else if (
+          err instanceof BriefingRequestError &&
+          isRejectionCode(err.code) &&
+          err.retryAfterSeconds !== null
+        ) {
+          // Busy or a limit spent: not a failure, and not worth a console error. A refusal
+          // that names no wait cannot drive a countdown, so it falls through to the generic
+          // error below rather than locking the page for an unknown time.
+          const refusedAt = Date.now();
+          setNow(refusedAt);
+          setNotice({
+            code: err.code,
+            retryAt: refusedAt + err.retryAfterSeconds * 1000,
+            waitSeconds: err.retryAfterSeconds,
+            limit: err.limit,
+          });
+        } else {
           console.error('Briefing request failed:', err);
           setError(GENERIC_BRIEFING_ERROR);
         }
@@ -170,8 +219,11 @@ export function useBriefing(): UseBriefingReturn {
         }
       }
     },
-    [query, cancelFlush],
+    [query, notice, cancelFlush],
   );
+
+  const retryInSeconds =
+    notice === null ? 0 : Math.max(0, Math.ceil((notice.retryAt - now) / 1000));
 
   return {
     query,
@@ -186,6 +238,8 @@ export function useBriefing(): UseBriefingReturn {
     statusMessage,
     step,
     startedAt,
+    notice,
+    retryInSeconds,
     setQuery,
     submit,
   };

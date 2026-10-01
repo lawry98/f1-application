@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useEffect, useEffectEvent, useRef } from 'react';
 
 /** Team ids are kebab-case slugs. Pinned rather than trusted — this value reaches getElementById. */
 const TEAM_HASH = /^#team-([a-z0-9]+(?:-[a-z0-9]+)*)$/;
@@ -31,41 +31,40 @@ export function useTeamNavigation({
   ids: string[];
 }): void {
   const hydratedRef = useRef(false);
-  const idsRef = useRef(ids);
-  idsRef.current = ids;
-  // The caller's current value, readable from a callback that is not re-created per render.
-  const activeIdRef = useRef(activeId);
-  activeIdRef.current = activeId;
   // Set the moment a mount-time (or popstate) hash claims an id, cleared once `activeId`
   // has actually caught up to it. While set, the sync effect below must not run: `activeId`
   // is still the caller's stale/default value and writing it would clobber the very hash
   // that was just read.
   const pendingHashRef = useRef<string | null>(null);
 
-  const claimFromHash = useCallback(() => {
+  // An Effect Event, so it reads the caller's current `ids`, `activeId` and `claim` without being
+  // an effect dependency: the deep-link read runs once on mount, and the popstate listener is
+  // added once, however often the caller re-renders.
+  const claimFromHash = useEffectEvent(() => {
     const id = teamIdFromHash(window.location.hash);
-    if (id !== null && idsRef.current.includes(id)) {
+    if (id !== null && ids.includes(id)) {
       // Only arm the flag when there is genuinely something to wait for. Claiming the team
       // that is *already* active is a no-op in the caller — `setActiveId` bails, the sync
       // effect below never re-runs, and an unconditionally-armed flag would never be
       // cleared, permanently freezing the hash. That is not hypothetical: pressing Back
       // onto the team the user has already scrolled to takes exactly this path.
-      if (id !== activeIdRef.current) pendingHashRef.current = id;
+      if (id !== activeId) pendingHashRef.current = id;
       claim(id);
     }
-  }, [claim]);
+  });
 
   // Deep link. Runs after the first commit, so `scroll-margin-top` is in effect and the
   // browser's own fragment scroll has already landed correctly.
   useEffect(() => {
     claimFromHash();
     hydratedRef.current = true;
-  }, [claimFromHash]);
+  }, []);
 
   useEffect(() => {
-    window.addEventListener('popstate', claimFromHash);
-    return () => window.removeEventListener('popstate', claimFromHash);
-  }, [claimFromHash]);
+    const onPopState = () => claimFromHash();
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
 
   // Scroll-driven. Never before hydration, or the first paint would rewrite a deep link
   // to the default team before it had been read. Also held back while a claimed hash is

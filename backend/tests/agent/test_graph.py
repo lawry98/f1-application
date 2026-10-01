@@ -326,7 +326,7 @@ def test_planner_logs_which_llm_failure_caused_the_fallback(fake_llm, caplog):
             {"circuit_name": "Monaco Grand Prix", "location": "Monaco", "years_back": 3},
         ),
         ("search_f1_news", {"query": "Monaco Grand Prix 2025", "max_results": 5}),
-        ("get_race_weather", {"city": "Monaco", "country_code": "MC"}),
+        ("get_race_weather", {"location": "Monaco", "race_date": "2025-05-25"}),
         ("get_driver_form", {"driver_code": "VER", "year": 2024, "num_races": 5}),
         ("get_recent_race_results", {"event_name": "Monaco Grand Prix", "year": 2024}),
     ],
@@ -340,13 +340,6 @@ def test_each_tool_receives_arguments_derived_from_race_info(task_name, expected
     tool = make_tool(task_name, result={"ok": True})
     _invoke_tool(tool, task_name, make_race_info())
     assert tool.calls == [expected_args]
-
-
-def test_weather_falls_back_to_us_for_an_unmapped_country():
-    """COUNTRY_CODE_MAP has no entry for every country FastF1 can return."""
-    tool = make_tool("get_race_weather")
-    _invoke_tool(tool, "get_race_weather", make_race_info(country="Atlantis", location="Poseidon"))
-    assert tool.calls == [{"city": "Poseidon", "country_code": "US"}]
 
 
 def test_a_tool_returning_an_error_key_is_marked_unsuccessful():
@@ -872,6 +865,17 @@ def test_chunks_that_carried_no_prose_do_not_count_as_a_truncated_briefing(fake_
         run_synthesizer_streamed()
 
 
+def test_the_llm_client_is_built_with_a_timeout_and_a_bounded_attempt_count():
+    """The library defaults are ``timeout=None`` and six attempts, so an unanswered call held
+    a worker thread forever and a flaky one was paid for six times. ``max_retries`` is the
+    SDK's *attempt* count, first request included — see the note in config.py.
+    """
+    from config import LLM_MAX_ATTEMPTS, LLM_TIMEOUT_SECONDS
+
+    assert graph_module.llm.timeout == LLM_TIMEOUT_SECONDS
+    assert graph_module.llm.max_retries == LLM_MAX_ATTEMPTS
+
+
 def test_standings_is_a_registered_tool():
     from agent.graph import all_tools
 
@@ -971,3 +975,42 @@ def test_standings_does_not_retry_on_a_transport_failure():
     assert fake.calls == [{"year": 2026}]
     assert result["success"] is False
     assert result["data"]["error"] == "Failed to get championship standings: HTTP 429"
+
+
+def test_a_failed_tool_logs_its_error(caplog):
+    """A tool fails by returning ``{"error": ...}``, not by raising, so the
+    ``logger.exception`` in ``_invoke_tool`` never sees it. Standings failed in every
+    briefing measured on 2026-09-30 and nothing in the log said why.
+    """
+    error = "Failed to get championship standings: OpenF1 session_result returned HTTP 429"
+    fake = make_tool("get_championship_standings", {"error": error})
+
+    with caplog.at_level(logging.WARNING, logger="agent.graph"):
+        result = _invoke_tool(fake, "get_championship_standings", make_race_info())
+
+    assert result["success"] is False
+    assert "Tool 'get_championship_standings' failed" in caplog.text
+    assert error in caplog.text
+
+
+def test_a_recovered_pre_season_miss_is_not_logged_as_a_failure(caplog):
+    """The pre-season miss is an answer the historical-year retry handles; only the
+    final outcome is worth a warning.
+    """
+    from tools.standings_tools import SEASON_NOT_STARTED
+
+    class _PreSeasonTool:
+        name = "get_championship_standings"
+
+        def invoke(self, args: dict) -> dict:
+            if args["year"] == 2026:
+                return {"error": "No completed races yet", "reason": SEASON_NOT_STARTED}
+            return {"year": 2025, "drivers": []}
+
+    race_info = make_race_info(year=2026, historical_year=2025)
+
+    with caplog.at_level(logging.WARNING, logger="agent.graph"):
+        result = _invoke_tool(_PreSeasonTool(), "get_championship_standings", race_info)
+
+    assert result["success"] is True
+    assert caplog.text == ""

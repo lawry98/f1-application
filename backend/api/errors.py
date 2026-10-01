@@ -10,7 +10,7 @@ Putting them here would mean routing them through a boundary that cannot tell
 the difference, and the whole point of this module is that the boundary does not
 have to.
 
-Four constants rather than one because the copy has to match what failed:
+Five constants rather than one because the copy has to match what failed:
 "Something went wrong generating this briefing" is wrong for a season calendar
 fetch, where no briefing is being generated at all.
 
@@ -28,3 +28,7 @@ GENERIC_STANDINGS_ERROR: str = "Could not load the championship standings. Pleas
 GENERIC_CIRCUIT_WINNERS_ERROR: str = (
     "Could not load this circuit's recent winners. Please try again."
 )
+
+# Sent with `code: "deadline"` on the stream's error event, which is what the page keys its own
+# copy on; this text is for any client that reads only the message.
+BRIEFING_DEADLINE_ERROR: str = "This briefing took too long and was stopped. Please try again."

@@ -13,7 +13,7 @@ Select which tools to run to gather data for the briefing. Available tools:
 - get_championship_standings: Driver and constructor championship tables for the season
 - get_circuit_winners: Recent winners at this circuit
 - search_f1_news: Latest news about this race
-- get_race_weather: Weather forecast for race location
+- get_race_weather: Race-day weather forecast at the circuit (published only within 5 days of race day)
 - get_driver_form: Recent form for Max Verstappen
 - get_recent_race_results: Results from the most recent race at this circuit
 
@@ -39,7 +39,7 @@ Who's arriving in form? Who's struggling? Use recent results data to support ana
 What narratives should fans watch for? News, drama, technical developments.
 
 ## Weather Watch
-Forecast and strategic implications. How might weather affect tire strategy?
+The race-day forecast at the circuit and its strategic implications. How might it affect tire strategy? Forecast times are local to the circuit; discuss only the hours listed. If the weather data has forecast_available false, say in one sentence that race day is not in the forecast yet (give forecast_opens as the date it will be) or has already passed, and describe no conditions: never present current or typical weather as the race-day forecast.
 
 ## Predictions
 Your informed picks:

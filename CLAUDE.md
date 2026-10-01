@@ -63,6 +63,10 @@ part worth knowing:
 | `FASTF1_CACHE_DIR` | Defaults to `cache/` |
 | `EXECUTOR_MAX_WORKERS` | Defaults to `4` |
 | `STANDINGS_TTL_SECONDS` | Defaults to `300`; `0` disables current-season caching; invalid/negative warns and uses `300` |
+| `BRIEFING_PER_IP_PER_HOUR` | Defaults to `5`; invalid, negative or `0` warns and uses `5` |
+| `BRIEFING_DAILY_CAP` | Defaults to `100` per UTC day; `0` means no cap; invalid/negative warns and uses `100` |
+| `BRIEFING_MAX_CONCURRENT` | Defaults to `2`; invalid, negative or `0` warns and uses `2` |
+| `BRIEFING_DEADLINE_SECONDS` | Defaults to `90`; invalid, negative or `0` warns and uses `90` |
 | `CORS_ORIGINS` | Comma-separated; defaults to `http://localhost:3000,http://localhost:3001` |
 
 `LLM_MODEL` is a **hardcoded constant** in `config.py`, not an env var — changing the model
@@ -123,6 +127,26 @@ unprefixed utilities**, so its colour beats the `text-zinc-300` you wrote and th
 Use `sm:text-[1rem]` (or `text-[15px]`, as `landing-features.tsx` already does) for any
 breakpoint-scoped body size. Neither `pnpm test` nor a type check can see this; jsdom computes no
 CSS, and the class string reads correctly.
+
+**The cost guard's limits are per process — run exactly one worker.** `api/guard.py` keeps the
+per-IP hour, the UTC-day count and the concurrency slots in memory, so a second uvicorn worker
+doubles every limit and a restart resets the day. It keys on `request.client.host` and never
+parses `X-Forwarded-For` (anyone can send one): behind a proxy, run uvicorn with
+`--proxy-headers` and `FORWARDED_ALLOW_IPS` set to the proxy, or every visitor shares one
+allowance. Admission runs *before* `EventSourceResponse` exists, which is the only reason a
+refusal can be a 429/503 at all — once the stream opens its status is 200. Three things there are
+not guessable. **The slot is released by the response, not only the generator**: a client that
+hangs up before the first event (generator never started) or mid-send (generator parked at a
+`yield`) is not covered by the generator's `finally`, so `_ReleasingEventSourceResponse.__call__`
+closes the generator and runs the run's idempotent `finish()` itself; the ASGI-level disconnect
+tests only prove this because their `send` yields to the loop — with one that never yields, both
+passed with that teardown deleted. **Spend is stopped by a `RunBudget`, not by cancellation**:
+the nodes run on worker threads that no `CancelledError` reaches, so each node checks the
+budget's cancel event and deadline (`agent/budget.py`) before an LLM call, before submitting a
+tool and between streamed chunks; the route sets the event at the deadline and when the response
+ends. **`max_retries` on `ChatGoogleGenerativeAI` is an attempt count**, first request included,
+and its `timeout` bounds each read of a stream, not the stream — `config.py` carries the source
+citations and the deadline arithmetic, and a test re-does the sum.
 
 **The graph is not a flat pipeline.** It has four nodes, but `resolver` sits behind a
 conditional edge: when `state["current_step"] == "error"` it routes straight to `END`, skipping
@@ -291,6 +315,18 @@ are never cached; `season_not_started` is, under the TTL. Don't delete the route
 `clear_openf1_cache()` thinking the new cache replaces it — it still bounds the other
 OpenF1 tools' staleness, and the TTL miss path relies on it.
 
+**OpenF1 requests are paced process-wide, because standings is the one tool a 429 kills.** A
+briefing's fan-out bursts about a dozen requests at OpenF1's 3 req/s ceiling. Every other tool
+absorbed the 429s as a silent FastF1 fallback; standings has none, so briefings lost it (2 of 3
+cold fan-outs, measured 2026-09-30). `openf1_client._pace` spaces request starts
+`OPENF1_MIN_INTERVAL` apart, and a 429 asking for at most `OPENF1_MAX_RETRY_AFTER` is retried.
+Pacing is the fix and the retry only its backstop: retrying alone spent ~25 requests on ~12
+answers and tripped the separate 30 req/min limit, whose `Retry-After: 60` raises at once.
+`_next_start` lives outside `clear()` so the per-request clear above leaves the pacing intact.
+Tests run with `_pace` stubbed by an autouse fixture — a frozen `monotonic` under `freeze_time`
+is epoch-sized, so a real reserved start would stall the suite — and `openf1_retry_sleeps`
+records the waits instead of sleeping them.
+
 **`tests/conftest.py` blocks OpenF1 as well as FastF1, and the two differ on purpose.**
 `_block_fastf1_network` raises `AssertionError` because no production path should swallow
 one. `_block_openf1_network` raises `requests.ConnectionError` because the tools *do*
@@ -326,6 +362,20 @@ Abu Dhabi `Yas Island` for 2020–25 and Belgium `Spa` before 2022; without thos
 winners matcher misses them and the briefing band draws no outline for those years. Aliases live in
 `LOCATION_ALIASES` in `scripts/fetch-circuit-geometry.mjs` and nowhere else.
 `tests/circuit-catalog.test.ts` pins them.
+
+**Weather is forecast at the circuit's coordinates for race day, never at a geocoded name for
+"now".** `get_race_weather(location, race_date)` resolves `location` with `circuit_id_for_location`
+to a centre in `frontend/data/circuits/coordinates.json` (written only by
+`scripts/fetch-circuit-geometry.mjs`) and keeps the slots whose *circuit-local* date is race day,
+using the payload's `city.timezone` — slots sit on UTC's 3-hour marks, so at Sepang they read 02:00,
+05:00 … 23:00. The version this replaced geocoded `"{Location},{country code}"` and returned the
+next 24 hours whatever the race date: measured 2026-09-30, it missed Kuala Lumpur (FastF1 files it
+under Bahrain), Sakhir, Yas Marina and Spa-Francorchamps outright, and its `"US"` default for an
+unmapped country made Silverstone North Carolina. A location the index lacks is an error, never a
+geocode. The free endpoint reaches about five days, so a race day outside it returns
+`forecast_available: False` with a `reason` and **no `error` key** — it is an answer, like
+`SEASON_NOT_STARTED`, and Weather Watch in `SYNTHESIZER_PROMPT` steers on those keys, which
+`test_the_synthesizer_prompt_steers_on_keys_the_tool_really_emits` pins.
 
 **A round with no outline renders a card on `/circuits`, unlike the band.** The band hides a missing
 outline because a briefing without it is still complete; in the grid the card *is* the content, so
@@ -662,9 +712,12 @@ Vitest with jsdom, in `frontend/tests/`. A few things about them are not guessab
   walked only the directories in `next.config.js`'s `eslint.dirs` — `tests/`, `browser/` and
   `scripts/` were linted only because someone had added them, and a directory left off passed
   while never being looked at. `eslint.config.mjs` (flat config) now takes the whole package, so
-  a new top-level directory is linted by default; only generated output is ignored. Four React
-  Compiler rules that eslint-config-next 16 switched on are off there — the comment says which
-  and why.
+  a new top-level directory is linted by default; only generated output is ignored. Every React
+  Compiler rule eslint-config-next 16 switched on is enforced, with two scoped exceptions and the
+  reason beside each: `immutability` for `components/3d/fit-camera.tsx` (R3F's three.js objects
+  are meant to be mutated) and `purity` for vendored `components/ui/`. Fix a new violation in the
+  code — `useSyncExternalStore`, `useEffectEvent`, a `key`, state derived during render — before
+  reaching for another override.
 - **The `.sse` fixtures are real captured bytes, not hand-written.** `frontend/tests/fixtures/`
   holds output from the actual FastAPI route; regenerate with
   `cd backend && python scripts/dump_sse_fixtures.py`, which imports its step fixtures from

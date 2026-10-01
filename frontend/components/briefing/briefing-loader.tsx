@@ -101,6 +101,47 @@ function useNow(): number {
   return now;
 }
 
+interface ActiveStageStatusProps {
+  /** The stage this row names — the tool count belongs to `gathering` alone. */
+  stageStep: string;
+  now: number;
+  /** Tools returned so far, and how many the plan expects (0 when there is no plan). */
+  returned: number;
+  planned: number;
+}
+
+/**
+ * The active row's status runs: the tool count while gathering, and the stage clock.
+ *
+ * **The stage clock is this component's mount time, and the parent's `key` is what restarts it.**
+ * The key is the live `step` *and* `startedAt`: a resubmit can land while `step` still holds the
+ * previous run's value, and without `startedAt` the new run opens showing the abandoned run's stage
+ * clock. Remounting is the reset, so there is no effect to re-seed the clock after the fact.
+ *
+ * A fragment of bare `<span>`s, so the reserved status line it renders into is the same box, with
+ * the same children, as when these runs were written inline.
+ */
+function ActiveStageStatus({ stageStep, now, returned, planned }: ActiveStageStatusProps) {
+  const [stageStartedAt] = useState(() => Date.now());
+  const stageElapsed = now - stageStartedAt;
+  const showHint = stageElapsed >= STAGE_HINT_AFTER_MS;
+  const gathering = stageStep === 'gathering';
+
+  return (
+    <>
+      {gathering && (
+        <span>
+          {planned > 0
+            ? `${returned} of ${planned} tools returned`
+            : `${returned} ${returned === 1 ? 'tool' : 'tools'} returned`}
+        </span>
+      )}
+      {gathering && showHint && <span> · </span>}
+      {showHint && <span>{Math.floor(stageElapsed / 1000)}s in this stage</span>}
+    </>
+  );
+}
+
 export function BriefingLoader({
   race,
   step,
@@ -111,16 +152,6 @@ export function BriefingLoader({
 }: BriefingLoaderProps) {
   const now = useNow();
   const elapsed = now - startedAt;
-
-  const [stageStartedAt, setStageStartedAt] = useState(() => Date.now());
-  useEffect(() => {
-    setStageStartedAt(Date.now());
-    // `startedAt` as well as `step`: a resubmit can land while `step` still holds the
-    // previous run's value, and without it the new run opens showing the abandoned run's
-    // stage clock.
-  }, [step, startedAt]);
-
-  const stageElapsed = now - stageStartedAt;
 
   const activeIndex = Math.max(
     0,
@@ -265,18 +296,14 @@ export function BriefingLoader({
                     topo texture lightens the backdrop to rgb(33, 33, 36).
                   */}
                   <p className="mt-0.5 h-4 truncate text-[11px] leading-4 tabular-nums text-zinc-400">
-                    {state === 'active' && stageStep === 'gathering' && (
-                      <span>
-                        {toolPlan.length > 0
-                          ? `${returned} of ${toolPlan.length} tools returned`
-                          : `${returned} ${returned === 1 ? 'tool' : 'tools'} returned`}
-                      </span>
-                    )}
-                    {state === 'active' &&
-                      stageStep === 'gathering' &&
-                      stageElapsed >= STAGE_HINT_AFTER_MS && <span> · </span>}
-                    {state === 'active' && stageElapsed >= STAGE_HINT_AFTER_MS && (
-                      <span>{Math.floor(stageElapsed / 1000)}s in this stage</span>
+                    {state === 'active' && (
+                      <ActiveStageStatus
+                        key={`${step}:${startedAt}`}
+                        stageStep={stageStep}
+                        now={now}
+                        returned={returned}
+                        planned={toolPlan.length}
+                      />
                     )}
                   </p>
                 </div>

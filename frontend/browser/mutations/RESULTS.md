@@ -241,3 +241,34 @@ Run: `pnpm test:browser:mutants 07`
 Ratios of 1.98 to 4.62 against a limit of 1.5; the clean tree reads 1.01 to 1.08. Before this
 run the clean tree passed the spec `20 passed` under `--repeat-each=10 --retries=0`. The runner
 rebuilt the clean tree afterwards; `git status --porcelain` was empty.
+
+## 05, 07
+
+Date: 2026-09-30
+Commit: `a0c73bb8668b918c33e2474ee1bef5bad72336b7`
+Run: `pnpm test:browser:mutants 05 07` (after the react-hooks 7 compiler rules were enforced;
+patch 05 regenerated against the new `use-scroll-spy.ts`, which no longer has `idsRef`)
+
+```
+┌─────────┬─────────────────────────────────────────────┬──────────┬─────────────┐
+│ (index) │ patch                                       │ outcome  │ detail      │
+├─────────┼─────────────────────────────────────────────┼──────────┼─────────────┤
+│ 0       │ '05-scroll-spy-intersection-observer.patch' │ 'killed' │ 'failed: 1' │
+│ 1       │ '07-car-shadow-no-normal-bias.patch'        │ 'killed' │ 'failed: 2' │
+└─────────┴─────────────────────────────────────────────┴──────────┴─────────────┘
+```
+
+Both `killed`, after the clean-tree baseline passed (`3 passed`). Mutant 05 failed its one title
+with `5 of 31 sampled positions named the wrong section` — the same count as its first run, so
+the regenerated patch reintroduces the same defect. Mutant 07 failed both titles at both poses:
+
+```
+/showcase  at 0.6 rad the car is 5.97 noisy with its own shadows, 2.19 without
+/showcase  at 2.4 rad the car is 3.76 noisy with its own shadows, 1.88 without
+/teams     at 0.6 rad the car is 12.79 noisy with its own shadows, 2.75 without
+/teams     at 2.4 rad the car is 8.13 noisy with its own shadows, 2.45 without
+```
+
+Ratios of 2.00 to 4.65 against a limit of 1.5. The full browser suite passed `58 passed` on the
+same commit first. The runner rebuilt the clean tree afterwards; `git status --porcelain` was
+empty.

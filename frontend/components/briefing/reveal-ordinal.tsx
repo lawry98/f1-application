@@ -95,15 +95,53 @@ type SlotResolver = (startOffset: number | undefined) => RevealSlot;
 
 const RevealOrdinalContext = React.createContext<SlotResolver | null>(null);
 
+/**
+ * Every slot handed out for one briefing. Append-only while the source grows; replaced, never
+ * cleared, when the source is replaced.
+ */
 interface Registry {
   /** Source start offset → the slot that offset was first assigned. */
   slots: Map<number, RevealSlot>;
   /** The next ordinal to hand out. */
   nextOrdinal: number;
-  /** Position within the *current* render pass's wave; reset by the provider's render body. */
-  waveIndex: number;
-  /** The source the registry was last reconciled against, for the reset check. */
-  source: string;
+}
+
+function createRegistry(): Registry {
+  return { slots: new Map(), nextOrdinal: 0 };
+}
+
+/**
+ * A resolver for **one render pass** over `registry`.
+ *
+ * A wave is "the offsets first seen in this render pass", and the resolver's own `waveIndex` is
+ * that wave's counter: the provider builds a fresh resolver every time it renders, and it renders
+ * before its children, so a new resolver is exactly the boundary between passes.
+ *
+ * It mutates the registry during the children's render. That is not React-pure, and under a
+ * *discarded* concurrent render pass it would burn ordinals — but the failure mode is a block
+ * revealing one throttle group later than it strictly needed to, whereas the alternative
+ * (assigning ordinals in an effect) is wrong on every single paint. Slots are memoised per offset,
+ * so the assignment is idempotent: a repeat render, including StrictMode's double invoke, returns
+ * the slot already stored rather than allocating a second one.
+ */
+function createResolver(registry: Registry): SlotResolver {
+  let waveIndex = 0;
+
+  return (startOffset) => {
+    if (startOffset === undefined) return UNPLACED;
+
+    const known = registry.slots.get(startOffset);
+    if (known) return known;
+
+    const slot: RevealSlot = {
+      ordinal: registry.nextOrdinal,
+      delaySeconds: revealDelaySeconds(waveIndex),
+    };
+    registry.nextOrdinal += 1;
+    waveIndex += 1;
+    registry.slots.set(startOffset, slot);
+    return slot;
+  };
 }
 
 export interface RevealOrdinalProviderProps {
@@ -117,21 +155,17 @@ export interface RevealOrdinalProviderProps {
 }
 
 export function RevealOrdinalProvider({ source, children }: RevealOrdinalProviderProps) {
-  const registryRef = React.useRef<Registry>({
-    slots: new Map(),
-    nextOrdinal: 0,
-    waveIndex: 0,
-    source: '',
-  });
-  const registry = registryRef.current;
+  const [history, setHistory] = React.useState(() => ({ source, registry: createRegistry() }));
 
   /*
-   * Reset, **in render and against a ref — not in an effect.**
+   * Reset **during render — not in an effect** — by storing the previous source in state and
+   * swapping in a fresh registry when the new one does not extend it.
    *
    * An effect runs after the children have committed, which is one whole paint too late: the
    * renderers below read their ordinals during *this* pass, so an effect-based reset would hand
    * the first block of a brand-new briefing the ordinal the last block of the previous one had,
-   * and only correct itself on the following flush.
+   * and only correct itself on the following flush. A `setState` during render does not have that
+   * lag: React re-runs this component with the new state before it renders a single child.
    *
    * The condition is deliberately "not a prefix" rather than "not equal". Prefix growth *is* the
    * streaming case — it happens 12 times a second — and resetting on it would restart every bar on
@@ -141,44 +175,22 @@ export function RevealOrdinalProvider({ source, children }: RevealOrdinalProvide
    * different events (a new race, and a terminal `briefing` event that rewrites the text) and a
    * reader should not have to derive one from the other.
    */
-  if (source.length < registry.source.length || !source.startsWith(registry.source)) {
-    registry.slots.clear();
-    registry.nextOrdinal = 0;
+  let { registry } = history;
+  if (source !== history.source) {
+    if (source.length < history.source.length || !source.startsWith(history.source)) {
+      registry = createRegistry();
+    }
+    setHistory({ source, registry });
   }
-  registry.source = source;
-  // A wave is "the offsets first seen in this render pass". The provider renders before its
-  // children, so its render body is the only place that can mark the boundary between passes.
-  registry.waveIndex = 0;
 
   /*
-   * Stable for the provider's whole life, which matters twice over: it is the context value, so an
-   * unstable one would re-render every renderer on every paint for no reason, and the renderers
-   * themselves are module constants in `briefing-card.tsx` precisely so React never remounts a
-   * block mid-stream.
-   *
-   * It mutates the ref during the children's render. That is not React-pure, and under a
-   * *discarded* concurrent render pass it would burn ordinals — but the failure mode is a block
-   * revealing one throttle group later than it strictly needed to, whereas the alternative
-   * (assigning ordinals in an effect) is wrong on every single paint. Slots are memoised per
-   * offset, so the assignment is idempotent: a repeat render, including React 18 StrictMode's
-   * double invoke, returns the slot already stored rather than allocating a second one.
+   * A new context value on every render, and that costs nothing: every consumer is a block renderer
+   * inside the `ReactMarkdown` element this provider's parent rebuilt in the same pass, so each one
+   * re-renders with it regardless. What must stay stable is the renderers' component *types* —
+   * module constants in `briefing-card.tsx`, so React never remounts a block mid-stream — and the
+   * registry, which lives in state for the provider's whole life, replaced only on a reset.
    */
-  const resolve = React.useCallback<SlotResolver>((startOffset) => {
-    if (startOffset === undefined) return UNPLACED;
-
-    const reg = registryRef.current;
-    const known = reg.slots.get(startOffset);
-    if (known) return known;
-
-    const slot: RevealSlot = {
-      ordinal: reg.nextOrdinal,
-      delaySeconds: revealDelaySeconds(reg.waveIndex),
-    };
-    reg.nextOrdinal += 1;
-    reg.waveIndex += 1;
-    reg.slots.set(startOffset, slot);
-    return slot;
-  }, []);
+  const resolve = createResolver(registry);
 
   return <RevealOrdinalContext.Provider value={resolve}>{children}</RevealOrdinalContext.Provider>;
 }
