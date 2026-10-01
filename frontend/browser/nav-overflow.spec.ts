@@ -2,10 +2,12 @@ import AxeBuilder from '@axe-core/playwright';
 import type { Locator, Page } from '@playwright/test';
 import { PNG } from 'pngjs';
 
-import { AA_SMALL_TEXT, expectContrast } from './support/contrast';
+import { composite, formatCssColor, parseCssColor, wcagRatio } from './support/color';
+import { AA_NON_TEXT, AA_SMALL_TEXT, expectContrast } from './support/contrast';
 import { focusByKeyboard, focusState } from './support/css';
 import { waitForMotionToSettle } from './support/motion';
 import { waitForMain } from './support/page-content';
+import { medianPixel } from './support/pixels';
 import { expect, test } from './support/test';
 
 /**
@@ -81,6 +83,37 @@ async function ringSidesPainted(page: Page, ring: Box): Promise<Record<'left' | 
   };
 }
 
+/**
+ * Whether a fade's chevron is on screen, and its contrast against what is behind it.
+ *
+ * Read as a difference: the chevron's box is screenshotted as painted, then again with only the
+ * chevron hidden, and the pixels that change are the chevron's. A link glyph that happens to sit
+ * under the fade cannot pass for it, and an opacity-0 fade changes nothing. The second shot is
+ * also the backdrop the stroke is judged against.
+ */
+async function chevronPaint(page: Page, edge: 'start' | 'end') {
+  const chevron = fade(page, edge).locator('svg');
+  const box = await chevron.boundingBox();
+  if (!box) throw new Error(`the ${edge} chevron is not laid out`);
+  const clip = { x: Math.floor(box.x), y: Math.floor(box.y), width: Math.ceil(box.width) + 1, height: Math.ceil(box.height) + 1 };
+  const settle = () => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+
+  const shown = PNG.sync.read(await page.screenshot({ clip }));
+  await chevron.evaluate((el) => el.setAttribute('visibility', 'hidden'));
+  await settle();
+  const hidden = PNG.sync.read(await page.screenshot({ clip }));
+  await chevron.evaluate((el) => el.removeAttribute('visibility'));
+
+  let changed = 0;
+  for (let i = 0; i < shown.data.length; i += 4) {
+    const delta = Math.max(...[0, 1, 2].map((c) => Math.abs((shown.data[i + c] ?? 0) - (hidden.data[i + c] ?? 0))));
+    if (delta > 40) changed++;
+  }
+  const backdrop = medianPixel(hidden);
+  const stroke = composite(parseCssColor(await chevron.evaluate((el) => getComputedStyle(el).color)), backdrop);
+  return { changed, ratio: wcagRatio(stroke, backdrop), stroke: formatCssColor(stroke), backdrop: formatCssColor(backdrop) };
+}
+
 test.describe('on a 375 × 812 phone', () => {
   test.use({ viewport: { width: 375, height: 812 } });
 
@@ -95,6 +128,34 @@ test.describe('on a 375 × 812 phone', () => {
     expect(scrollWidth, 'at 375 the row should overflow, or this test is about nothing').toBeGreaterThan(clientWidth);
     await expect.poll(() => opacityOf(fade(page, 'end')), { message: 'the end fade on load' }).toBe(1);
     expect(await opacityOf(fade(page, 'start')), 'the start fade on load').toBe(0);
+  });
+
+  /*
+   * At 375 the row's first overflow falls in the gap after "Car Anatomy": only 6.5 px of "Tyres"
+   * reached the old 24 px end fade, so on load it painted over empty header and hinted at nothing.
+   * The chevron is drawn in the fade itself, so it is there whatever the row is cut at.
+   */
+  test('on load the end chevron is painted and clears the non-text bar', async ({ page }) => {
+    await page.goto('/');
+    await waitForMain(page);
+    await expect.poll(() => opacityOf(fade(page, 'end'))).toBe(1);
+
+    const end = await chevronPaint(page, 'end');
+    expect(end.changed, 'pixels the end chevron paints').toBeGreaterThan(5);
+    expect(end.ratio, `end chevron ${end.stroke} on ${end.backdrop}`).toBeGreaterThanOrEqual(AA_NON_TEXT);
+  });
+
+  test('scrolled to the end, the start chevron is painted and clears the non-text bar', async ({ page }) => {
+    await page.goto('/');
+    await waitForMain(page);
+    await row(page).evaluate((el) => {
+      el.scrollLeft = el.scrollWidth;
+    });
+    await expect.poll(() => opacityOf(fade(page, 'start'))).toBe(1);
+
+    const start = await chevronPaint(page, 'start');
+    expect(start.changed, 'pixels the start chevron paints').toBeGreaterThan(5);
+    expect(start.ratio, `start chevron ${start.stroke} on ${start.backdrop}`).toBeGreaterThanOrEqual(AA_NON_TEXT);
   });
 
   test('scrolled to the end, the start fade shows and the end fade goes', async ({ page }) => {

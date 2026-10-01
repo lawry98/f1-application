@@ -3,13 +3,22 @@
 import { useEffect, useRef, type FocusEvent } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useScrollEdges } from '@/hooks/use-scroll-edges';
 import { focusRing, focusRingOffsetBase } from '@/lib/focus';
 import { cn } from '@/lib/utils';
 import { NAV_LINKS } from './links';
 
-/** Each overflow fade's width. Also the clearance the focus handler keeps a ring out of it by. */
-const FADE_PX = 24;
+/**
+ * Each overflow fade's width. Also the clearance the focus handler keeps a ring out of it by.
+ *
+ * 32, with the outer half solid, because the fade carries a 16 px chevron and the chevron needs a
+ * backing that no glyph shows through. Compared at 360, 375, 390 and 430: a 24 px fade, solid or
+ * graded, let the chevron collide with whatever half-letter sat under it ("‹s", "Tyres›"). The
+ * cost is focus clearance — a Tabbed-to link now needs a row at least 186 px wide to clear both
+ * fades at once, which every phone from 355 px up has.
+ */
+const FADE_PX = 32;
 /** How far a focus ring paints outside its link: `ring-offset-2` plus `ring-2` (`lib/focus.ts`). */
 const RING_REACH_PX = 4;
 /** A Tabbed-to link's distance from a row edge: past the fade and its ring, plus 2 px of air. */
@@ -133,6 +142,12 @@ export function LandingNav() {
          * is nothing for reduced motion to take away, and there is no nudge: a row that moves by
          * itself on arrival is motion the reader did not ask for. `keepFocusedLinkClear` keeps a
          * Tabbed-to ring out from under them.
+         *
+         * Each fade carries a chevron, because a fade alone is a hint only when a link runs under
+         * it. At 365–378 and 430–443 px the row's first overflow falls in the gap between two
+         * links: measured at 375, 6.5 px of "Tyres" reached a 24 px fade, which on load painted
+         * over empty header and said nothing at all. The chevron is static, and inside the fade so
+         * it shows and hides with it.
          */}
         <div className="relative min-w-0">
           <ul
@@ -169,25 +184,30 @@ export function LandingNav() {
           </ul>
           {/* Painted over the row's edges in the header's own colour, so a link running under one
             dissolves into the bar. Out of the accessibility tree, and out of the pointer's way so
-            a tap on a half-hidden link still reaches it. */}
+            a tap on a half-hidden link still reaches it. The chevron sits on the solid outer half,
+            in the resting links' `zinc-400`. */}
           <span
             aria-hidden="true"
             data-testid="nav-fade-start"
             className={cn(
-              'pointer-events-none absolute inset-y-0 left-0 bg-gradient-to-r from-zinc-950 to-transparent',
+              'pointer-events-none absolute inset-y-0 left-0 flex items-center justify-start bg-gradient-to-r from-zinc-950 from-50% to-transparent text-zinc-400',
               edges.start ? 'opacity-100' : 'opacity-0',
             )}
             style={{ width: FADE_PX }}
-          />
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </span>
           <span
             aria-hidden="true"
             data-testid="nav-fade-end"
             className={cn(
-              'pointer-events-none absolute inset-y-0 right-0 bg-gradient-to-l from-zinc-950 to-transparent',
+              'pointer-events-none absolute inset-y-0 right-0 flex items-center justify-end bg-gradient-to-l from-zinc-950 from-50% to-transparent text-zinc-400',
               edges.end ? 'opacity-100' : 'opacity-0',
             )}
             style={{ width: FADE_PX }}
-          />
+          >
+            <ChevronRight className="h-4 w-4" />
+          </span>
         </div>
       </nav>
     </header>

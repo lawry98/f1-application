@@ -264,7 +264,7 @@ const ROW_PADDING = 6;
 /** How far a focus ring paints outside its link: `ring-offset-2` plus `ring-2` (lib/focus.ts). */
 const RING_REACH = 4;
 /** The width of each fade. Copied, not imported, so the test states the contract. */
-const FADE_WIDTH = 24;
+const FADE_WIDTH = 32;
 
 const CONTENT_WIDTH =
   ROW_PADDING * 2 +
@@ -516,6 +516,22 @@ describe('the overflow fades', () => {
     vi.unstubAllGlobals();
   });
 
+  /*
+   * A fade alone is not always a hint. At 365–378 and 430–443 px the row's first overflow falls in
+   * the gap between two links, so at the start nothing reaches the end fade and it paints over
+   * empty header: measured at 375, 6.5 px of "Tyres" sat under it. The chevron is drawn in the
+   * fade itself, so it says "more this way" whatever the row happens to be cut at.
+   */
+  it('draws a chevron in each fade, pointing the way the hidden links lie', () => {
+    renderNav('/');
+
+    expect(fade('end').querySelector('svg.lucide-chevron-right')).not.toBeNull();
+    expect(fade('start').querySelector('svg.lucide-chevron-left')).not.toBeNull();
+    // Inside the fade, so it shows and hides with it — one state, not two to keep in step.
+    expect(fade('end').querySelectorAll('svg')).toHaveLength(1);
+    expect(fade('start').querySelectorAll('svg')).toHaveLength(1);
+  });
+
   it('keeps the fades out of the accessibility tree and out of the pointer’s way', () => {
     renderNav('/');
 
@@ -529,8 +545,10 @@ describe('the overflow fades', () => {
     renderNav('/');
 
     for (const edge of ['start', 'end'] as const) {
-      const animated = Array.from(fade(edge).classList).filter((c) =>
-        /^(transition|animate|duration)/.test(c),
+      // The fade and everything in it, chevron included: a chevron that nudged would be the
+      // animated hint this row deliberately does without.
+      const animated = [fade(edge), ...Array.from(fade(edge).querySelectorAll('*'))].flatMap((el) =>
+        Array.from(el.classList).filter((c) => /^(transition|animate|duration)/.test(c)),
       );
       expect(animated).toEqual([]);
     }
