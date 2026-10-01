@@ -687,8 +687,8 @@ Chromium's sequential focus navigation starting point to the item. The site nav 
 chip strip centred their current item that way on mount, so on every route with a nav link the
 first Tab skipped the wordmark and landed on whatever followed the current item (`/tyres` →
 "Circuits", `/teams` at 375 → "FerrariP2"). jsdom has no starting point, so only
-`browser/first-tab.spec.ts` can see it; a spec that Tabs from page load waits for hydration first,
-since the defect lives in a mount effect. A deliberate jump to content (a section, a stage) is the
+`browser/first-tab.spec.ts` can see it, and mutant 09 proves it does; a spec that Tabs from page
+load waits for hydration first, since the defect lives in a mount effect. A deliberate jump to content (a section, a stage) is the
 other case: there, moving the starting point with the scroll is what Tab should do next.
 
 **Team colours are brand assets and must go through `lib/team-utils.ts` before carrying text.**

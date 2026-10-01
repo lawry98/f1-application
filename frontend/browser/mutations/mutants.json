@@ -54,5 +54,18 @@
     "reintroduces": "/tyres' metadata as the plain object it shipped as: its own openGraph replaces the inherited one whole, so the root opengraph-image is dropped from that one route and its link preview has no image (CLAUDE.md: 'A segment's openGraph drops the inherited share image')",
     "specs": ["browser/site-identity.spec.ts"],
     "mustFail": ["every sitemap route names an absolute og:image and twitter:image that resolve"]
+  },
+  {
+    "patch": "09-nav-scroll-into-view.patch",
+    "reintroduces": "the site nav and the /teams chip strip centring their current item with scrollIntoView(), which also moves Chromium's sequential focus navigation starting point to it, so the first Tab skips the wordmark (CLAUDE.md: 'Centre an item in a horizontal scroller by scrolling the scroller')",
+    "specs": ["browser/first-tab.spec.ts"],
+    "mustFail": [
+      "the first Tab on /tyres at 375px reaches the wordmark",
+      "the first Tab on /credits at 375px reaches the wordmark",
+      "the first Tab on /teams at 375px reaches the wordmark",
+      "the first Tab on /tyres at 1440px reaches the wordmark",
+      "the first Tab on /credits at 1440px reaches the wordmark",
+      "the first Tab on /teams at 1440px reaches the wordmark"
+    ]
   }
 ]
