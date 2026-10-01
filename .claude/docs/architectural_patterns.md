@@ -24,7 +24,7 @@ All agent state flows through a single `AgentState` TypedDict (`backend/agent/st
 - `tasks` - List of tool names to execute (strings matching tool function names)
 - `tool_results` - List of `ToolResult` TypedDicts tracking each tool's outcome
 - `briefing` - Final markdown briefing string or `None`
-- `briefing_truncated` - Whether `briefing` is the whole synthesis or only what was written before the LLM stream failed. Orthogonal to `current_step`: a truncated run still reports `"complete"` (see [ADR-0002](../../docs/adr/0002-serve-truncated-briefings.md)). Named for its subject because the state dict is flat — bare `truncated` would not say truncated-what; the API's `BriefingResponse` nests it under the briefing and so calls it `truncated`.
+- `briefing_truncated` - Whether `briefing` is the whole synthesis or only what was written before the LLM stream failed. Orthogonal to `current_step`: a truncated run still reports `"complete"` (see [ADR-0002](../../docs/adr/0002-serve-truncated-briefings.md)). Named for its subject because the state dict is flat — bare `truncated` would not say truncated-what; the stream's `briefing` event nests it under the briefing and so calls it `truncated`.
 - `current_step` - Progress marker: "resolving" | "planning" | "gathering" | "synthesizing" | "complete" | "error"
 
 Supporting TypedDicts (`RaceInfo`, `ToolResult`) are flat structures with no nesting beyond `data: dict` on ToolResult. There is no `messages` field and no LangGraph message reducer — the two LLM-calling nodes build local message lists.
@@ -82,9 +82,7 @@ switches on `mode` first.
 `llm.stream()` and writes one custom payload per chunk while accumulating the text;
 `tool_executor_node` writes one custom payload per tool from inside its collection loop — that
 loop body runs in the node's own thread, not a pool worker, so the writer call is safe there. The
-transport stays a dumb translator in both cases, and truncation therefore reaches *both* endpoints
-— `get_stream_writer()` no-ops under plain `.invoke()`, so `/api/briefing` needs no special-casing
-and still returns the partial prose it would otherwise have 500ed away.
+transport stays a dumb translator in both cases.
 
 There is **no thread bridge**. LangGraph's `astream()` runs the graph's synchronous node functions
 on anyio worker threads itself, so the event loop is not blocked and node signatures stay
@@ -162,10 +160,8 @@ All of the above is pinned by `frontend/tests/use-briefing.test.tsx`, which driv
 API input/output shapes are defined as Pydantic `BaseModel` classes in `backend/api/models.py`:
 
 - `BriefingRequest` - `query: str` with `Field(min_length=1, max_length=500)` validation
-- `ToolTraceSummary` - `{tool: str, success: bool, summary: str}`
-- `BriefingResponse` - `{race: str, briefing: str, tool_trace: list[ToolTraceSummary]}`
 
-The non-streaming endpoint uses `response_model=BriefingResponse` for automatic validation, and maps outcomes to status codes: 404 when resolution fails (client-input problem), 500 with a generic detail for unexpected failures. The streaming endpoint bypasses `response_model` since it returns an `EventSourceResponse`. The `/api/races/{year}` path param is bounded (`ge=1950, le=current year + 1`), so out-of-range years 422 before touching FastF1.
+The streaming endpoint has no `response_model`, since it returns an `EventSourceResponse`. It cannot change its status code once the stream is open, so a failed resolution and an unexpected failure both arrive as `error` events: the resolver's message for the first, the generic text for the second. The `/api/races/{year}` path param is bounded (`ge=1950, le=current year + 1`), so out-of-range years 422 before touching FastF1.
 
 ## 10. Prompt Template with Variable Injection
 

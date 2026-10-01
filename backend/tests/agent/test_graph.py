@@ -224,7 +224,7 @@ def test_planner_parses_a_bare_json_list(fake_llm):
 
 
 def test_planner_strips_a_json_fenced_block(fake_llm):
-    """Claude routinely wraps JSON in ```json fences; the node unwraps them."""
+    """The model routinely wraps JSON in ```json fences; the node unwraps them."""
     fake_llm('Here you go:\n```json\n["get_race_weather"]\n```\nHope that helps!')
     assert planner_node(make_state(race_info=make_race_info()))["tasks"] == ["get_race_weather"]
 
@@ -826,11 +826,10 @@ def test_synthesizer_returns_partial_prose_when_the_stream_dies_mid_iteration(fa
 
 
 def test_a_truncated_synthesis_still_reports_the_run_complete(fake_llm):
-    """The single thing stopping the sync endpoint discarding a readable partial Briefing.
+    """Truncation is a property of the Briefing, not a phase of the pipeline.
 
-    ``routes.py`` 500s on ``current_step == "error"``. Truncation is a property of the
-    Briefing, not a phase of the pipeline — the pipeline reached the end either way — so
-    the Step stays ``complete`` and ``error`` keeps meaning exactly "Resolution failed".
+    The pipeline reached the end either way, so the Step stays ``complete`` and ``error``
+    keeps meaning exactly "Resolution failed".
     """
     fake_llm(chunks=["some prose"], stream_raises_after=1)
 

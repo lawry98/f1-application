@@ -1,6 +1,6 @@
 # F1 Race Weekend Briefing Agent
 
-An AI-powered F1 race weekend briefing generator that provides comprehensive pre-race analysis using Claude AI. The agent gathers data from multiple sources and produces detailed briefings covering track info, championship context, driver form, news storylines, weather, and predictions.
+An AI-powered F1 race weekend briefing generator that provides comprehensive pre-race analysis using Gemini. The agent gathers data from multiple sources and produces detailed briefings covering track info, championship context, driver form, news storylines, weather, and predictions.
 
 ## Features
 
@@ -184,7 +184,7 @@ INPUT ("Monaco GP 2025")
         │
         ▼
 ┌───────────────┐
-│  SYNTHESIZER  │  Combine all data into structured briefing via Claude
+│  SYNTHESIZER  │  Combine all data into structured briefing via Gemini
 └───────┬───────┘
         │
         ▼
@@ -195,7 +195,6 @@ OUTPUT (Race Briefing)
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/briefing` | POST | Synchronous briefing generation. Behind the cost guard; 504 at the deadline |
 | `/api/briefing/stream` | POST | SSE streaming briefing (used by frontend). Behind the cost guard: 429/503 before the stream opens |
 | `/api/races/{year}` | GET | F1 calendar from FastF1, with each event's format and official name |
 | `/api/standings/{year}` | GET | Driver and constructor championship tables, derived from OpenF1 (2023 onwards) |
@@ -219,9 +218,7 @@ OUTPUT (Race Briefing)
 ### Example: Generate Briefing
 
 ```bash
-curl -X POST http://localhost:8000/api/briefing \
-  -H "Content-Type: application/json" \
-  -d '{"query": "Monaco GP 2025"}'
+curl -N -X POST http://localhost:8000/api/briefing/stream -H 'Content-Type: application/json' -d '{"query":"Monaco"}'
 ```
 
 ## Development Commands
@@ -297,7 +294,7 @@ dominates the wall clock.
 
 ### Cost guard and deploying
 
-Every briefing is two Gemini calls, so both briefing routes sit behind an admission guard
+Every briefing is two Gemini calls, so the briefing stream sits behind an admission guard
 (`backend/api/guard.py`). Before any work starts it checks, in order:
 
 | Check | Default | Refusal |

@@ -7,7 +7,7 @@ import { EYEBROW_RED } from '@/lib/tyre-utils';
 export const metadata: Metadata = {
   title: 'Race Briefing',
   description:
-    'Generate an AI-powered F1 race weekend briefing for any Grand Prix. Powered by Claude AI and LangGraph.',
+    'Generate an AI-powered F1 race weekend briefing for any Grand Prix. Powered by Gemini and LangGraph.',
 };
 
 export default function BriefingPage() {

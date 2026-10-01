@@ -18,7 +18,6 @@ from starlette.requests import Request
 
 from api import routes as routes_module
 from api.errors import (
-    FAILED_TOOL_SUMMARY,
     GENERIC_BRIEFING_ERROR,
     GENERIC_CIRCUIT_WINNERS_ERROR,
     GENERIC_SCHEDULE_ERROR,
@@ -47,24 +46,16 @@ class FakeAgent:
     def __init__(
         self,
         steps: list[dict[str, Any]] | None = None,
-        result: dict[str, Any] | None = None,
         raises: Exception | None = None,
         deltas: list[str] | None = None,
         raises_after: int | None = None,
     ) -> None:
         self.steps = steps or []
-        self.result = result or {}
         self.raises = raises
         self.deltas = deltas or []
         self.raises_after = raises_after
         self.states: list[dict[str, Any]] = []
         self.stream_modes: list[Any] = []
-
-    async def ainvoke(self, state: dict[str, Any], config: Any = None) -> dict[str, Any]:
-        self.states.append(state)
-        if self.raises is not None:
-            raise self.raises
-        return self.result
 
     async def astream(self, state: dict[str, Any], config: Any = None, stream_mode: Any = None):
         self.states.append(state)
@@ -192,251 +183,23 @@ def test_health_check(client):
     assert response.json() == {"status": "ok", "service": "f1-briefing-agent"}
 
 
-# ── POST /api/briefing ───────────────────────────────────────────────────────
+# ── POST /api/briefing (removed) ─────────────────────────────────────────────
 
 
-def test_briefing_returns_race_briefing_and_trace(client, install_agent):
-    install_agent(
-        result={
-            "race_info": make_race_info(),
-            "briefing": "## Monaco\n\nTight.",
-            "current_step": "complete",
-            "tool_results": [
-                {
-                    "tool_name": "get_track_info",
-                    "success": True,
-                    "data": {"length_km": 3.3},
-                    "cached": False,
-                },
-                {
-                    "tool_name": "search_f1_news",
-                    "success": False,
-                    "data": {"error": "no key"},
-                    "cached": False,
-                },
-            ],
-        }
-    )
+def test_the_synchronous_briefing_route_is_gone(client, install_agent):
+    """Only the stream runs the agent now.
+
+    ``POST /api/briefing`` was unauthenticated, the UI never called it, and each request
+    spent two Gemini calls. A 404 here, with the agent never started, is what stops it
+    coming back unnoticed.
+    """
+    agent = install_agent(steps=successful_steps())
 
     response = client.post("/api/briefing", json={"query": "monaco"})
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body["race"] == "Monaco Grand Prix"
-    assert body["briefing"] == "## Monaco\n\nTight."
-    assert [t["tool"] for t in body["tool_trace"]] == ["get_track_info", "search_f1_news"]
-    assert [t["success"] for t in body["tool_trace"]] == [True, False]
-
-
-def test_briefing_reports_an_untruncated_synthesis_as_complete(client, install_agent):
-    install_agent(
-        result={
-            "race_info": make_race_info(),
-            "briefing": "## Monaco\n\nTight.",
-            "briefing_truncated": False,
-            "current_step": "complete",
-        }
-    )
-    assert client.post("/api/briefing", json={"query": "monaco"}).json()["truncated"] is False
-
-
-def test_briefing_returns_a_truncated_synthesis_rather_than_failing(client, install_agent):
-    """The sync endpoint gets truncation for free because the node owns it.
-
-    ``agent.ainvoke()`` propagates, so had truncation lived in the transport this
-    endpoint would have had no partial to return at all — it would have 500ed away a
-    perfectly readable briefing. See ADR-0002.
-    """
-    install_agent(
-        result={
-            "race_info": make_race_info(),
-            "briefing": "## Mon",
-            "briefing_truncated": True,
-            "current_step": "complete",
-        }
-    )
-
-    response = client.post("/api/briefing", json={"query": "monaco"})
-
-    assert response.status_code == 200
-    assert response.json()["briefing"] == "## Mon"
-    assert response.json()["truncated"] is True
-
-
-def test_briefing_passes_the_query_into_the_initial_state(client, install_agent):
-    agent = install_agent(
-        result={"race_info": make_race_info(), "briefing": "x", "current_step": "complete"}
-    )
-    client.post("/api/briefing", json={"query": "silverstone 2026"})
-    assert agent.states[0]["race_query"] == "silverstone 2026"
-    assert agent.states[0]["current_step"] == "resolving"
-
-
-def test_briefing_truncates_long_tool_payloads_in_the_trace(client, install_agent):
-    """The trace is a UI summary, not the data — long payloads are clipped to 200 chars."""
-    install_agent(
-        result={
-            "race_info": make_race_info(),
-            "briefing": "x",
-            "current_step": "complete",
-            "tool_results": [
-                {
-                    "tool_name": "search_f1_news",
-                    "success": True,
-                    "data": {"body": "y" * 500},
-                    "cached": False,
-                }
-            ],
-        }
-    )
-
-    summary = client.post("/api/briefing", json={"query": "monaco"}).json()["tool_trace"][0][
-        "summary"
-    ]
-    assert len(summary) == 203
-    assert summary.endswith("...")
-
-
-def test_briefing_leaves_short_tool_payloads_intact(client, install_agent):
-    install_agent(
-        result={
-            "race_info": make_race_info(),
-            "briefing": "x",
-            "current_step": "complete",
-            "tool_results": [
-                {
-                    "tool_name": "get_track_info",
-                    "success": True,
-                    "data": {"a": 1},
-                    "cached": False,
-                }
-            ],
-        }
-    )
-    summary = client.post("/api/briefing", json={"query": "monaco"}).json()["tool_trace"][0][
-        "summary"
-    ]
-    assert summary == "{'a': 1}"
-
-
-def test_briefing_replaces_a_failed_tools_payload_in_the_trace(client, install_agent):
-    """A failed tool's payload is ``{"error": ...}`` and can carry upstream detail.
-
-    The trace is rendered verbatim by components/briefing/tool-trace.tsx, so the payload
-    is dropped wholesale rather than truncated — truncation would still leak the first
-    200 characters, which is exactly where a connection string or host lives.
-    """
-    install_agent(
-        result={
-            "race_info": make_race_info(),
-            "briefing": "x",
-            "current_step": "complete",
-            "tool_results": [
-                {
-                    "tool_name": "get_race_weather",
-                    "success": False,
-                    "data": {
-                        "error": "HTTPSConnectionPool(host='api.openweathermap.org', "
-                        "port=443): Read timed out"
-                    },
-                    "cached": False,
-                }
-            ],
-        }
-    )
-
-    trace = client.post("/api/briefing", json={"query": "monaco"}).json()["tool_trace"][0]
-
-    assert trace["tool"] == "get_race_weather"
-    assert trace["success"] is False
-    assert trace["summary"] == FAILED_TOOL_SUMMARY
-    assert "openweathermap" not in trace["summary"]
-
-
-def test_briefing_falls_back_to_unknown_race_without_race_info(client, install_agent):
-    install_agent(result={"briefing": "x", "current_step": "complete"})
-    assert client.post("/api/briefing", json={"query": "monaco"}).json()["race"] == "Unknown Race"
-
-
-def test_an_unresolvable_query_returns_404_with_the_resolver_message(client, install_agent):
-    """Resolution failure is a client error — the user typed something that is not a
-    Grand Prix — and the resolver's message is deliberately user-facing.
-    """
-    install_agent(result={"current_step": "error", "briefing": "No race found matching 'monakko'"})
-
-    response = client.post("/api/briefing", json={"query": "monakko"})
 
     assert response.status_code == 404
-    assert response.json()["detail"] == "No race found matching 'monakko'"
-
-
-@pytest.mark.parametrize(
-    "result",
-    [
-        {"current_step": "complete", "briefing": None},
-        {"current_step": "complete"},
-    ],
-    ids=["briefing-is-none", "briefing-key-absent"],
-)
-def test_a_completed_run_without_a_briefing_is_a_500(client, install_agent, result):
-    """None and absent must behave identically: the initial state sets ``briefing`` to
-    None, so a ``dict.get`` default alone would never fire in practice.
-    """
-    install_agent(result=result)
-    response = client.post("/api/briefing", json={"query": "monaco"})
-    assert response.status_code == 500
-    assert response.json()["detail"] == GENERIC_BRIEFING_ERROR
-
-
-def test_an_agent_crash_returns_500_without_the_exception_text(client, install_agent, caplog):
-    """The sync twin of the stream's catch-all: generic detail, real reason in the log.
-
-    This handler used to put ``str(exc)`` in the detail and log nothing — the leak
-    was the only place the exception was visible at all. Now the detail is the
-    generic constant and the log carries the exception plus the query that hit it.
-    """
-    install_agent(raises=RuntimeError("graph exploded"))
-
-    with caplog.at_level(logging.ERROR, logger="api.routes"):
-        response = client.post("/api/briefing", json={"query": "monaco"})
-
-    assert response.status_code == 500
-    assert response.json()["detail"] == GENERIC_BRIEFING_ERROR
-    assert "graph exploded" not in response.json()["detail"]
-    assert "graph exploded" in caplog.text
-    assert "monaco" in caplog.text
-
-
-def test_a_missing_query_field_is_rejected_before_the_agent_runs(client, install_agent):
-    agent = install_agent(result={})
-    assert client.post("/api/briefing", json={}).status_code == 422
     assert agent.states == []
-
-
-def test_briefing_clears_the_schedule_cache_even_when_it_fails(client, install_agent):
-    """The cache is per-request; leaking it across requests would serve stale schedules."""
-    from tools import schedule_cache
-
-    install_agent(raises=RuntimeError("boom"))
-    schedule_cache.prefill({2025: "sentinel"})
-
-    client.post("/api/briefing", json={"query": "monaco"})
-
-    assert schedule_cache._cache == {}
-
-
-def test_briefing_clears_the_openf1_cache_even_when_it_fails(client, install_agent):
-    """A range query cached before a race's results are published must not survive past
-    this request — otherwise the next briefing serves a stale championship table.
-    """
-    from tools import openf1_client
-
-    install_agent(raises=RuntimeError("boom"))
-    openf1_client._cache[("session_result", frozenset({("year", 2026)}))] = ["sentinel"]
-
-    client.post("/api/briefing", json={"query": "monaco"})
-
-    assert openf1_client._cache == {}
+    assert "/api/briefing" not in client.get("/openapi.json").json()["paths"]
 
 
 # ── POST /api/briefing/stream ────────────────────────────────────────────────
@@ -795,6 +558,59 @@ def test_stream_clears_the_openf1_cache(client, install_agent):
     client.post("/api/briefing/stream", json={"query": "monaco"})
 
     assert openf1_client._cache == {}
+
+
+def test_stream_clears_the_schedule_cache_even_when_it_fails(client, install_agent):
+    """The cache is per-request; leaking it across requests would serve stale schedules."""
+    from tools import schedule_cache
+
+    install_agent(raises=RuntimeError("boom"))
+    schedule_cache.prefill({2025: "sentinel"})
+
+    client.post("/api/briefing/stream", json={"query": "monaco"})
+
+    assert schedule_cache._cache == {}
+
+
+def test_stream_clears_the_openf1_cache_even_when_it_fails(client, install_agent):
+    """A range query cached before a race's results are published must not survive past
+    this request — otherwise the next briefing serves a stale championship table.
+    """
+    from tools import openf1_client
+
+    install_agent(raises=RuntimeError("boom"))
+    openf1_client._cache[("session_result", frozenset({("year", 2026)}))] = ["sentinel"]
+
+    client.post("/api/briefing/stream", json={"query": "monaco"})
+
+    assert openf1_client._cache == {}
+
+
+def test_stream_passes_the_query_into_the_initial_state(client, install_agent):
+    agent = install_agent(steps=successful_steps())
+    client.post("/api/briefing/stream", json={"query": "silverstone 2026"})
+    assert agent.states[0]["race_query"] == "silverstone 2026"
+    assert agent.states[0]["current_step"] == "resolving"
+
+
+def test_stream_rejects_a_missing_query_field_before_the_agent_runs(client, install_agent):
+    agent = install_agent(steps=successful_steps())
+    assert client.post("/api/briefing/stream", json={}).status_code == 422
+    assert agent.states == []
+
+
+def test_stream_logs_the_crash_it_hides_from_the_client(client, install_agent, caplog):
+    """The other half of the generic ``error`` event: the real reason reaches the log.
+
+    ``test_stream_reports_an_agent_crash_with_the_generic_message`` pins what the client
+    sees. Without this half, a masked failure would be visible nowhere.
+    """
+    install_agent(raises=RuntimeError("graph exploded"))
+
+    with caplog.at_level(logging.ERROR, logger="api.routes"):
+        client.post("/api/briefing/stream", json={"query": "monaco"})
+
+    assert "graph exploded" in caplog.text
 
 
 # ── GET /api/races/{year} ────────────────────────────────────────────────────

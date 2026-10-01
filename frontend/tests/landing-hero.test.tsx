@@ -56,7 +56,7 @@ describe('LandingHero', () => {
           'p',
           'Type any Grand Prix and our AI agent gathers track telemetry, driver form, weather ' +
             'forecasts, and live news — synthesized into a structured race weekend briefing by ' +
-            'Claude AI.',
+            'Gemini.',
         ),
       ).toBeInTheDocument();
     });
@@ -117,10 +117,17 @@ describe('LandingHero', () => {
       expect(headings[0]?.tagName).toBe('H1');
     });
 
-    it('keeps the ready chip', () => {
+    it('labels itself as sample data, in a neutral chip', () => {
+      // The card's championship row is invented. It used to sit under a green "Ready" chip, which
+      // presents the card as a live result; the kicker and the chip now both say it is a sample.
+      // No green anywhere on the chip, because green is the colour that claimed a live success.
       render(<LandingHero />);
 
-      expect(screen.getByText('Ready')).toBeInTheDocument();
+      expect(screen.getByText('SAMPLE BRIEFING · RND.08')).toBeInTheDocument();
+      const chip = screen.getByText('Sample data');
+      expect(chip.className).toContain('text-zinc-300');
+      expect(chip.outerHTML).not.toMatch(/green/);
+      expect(screen.queryByText('Ready')).toBeNull();
     });
 
     it.each([

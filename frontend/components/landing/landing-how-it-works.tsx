@@ -147,7 +147,7 @@ export function LandingHowItWorks() {
               </span>
             </h2>
             <p className="mt-4 text-lg text-zinc-400">
-              Four steps. One pipeline. Powered by LangGraph and Claude AI.
+              Four steps. One pipeline. Powered by LangGraph and Gemini.
             </p>
           </div>
         </BlurFadeReduced>

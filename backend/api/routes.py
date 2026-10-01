@@ -21,14 +21,13 @@ from agent.graph import agent
 from agent.state import AgentState
 from api.errors import (
     BRIEFING_DEADLINE_ERROR,
-    FAILED_TOOL_SUMMARY,
     GENERIC_BRIEFING_ERROR,
     GENERIC_CIRCUIT_WINNERS_ERROR,
     GENERIC_SCHEDULE_ERROR,
     GENERIC_STANDINGS_ERROR,
 )
 from api.guard import AdmissionGuard, Lease, Rejection
-from api.models import BriefingRequest, BriefingResponse, ToolTraceSummary
+from api.models import BriefingRequest
 from config import (
     BRIEFING_DAILY_CAP,
     BRIEFING_DEADLINE_SECONDS,
@@ -218,87 +217,6 @@ def initial_state(query: str) -> AgentState:
         "briefing_truncated": False,
         "current_step": "resolving",
     }
-
-
-def _tool_trace_summary(tool_result: dict[str, Any]) -> str:
-    """Build the UI-facing trace summary for one tool result.
-
-    A failed tool's payload is ``{"error": ...}`` and may carry upstream exception text,
-    so it is replaced rather than truncated. Successful payloads are public F1 data and
-    are only clipped to keep the trace readable.
-    """
-    if not tool_result["success"]:
-        return FAILED_TOOL_SUMMARY
-
-    data = str(tool_result["data"])
-    return data[:200] + "..." if len(data) > 200 else data
-
-
-@router.post("/briefing", response_model=BriefingResponse)
-async def generate_briefing(
-    request: BriefingRequest, http_request: Request
-) -> BriefingResponse | JSONResponse:
-    """Generate a complete race briefing in a single response."""
-    admission = _admit(http_request)
-    if isinstance(admission, JSONResponse):
-        return admission
-    run = _BriefingRun(admission, _client_ip(http_request))
-    outcome = "error"
-
-    try:
-        timeout = asyncio.timeout_at(run.backstop_at)
-        try:
-            async with timeout:
-                result: dict[str, Any] = await agent.ainvoke(
-                    initial_state(request.query), config=run.config
-                )
-        except TimeoutError:
-            if not timeout.expired():
-                raise
-            outcome = "deadline"
-            raise HTTPException(status_code=504, detail=BRIEFING_DEADLINE_ERROR) from None
-
-        if result.get("current_step") == "error":
-            outcome = "unresolved"
-            raise HTTPException(
-                status_code=404,
-                detail=result.get("briefing") or "Could not resolve race",
-            )
-        if not result.get("briefing"):
-            raise HTTPException(status_code=500, detail=GENERIC_BRIEFING_ERROR)
-
-        race_name: str = result.get("race_info", {}).get("name", "Unknown Race")
-
-        tool_trace = [
-            ToolTraceSummary(
-                tool=tr["tool_name"],
-                success=tr["success"],
-                summary=_tool_trace_summary(tr),
-            )
-            for tr in result.get("tool_results", [])
-        ]
-
-        truncated = bool(result.get("briefing_truncated"))
-        outcome = "truncated" if truncated else "complete"
-        return BriefingResponse(
-            race=race_name,
-            briefing=result["briefing"],
-            tool_trace=tool_trace,
-            truncated=truncated,
-        )
-    except HTTPException:
-        raise
-    except Exception as exc:
-        if run.past_deadline:
-            # The synthesizer raises when it is stopped with no prose; past the deadline that
-            # is the deadline, not "something went wrong".
-            outcome = "deadline"
-            logger.warning("Briefing for '%s' stopped at the deadline: %s", request.query, exc)
-            raise HTTPException(status_code=504, detail=BRIEFING_DEADLINE_ERROR) from exc
-        logger.exception("Error generating briefing for '%s': %s", request.query, exc)
-        raise HTTPException(status_code=500, detail=GENERIC_BRIEFING_ERROR) from exc
-    finally:
-        run.finish(outcome)
 
 
 @router.post("/briefing/stream", response_model=None)

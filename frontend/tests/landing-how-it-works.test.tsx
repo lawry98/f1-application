@@ -68,7 +68,7 @@ describe('LandingHowItWorks', () => {
     render(<LandingHowItWorks />);
 
     expect(
-      screen.getByText('Four steps. One pipeline. Powered by LangGraph and Claude AI.'),
+      screen.getByText('Four steps. One pipeline. Powered by LangGraph and Gemini.'),
     ).toBeInTheDocument();
     // The kicker's text node sits beside the decorative red bar inside the same `<p>`, so match on
     // the containing element rather than on an exact text node.

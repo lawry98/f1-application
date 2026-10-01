@@ -1,7 +1,7 @@
-"""The cost guard as the briefing routes apply it: admission, slot release, CORS.
+"""The cost guard as the briefing stream applies it: admission, slot release, CORS.
 
 ``test_guard.py`` covers the guard's arithmetic on its own. What is pinned here is where the
-routes put it — before the event stream opens, so a rejection is an ordinary HTTP response —
+route puts it — before the event stream opens, so a rejection is an ordinary HTTP response —
 and that a held slot comes back however a response ends. The disconnect cases drive the ASGI
 app directly, because TestClient always reads a response to the end and so cannot hang up.
 """
@@ -22,7 +22,7 @@ from api.cors import add_cors
 from api.guard import AdmissionGuard
 from api.models import BriefingRequest
 from tests.api.test_routes import FakeAgent, parse_sse, successful_deltas, successful_steps
-from tests.factories import FakeClock, make_race_info
+from tests.factories import FakeClock
 
 T0 = 1_790_762_400.0  # 2026-09-30 10:00:00 UTC
 
@@ -173,31 +173,6 @@ def test_an_invalid_body_is_turned_away_before_it_can_count(client, install_guar
     assert stream(client).status_code == 200
 
 
-def test_the_sync_briefing_route_is_guarded_too(client, install_guard, install_agent):
-    install_guard(per_ip_per_hour=1)
-    install_agent(
-        result={"race_info": make_race_info(), "briefing": "x", "current_step": "complete"}
-    )
-    assert client.post("/api/briefing", json={"query": "monaco"}).status_code == 200
-
-    response = client.post("/api/briefing", json={"query": "monaco"})
-
-    assert response.status_code == 429
-    assert response.json()["code"] == "rate_limited"
-    assert response.headers["retry-after"] == "3600"
-
-
-def test_both_routes_draw_on_one_budget(client, install_guard, install_agent):
-    install_guard(per_ip_per_hour=1)
-    install_agent(
-        steps=successful_steps(),
-        result={"race_info": make_race_info(), "briefing": "x", "current_step": "complete"},
-    )
-    stream(client)
-
-    assert client.post("/api/briefing", json={"query": "monaco"}).status_code == 429
-
-
 def test_a_rejection_is_readable_cross_origin(install_guard, install_agent):
     """Without CORS headers on the 429 the browser hides the whole response — status, body
     and Retry-After — and the page can only say "something went wrong"."""
@@ -244,23 +219,6 @@ def test_an_unresolved_race_gives_its_slot_back(client, briefing_guard, install_
     )
 
     stream(client, "not-a-real-gp")
-
-    assert briefing_guard.in_use == 0
-
-
-@pytest.mark.parametrize(
-    "agent_kwargs",
-    [
-        {"result": {"race_info": make_race_info(), "briefing": "x", "current_step": "complete"}},
-        {"raises": RuntimeError("graph exploded")},
-        {"result": {"current_step": "error", "briefing": "No race"}},
-    ],
-    ids=["complete", "exception", "unresolved"],
-)
-def test_the_sync_route_gives_its_slot_back(client, briefing_guard, install_agent, agent_kwargs):
-    install_agent(**agent_kwargs)
-
-    client.post("/api/briefing", json={"query": "monaco"})
 
     assert briefing_guard.in_use == 0
 
@@ -445,10 +403,6 @@ class ParkedAgentThatFinishes:
         async for item in self.inner.astream(state, stream_mode=stream_mode):
             yield item
 
-    async def ainvoke(self, state: dict[str, Any], config: Any = None) -> dict[str, Any]:
-        self.configs.append(config)
-        return {"race_info": make_race_info(), "briefing": "x", "current_step": "complete"}
-
 
 def test_the_budget_is_cancelled_once_the_response_is_over(client, install_agent):
     """Whatever is still running in a worker thread stops at its next check."""
@@ -547,39 +501,6 @@ def test_hanging_up_cancels_the_run(app, monkeypatch):
     )
 
     assert cancelled
-
-
-def test_the_sync_route_hands_the_graph_the_same_budget(client, install_agent):
-    agent = install_agent(ParkedAgentThatFinishes())
-
-    client.post("/api/briefing", json={"query": "monaco"})
-
-    assert budget_of(agent).cancel.is_set()
-
-
-def test_the_sync_route_past_its_backstop_is_a_504(client, install_agent, deadline, briefing_guard):
-    class ParkedInvoke:
-        async def ainvoke(self, state: dict[str, Any], config: Any = None) -> dict[str, Any]:
-            await park()
-            return {}
-
-    deadline(0, grace=0)
-    install_agent(ParkedInvoke())
-
-    response = client.post("/api/briefing", json={"query": "monaco"})
-
-    assert response.status_code == 504
-    assert response.json()["detail"] == routes_module.BRIEFING_DEADLINE_ERROR
-    assert briefing_guard.in_use == 0
-
-
-def test_the_sync_route_reports_a_failure_past_the_deadline_as_a_504(
-    client, install_agent, deadline
-):
-    deadline(0, grace=60)
-    install_agent(raises=RuntimeError("stopped"))
-
-    assert client.post("/api/briefing", json={"query": "monaco"}).status_code == 504
 
 
 # ── One log line per admitted request ────────────────────────────────────────
@@ -683,11 +604,3 @@ def test_a_timeout_raised_by_the_graph_itself_is_not_mistaken_for_the_backstop(
     events = parse_sse(stream(client).text)
 
     assert events[-1] == ("error", {"message": GENERIC_BRIEFING_ERROR})
-
-
-def test_the_sync_route_does_not_mistake_the_graphs_own_timeout_for_the_backstop(
-    client, install_agent
-):
-    install_agent(raises=TimeoutError("read timed out"))
-
-    assert client.post("/api/briefing", json={"query": "monaco"}).status_code == 500
