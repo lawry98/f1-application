@@ -1,4 +1,11 @@
+import type { Locator, Page } from '@playwright/test';
+import { PNG } from 'pngjs';
+
+import { mockBriefingStreams, sseFixture } from './support/api-mocks';
+import { formatCssColor, wcagRatio, type Rgb } from './support/color';
+import { AA_NON_TEXT } from './support/contrast';
 import { focusByKeyboard, focusState, hasRule, tabThroughPage, TAILWIND_DEFAULT_RING } from './support/css';
+import { waitForMotionToSettle } from './support/motion';
 import { waitForMain } from './support/page-content';
 import { expect, test } from './support/test';
 import { stopFrameLoops, waitForRealCar, watchThreeScenes } from './support/three';
@@ -41,6 +48,81 @@ test('a flush control on base takes the red ring', async ({ page }) => {
     'no `focus-visible:ring-f1-red` rule was generated: is lib/ in tailwind.config.ts `content`?',
   ).toBe(true);
   expect(state.ringColor, 'focusRingOffsetBase (lib/focus.ts rule 1)').toBe(F1_RED);
+});
+
+/**
+ * The pixels a ring paints on `target`: each sampled point as it looks focused and unfocused.
+ *
+ * WCAG 2.2 judges a focus indicator by exactly that pair — the same pixels in both states — so
+ * nothing here names a backdrop colour. Each sample sits mid-band in a 2px inset ring: the four
+ * edge midpoints, and each corner's diagonal 1px inside the panel's visible curve, which is where
+ * an `overflow-hidden` parent cuts the corner off a ring that does not bend with it. A computed
+ * `box-shadow` cannot see either clip: an outset ring inside that parent reads correctly and
+ * paints nothing.
+ */
+async function ringSamples(page: Page, target: Locator): Promise<{ where: string; focused: Rgb; unfocused: Rgb }[]> {
+  const box = await target.boundingBox();
+  if (box === null) throw new Error('ringSamples: target is not laid out');
+  // The panel's curve as drawn: its radius less its border, measured on the inner edge.
+  const curve = await target.evaluate((el) => {
+    const panel = getComputedStyle(el.parentElement as Element);
+    return parseFloat(panel.borderTopLeftRadius) - parseFloat(panel.borderTopWidth);
+  });
+  const d = curve - (curve - 1) / Math.SQRT2;
+  const { x, y, width: w, height: h } = box;
+  const points: [string, number, number][] = [
+    ['top', x + w / 2, y + 1],
+    ['bottom', x + w / 2, y + h - 1],
+    ['left', x + 1, y + h / 2],
+    ['right', x + w - 1, y + h / 2],
+    ['top-left corner', x + d, y + d],
+    ['top-right corner', x + w - d, y + d],
+    ['bottom-left corner', x + d, y + h - d],
+    ['bottom-right corner', x + w - d, y + h - d],
+  ];
+  const clip = { x: Math.floor(x), y: Math.floor(y), width: Math.ceil(w) + 1, height: Math.ceil(h) + 1 };
+  const settle = () => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+  const read = (png: PNG, px: number, py: number): Rgb => {
+    const scale = png.width / clip.width;
+    const i = (Math.floor((py - clip.y) * scale) * png.width + Math.floor((px - clip.x) * scale)) * 4;
+    return { r: png.data[i] ?? 0, g: png.data[i + 1] ?? 0, b: png.data[i + 2] ?? 0 };
+  };
+
+  const focused = PNG.sync.read(await page.screenshot({ clip }));
+  await target.evaluate((el) => (el as HTMLElement).blur());
+  await settle();
+  const unfocused = PNG.sync.read(await page.screenshot({ clip }));
+  return points.map(([where, px, py]) => ({ where, focused: read(focused, px, py), unfocused: read(unfocused, px, py) }));
+}
+
+/**
+ * The tool trace's toggle shipped with no ring utility at all, so focus showed only the browser's
+ * outline. The blue sweep below cannot see that: with no `ring-*` class nothing paints a shadow,
+ * and the sweep looks for blue inside one. The toggle spans its panel edge to edge, which is why
+ * its ring is inset, and red is 2.96:1 on that panel's wash, which is why it is ink.
+ */
+test('the tool trace toggle paints an ink ring on every side and corner of its panel', async ({ page }) => {
+  // A finished run with no backend: the captured stream ends in `briefing` and `complete`.
+  await mockBriefingStreams(page, [sseFixture('clean.sse')]);
+  await page.goto('/briefing');
+  await waitForMain(page);
+  await page.getByLabel('Circuit name').fill('Monaco');
+  await page.getByRole('button', { name: 'Generate', exact: true }).click();
+  const toggle = page.getByRole('button', { name: /^Agent Tool Trace/ });
+  await expect(toggle).toBeVisible();
+  await toggle.scrollIntoViewIfNeeded();
+  await waitForMotionToSettle(page);
+
+  await focusByKeyboard(page, toggle);
+  const state = await focusState(toggle);
+  expect(state.focusVisible).toBe(true);
+  expect(state.boxShadow, 'focusRingInk on the tool trace toggle (lib/focus.ts)').toContain(INK);
+
+  const weak = (await ringSamples(page, toggle))
+    .map((s) => ({ ...s, ratio: wcagRatio(s.focused, s.unfocused) }))
+    .filter((s) => s.ratio < AA_NON_TEXT)
+    .map((s) => `${s.where}: ${s.ratio.toFixed(2)}:1 (${formatCssColor(s.focused)} focused, ${formatCssColor(s.unfocused)} not)`);
+  expect(weak, `ring pixels under ${AA_NON_TEXT}:1 against the same pixels unfocused`).toEqual([]);
 });
 
 // `/candy` is omitted: it's a pure demo styleguide with no focusable controls by design

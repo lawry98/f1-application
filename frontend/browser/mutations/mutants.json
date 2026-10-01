@@ -76,5 +76,11 @@
       "the /showcase car holds still",
       "the idle /showcase scene draws no frames"
     ]
+  },
+  {
+    "patch": "11-tool-trace-no-ring.patch",
+    "reintroduces": "the /briefing tool trace toggle as it shipped: no ring utility at all inside an overflow-hidden panel, so keyboard focus shows only the browser outline. The blue-ring sweep passes it, because no ring class means no painted shadow to find blue in (lib/focus.ts: red is 2.96:1 on that panel's wash, so the fix is an inset focusRingInk on a button that carries its own radius)",
+    "specs": ["browser/focus-rings.spec.ts"],
+    "mustFail": ["the tool trace toggle paints an ink ring on every side and corner of its panel"]
   }
 ]

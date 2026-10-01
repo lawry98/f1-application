@@ -22,7 +22,17 @@ const RGB_FUNCTION = /^rgba?\(\s*([^)]+)\)$/i;
  * `rgba(1, 2, 3, 0.5)` for real properties, and modern `rgb(1 2 3 / 0.5)` for custom properties
  * such as `--tw-ring-color`, which keep their authored syntax.
  */
+const HEX = /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
+
 export function parseCssColor(value: string): Rgba {
+  // Computed colours are always rgb(), but a custom property is returned as specified: a control
+  // that no `ring-*` class reaches inherits preflight's `--tw-ring-color` as hex.
+  const hex = HEX.exec(value.trim())?.[1];
+  if (hex !== undefined) {
+    const full = hex.length === 3 ? [...hex].map((c) => c + c).join('') : hex;
+    const channel = (i: number): number => Number.parseInt(full.slice(i, i + 2), 16);
+    return { r: channel(0), g: channel(2), b: channel(4), a: full.length === 8 ? channel(6) / 255 : 1 };
+  }
   const body = RGB_FUNCTION.exec(value.trim())?.[1];
   if (body === undefined) throw new Error(`parseCssColor: not an rgb() colour: "${value}"`);
   const [r, g, b, a] = body.split(/[\s,/]+/).filter(Boolean);
