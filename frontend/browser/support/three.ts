@@ -65,9 +65,11 @@ export async function waitForRealCar(page: Page) {
 /**
  * Stops every watched scene's frame loop, for a check that has nothing to do with the canvas.
  *
- * The scenes render on the CPU, and every key press and `evaluate` waits for a frame: on
- * `/showcase` one Tab took about a second, and the 12-control focus sweep 20.2s locally and past
- * 90s on CI. With the loop stopped the same sweep took 0.09s. The last frame stays painted.
+ * The scenes render on the CPU, and while the loop runs every key press and `evaluate` waits for a
+ * frame: on `/showcase` one Tab took about a second, and the 12-control focus sweep 20.2s locally
+ * and past 90s on CI. With the loop stopped the same sweep took 0.09s. Under `reduce` both scenes
+ * idle on their own (`hooks/use-scene-motion.ts`), so this matters to a check that runs with
+ * motion. The last frame stays painted.
  */
 export async function stopFrameLoops(page: Page) {
   await page.evaluate(() => {

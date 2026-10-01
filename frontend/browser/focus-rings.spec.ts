@@ -55,10 +55,10 @@ for (const route of ['/', '/teams', '/tyres', '/circuits', '/circuits/monza', '/
     if (route === '/circuits') await expect(page.getByRole('list', { name: /calendar$/ })).toBeVisible();
     if (route === '/circuits/monza') await expect(page.getByRole('table')).toBeVisible();
     // `/showcase`'s `<main>` is in the page shell, so it is up while the scene's chunk still loads.
-    // Its scene renders WebGL on the CPU without pause, so it gets `shadow-acne.spec.ts`'s allowance.
-    if (route === '/showcase') test.slow();
     if (route === '/showcase') await expect(page.getByRole('heading', { level: 1, name: /Car Showcase/ })).toBeVisible();
-    // The scene renders on the CPU and every Tab waits for a frame; the sweep reads rings, not pixels.
+    // Under `reduce` the scene is already idle (the sweep measured the same with the loop stopped,
+    // 41ms). With motion, every Tab waits for a CPU-rendered frame: 25.1s for this sweep. It reads
+    // rings, not pixels, so it never needs the loop.
     if (route === '/showcase') {
       await waitForRealCar(page);
       await stopFrameLoops(page);
