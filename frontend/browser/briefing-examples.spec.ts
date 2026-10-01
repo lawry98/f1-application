@@ -61,6 +61,10 @@ test('a 503 busy offers the saved example, and it opens with its label', async (
   await expect(label).toBeVisible();
   await expect(main.getByRole('article', { name: LABEL })).toBeVisible();
   await expect(main.getByRole('heading', { name: 'Track Profile' })).toBeVisible();
+  // The card fades in once it is well into view, as a live one does, and the offer leaves the
+  // page where the notice was, just above it. `scrollIntoViewIfNeeded` does nothing for a label
+  // whose top edge is already on screen, so centre it.
+  await label.evaluate((el) => el.scrollIntoView({ block: 'center' }));
   await waitForMotionToSettle(page);
   await expectContrast(label, {
     atLeast: AA_SMALL_TEXT,
