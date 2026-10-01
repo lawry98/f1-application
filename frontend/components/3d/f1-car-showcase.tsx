@@ -5,7 +5,9 @@ import Link from 'next/link';
 import { Canvas } from '@react-three/fiber';
 import { TEAMS, type Team } from '@/data/teams-data';
 import { LiverySelect } from '@/components/showcase/livery-select';
+import { focusRing } from '@/lib/focus';
 import { CAR_SWEPT, CAR_TARGET, SHOWCASE_FIT_MARGIN } from '@/lib/scene-fit';
+import { cn } from '@/lib/utils';
 import { FitCamera } from './fit-camera';
 import { CAR_SHADOW_NORMAL_BIAS, PrimitiveCar, RealCar } from './f1-car-model';
 
@@ -120,7 +122,13 @@ export default function F1CarShowcase() {
             // `zinc-400` (7.76:1 on this page's bare `bg-zinc-950`), not the `zinc-500` this
             // shipped as — 4.12:1, under the 4.5:1 small-text bar, and the one `color-contrast`
             // violation axe found on the route. Same floor the rest of the branch holds.
-            className="text-sm text-zinc-400 transition-colors hover:text-zinc-300"
+            //
+            // `focusRing` because it had no focus treatment at all and fell through to the
+            // browser's outline. Text on bare `zinc-950`, so the flush ring, as on `/credits`.
+            className={cn(
+              'rounded text-sm text-zinc-400 transition-colors hover:text-zinc-300',
+              focusRing,
+            )}
           >
             View Credits &amp; Attributions
           </Link>
