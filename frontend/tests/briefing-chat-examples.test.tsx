@@ -201,6 +201,77 @@ describe('offering the saved example when a live briefing cannot run', () => {
   });
 });
 
+const MONACO_2026 = {
+  name: 'Monaco Grand Prix',
+  year: 2026,
+  round: 6,
+  location: 'Monte Carlo',
+  country: 'Monaco',
+  date: '2026-06-07 00:00:00',
+  is_upcoming: false,
+  as_of: '2026-06-05T11:30:00+00:00',
+  sessions: [],
+};
+
+/** A stream that ends, unannounced, after `frames` — the connection dropped. */
+function cut(...frames: string[]): () => Promise<Response> {
+  return () => {
+    const feed = new ChunkFeed();
+    for (const text of frames) feed.push(text);
+    feed.close();
+    return feed.fetch();
+  };
+}
+
+describe('offering the saved example when the stream is cut', () => {
+  it('offers it under the note when no prose had arrived', async () => {
+    stubFetch(cut(frame('race_info', MONACO_2026)));
+    render(<BriefingChat />);
+    await settle();
+
+    await pickMonaco();
+    await settle(200);
+
+    const offer = screen.getByRole('link', { name: OFFER });
+    expect(screen.getByRole('status')).toHaveTextContent('before the briefing started');
+    expect(screen.getByRole('status').closest('.rounded-lg')).toContainElement(offer);
+  });
+
+  it('offers nothing when the cut kept prose, which is a briefing, if an unfinished one', async () => {
+    stubFetch(
+      cut(frame('race_info', MONACO_2026), frame('briefing_delta', { content: '## Track Profile\n\nTight.' })),
+    );
+    render(<BriefingChat />);
+    await settle();
+
+    await pickMonaco();
+    await settle(200);
+
+    expect(screen.getByRole('status')).toHaveTextContent('incomplete');
+    expect(screen.queryByRole('link', { name: OFFER })).toBeNull();
+  });
+
+  it('offers it once, in the notice, when a retry over a cut run is refused', async () => {
+    let call = 0;
+    stubFetch(() => (call++ === 0 ? cut(frame('race_info', MONACO_2026))() : refusal()));
+    render(<BriefingChat />);
+    await settle();
+    await pickMonaco();
+    await settle(200);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await settle();
+
+    const offers = screen.getAllByRole('link', { name: OFFER });
+    expect(offers).toHaveLength(1);
+    // The painted copy; its `sr-only` twin says the same for assistive technology.
+    const notice = screen
+      .getAllByText(/Another briefing is being generated/)[0]!
+      .closest('.rounded-lg');
+    expect(notice).toContainElement(offers[0]!);
+  });
+});
+
 describe('the example entry under the input', () => {
   it('links to the featured example', async () => {
     stubFetch(refusal);
