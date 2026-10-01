@@ -53,6 +53,8 @@ for (const route of ['/', '/teams', '/tyres', '/circuits', '/circuits/monza', '/
     if (route === '/circuits') await expect(page.getByRole('list', { name: /calendar$/ })).toBeVisible();
     if (route === '/circuits/monza') await expect(page.getByRole('table')).toBeVisible();
     // `/showcase`'s `<main>` is in the page shell, so it is up while the scene's chunk still loads.
+    // Its scene renders WebGL on the CPU without pause, so it gets `shadow-acne.spec.ts`'s allowance.
+    if (route === '/showcase') test.slow();
     if (route === '/showcase') await expect(page.getByRole('heading', { level: 1, name: /Car Showcase/ })).toBeVisible();
     if (route === '/teardown') await expect(page.getByText('Loading frames')).toBeHidden();
     const states = await tabThroughPage(page);
