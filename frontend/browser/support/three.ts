@@ -17,6 +17,7 @@ type Store = {
       getContext: () => WebGLRenderingContext | WebGL2RenderingContext;
     };
     camera: unknown;
+    invalidate: () => void;
     setFrameloop: (mode: 'never') => void;
   };
 };
