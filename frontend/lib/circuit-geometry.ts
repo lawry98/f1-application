@@ -111,8 +111,9 @@ export interface CircuitEntry {
   firstGp: number;
 }
 
-const CATALOG: readonly CircuitEntry[] = catalog;
-const BY_ID = new Map(CATALOG.map((entry) => [entry.id, entry]));
+/** Every circuit with a detail page, once each, under its canonical slug. */
+export const CIRCUIT_CATALOG: readonly CircuitEntry[] = catalog;
+const BY_ID = new Map(CIRCUIT_CATALOG.map((entry) => [entry.id, entry]));
 
 export function circuitEntry(id: string): CircuitEntry | null {
   return BY_ID.get(id) ?? null;
