@@ -80,13 +80,15 @@ switches on `mode` first.
 
 **Deltas and tool results both come from the node, not the transport.** `synthesizer_node` iterates
 `llm.stream()` and writes one custom payload per chunk while accumulating the text;
-`tool_executor_node` writes one custom payload per tool from inside its `as_completed` loop — that
+`tool_executor_node` writes one custom payload per tool from inside its collection loop — that
 loop body runs in the node's own thread, not a pool worker, so the writer call is safe there. The
 transport stays a dumb translator in both cases.
 
 There is **no thread bridge**. LangGraph's `astream()` runs the graph's synchronous node functions
 on anyio worker threads itself, so the event loop is not blocked and node signatures stay
-`(AgentState) -> dict[str, Any]` with no `async`. The API layer holds no executor; the only
+synchronous — `(AgentState, config) -> dict[str, Any]`, no `async`. The `config` is how a node
+gets the run's `RunBudget` (`agent/budget.py`): a thread cannot be cancelled from the event loop,
+so each node checks the budget's cancel event and deadline itself before it spends. The API layer holds no executor; the only
 `ThreadPoolExecutor` in the backend is the tool fan-out inside `tool_executor_node`, which is what
 `EXECUTOR_MAX_WORKERS` sizes.
 

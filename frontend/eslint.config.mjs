@@ -30,28 +30,22 @@ export default defineConfig([
     },
   },
   {
-    /*
-     * eslint-config-next 16 brought eslint-plugin-react-hooks 7, whose `recommended` set adds the
-     * React Compiler's rules on top of rules-of-hooks and exhaustive-deps. Ten of them pass here
-     * and stay on. These four do not: they flag the latest-value ref written during render
-     * (`use-scroll-spy`, `use-team-navigation`, `reveal-ordinal`, `use-compound-selection`), the
-     * R3F camera `FitCamera` mutates, a synchronous setState in three effects, and
-     * `Math.random()` in the vendored `ui/dot-pattern`. That is advice for a compiler this app
-     * does not run, and acting on it rewrites code the browser suite pins, so it is not part of
-     * the Next 16 upgrade. Off here, so `pnpm lint` enforces exactly what it did on Next 14 plus
-     * the ten.
-     */
-    rules: {
-      'react-hooks/refs': 'off',
-      'react-hooks/set-state-in-effect': 'off',
-      'react-hooks/immutability': 'off',
-      'react-hooks/purity': 'off',
-    },
-  },
-  {
     files: ['scripts/**/*.mjs', 'scripts/**/*.js'],
     rules: {
       'no-console': 'off',
+    },
+  },
+  {
+    /*
+     * `react-hooks/immutability` models every hook's return value as frozen. `useThree` hands back
+     * three.js objects whose whole API is imperative mutation — R3F's own pattern — and `FitCamera`
+     * sets the fitted `scene.fog` in a layout effect because the fog planes follow the camera
+     * distance, which is only knowable inside the Canvas (see CLAUDE.md, "Neither 3D scene frames
+     * its own camera"). One file, one rule: any other mutation of a hook's value still fails.
+     */
+    files: ['components/3d/fit-camera.tsx'],
+    rules: {
+      'react-hooks/immutability': 'off',
     },
   },
   {
@@ -60,6 +54,9 @@ export default defineConfig([
       '@typescript-eslint/no-unused-vars': 'off',
       'react/no-array-index-key': 'off',
       '@typescript-eslint/no-explicit-any': 'off',
+      // Vendored shadcn/ui and Magic UI, re-added rather than hand-edited: `dot-pattern` draws its
+      // twinkle delays with `Math.random()` during render, upstream's code and not ours to fix.
+      'react-hooks/purity': 'off',
     },
   },
 ]);

@@ -180,11 +180,22 @@ export function RaceSelector({
        * as broken rather than as scrollable. `pt-1 pb-2` is not decoration: `overflow-x: auto`
        * computes `overflow-y` to `auto` as well, and `TicketCard`'s `hover:-translate-y-0.5` would
        * otherwise poke 2px outside the box and raise a vertical scrollbar on hover.
+       *
+       * **The strip takes a tab stop of its own while the cards are locked.** Every card is
+       * natively `disabled` then — during a run, and while a busy or limit refusal waits out its
+       * Retry-After — which leaves a scrolling region with nothing focusable in it, so a keyboard
+       * cannot scroll it (axe's `scrollable-region-focusable`, found by the browser suite). With
+       * live cards the stop would only be a redundant extra one, so it exists only while needed.
+       * Its ring is the same flush token as the cards', painted on the same `bg-zinc-900` card.
        */}
       <div
         role="group"
         aria-labelledby={headingId}
-        className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2 pt-1"
+        tabIndex={disabled ? 0 : undefined}
+        className={cn(
+          'flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2 pt-1',
+          disabled && focusRing,
+        )}
       >
         {loading
           ? Array.from({ length: SKELETON_COUNT }, (_, i) => (

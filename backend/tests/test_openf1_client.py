@@ -7,18 +7,25 @@ one request per race is both slow and the only realistic way to breach OpenF1's
 is process-global and therefore reset by an autouse fixture in conftest.
 """
 
+import json
+import logging
 import threading
 import time
 
 import pytest
 import requests
+from freezegun import freeze_time
 
-from tests.factories import make_openf1_get
+from tests.factories import OPENF1_RATE_LIMITED, make_openf1_get
 from tools import openf1_client
 from tools.openf1_client import (
     OPENF1_BASE_URL,
     OPENF1_FIRST_YEAR,
+    OPENF1_MAX_ATTEMPTS,
+    OPENF1_MAX_RETRY_AFTER,
+    OPENF1_MIN_INTERVAL,
     OpenF1Error,
+    _pace,
     _range_params,
     driver_index,
     list_meetings,
@@ -426,4 +433,183 @@ def test_a_failed_in_flight_fetch_propagates_to_every_waiter_and_is_not_cached(m
     fake.rows = [{"meeting_key": 2}]
 
     assert list_meetings(2026) == [{"meeting_key": 2}]
+    assert len(fake.calls) == 2
+
+
+# ── Rate limiting: requests are paced, a short 429 is waited out, a long one is not ──
+#
+# Measured live on 2026-09-30: a cold briefing fan-out bursts past OpenF1's 3 req/s and gets
+# `429` with `Retry-After: 1`. Every tool but standings fell back to FastF1; standings has no
+# fallback, so it failed in 2 of 3 runs and the briefing lost its championship context.
+
+
+@freeze_time("2026-09-30")
+def test_request_starts_are_spaced_min_interval_apart(monkeypatch, openf1_retry_sleeps):
+    """With the clock frozen, each caller's wait is exactly its place in the queue."""
+    monkeypatch.setattr(openf1_client, "_next_start", 0.0)
+
+    for _ in range(3):
+        _pace()
+
+    # approx: a frozen monotonic reads an epoch-sized value, so 0.4 on top of it rounds.
+    assert openf1_retry_sleeps == pytest.approx([OPENF1_MIN_INTERVAL, 2 * OPENF1_MIN_INTERVAL])
+
+
+@freeze_time("2026-09-30")
+def test_pacing_survives_the_per_request_cache_clear(monkeypatch, openf1_retry_sleeps):
+    """Every route calls ``clear()`` when it finishes. If that reset the pacing, two
+    back-to-back briefings would burst into each other as if neither had started.
+    """
+    monkeypatch.setattr(openf1_client, "_next_start", 0.0)
+
+    _pace()
+    openf1_client.clear()
+    _pace()
+
+    assert openf1_retry_sleeps == pytest.approx([OPENF1_MIN_INTERVAL])
+
+
+def test_every_attempt_is_paced_including_a_retry(monkeypatch, openf1_retry_sleeps):
+    paced = []
+    monkeypatch.setattr(openf1_client, "_pace", lambda: paced.append(True))
+    fake = make_openf1_get({"sessions": SESSIONS_2026}, throttled={"sessions": 1})
+    monkeypatch.setattr(openf1_client.requests, "get", fake)
+
+    list_sessions(2026)
+
+    assert len(paced) == len(fake.calls) == 2
+
+
+def _response(status_code: int, headers: dict[str, str] | None = None, rows=None):
+    """A real ``requests.Response``, so the headers are the case-insensitive kind."""
+    response = requests.Response()
+    response.status_code = status_code
+    response.headers.update(headers or {})
+    response._content = json.dumps(rows if rows is not None else OPENF1_RATE_LIMITED).encode()
+    return response
+
+
+class _ScriptedGet:
+    """A ``requests.get`` stand-in that answers with ``responses`` in order."""
+
+    def __init__(self, *responses: requests.Response) -> None:
+        self.responses = list(responses)
+        self.calls: list[dict] = []
+
+    def __call__(self, url: str, params: dict | None = None, **kwargs):
+        self.calls.append({"url": url, "params": params or {}})
+        return self.responses.pop(0)
+
+
+def test_a_429_is_retried_after_the_wait_openf1_asks_for(monkeypatch, openf1_retry_sleeps):
+    fake = make_openf1_get({"sessions": SESSIONS_2026}, throttled={"sessions": 1})
+    monkeypatch.setattr(openf1_client.requests, "get", fake)
+
+    assert list_sessions(2026) == SESSIONS_2026
+    assert len(fake.calls) == 2
+    assert fake.calls[0] == fake.calls[1]
+    assert openf1_retry_sleeps == [1.0]
+
+
+def test_a_retry_is_logged(monkeypatch, openf1_retry_sleeps, caplog):
+    fake = make_openf1_get({"sessions": SESSIONS_2026}, throttled={"sessions": 1})
+    monkeypatch.setattr(openf1_client.requests, "get", fake)
+
+    with caplog.at_level(logging.INFO, logger="tools.openf1_client"):
+        list_sessions(2026)
+
+    assert "OpenF1 sessions returned HTTP 429" in caplog.text
+
+
+def test_a_429_that_outlasts_every_attempt_raises(monkeypatch, openf1_retry_sleeps):
+    fake = make_openf1_get({"sessions": []}, throttled={"sessions": OPENF1_MAX_ATTEMPTS})
+    monkeypatch.setattr(openf1_client.requests, "get", fake)
+
+    with pytest.raises(OpenF1Error, match="HTTP 429"):
+        list_sessions(2026)
+
+    assert len(fake.calls) == OPENF1_MAX_ATTEMPTS
+    assert len(openf1_retry_sleeps) == OPENF1_MAX_ATTEMPTS - 1
+
+
+def test_a_429_asking_for_a_long_wait_raises_at_once(monkeypatch, openf1_retry_sleeps):
+    """A wait longer than the per-second limit's is some other limit, which one briefing
+    cannot usefully sit out. Raising now lets a tool with a FastF1 fallback take it.
+    """
+    wait = str(int(OPENF1_MAX_RETRY_AFTER) + 1)
+    fake = _ScriptedGet(_response(429, {"Retry-After": wait}))
+    monkeypatch.setattr(openf1_client.requests, "get", fake)
+
+    with pytest.raises(OpenF1Error, match="HTTP 429"):
+        list_sessions(2026)
+
+    assert len(fake.calls) == 1
+    assert openf1_retry_sleeps == []
+
+
+@pytest.mark.parametrize("headers", [{}, {"Retry-After": "Wed, 30 Sep 2026 16:33:00 GMT"}])
+def test_a_429_without_a_usable_retry_after_waits_one_second(
+    monkeypatch, openf1_retry_sleeps, headers
+):
+    fake = _ScriptedGet(_response(429, headers), _response(200, rows=SESSIONS_2026))
+    monkeypatch.setattr(openf1_client.requests, "get", fake)
+
+    assert list_sessions(2026) == SESSIONS_2026
+    assert openf1_retry_sleeps == [1.0]
+
+
+def test_other_statuses_are_not_retried(monkeypatch, openf1_retry_sleeps):
+    """A 404 is the range-query encoding trap or a bad path, and a retry repeats it."""
+    fake = make_openf1_get({"sessions": []}, status_code=404)
+    monkeypatch.setattr(openf1_client.requests, "get", fake)
+
+    with pytest.raises(OpenF1Error, match="HTTP 404"):
+        list_sessions(2026)
+
+    assert len(fake.calls) == 1
+    assert openf1_retry_sleeps == []
+
+
+def test_waiters_share_the_fetchers_retry_rather_than_its_429(monkeypatch, openf1_retry_sleeps):
+    """Standings and three other tools ask for the season's sessions at once. The retry
+    has to happen inside the single flight: raised to the waiters, one 429 fails them all.
+    """
+    first_call_answered = threading.Event()
+
+    class _SlowThenThrottled:
+        def __init__(self) -> None:
+            self.calls: list[dict] = []
+            self._lock = threading.Lock()
+
+        def __call__(self, url, params=None, **kwargs):
+            with self._lock:
+                self.calls.append({"url": url, "params": params or {}})
+                first = len(self.calls) == 1
+            if first:
+                # Long enough for every other thread to arrive and wait on this flight.
+                first_call_answered.wait(0.1)
+                return _response(429, {"Retry-After": "1"})
+            return _response(200, rows=[{"meeting_key": 1}])
+
+    fake = _SlowThenThrottled()
+    monkeypatch.setattr(openf1_client.requests, "get", fake)
+
+    results: list[list] = []
+    errors: list[Exception] = []
+    lock = threading.Lock()
+
+    def _call():
+        try:
+            rows = list_meetings(2026)
+        except Exception as exc:
+            with lock:
+                errors.append(exc)
+        else:
+            with lock:
+                results.append(rows)
+
+    _run_concurrently(_call, 4)
+
+    assert errors == []
+    assert results == [[{"meeting_key": 1}]] * 4
     assert len(fake.calls) == 2

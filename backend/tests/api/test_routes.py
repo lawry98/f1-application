@@ -14,6 +14,7 @@ from typing import Any
 
 import pytest
 from freezegun import freeze_time
+from starlette.requests import Request
 
 from api import routes as routes_module
 from api.errors import (
@@ -56,7 +57,7 @@ class FakeAgent:
         self.states: list[dict[str, Any]] = []
         self.stream_modes: list[Any] = []
 
-    async def astream(self, state: dict[str, Any], stream_mode: Any = None):
+    async def astream(self, state: dict[str, Any], config: Any = None, stream_mode: Any = None):
         self.states.append(state)
         self.stream_modes.append(stream_mode)
         if self.raises is not None and self.raises_after is None:
@@ -93,7 +94,7 @@ class GatedAgent:
         self.steps = steps
         self.gate = gate
 
-    async def astream(self, state: dict[str, Any], stream_mode: Any = None):
+    async def astream(self, state: dict[str, Any], config: Any = None, stream_mode: Any = None):
         yield ("updates", self.steps[0])
         await self.gate.wait()
         for step in self.steps[1:]:
@@ -524,7 +525,10 @@ def test_stream_delivers_events_while_the_agent_is_still_running(monkeypatch):
     monkeypatch.setattr(routes_module, "agent", GatedAgent(successful_steps(), asyncio.Event()))
 
     async def drive() -> list[str]:
-        response = await routes_module.generate_briefing_stream(BriefingRequest(query="monaco"))
+        response = await routes_module.generate_briefing_stream(
+            BriefingRequest(query="monaco"),
+            Request({"type": "http", "method": "POST", "headers": [], "client": ("t", 1)}),
+        )
         events = response.body_iterator
         try:
             return [(await asyncio.wait_for(anext(events), timeout=5))["event"] for _ in range(3)]

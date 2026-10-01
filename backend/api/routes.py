@@ -3,22 +3,37 @@
 import asyncio
 import json
 import logging
+import threading
+import time
+from collections.abc import AsyncIterator, Callable
 from datetime import date
 from typing import Any
 
 import fastf1
-from fastapi import APIRouter, HTTPException, Path
+from fastapi import APIRouter, HTTPException, Path, Request
+from fastapi.responses import JSONResponse
+from langchain_core.runnables import RunnableConfig
 from sse_starlette.sse import EventSourceResponse
+from starlette.types import Receive, Scope, Send
 
+from agent.budget import RunBudget
 from agent.graph import agent
 from agent.state import AgentState
 from api.errors import (
+    BRIEFING_DEADLINE_ERROR,
     GENERIC_BRIEFING_ERROR,
     GENERIC_CIRCUIT_WINNERS_ERROR,
     GENERIC_SCHEDULE_ERROR,
     GENERIC_STANDINGS_ERROR,
 )
+from api.guard import AdmissionGuard, Lease, Rejection
 from api.models import BriefingRequest
+from config import (
+    BRIEFING_DAILY_CAP,
+    BRIEFING_DEADLINE_SECONDS,
+    BRIEFING_MAX_CONCURRENT,
+    BRIEFING_PER_IP_PER_HOUR,
+)
 from tools.circuit_winners import UNKNOWN_CIRCUIT, get_recent_circuit_winners
 from tools.openf1_client import OPENF1_FIRST_YEAR
 from tools.openf1_client import clear as clear_openf1_cache
@@ -28,6 +43,168 @@ from tools.standings_tools import SEASON_NOT_STARTED, get_championship_standings
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api")
+
+# How long past the deadline a slot may stay held before the guard's backstop frees it. Only a
+# teardown path that never ran is ever that late; the margin is there so the backstop cannot
+# free a slot out from under a run that is merely finishing.
+LEASE_MARGIN_SECONDS = 60
+
+# How long past the deadline the route waits for the graph to notice its cancelled budget
+# before it stops waiting and ends the response itself. The fan-out notices within a poll and
+# the synthesizer at its next chunk; only a Gemini stream stalled mid-reply takes longer, and
+# that is bounded by LLM_TIMEOUT_SECONDS on the worker thread, not on the response.
+DEADLINE_GRACE_SECONDS = 5
+
+
+def new_briefing_guard() -> AdmissionGuard:
+    return AdmissionGuard(
+        per_ip_per_hour=BRIEFING_PER_IP_PER_HOUR,
+        daily_cap=BRIEFING_DAILY_CAP,
+        max_concurrent=BRIEFING_MAX_CONCURRENT,
+        lease_seconds=BRIEFING_DEADLINE_SECONDS + LEASE_MARGIN_SECONDS,
+    )
+
+
+# One per process — the limits are per worker, so run exactly one. See api/guard.py.
+briefing_guard = new_briefing_guard()
+
+
+def _admit(http_request: Request) -> Lease | JSONResponse:
+    """Take a briefing slot for this caller, or build the plain HTTP rejection.
+
+    ``client.host`` is the TCP peer. Behind a proxy it is the visitor only when uvicorn runs
+    with ``--proxy-headers`` and ``FORWARDED_ALLOW_IPS`` naming that proxy; X-Forwarded-For is
+    never read here, because anyone can send one.
+    """
+    ip = _client_ip(http_request)
+    outcome = briefing_guard.admit(ip)
+    if isinstance(outcome, Lease):
+        return outcome
+
+    logger.info(
+        "Briefing rejected: ip=%s code=%s retry_after=%ds",
+        ip,
+        outcome.code,
+        outcome.retry_after_seconds,
+    )
+    return _rejection_response(outcome)
+
+
+def _client_ip(http_request: Request) -> str:
+    return http_request.client.host if http_request.client else "unknown"
+
+
+class _BriefingRun:
+    """One admitted briefing: its slot, its budget, and the one log line it ends with.
+
+    The budget goes to the graph through its config (see agent/budget.py). Its cancel event is
+    set by a timer at the deadline and by :meth:`finish` — so a hang-up, a crash and a normal end
+    all tell anything still running on a worker thread to stop at its next check.
+    """
+
+    def __init__(self, lease: Lease, ip: str) -> None:
+        loop = asyncio.get_running_loop()
+        self._lease = lease
+        self._ip = ip
+        self._started = time.monotonic()
+        self.budget = RunBudget(
+            cancel=threading.Event(), deadline=self._started + BRIEFING_DEADLINE_SECONDS
+        )
+        self._deadline_timer = loop.call_later(BRIEFING_DEADLINE_SECONDS, self.budget.cancel.set)
+        self.backstop_at = loop.time() + BRIEFING_DEADLINE_SECONDS + DEADLINE_GRACE_SECONDS
+        self._finished = False
+
+    @property
+    def config(self) -> RunnableConfig:
+        return {"configurable": {"budget": self.budget}}
+
+    @property
+    def past_deadline(self) -> bool:
+        return self.budget.remaining() == 0
+
+    def finish(self, outcome: str) -> None:
+        """Release everything the run holds. Idempotent: the first outcome reported wins."""
+        if self._finished:
+            return
+        self._finished = True
+        self.budget.cancel.set()
+        self._deadline_timer.cancel()
+        self._lease.release()
+        # Both caches exist to dedupe fetches *within* one request's tool fan-out. Clearing
+        # them here is what buys freshness *across* requests — a range query cached before a
+        # race's results are published would otherwise report the wrong championship leader
+        # until the process restarts.
+        clear_schedule_cache()
+        clear_openf1_cache()
+        logger.info(
+            "Briefing finished: ip=%s outcome=%s duration=%.1fs",
+            self._ip,
+            outcome,
+            time.monotonic() - self._started,
+        )
+
+
+class _BackstopReachedError(Exception):
+    """The graph had not returned by the deadline plus its grace."""
+
+
+async def _until_backstop(stream: AsyncIterator[Any], backstop_at: float) -> AsyncIterator[Any]:
+    """Re-yield ``stream``, raising :class:`_BackstopReachedError` if a wait outlives ``backstop_at``.
+
+    Each wait is bounded on its own, rather than one timeout wrapped round a loop that yields:
+    a timeout that fires while the consumer is suspended at a ``yield`` would cancel whatever
+    the consumer is doing — sending to the client — not the wait on the graph.
+    """
+    while True:
+        timeout = asyncio.timeout_at(backstop_at)
+        try:
+            async with timeout:
+                item = await anext(stream)
+        except StopAsyncIteration:
+            return
+        except TimeoutError:
+            # Only our own timer means the backstop: the graph raising a TimeoutError of its
+            # own is a failure like any other.
+            if timeout.expired():
+                raise _BackstopReachedError from None
+            raise
+        yield item
+
+
+def _rejection_response(rejection: Rejection) -> JSONResponse:
+    return JSONResponse(
+        status_code=rejection.status,
+        content={
+            "code": rejection.code,
+            "retry_after_seconds": rejection.retry_after_seconds,
+            "limit": rejection.limit,
+        },
+        headers={"Retry-After": str(rejection.retry_after_seconds)},
+    )
+
+
+class _ReleasingEventSourceResponse(EventSourceResponse):
+    """An event stream that runs ``on_close`` however the response ends.
+
+    The generator's own ``finally`` is not enough by itself. When the client hangs up,
+    sse-starlette cancels its streaming task, and a generator that was parked at a ``yield`` at
+    that moment — or had not started, because the client left before the first event — is not
+    closed by that. Its ``finally`` would run whenever the garbage collector got round to it, or,
+    for one that never started, never. This does both teardowns deterministically.
+    """
+
+    def __init__(self, content: AsyncIterator[dict[str, str]], *, on_close: Callable[[], None]):
+        super().__init__(content)
+        self._on_close = on_close
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            try:
+                await self.body_iterator.aclose()
+            finally:
+                self._on_close()
 
 
 def initial_state(query: str) -> AgentState:
@@ -42,11 +219,27 @@ def initial_state(query: str) -> AgentState:
     }
 
 
-@router.post("/briefing/stream")
-async def generate_briefing_stream(request: BriefingRequest) -> EventSourceResponse:
-    """Stream briefing generation via Server-Sent Events, one event per completed node."""
+@router.post("/briefing/stream", response_model=None)
+async def generate_briefing_stream(
+    request: BriefingRequest, http_request: Request
+) -> EventSourceResponse | JSONResponse:
+    """Stream briefing generation via Server-Sent Events, one event per completed node.
+
+    Admission runs first, while a refusal can still be an ordinary 429/503: once the event
+    stream opens, its status is 200 whatever happens.
+    """
+    admission = _admit(http_request)
+    if isinstance(admission, JSONResponse):
+        return admission
+    run = _BriefingRun(admission, _client_ip(http_request))
 
     async def event_generator():
+        # Left None by every path that ends without a terminal event of ours — a hang-up
+        # cancelling the wait on the graph, or closing the generator at a `yield`.
+        outcome: str | None = None
+        # Every Delta already on the wire, so the backstop can serve them as the truncated
+        # briefing they are rather than an error below prose the reader is already reading.
+        prose: list[str] = []
         try:
             logger.info("Starting briefing generation for: %s", request.query)
 
@@ -55,12 +248,17 @@ async def generate_briefing_stream(request: BriefingRequest) -> EventSourceRespo
                 "data": json.dumps({"step": "resolving", "message": "Resolving race..."}),
             }
 
-            stream = agent.astream(initial_state(request.query), stream_mode=["updates", "custom"])
+            stream = agent.astream(
+                initial_state(request.query),
+                config=run.config,
+                stream_mode=["updates", "custom"],
+            )
 
-            async for mode, payload in stream:
+            async for mode, payload in _until_backstop(stream, run.backstop_at):
                 if mode == "custom":
                     # Node-to-transport writes, discriminated by `kind`.
                     if payload.get("kind") == "briefing_delta":
+                        prose.append(payload["content"])
                         yield {
                             "event": "briefing_delta",
                             "data": json.dumps({"content": payload["content"]}),
@@ -96,6 +294,7 @@ async def generate_briefing_stream(request: BriefingRequest) -> EventSourceRespo
                         }
                     else:
                         error_msg = step_data.get("briefing", "Failed to resolve race")
+                        outcome = "unresolved"
                         yield {"event": "error", "data": json.dumps({"message": error_msg})}
                         return
 
@@ -128,32 +327,59 @@ async def generate_briefing_stream(request: BriefingRequest) -> EventSourceRespo
                 elif current_step == "synthesizer":
                     briefing = step_data.get("briefing")
                     if briefing:
+                        truncated = bool(step_data.get("briefing_truncated"))
+                        outcome = "truncated" if truncated else "complete"
                         yield {
                             "event": "briefing",
-                            "data": json.dumps(
-                                {
-                                    "content": briefing,
-                                    "truncated": bool(step_data.get("briefing_truncated")),
-                                }
-                            ),
+                            "data": json.dumps({"content": briefing, "truncated": truncated}),
                         }
                         yield {
                             "event": "complete",
                             "data": json.dumps({"message": "Briefing complete"}),
                         }
 
-        except Exception as exc:
-            logger.exception("Error during briefing stream generation: %s", exc)
-            yield {"event": "error", "data": json.dumps({"message": GENERIC_BRIEFING_ERROR})}
-        finally:
-            # Both caches exist to dedupe fetches *within* one request's tool fan-out.
-            # Clearing them here is what buys freshness *across* requests — a range query
-            # cached before a race's results are published would otherwise report the
-            # wrong championship leader until the process restarts.
-            clear_schedule_cache()
-            clear_openf1_cache()
+            # A run that ended without a terminal event — no briefing, no error — failed.
+            outcome = outcome or "error"
 
-    return EventSourceResponse(event_generator())
+        except _BackstopReachedError:
+            logger.warning(
+                "Briefing graph still running %ds past the deadline; ending the response",
+                DEADLINE_GRACE_SECONDS,
+            )
+            if prose:
+                outcome = "truncated"
+                yield {
+                    "event": "briefing",
+                    "data": json.dumps({"content": "".join(prose), "truncated": True}),
+                }
+                yield {"event": "complete", "data": json.dumps({"message": "Briefing complete"})}
+            else:
+                outcome = "deadline"
+                yield _deadline_event()
+        except Exception as exc:
+            if run.past_deadline:
+                # The synthesizer raises when it is stopped with no prose; past the deadline
+                # that is the deadline, not "something went wrong".
+                outcome = "deadline"
+                logger.warning("Briefing stream stopped at the deadline: %s", exc)
+                yield _deadline_event()
+            else:
+                outcome = "error"
+                logger.exception("Error during briefing stream generation: %s", exc)
+                yield {"event": "error", "data": json.dumps({"message": GENERIC_BRIEFING_ERROR})}
+        finally:
+            run.finish(outcome or "disconnected")
+
+    return _ReleasingEventSourceResponse(
+        event_generator(), on_close=lambda: run.finish("disconnected")
+    )
+
+
+def _deadline_event() -> dict[str, str]:
+    return {
+        "event": "error",
+        "data": json.dumps({"message": BRIEFING_DEADLINE_ERROR, "code": "deadline"}),
+    }
 
 
 def _race_row(event: Any) -> dict[str, Any]:

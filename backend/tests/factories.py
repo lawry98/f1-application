@@ -14,6 +14,7 @@ perfectly reasonable in a fixture.
 from typing import Any
 
 import pandas as pd
+from requests.structures import CaseInsensitiveDict
 
 SCHEDULE_COLUMNS = [
     "RoundNumber",
@@ -88,6 +89,7 @@ def make_llm(
     raises: Exception | None = None,
     chunks: list[str] | None = None,
     stream_raises_after: int | None = None,
+    before_chunk: Any = None,
 ):
     """Build a stand-in for the module-level ``ChatGoogleGenerativeAI`` client.
 
@@ -108,6 +110,13 @@ def make_llm(
             concatenation is what a complete streamed briefing comes to.
         stream_raises_after: If given, ``.stream()`` raises after yielding this many
             chunks. ``0`` models a failure before any prose exists.
+        before_chunk: If given, called with each chunk's index just before that chunk is
+            produced — the moment a real stream is waiting on the network, which is where a
+            deadline or a hang-up lands.
+
+    The fake records ``chunks_served`` (how far the consumer read) and ``stream_closed``
+    (whether it let go of the stream), which is how a test sees that a stopped synthesis
+    stopped *reading* rather than merely stopped *forwarding*.
     """
 
     class _FakeResponse:
@@ -118,6 +127,8 @@ def make_llm(
     class _FakeLLM:
         def __init__(self) -> None:
             self.calls: list[Any] = []
+            self.chunks_served = 0
+            self.stream_closed = False
 
         def invoke(self, messages: Any) -> _FakeResponse:
             self.calls.append(messages)
@@ -129,12 +140,19 @@ def make_llm(
             self.calls.append(messages)
             if raises is not None:
                 raise raises
-            for index, chunk in enumerate(chunks if chunks is not None else [content]):
-                if stream_raises_after is not None and index >= stream_raises_after:
+            try:
+                for index, chunk in enumerate(chunks if chunks is not None else [content]):
+                    if before_chunk is not None:
+                        before_chunk(index)
+                    if stream_raises_after is not None and index >= stream_raises_after:
+                        raise RuntimeError("stream died mid-iteration")
+                    self.chunks_served += 1
+                    yield _FakeResponse(chunk)
+                if stream_raises_after is not None:
                     raise RuntimeError("stream died mid-iteration")
-                yield _FakeResponse(chunk)
-            if stream_raises_after is not None:
-                raise RuntimeError("stream died mid-iteration")
+            except GeneratorExit:
+                self.stream_closed = True
+                raise
 
     return _FakeLLM()
 
@@ -190,12 +208,23 @@ def make_race_info(**overrides: Any) -> dict[str, Any]:
     return info
 
 
-def make_openf1_get(routes: dict[str, Any], status_code: int = 200):
+# OpenF1's real answer past its 3 req/s ceiling, captured live on 2026-09-30.
+OPENF1_RATE_LIMITED = {
+    "detail": "Rate limit exceeded. Max 3 requests/second.",
+    "error": "Too Many Requests",
+}
+
+
+def make_openf1_get(
+    routes: dict[str, Any], status_code: int = 200, throttled: dict[str, int] | None = None
+):
     """Build a stand-in for ``requests.get`` against OpenF1.
 
     Args:
         routes: Endpoint name (the last path segment, e.g. ``"sessions"``) → JSON payload.
         status_code: Status every response reports.
+        throttled: Endpoint → how many of its first calls answer HTTP 429 with
+            ``Retry-After: 1``, as OpenF1 does to a fan-out that bursts past 3 req/s.
 
     The returned callable records each call as ``{"url": ..., "params": ...}`` on ``.calls``,
     which is what lets tests assert the request *count* — the range-query pattern's whole
@@ -216,17 +245,44 @@ def make_openf1_get(routes: dict[str, Any], status_code: int = 200):
                     f"make_openf1_get has no payload for '{endpoint}'. "
                     f"Known endpoints: {sorted(routes)}"
                 )
+            if remaining_429s.get(endpoint, 0) > 0:
+                remaining_429s[endpoint] -= 1
+                return _FakeOpenF1Response(OPENF1_RATE_LIMITED, 429, {"retry-after": "1"})
             return _FakeOpenF1Response(routes[endpoint], status_code)
 
+    remaining_429s = dict(throttled or {})
     return _FakeGet()
 
 
 class _FakeOpenF1Response:
-    """Stand-in for a ``requests.Response`` — only status_code and json() are consumed."""
+    """Stand-in for a ``requests.Response`` — only status_code, headers and json() are
+    consumed. ``headers`` is case-insensitive, as a real response's is: OpenF1 serves
+    ``retry-after`` lower-cased.
+    """
 
-    def __init__(self, payload: Any, status_code: int) -> None:
+    def __init__(
+        self, payload: Any, status_code: int, headers: dict[str, str] | None = None
+    ) -> None:
         self.status_code = status_code
+        self.headers = CaseInsensitiveDict(headers or {})
         self._payload = payload
 
     def json(self) -> Any:
         return self._payload
+
+
+class FakeClock:
+    """A clock a test moves by hand — for anything timed in hours, where sleeping is no option.
+
+    Callable like ``time.time``/``time.monotonic``, which is the whole seam the guard and the
+    run budget take.
+    """
+
+    def __init__(self, now: float = 1_000_000.0) -> None:
+        self.now = now
+
+    def __call__(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds

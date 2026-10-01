@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { BriefingChat } from '@/components/briefing/briefing-chat';
 import { TopoBackground } from '@/components/candy/topo-background';
 import { LandingNav } from '@/components/landing/landing-nav';
+import { EYEBROW_RED } from '@/lib/tyre-utils';
 
 export const metadata: Metadata = {
   title: 'Race Briefing',
@@ -33,7 +34,12 @@ export default function BriefingPage() {
       <main className="flex flex-1 flex-col">
         <div className="border-b border-zinc-800/60 bg-zinc-950 pt-14">
           <div className="container mx-auto max-w-7xl px-4 py-8">
-            <p className="text-[11px] font-semibold uppercase tracking-widest text-f1-red">
+            {/* Raw `f1-red` is 4.0:1 on this bare `zinc-950` band at 11px, under AA; `EYEBROW_RED`
+                is the token already lifted for exactly this backdrop. */}
+            <p
+              className="text-[11px] font-semibold uppercase tracking-widest"
+              style={{ color: EYEBROW_RED }}
+            >
               AI Agent
             </p>
             <h1 className="mt-1 text-2xl font-bold text-ink">Race Weekend Briefing</h1>
