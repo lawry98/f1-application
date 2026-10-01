@@ -156,7 +156,7 @@ export function LandingHero() {
                 </RedactedReveal>
               </h1>
               <p className="max-w-lg text-lg leading-relaxed text-zinc-400">
-                Type any Grand Prix and our AI agent gathers track telemetry, driver form, weather
+                Type any Grand Prix and our AI agent gathers race results, driver form, weather
                 forecasts, and live news — synthesized into a structured race weekend briefing by
                 Gemini.
               </p>
@@ -223,7 +223,7 @@ export function LandingHero() {
 
 function HeroBriefingPreview() {
   const tools: Array<{ label: string; ok: boolean }> = [
-    { label: 'Track telemetry', ok: true },
+    { label: 'Track profile', ok: true },
     { label: 'Driver form', ok: true },
     { label: 'Weather forecast', ok: true },
     { label: 'News search', ok: true },
@@ -287,7 +287,7 @@ function HeroBriefingPreview() {
              * chip, one of whose rows is an *invented* championship table, sitting in a
              * `hidden lg:block` column as an illustration beside the real copy. Making it an `h2`
              * would put "Monaco Grand Prix" into the page outline as a peer of "Everything for a
-             * complete race weekend picture" and "From query to briefing in seconds", so a
+             * complete race weekend picture" and "From query to briefing in under a minute", so a
              * screen-reader user navigating by heading would land on demo data and reasonably
              * conclude the page was about the Monaco Grand Prix.
              *

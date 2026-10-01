@@ -40,7 +40,7 @@ describe('LandingCtaBand', () => {
 
     expect(
       screen.getByText(
-        /No setup, no account required\. Enter any Grand Prix name and receive a comprehensive AI-generated briefing in seconds\./,
+        /No account required\. Enter any Grand Prix name and receive a comprehensive AI-generated briefing in under a minute\./,
       ),
     ).toBeInTheDocument();
   });

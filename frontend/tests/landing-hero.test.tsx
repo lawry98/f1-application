@@ -54,7 +54,7 @@ describe('LandingHero', () => {
       expect(
         byNormalisedText(
           'p',
-          'Type any Grand Prix and our AI agent gathers track telemetry, driver form, weather ' +
+          'Type any Grand Prix and our AI agent gathers race results, driver form, weather ' +
             'forecasts, and live news — synthesized into a structured race weekend briefing by ' +
             'Gemini.',
         ),
@@ -160,7 +160,7 @@ describe('LandingHero', () => {
       render(<LandingHero />);
 
       expect(screen.getByText('Agent tool trace')).toBeInTheDocument();
-      for (const label of ['Track telemetry', 'Driver form', 'Weather forecast', 'News search']) {
+      for (const label of ['Track profile', 'Driver form', 'Weather forecast', 'News search']) {
         expect(screen.getByText(label)).toBeInTheDocument();
       }
     });

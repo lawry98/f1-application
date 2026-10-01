@@ -21,13 +21,14 @@ beforeEach(() => {
 });
 
 /**
- * The six stack entries, retyped rather than imported from the component. `TECH_STACK` is not
+ * The seven stack entries, retyped rather than imported from the component. `TECH_STACK` is not
  * exported and should not be: a test that imports the same constant the component renders asserts
  * only that React can map over an array. Retyping makes this a contract — the failure mode that
  * matters is a label or a note being quietly dropped or reworded while the section is re-set.
  */
 const STACK_LABELS = [
   'FastF1',
+  'OpenF1',
   'LangGraph',
   'Gemini 3.6 Flash',
   'OpenWeather',
@@ -36,7 +37,8 @@ const STACK_LABELS = [
 ];
 
 const STACK_NOTES = [
-  'Telemetry & results',
+  'Schedules & circuit history',
+  'Results & standings',
   'Agent orchestration',
   'Synthesis & analysis',
   'Weather forecasts',
@@ -71,7 +73,7 @@ describe('LandingBuiltWith', () => {
       expect(screen.getByText('Built with')).toBeInTheDocument();
     });
 
-    it('renders all six labels and all six notes verbatim', () => {
+    it('renders all seven labels and all seven notes verbatim', () => {
       render(<LandingBuiltWith />);
       for (const label of STACK_LABELS) {
         expect(screen.getByText(label)).toBeInTheDocument();
@@ -82,10 +84,10 @@ describe('LandingBuiltWith', () => {
       }
     });
 
-    it('exposes the stack as a labelled list of six items', () => {
+    it('exposes the stack as a labelled list of seven items', () => {
       render(<LandingBuiltWith />);
       const list = screen.getByRole('list', { name: 'Technologies used' });
-      expect(within(list).getAllByRole('listitem')).toHaveLength(6);
+      expect(within(list).getAllByRole('listitem')).toHaveLength(7);
     });
   });
 
@@ -134,7 +136,7 @@ describe('LandingBuiltWith', () => {
       const { container } = render(<LandingBuiltWith />);
 
       const chips = Array.from(container.querySelectorAll<HTMLElement>('[class*="bg-zinc-900/50"]'));
-      expect(chips).toHaveLength(6);
+      expect(chips).toHaveLength(7);
 
       for (const chip of chips) {
         // Two runs per chip: the `zinc-300` label and the `zinc-400` note.

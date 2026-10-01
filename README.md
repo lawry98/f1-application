@@ -6,7 +6,7 @@ An AI-powered F1 race weekend briefing generator that provides comprehensive pre
 
 - **Comprehensive Race Analysis**: Track profiles, recent results, circuit history
 - **AI-Powered Insights**: Gemini 3.6 Flash synthesizes data into expert-level briefings
-- **Multi-Source Data**: FastF1 telemetry, web search (Tavily), weather forecasts (OpenWeather)
+- **Multi-Source Data**: race results and standings (OpenF1, FastF1), web search (Tavily), weather forecasts (OpenWeather)
 - **Agent Transparency**: View the tool execution trace for each briefing
 - **Real-time Streaming**: Server-Sent Events for live updates as the agent works, with the briefing prose filling in as the model writes it
 - **Modern 3D UI**: Three.js F1 car visualization with team liveries
@@ -19,7 +19,8 @@ An AI-powered F1 race weekend briefing generator that provides comprehensive pre
 - **Python 3.12** with FastAPI + Uvicorn
 - **LangGraph** for agent orchestration (4-node pipeline)
 - **LangChain + Google Gemini** (`gemini-3.6-flash`)
-- **FastF1** for F1 telemetry and session data
+- **FastF1** for schedules, circuit history and race results before 2023
+- **OpenF1** for race results and derived standings, 2023 onward
 - **Tavily API** for news search
 - **OpenWeather API** for race location forecasts
 - **SSE-Starlette** for server-sent events streaming
@@ -173,13 +174,14 @@ INPUT ("Monaco GP 2025")
         ▼
 ┌───────────────┐
 │ TOOL EXECUTOR │  Execute tools in parallel:
-│               │  - get_track_info           (FastF1)
-│               │  - get_recent_race_results  (FastF1)
-│               │  - get_driver_form          (FastF1)
-│               │  - get_recent_top_finishers (FastF1)
-│               │  - get_circuit_winners      (FastF1)
-│               │  - search_f1_news           (Tavily)
-│               │  - get_race_weather         (OpenWeather)
+│               │  - get_track_info             (FastF1)
+│               │  - get_recent_race_results    (OpenF1; FastF1 before 2023)
+│               │  - get_driver_form            (OpenF1; FastF1 before 2023)
+│               │  - get_recent_top_finishers   (OpenF1; FastF1 before 2023)
+│               │  - get_championship_standings (OpenF1, 2023 onward)
+│               │  - get_circuit_winners        (FastF1)
+│               │  - search_f1_news             (Tavily)
+│               │  - get_race_weather           (OpenWeather)
 └───────┬───────┘
         │
         ▼

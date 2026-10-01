@@ -98,14 +98,15 @@ describe('LandingHowItWorks', () => {
   });
 
   it('keeps the full heading sentence despite the serif accent span splitting it', () => {
-    // The mixed-type treatment wraps `in seconds` in its own span, so the heading's text lives in
-    // two text nodes and a naive `getByText('From query to briefing in seconds')` fails. Normalise
-    // whitespace and assert on `textContent`, which is what a screen reader announces.
+    // The mixed-type treatment wraps `in under a minute` in its own span, so the heading's text
+    // lives in two text nodes and a naive `getByText('From query to briefing in under a minute')`
+    // fails. Normalise whitespace and assert on `textContent`, which is what a screen reader
+    // announces.
     render(<LandingHowItWorks />);
 
     const heading = screen.getByRole('heading', { level: 2 });
     expect(heading.textContent?.replace(/\s+/g, ' ').trim()).toBe(
-      'From query to briefing in seconds',
+      'From query to briefing in under a minute',
     );
   });
 
