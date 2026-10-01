@@ -11,7 +11,7 @@ from langchain_core.tools import tool
 
 from tools.circuit_winners import circuit_id_for_location, get_recent_circuit_winners
 from tools.cutoff import parse_utc
-from tools.fastf1_helpers import format_position, load_race_session, race_start
+from tools.fastf1_helpers import classified_position, load_race_session, race_start
 from tools.openf1_client import OPENF1_FIRST_YEAR, driver_index
 from tools.openf1_races import held_races
 from tools.openf1_shaping import top_finisher_rows
@@ -56,7 +56,7 @@ def _fastf1_top(year: int, cutoff: datetime) -> dict[str, Any] | None:
     session = load_race_session(year, int(last_event["RoundNumber"]))
     top_finishers = [
         {
-            "position": format_position(row["Position"]),
+            "position": classified_position(row["ClassifiedPosition"]),
             "driver": row["FullName"],
             "driver_code": row["Abbreviation"],
             "team": row["TeamName"],
