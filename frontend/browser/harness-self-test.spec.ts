@@ -59,6 +59,15 @@ test.describe('harness self-test', () => {
     expect((await measureContrast(page.locator('#t'))).ratio).toBeCloseTo(4.54, 2);
   });
 
+  // Hiding the glyphs and restoring them is itself a colour change, so a `transition-colors`
+  // link animates back from transparent; a colour read after the restore is that animation.
+  test('reads the resting colour of a target that transitions its colour', async ({ page }) => {
+    await page.setContent(
+      '<span id="t" style="color:#fff;background:#767676;transition:color 1s;font:40px sans-serif">MM</span>',
+    );
+    expect((await measureContrast(page.locator('#t'))).ratio).toBeCloseTo(4.54, 2);
+  });
+
   test('refuses to measure mid-fade', async ({ page }) => {
     await page.setContent('<div style="opacity:.5"><span id="t" style="color:#fff;background:#000;font:40px sans-serif">MM</span></div>');
     await expect(measureContrast(page.locator('#t'))).rejects.toThrow(/opacity/);
