@@ -66,7 +66,7 @@ def test_race_result_rows_match_the_fastf1_column_contract():
 
 
 def test_race_result_rows_report_an_unclassified_finish_as_dnf():
-    """FastF1 encodes this as Position 0.0; format_position turns it into "DNF"."""
+    """OpenF1 sends ``None`` here; a 0, tolerated defensively, also reads "DNF"."""
     rows = [{"session_key": 1, "position": 0, "driver_number": 4, "points": 0.0, "dnf": True}]
 
     assert race_result_rows(rows, DRIVERS)[0]["Position"] == "DNF"

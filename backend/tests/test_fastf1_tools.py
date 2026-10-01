@@ -24,6 +24,7 @@ from tools.fastf1_tools import get_driver_form, get_recent_race_results, get_tra
 RESULTS_ROWS = [
     {
         "Position": 1.0,
+        "ClassifiedPosition": "1",
         "DriverNumber": "1",
         "Abbreviation": "VER",
         "FullName": "Max Verstappen",
@@ -34,6 +35,7 @@ RESULTS_ROWS = [
     },
     {
         "Position": 2.0,
+        "ClassifiedPosition": "2",
         "DriverNumber": "4",
         "Abbreviation": "NOR",
         "FullName": "Lando Norris",
@@ -42,9 +44,11 @@ RESULTS_ROWS = [
         "Status": "Finished",
         "Time": "+5.000",
     },
-    # Position 0 is how FastF1 encodes an unclassified finish — surfaces as "DNF".
+    # A retired car keeps its place in the finishing order — a real 2022 Italian GP load gives
+    # RIC/STR/ALO/VET Positions 17.0-20.0 — and only ClassifiedPosition "R" says it retired.
     {
-        "Position": 0.0,
+        "Position": 3.0,
+        "ClassifiedPosition": "R",
         "DriverNumber": "44",
         "Abbreviation": "HAM",
         "FullName": "Lewis Hamilton",
@@ -184,6 +188,8 @@ def test_race_results_are_the_latest_race_at_this_circuit_before_as_of(monkeypat
 
     assert (result["year"], result["event"]) == (2021, "British Grand Prix")
     assert [row["Abbreviation"] for row in result["results"]] == ["VER", "NOR", "HAM"]
+    assert [row["Position"] for row in result["results"]] == [1, 2, "DNF"]
+    assert result["results"][2]["Status"] == "Accident"
     assert set(result["results"][0]) == {
         "Position",
         "DriverNumber",

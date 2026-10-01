@@ -273,6 +273,9 @@ OpenF1 path is `Status` fidelity: FastF1 reports *why* a car stopped ("+1 Lap", 
 OpenF1 exposes only `dnf`/`dns`/`dsq`, so `derive_status()` collapses it to
 `Finished`/`DNF`/`DNS`/`DSQ`. A real unclassified row also carries `position: None`, not `0` —
 code that coerces with `position or 0` handles this, but a naive `int(position)` will not.
+FastF1's own `Position` is the finishing order, never the classification: a retired car keeps its
+place there (2022 Italian GP: RIC/STR/ALO/VET at 17.0–20.0, `ClassifiedPosition` `"R"`), so every
+FastF1 path reads a finishing place through `fastf1_helpers.classified_position`.
 
 **The `requests` range-query encoding trap cost four tasks of this migration.** OpenF1's filter
 syntax is `session_key>=11334`. Passing `params={"session_key>=": v}` makes `requests`

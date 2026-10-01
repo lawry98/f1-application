@@ -56,5 +56,20 @@ def load_race_session(year: int, event_name: str | int):
 
 
 def format_position(position: Any) -> int | str:
-    """Coerce a results Position value to int, or 'DNF' when unclassified."""
+    """Coerce an OpenF1 ``position`` to int, or 'DNF' when unclassified (callers pass ``or 0``).
+
+    FastF1's ``Position`` gives a retired car its finishing-order place, never 0; read its
+    ``ClassifiedPosition`` with ``classified_position``.
+    """
     return int(position) if position > 0 else "DNF"
+
+
+# FastF1's ``ClassifiedPosition`` for a car with no classified place. ``Position`` cannot say: a
+# retired car keeps its place in the finishing order (17-20 in a real 2022 load), not 0.
+_FASTF1_UNCLASSIFIED = {"R": "DNF", "N": "DNF", "D": "DSQ", "E": "DSQ", "W": "DNS", "F": "DNS"}
+
+
+def classified_position(classified: Any) -> int | str:
+    """A FastF1 ``ClassifiedPosition`` as an int place, or 'DNF', 'DSQ' or 'DNS'."""
+    classified = str(classified)
+    return int(classified) if classified.isdigit() else _FASTF1_UNCLASSIFIED.get(classified, "DNF")
