@@ -9,7 +9,7 @@ Select which tools to run to gather data for the briefing. Every data tool answe
 - get_circuit_winners: Winners at this circuit in the three seasons before this race's season
 - search_f1_news: Latest news about this race (upcoming races only)
 - get_race_weather: Forecast for each session of this race weekend, at the circuit (upcoming races only; published only within about 5 days of the weekend)
-- get_driver_form: Max Verstappen's last five races before the cutoff
+- get_driver_form: Recent form for every driver: last 5 Grands Prix
 - get_recent_race_results: Top-10 of the latest race at this circuit before the cutoff
 
 Return ONLY a JSON array of tool names to run. Example:
@@ -64,4 +64,5 @@ DEFAULT_TOOLS = [
     "get_circuit_winners",
     "search_f1_news",
     "get_race_weather",
+    "get_driver_form",
 ]

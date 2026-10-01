@@ -358,6 +358,41 @@ def driver_index(keys: set[int]) -> dict[int, dict[str, str]]:
     return index
 
 
+def drivers_by_session(keys: set[int]) -> dict[tuple[int, int], dict[str, str]]:
+    """Map (session_key, driver_number) to who drove that number in that specific session.
+
+    ``driver_index`` collapses each number to its latest session, which is right for "who
+    races this number now" and wrong across a span where the pairing moved: a number changes
+    hands between seasons (#1 goes with the title) and a driver can change number mid-season
+    (Bearman drove #38 for Ferrari and #50 for Haas in 2024). Per session, neither can blur.
+
+    Reads the same ``drivers`` range as ``driver_index`` for the same ``keys``, so calling
+    both costs one request between them.
+
+    Args:
+        keys: Session keys to draw the roster from.
+
+    Returns:
+        (session_key, driver_number) → {full_name, name_acronym, team_name}.
+    """
+    if not keys:
+        return {}
+    rows = [row for row in _get("drivers", _range_params(keys)) if row.get("session_key") in keys]
+
+    identities: dict[tuple[int, int], dict[str, str]] = {}
+    for row in rows:
+        session_key = row.get("session_key")
+        number = row.get("driver_number")
+        if session_key is None or number is None:
+            continue
+        identities[(session_key, number)] = {
+            "full_name": row.get("full_name", ""),
+            "name_acronym": row.get("name_acronym", ""),
+            "team_name": row.get("team_name", ""),
+        }
+    return identities
+
+
 def driver_teams_by_session(keys: set[int]) -> dict[tuple[int, int], str]:
     """Map (session_key, driver_number) to the team driven for in that specific session.
 
@@ -367,9 +402,7 @@ def driver_teams_by_session(keys: set[int]) -> dict[tuple[int, int], str]:
     points across both constructors, not credit the whole season to whichever team they
     ended up on. This is the per-session join that makes that possible.
 
-    Reads the same ``drivers`` endpoint as ``driver_index`` and the same range query, so
-    calling both for the same ``keys`` costs one request between them, not two — the
-    second call is a cache hit.
+    The team column of ``drivers_by_session``, so it shares that request.
 
     Args:
         keys: Session keys to draw the roster from.
@@ -377,15 +410,4 @@ def driver_teams_by_session(keys: set[int]) -> dict[tuple[int, int], str]:
     Returns:
         (session_key, driver_number) → team_name.
     """
-    if not keys:
-        return {}
-    rows = [row for row in _get("drivers", _range_params(keys)) if row.get("session_key") in keys]
-
-    teams: dict[tuple[int, int], str] = {}
-    for row in rows:
-        session_key = row.get("session_key")
-        number = row.get("driver_number")
-        if session_key is None or number is None:
-            continue
-        teams[(session_key, number)] = row.get("team_name", "")
-    return teams
+    return {key: identity["team_name"] for key, identity in drivers_by_session(keys).items()}

@@ -28,6 +28,7 @@ from tools.openf1_client import (
     _pace,
     _range_params,
     driver_index,
+    drivers_by_session,
     list_meetings,
     list_sessions,
     session_results,
@@ -253,6 +254,54 @@ def test_driver_index_prefers_the_latest_session_for_a_driver(monkeypatch):
     monkeypatch.setattr(openf1_client.requests, "get", fake)
 
     assert driver_index({11334, 11342})[5]["team_name"] == "New Team"
+
+
+def test_drivers_by_session_keeps_each_sessions_own_identity(monkeypatch):
+    """Per session, not collapsed per number: a number can change hands between seasons (#1
+    goes with the title) and a driver can change number mid-season (Bearman, #38 then #50)."""
+    rows = [
+        {
+            "session_key": 9400,
+            "driver_number": 1,
+            "full_name": "Max VERSTAPPEN",
+            "name_acronym": "VER",
+            "team_name": "Red Bull Racing",
+        },
+        {
+            "session_key": 9500,
+            "driver_number": 1,
+            "full_name": "Lando NORRIS",
+            "name_acronym": "NOR",
+            "team_name": "McLaren",
+        },
+        {
+            "session_key": 9500,
+            "driver_number": 38,
+            "full_name": "Oliver BEARMAN",
+            "name_acronym": "BEA",
+            "team_name": "Ferrari",
+        },
+        {"session_key": 9500, "driver_number": None, "name_acronym": "???"},
+        {"session_key": 9450, "driver_number": 1, "name_acronym": "OUT"},
+    ]
+    fake = make_openf1_get({"drivers": rows})
+    monkeypatch.setattr(openf1_client.requests, "get", fake)
+
+    assert drivers_by_session({9400, 9500}) == {
+        (9400, 1): {
+            "full_name": "Max VERSTAPPEN",
+            "name_acronym": "VER",
+            "team_name": "Red Bull Racing",
+        },
+        (9500, 1): {"full_name": "Lando NORRIS", "name_acronym": "NOR", "team_name": "McLaren"},
+        (9500, 38): {
+            "full_name": "Oliver BEARMAN",
+            "name_acronym": "BEA",
+            "team_name": "Ferrari",
+        },
+    }
+    assert len(fake.calls) == 1
+    assert drivers_by_session(set()) == {}
 
 
 def test_a_non_200_raises_openf1_error(monkeypatch):
