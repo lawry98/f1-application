@@ -972,3 +972,42 @@ def test_standings_does_not_retry_on_a_transport_failure():
     assert fake.calls == [{"year": 2026}]
     assert result["success"] is False
     assert result["data"]["error"] == "Failed to get championship standings: HTTP 429"
+
+
+def test_a_failed_tool_logs_its_error(caplog):
+    """A tool fails by returning ``{"error": ...}``, not by raising, so the
+    ``logger.exception`` in ``_invoke_tool`` never sees it. Standings failed in every
+    briefing measured on 2026-09-30 and nothing in the log said why.
+    """
+    error = "Failed to get championship standings: OpenF1 session_result returned HTTP 429"
+    fake = make_tool("get_championship_standings", {"error": error})
+
+    with caplog.at_level(logging.WARNING, logger="agent.graph"):
+        result = _invoke_tool(fake, "get_championship_standings", make_race_info())
+
+    assert result["success"] is False
+    assert "Tool 'get_championship_standings' failed" in caplog.text
+    assert error in caplog.text
+
+
+def test_a_recovered_pre_season_miss_is_not_logged_as_a_failure(caplog):
+    """The pre-season miss is an answer the historical-year retry handles; only the
+    final outcome is worth a warning.
+    """
+    from tools.standings_tools import SEASON_NOT_STARTED
+
+    class _PreSeasonTool:
+        name = "get_championship_standings"
+
+        def invoke(self, args: dict) -> dict:
+            if args["year"] == 2026:
+                return {"error": "No completed races yet", "reason": SEASON_NOT_STARTED}
+            return {"year": 2025, "drivers": []}
+
+    race_info = make_race_info(year=2026, historical_year=2025)
+
+    with caplog.at_level(logging.WARNING, logger="agent.graph"):
+        result = _invoke_tool(_PreSeasonTool(), "get_championship_standings", race_info)
+
+    assert result["success"] is True
+    assert caplog.text == ""

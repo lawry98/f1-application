@@ -316,6 +316,12 @@ def _invoke_tool(tool: Any, task_name: str, race_info: dict) -> ToolResult:
         ):
             outcome = _invoke_with_cache(tool, task_name, {"year": race_info["historical_year"]})
 
+        # A tool fails by returning its error, not raising it, so the `except` below never
+        # sees one — and standings once failed in every briefing with nothing logged. Only
+        # the final outcome: the pre-season miss above is an answer the retry handles.
+        if not outcome["success"]:
+            logger.warning("Tool '%s' failed: %s", task_name, outcome["data"].get("error"))
+
         return outcome
     except Exception as exc:
         logger.exception("Tool '%s' raised an unexpected exception: %s", task_name, exc)

@@ -290,6 +290,18 @@ are never cached; `season_not_started` is, under the TTL. Don't delete the route
 `clear_openf1_cache()` thinking the new cache replaces it — it still bounds the other
 OpenF1 tools' staleness, and the TTL miss path relies on it.
 
+**OpenF1 requests are paced process-wide, because standings is the one tool a 429 kills.** A
+briefing's fan-out bursts about a dozen requests at OpenF1's 3 req/s ceiling. Every other tool
+absorbed the 429s as a silent FastF1 fallback; standings has none, so briefings lost it (2 of 3
+cold fan-outs, measured 2026-09-30). `openf1_client._pace` spaces request starts
+`OPENF1_MIN_INTERVAL` apart, and a 429 asking for at most `OPENF1_MAX_RETRY_AFTER` is retried.
+Pacing is the fix and the retry only its backstop: retrying alone spent ~25 requests on ~12
+answers and tripped the separate 30 req/min limit, whose `Retry-After: 60` raises at once.
+`_next_start` lives outside `clear()` so the per-request clear above leaves the pacing intact.
+Tests run with `_pace` stubbed by an autouse fixture — a frozen `monotonic` under `freeze_time`
+is epoch-sized, so a real reserved start would stall the suite — and `openf1_retry_sleeps`
+records the waits instead of sleeping them.
+
 **`tests/conftest.py` blocks OpenF1 as well as FastF1, and the two differ on purpose.**
 `_block_fastf1_network` raises `AssertionError` because no production path should swallow
 one. `_block_openf1_network` raises `requests.ConnectionError` because the tools *do*
