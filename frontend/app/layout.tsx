@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Archivo, Instrument_Serif, Inter } from 'next/font/google';
 import './globals.css';
 import { SmoothScroll } from '@/components/candy/smooth-scroll';
+import { AUTHOR_NAME, SITE_URL } from '@/lib/site';
 
 const inter = Inter({ subsets: ['latin'], display: 'swap', variable: '--font-inter' });
 
@@ -28,7 +29,13 @@ const instrumentSerif = Instrument_Serif({
   variable: '--font-instrument-serif',
 });
 
+/**
+ * The icons and the share image are file conventions in this directory (`icon.svg`,
+ * `apple-icon.png`, `favicon.ico`, `opengraph-image.tsx`, `twitter-image.tsx`), not entries here.
+ * `metadataBase` is what turns their URLs absolute — a crawler cannot fetch a relative og:image.
+ */
 export const metadata: Metadata = {
+  metadataBase: SITE_URL,
   title: {
     default: 'F1 Briefing Agent',
     template: '%s | F1 Briefing Agent',
@@ -36,6 +43,8 @@ export const metadata: Metadata = {
   description:
     'AI-powered F1 race weekend briefings. Get comprehensive analysis including track info, weather forecasts, driver form, and race predictions — powered by Gemini.',
   keywords: ['F1', 'Formula 1', 'race briefing', 'AI', 'Grand Prix', 'race weekend'],
+  authors: [{ name: AUTHOR_NAME }],
+  creator: AUTHOR_NAME,
   openGraph: {
     type: 'website',
     title: 'F1 Briefing Agent',
