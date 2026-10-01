@@ -4,6 +4,13 @@ export const GENERIC_BRIEFING_ERROR =
   'Something went wrong generating this briefing. Please try again.';
 
 /**
+ * Shown for the stream's `error` event with `code: "deadline"`: the server stopped the run at
+ * its deadline before any prose existed. Keyed on the code, not on the backend's message, so the
+ * page's wording is the page's to change.
+ */
+export const BRIEFING_DEADLINE_ERROR = 'This briefing took too long and was stopped. Try again.';
+
+/**
  * Display names for the backend's **eight** `@tool` functions (see `backend/tools/`).
  *
  * `tool_result` events carry the raw Python function name, and `get_recent_top_finishers`

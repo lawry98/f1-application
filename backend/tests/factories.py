@@ -19,6 +19,7 @@ from datetime import timedelta
 from typing import Any
 
 import pandas as pd
+from requests.structures import CaseInsensitiveDict
 
 SESSION_SLOTS = 5
 
@@ -129,6 +130,7 @@ def make_llm(
     raises: Exception | None = None,
     chunks: list[str] | None = None,
     stream_raises_after: int | None = None,
+    before_chunk: Any = None,
 ):
     """Build a stand-in for the module-level ``ChatGoogleGenerativeAI`` client.
 
@@ -149,6 +151,13 @@ def make_llm(
             concatenation is what a complete streamed briefing comes to.
         stream_raises_after: If given, ``.stream()`` raises after yielding this many
             chunks. ``0`` models a failure before any prose exists.
+        before_chunk: If given, called with each chunk's index just before that chunk is
+            produced — the moment a real stream is waiting on the network, which is where a
+            deadline or a hang-up lands.
+
+    The fake records ``chunks_served`` (how far the consumer read) and ``stream_closed``
+    (whether it let go of the stream), which is how a test sees that a stopped synthesis
+    stopped *reading* rather than merely stopped *forwarding*.
     """
 
     class _FakeResponse:
@@ -159,6 +168,8 @@ def make_llm(
     class _FakeLLM:
         def __init__(self) -> None:
             self.calls: list[Any] = []
+            self.chunks_served = 0
+            self.stream_closed = False
 
         def invoke(self, messages: Any) -> _FakeResponse:
             self.calls.append(messages)
@@ -170,12 +181,19 @@ def make_llm(
             self.calls.append(messages)
             if raises is not None:
                 raise raises
-            for index, chunk in enumerate(chunks if chunks is not None else [content]):
-                if stream_raises_after is not None and index >= stream_raises_after:
+            try:
+                for index, chunk in enumerate(chunks if chunks is not None else [content]):
+                    if before_chunk is not None:
+                        before_chunk(index)
+                    if stream_raises_after is not None and index >= stream_raises_after:
+                        raise RuntimeError("stream died mid-iteration")
+                    self.chunks_served += 1
+                    yield _FakeResponse(chunk)
+                if stream_raises_after is not None:
                     raise RuntimeError("stream died mid-iteration")
-                yield _FakeResponse(chunk)
-            if stream_raises_after is not None:
-                raise RuntimeError("stream died mid-iteration")
+            except GeneratorExit:
+                self.stream_closed = True
+                raise
 
     return _FakeLLM()
 
@@ -246,12 +264,27 @@ def make_race_info(**overrides: Any) -> dict[str, Any]:
     return info
 
 
-def make_openf1_get(routes: dict[str, Any], status_code: int = 200, *, by_year: bool = False):
+# OpenF1's real answer past its 3 req/s ceiling, captured live on 2026-09-30.
+OPENF1_RATE_LIMITED = {
+    "detail": "Rate limit exceeded. Max 3 requests/second.",
+    "error": "Too Many Requests",
+}
+
+
+def make_openf1_get(
+    routes: dict[str, Any],
+    status_code: int = 200,
+    throttled: dict[str, int] | None = None,
+    *,
+    by_year: bool = False,
+):
     """Build a stand-in for ``requests.get`` against OpenF1.
 
     Args:
         routes: Endpoint name (the last path segment, e.g. ``"sessions"``) → JSON payload.
         status_code: Status every response reports.
+        throttled: Endpoint → how many of its first calls answer HTTP 429 with
+            ``Retry-After: 1``, as OpenF1 does to a fan-out that bursts past 3 req/s.
         by_year: Serve only the rows whose ``date_start`` falls in the request's ``year``
             param, as OpenF1 does. Off by default, where every year gets the whole payload —
             which is what most fixtures here, all one season, were written against. A test
@@ -276,21 +309,30 @@ def make_openf1_get(routes: dict[str, Any], status_code: int = 200, *, by_year: 
                     f"make_openf1_get has no payload for '{endpoint}'. "
                     f"Known endpoints: {sorted(routes)}"
                 )
+            if remaining_429s.get(endpoint, 0) > 0:
+                remaining_429s[endpoint] -= 1
+                return _FakeOpenF1Response(OPENF1_RATE_LIMITED, 429, {"retry-after": "1"})
             payload = routes[endpoint]
             year = (params or {}).get("year")
             if by_year and year is not None and isinstance(payload, list):
                 payload = [row for row in payload if row.get("date_start", "")[:4] == str(year)]
             return _FakeOpenF1Response(payload, status_code)
 
+    remaining_429s = dict(throttled or {})
     return _FakeGet()
 
 
 class _FakeOpenF1Response:
-    """Stand-in for a ``requests.Response`` — status_code, headers and json() are consumed."""
+    """Stand-in for a ``requests.Response`` — only status_code, headers and json() are
+    consumed. ``headers`` is case-insensitive, as a real response's is: OpenF1 serves
+    ``retry-after`` lower-cased.
+    """
 
-    def __init__(self, payload: Any, status_code: int, headers: dict[str, str] | None = None):
+    def __init__(
+        self, payload: Any, status_code: int, headers: dict[str, str] | None = None
+    ) -> None:
         self.status_code = status_code
-        self.headers = headers or {}
+        self.headers = CaseInsensitiveDict(headers or {})
         self._payload = payload
 
     def json(self) -> Any:
@@ -298,26 +340,20 @@ class _FakeOpenF1Response:
 
 
 class FakeClock:
-    """A monotonic clock whose ``sleep`` advances it instead of waiting. Thread-safe.
+    """A clock a test moves by hand — for anything timed in hours, where sleeping is no option.
 
-    The OpenF1 client's rate limiter and retry backoff take their clock and sleep from here in
-    the suite (conftest installs one per test), so a throttled or retried request costs no real
-    time and every wait is recorded in ``sleeps``.
+    Callable like ``time.time``/``time.monotonic``, which is the whole seam the guard and the
+    run budget take.
     """
 
-    def __init__(self) -> None:
-        self._now = 0.0
-        self._lock = threading.Lock()
-        self.sleeps: list[float] = []
+    def __init__(self, now: float = 1_000_000.0) -> None:
+        self.now = now
 
-    def now(self) -> float:
-        with self._lock:
-            return self._now
+    def __call__(self) -> float:
+        return self.now
 
-    def sleep(self, seconds: float) -> None:
-        with self._lock:
-            self.sleeps.append(seconds)
-            self._now += seconds
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
 
 
 def make_openf1_sequence(statuses: list[int], payload: Any, headers: dict[str, str] | None = None):

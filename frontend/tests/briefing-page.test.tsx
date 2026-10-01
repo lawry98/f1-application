@@ -18,6 +18,7 @@ import { render } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import BriefingPage from '@/app/briefing/page';
 import { contrastRatio, DARK_BG, MIN_CONTRAST } from '@/lib/team-utils';
+import { EYEBROW_RED } from '@/lib/tyre-utils';
 import { restingTextNeutrals, ZINC } from './zinc';
 
 vi.mock('@/components/briefing/briefing-chat', () => ({
@@ -82,6 +83,19 @@ describe('the /briefing header band', () => {
         `"${text}" at ${hex} on the header band`,
       ).toBeGreaterThanOrEqual(MIN_CONTRAST);
     }
+  });
+
+  it('paints the "AI Agent" eyebrow in the red lifted for bare zinc-950, not raw f1-red', () => {
+    // `text-f1-red` (#e10600) is 4.0:1 here at 11px — axe's colour-contrast finding on this
+    // route, surfaced by browser/briefing-limits.spec.ts. `EYEBROW_RED` is the existing token
+    // lifted for exactly this backdrop.
+    const { getByText } = render(<BriefingPage />);
+    const eyebrow = getByText('AI Agent');
+
+    expect(eyebrow.className).not.toContain('text-f1-red');
+    expect(eyebrow.style.color).not.toBe('');
+    expect(contrastRatio(EYEBROW_RED, DARK_BG)).toBeGreaterThanOrEqual(MIN_CONTRAST);
+    expect(contrastRatio('#e10600', DARK_BG)).toBeLessThan(MIN_CONTRAST);
   });
 
   it('is measuring against a floor that can actually fail', () => {

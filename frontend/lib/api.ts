@@ -40,8 +40,63 @@ export async function getCircuitWinners(circuitId: string): Promise<CircuitWinne
 }
 
 /**
+ * The briefing stream could not be opened. The cost guard refuses *before* the stream starts,
+ * so its 429 / 503 is an ordinary JSON response, and this carries what the page needs from it.
+ * Every field is `null` when the response did not supply it — an ordinary 500, say.
+ */
+export class BriefingRequestError extends Error {
+  constructor(
+    readonly status: number,
+    /** The guard's `code` — `busy`, `rate_limited`, `daily_cap` — as sent. */
+    readonly code: string | null,
+    /** From the JSON body, falling back to the `Retry-After` header. */
+    readonly retryAfterSeconds: number | null,
+    /** The limit that was hit, so copy can say "your 5 briefings" without hard-coding 5. */
+    readonly limit: number | null,
+  ) {
+    super('Failed to start briefing stream');
+    this.name = 'BriefingRequestError';
+  }
+}
+
+function positiveNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null;
+}
+
+/**
+ * `Retry-After` is either whole seconds or an HTTP date. The guard sends seconds; a proxy in
+ * front of it might not. It is only readable cross-origin because the backend's CORS config
+ * exposes it.
+ */
+function retryAfterHeader(response: Response): number | null {
+  const raw = response.headers?.get('Retry-After');
+  if (!raw) return null;
+  if (/^\d+$/.test(raw.trim())) return positiveNumber(Number(raw));
+  const at = Date.parse(raw);
+  return Number.isNaN(at) ? null : positiveNumber(Math.ceil((at - Date.now()) / 1000));
+}
+
+async function briefingRequestError(response: Response): Promise<BriefingRequestError> {
+  let body: Record<string, unknown> = {};
+  try {
+    const parsed: unknown = await response.json();
+    if (parsed && typeof parsed === 'object') body = parsed as Record<string, unknown>;
+  } catch {
+    // Not JSON — a proxy's HTML error page, or no body at all. The header may still say when.
+  }
+  return new BriefingRequestError(
+    response.status ?? 0,
+    typeof body.code === 'string' ? body.code : null,
+    positiveNumber(body.retry_after_seconds) ?? retryAfterHeader(response),
+    positiveNumber(body.limit),
+  );
+}
+
+/**
  * Consume the SSE briefing stream and yield typed StreamEvent objects.
  * Uses the SSE `event:` line for type discrimination.
+ *
+ * Throws {@link BriefingRequestError} when the server refuses to open the stream.
  */
 export async function* streamBriefing(
   query: string,
@@ -55,7 +110,7 @@ export async function* streamBriefing(
   });
 
   if (!response.ok) {
-    throw new Error('Failed to start briefing stream');
+    throw await briefingRequestError(response);
   }
 
   const reader = response.body?.getReader();
@@ -120,7 +175,7 @@ export async function* streamBriefing(
                 yield { type: 'complete', data: parsed as { message: string } };
                 break;
               case 'error':
-                yield { type: 'error', data: parsed as { message: string } };
+                yield { type: 'error', data: parsed as { message: string; code?: 'deadline' } };
                 break;
               default:
                 break;

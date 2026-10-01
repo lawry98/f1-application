@@ -61,7 +61,7 @@ from tools.openf1_races import scoring_sessions
 logger = logging.getLogger(__name__)
 
 # Sibling `reason` value for the pre-season error below. `_invoke_tool` in agent/graph.py
-# keys its historical-year retry off this — do not delete it as unused.
+# keys its previous-season retry off this — do not delete it as unused.
 SEASON_NOT_STARTED = "season_not_started"
 
 

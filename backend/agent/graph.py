@@ -4,19 +4,28 @@ import copy
 import json
 import logging
 import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from datetime import date
 from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.runnables import RunnableConfig
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.config import get_stream_writer
 from langgraph.graph import END, StateGraph
 
+from agent.budget import BriefingStoppedError, budget_from
 from agent.prompts import DEFAULT_TOOLS, PLANNER_PROMPT, SYNTHESIZER_PROMPT
 from agent.state import AgentState, RaceInfo, ToolResult
-from config import EXECUTOR_MAX_WORKERS, GOOGLE_API_KEY, LLM_MODEL
-from tools.circuit_winners import circuit_record
+from config import (
+    EXECUTOR_MAX_WORKERS,
+    GOOGLE_API_KEY,
+    LLM_MAX_ATTEMPTS,
+    LLM_MODEL,
+    LLM_TIMEOUT_SECONDS,
+    TOOL_FANOUT_TIMEOUT_SECONDS,
+)
+from tools.circuit_winners import circuit_coordinates
 from tools.cutoff import parse_utc
 from tools.f1_data_tools import get_circuit_winners, get_recent_top_finishers
 from tools.fastf1_tools import get_driver_form, get_recent_race_results, get_track_info
@@ -84,10 +93,13 @@ def clear_result_cache() -> None:
 
 
 # No temperature argument — gemini-3.6-flash uses fixed sampling defaults and ignores one.
-# See the note in config.py.
+# See the note in config.py, which also carries the timeout arithmetic. `max_retries` is the
+# SDK's attempt count, first request included, not a count of retries.
 llm = ChatGoogleGenerativeAI(
     model=LLM_MODEL,
     api_key=GOOGLE_API_KEY,
+    timeout=LLM_TIMEOUT_SECONDS,
+    max_retries=LLM_MAX_ATTEMPTS,
 )
 
 
@@ -186,9 +198,16 @@ def _applicable(tasks: list[str], race_info: RaceInfo) -> list[str]:
     return [task for task in tasks if task not in UPCOMING_ONLY_TOOLS]
 
 
-def planner_node(state: AgentState) -> dict[str, Any]:
+def planner_node(state: AgentState, config: RunnableConfig | None = None) -> dict[str, Any]:
     """Select which tools to run based on resolved race info."""
     race_info = state["race_info"]
+
+    budget = budget_from(config)
+    if budget.stopped():
+        # Nobody is waiting for this plan, so it is not worth a Gemini call. The defaults keep
+        # the step's contract; the fan-out and the synthesizer stop on the same check.
+        logger.info("Planner skipped, run already stopped (%s)", budget.stop_reason())
+        return {"tasks": _applicable(DEFAULT_TOOLS, race_info), "current_step": "gathering"}
 
     prompt = PLANNER_PROMPT.format(race_context=race_context(race_info))
 
@@ -242,15 +261,14 @@ def planner_node(state: AgentState) -> dict[str, Any]:
 
 
 def _centroid(track_id: str | None) -> dict[str, float] | None:
-    """A circuit's WGS84 centroid from its own file, or None when there is none to read."""
+    """A circuit's WGS84 centre from coordinates.json, or None when there is none to read."""
     if not track_id:
         return None
     try:
-        record = circuit_record(track_id)
+        return circuit_coordinates(track_id)
     except Exception as exc:
-        logger.warning("No circuit record for %s (%s: %s)", track_id, type(exc).__name__, exc)
+        logger.warning("No coordinates for %s (%s: %s)", track_id, type(exc).__name__, exc)
         return None
-    return record["centroid"] if record else None
 
 
 def _build_tool_args(task_name: str, race_info: dict) -> dict[str, Any] | None:
@@ -370,6 +388,12 @@ def _invoke_tool(tool: Any, task_name: str, race_info: dict) -> ToolResult:
                 tool, task_name, {"year": race_info["year"] - 1, "as_of": race_info["as_of"]}
             )
 
+        # A tool fails by returning its error, not raising it, so the `except` below never
+        # sees one — and standings once failed in every briefing with nothing logged. Only
+        # the final outcome: the pre-season miss above is an answer the retry handles.
+        if not outcome["success"]:
+            logger.warning("Tool '%s' failed: %s", task_name, outcome["data"].get("error"))
+
         return outcome
     except Exception as exc:
         logger.exception("Tool '%s' raised an unexpected exception: %s", task_name, exc)
@@ -378,13 +402,32 @@ def _invoke_tool(tool: Any, task_name: str, race_info: dict) -> ToolResult:
         )
 
 
-def tool_executor_node(state: AgentState) -> dict[str, Any]:
-    """Execute all planned tools in parallel and collect results."""
+# How often the fan-out looks up from its tools to check for a cancel. Only a hang-up needs
+# it — the deadline and the fan-out cap are waited for exactly — so it trades a little idle
+# wake-up for a closed tab being noticed within a quarter of a second.
+CANCEL_POLL_SECONDS = 0.25
+
+
+def _unfinished(task_name: str, reason: str) -> ToolResult:
+    return ToolResult(tool_name=task_name, success=False, data={"error": reason}, cached=False)
+
+
+def tool_executor_node(state: AgentState, config: RunnableConfig | None = None) -> dict[str, Any]:
+    """Execute all planned tools in parallel and collect results.
+
+    Waits for them only until the earlier of the run's deadline and the fan-out's own cap
+    (``TOOL_FANOUT_TIMEOUT_SECONDS``), or until the run is cancelled. A tool still running
+    then is reported ``{"error": "timed out"}`` and left behind: its thread cannot be killed,
+    but nothing waits for it, and the synthesizer goes ahead with what arrived — the same
+    partial-data path a failed tool takes.
+    """
     race_info = state["race_info"]
     tasks = state.get("tasks", [])
-    # Written per completion rather than per node return: `as_completed` already hands
-    # results over one at a time, and the node's return is the only other chance the
-    # transport gets — which is a burst of every chip at once after a long silence.
+    budget = budget_from(config)
+    fanout_ends = budget.clock() + TOOL_FANOUT_TIMEOUT_SECONDS
+    # Written per completion rather than per node return: results are collected one at a
+    # time, and the node's return is the only other chance the transport gets — which is a
+    # burst of every chip at once after a long silence.
     writer = get_stream_writer()
 
     def report(result: ToolResult) -> None:
@@ -400,30 +443,68 @@ def tool_executor_node(state: AgentState) -> dict[str, Any]:
     tool_map = {tool.name: tool for tool in all_tools}
     tool_results: list[ToolResult] = []
 
-    with ThreadPoolExecutor(max_workers=EXECUTOR_MAX_WORKERS) as pool:
+    # Not `with ThreadPoolExecutor(...)`: its __exit__ waits for every thread, so one hung
+    # tool would hold the node — and the briefing — however long it hung.
+    pool = ThreadPoolExecutor(max_workers=EXECUTOR_MAX_WORKERS)
+    try:
         futures = {}
         for task_name in tasks:
             if task_name not in tool_map:
                 logger.warning("Unknown tool requested: '%s'", task_name)
-                unknown = ToolResult(
-                    tool_name=task_name,
-                    success=False,
-                    data={"error": f"Unknown tool: {task_name}"},
-                    cached=False,
-                )
+                unknown = _unfinished(task_name, f"Unknown tool: {task_name}")
                 tool_results.append(unknown)
                 report(unknown)
+                continue
+            if budget.stopped():
+                # Nobody will read this briefing; a tool started now is a paid call (Tavily)
+                # or a FastF1 load for nothing.
+                cancelled = _unfinished(task_name, "cancelled")
+                tool_results.append(cancelled)
+                report(cancelled)
                 continue
             future = pool.submit(_invoke_tool, tool_map[task_name], task_name, race_info)
             futures[future] = task_name
 
-        # This loop body runs in the node's own thread, not in a pool worker —
-        # `as_completed` yields control back to its caller rather than running inline in
-        # whichever future finished. That is what makes calling the writer here safe.
-        for future in as_completed(futures):
+        # `wait` rather than `as_completed(timeout=...)`, so a cancel is noticed within
+        # CANCEL_POLL_SECONDS instead of only when the deadline itself arrives. The loop runs
+        # in the node's own thread, not a pool worker, which is what makes the writer safe.
+        pending = set(futures)
+        while pending and not budget.stopped():
+            left = min(budget.remaining(), fanout_ends - budget.clock())
+            if left <= 0:
+                break
+            done, pending = wait(
+                pending, timeout=min(left, CANCEL_POLL_SECONDS), return_when=FIRST_COMPLETED
+            )
+            for future in done:
+                result = future.result()
+                tool_results.append(result)
+                report(result)
+
+        # A tool that finished in the same instant the run stopped has a result; reporting it
+        # as timed out would throw away data that is already paid for.
+        for future in [future for future in pending if future.done()]:
+            pending.discard(future)
             result = future.result()
             tool_results.append(result)
             report(result)
+
+        if pending:
+            why = budget.stop_reason() if budget.stopped() else "the fan-out's own cap"
+            stragglers = sorted(futures[future] for future in pending)
+            logger.warning(
+                "Tool fan-out stopped (%s) with %d tool(s) unfinished: %s",
+                why,
+                len(stragglers),
+                ", ".join(stragglers),
+            )
+            for task_name in stragglers:
+                timed_out = _unfinished(task_name, "timed out")
+                tool_results.append(timed_out)
+                report(timed_out)
+    finally:
+        # Queued tools never start; running ones are abandoned rather than waited for.
+        pool.shutdown(wait=False, cancel_futures=True)
 
     successes = sum(1 for tr in tool_results if tr["success"])
     logger.info("Tool executor: %d/%d tools succeeded", successes, len(tool_results))
@@ -431,10 +512,11 @@ def tool_executor_node(state: AgentState) -> dict[str, Any]:
     return {"tool_results": tool_results, "current_step": "synthesizing"}
 
 
-def synthesizer_node(state: AgentState) -> dict[str, Any]:
+def synthesizer_node(state: AgentState, config: RunnableConfig | None = None) -> dict[str, Any]:
     """Synthesize tool results into the final race briefing."""
     tool_results = state.get("tool_results", [])
     race_info = state.get("race_info")
+    budget = budget_from(config)
 
     if not tool_results:
         return {
@@ -470,13 +552,25 @@ def synthesizer_node(state: AgentState) -> dict[str, Any]:
     writer = get_stream_writer()
     chunks: list[str] = []
 
+    if budget.stopped():
+        # Before the call, so a run nobody is waiting for costs no Gemini call at all.
+        raise BriefingStoppedError(f"Stopped before synthesis ({budget.stop_reason()})")
+
+    stream = llm.stream(messages)
+    stopped = False
     try:
-        for chunk in llm.stream(messages):
+        for chunk in stream:
             # `.text` rather than `.content` — see the note in planner_node. A Briefing is
             # a string; `.content` would hand the API a list of Gemini content blocks.
             text = chunk.text
             chunks.append(text)
             writer({"kind": "briefing_delta", "content": text})
+            # Between chunks is the only point a synchronous stream can be stopped. Leaving
+            # the loop lets the `finally` close it, which closes the HTTP response, so Gemini
+            # stops generating — and billing — for a reader who has gone or run out of time.
+            if budget.stopped():
+                stopped = True
+                break
     except Exception as exc:
         # Error-as-value, extended to the last node in the pipeline that still raised.
         # With prose in hand a reader is better served by an unfinished briefing than by
@@ -505,6 +599,23 @@ def synthesizer_node(state: AgentState) -> dict[str, Any]:
             "briefing_truncated": True,
             "current_step": "complete",
         }
+    finally:
+        stream.close()
+
+    if stopped:
+        # The same ADR-0002 rule as a provider failure, reached by a deadline or a hang-up
+        # instead: prose in hand is a truncated briefing, none is a failure that travels.
+        partial = "".join(chunks)
+        if not partial:
+            raise BriefingStoppedError(
+                f"Synthesizer stopped before any prose ({budget.stop_reason()})"
+            )
+        logger.warning(
+            "Synthesizer stopped after %d deltas (%s); stream closed, serving a truncated briefing",
+            len(chunks),
+            budget.stop_reason(),
+        )
+        return {"briefing": partial, "briefing_truncated": True, "current_step": "complete"}
 
     briefing = "".join(chunks)
     logger.info("Synthesizer produced %d chars", len(briefing))

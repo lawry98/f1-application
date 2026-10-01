@@ -8,7 +8,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getCircuitWinners, getStandings, streamBriefing } from '@/lib/api';
+import { BriefingRequestError, getCircuitWinners, getStandings, streamBriefing } from '@/lib/api';
 import type { StreamEvent } from '@/types';
 import { type FixtureName, fetchInChunks, fixture } from './sse';
 import standings2026 from './fixtures/standings-2026.json';
@@ -119,6 +119,23 @@ describe('streamBriefing error handling', () => {
     expect(events.map((e) => e.type)).toEqual(['briefing']);
   });
 
+  it('passes a deadline error event through with its code', async () => {
+    const body = new TextEncoder().encode(
+      'event: error\ndata: {"message": "This briefing took too long and was stopped.", "code": "deadline"}\n\n',
+    );
+    globalThis.fetch = fetchInChunks(body, 100_000) as typeof fetch;
+
+    const events: StreamEvent[] = [];
+    for await (const event of streamBriefing('Monaco')) events.push(event);
+
+    expect(events).toEqual([
+      {
+        type: 'error',
+        data: { message: 'This briefing took too long and was stopped.', code: 'deadline' },
+      },
+    ]);
+  });
+
   it('ignores event types it does not know', async () => {
     // Forward compatibility: a backend that grows a new event must not break an old client.
     const body = new TextEncoder().encode(
@@ -131,6 +148,87 @@ describe('streamBriefing error handling', () => {
     for await (const event of streamBriefing('Monaco')) events.push(event);
 
     expect(events.map((e) => e.type)).toEqual(['complete']);
+  });
+});
+
+/**
+ * A refused stream, as the cost guard sends it: a plain JSON body and a Retry-After header.
+ * Stubbed rather than built with `new Response`, for the reason `jsonResponse` below gives.
+ */
+function refusal(status: number, body: unknown, retryAfter?: string): Response {
+  return {
+    ok: false,
+    status,
+    json: async () => {
+      if (body === undefined) throw new SyntaxError('Unexpected end of JSON input');
+      return body;
+    },
+    headers: { get: (name: string) => (name.toLowerCase() === 'retry-after' ? (retryAfter ?? null) : null) },
+  } as unknown as Response;
+}
+
+async function refusalOf(response: Response): Promise<BriefingRequestError> {
+  globalThis.fetch = (() => Promise.resolve(response)) as typeof fetch;
+  try {
+    await streamBriefing('Monaco').next();
+  } catch (err) {
+    if (err instanceof BriefingRequestError) return err;
+    throw err;
+  }
+  throw new Error('streamBriefing did not throw');
+}
+
+describe('streamBriefing refusals', () => {
+  it('carries the status, code, wait and limit of a 429', async () => {
+    const err = await refusalOf(
+      refusal(429, { code: 'rate_limited', retry_after_seconds: 1200, limit: 5 }, '1200'),
+    );
+
+    expect(err.status).toBe(429);
+    expect(err.code).toBe('rate_limited');
+    expect(err.retryAfterSeconds).toBe(1200);
+    expect(err.limit).toBe(5);
+  });
+
+  it('carries a 503 busy', async () => {
+    const err = await refusalOf(refusal(503, { code: 'busy', retry_after_seconds: 10, limit: 2 }));
+
+    expect(err.status).toBe(503);
+    expect(err.code).toBe('busy');
+    expect(err.retryAfterSeconds).toBe(10);
+  });
+
+  it('falls back to the Retry-After header when the body cannot be read', async () => {
+    const err = await refusalOf(refusal(503, undefined, '42'));
+
+    expect(err.code).toBeNull();
+    expect(err.retryAfterSeconds).toBe(42);
+  });
+
+  it('prefers the header to a body whose wait is not a number', async () => {
+    const err = await refusalOf(refusal(429, { code: 'rate_limited', retry_after_seconds: 'soon' }, '30'));
+
+    expect(err.retryAfterSeconds).toBe(30);
+    expect(err.limit).toBeNull();
+  });
+
+  it('reads an HTTP-date Retry-After as the seconds until then', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-30T23:59:00Z'));
+    try {
+      const err = await refusalOf(refusal(503, undefined, 'Thu, 01 Oct 2026 00:00:00 GMT'));
+      expect(err.retryAfterSeconds).toBe(60);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('knows no wait at all for an ordinary failure', async () => {
+    const err = await refusalOf(refusal(500, { detail: 'boom' }));
+
+    expect(err.status).toBe(500);
+    expect(err.code).toBeNull();
+    expect(err.retryAfterSeconds).toBeNull();
   });
 });
 

@@ -30,3 +30,7 @@ GENERIC_CIRCUIT_WINNERS_ERROR: str = (
 )
 
 FAILED_TOOL_SUMMARY: str = "Tool failed — see server logs."
+
+# Sent with `code: "deadline"` on the stream's error event, which is what the page keys its own
+# copy on; this text is for any client that reads only the message.
+BRIEFING_DEADLINE_ERROR: str = "This briefing took too long and was stopped. Please try again."

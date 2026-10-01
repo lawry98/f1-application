@@ -64,35 +64,3 @@ describe('index.json', () => {
     expect(LOCATION_TO_ID[slug]).toBe(id);
   });
 });
-
-/*
- * The backend reads `centroid` for the weather forecast: coordinates rather than geocoding a
- * `"{Location},{country}"` string, which turned Sepang into "Kuala Lumpur,BH" and every country
- * missing from a hand-kept map into "US". It is the mean of the same ring the outline is drawn
- * from, in WGS84 degrees, so it sits on the circuit rather than in the nearest city.
- */
-describe('circuit centroids', () => {
-  it.each(files)('%s carries a WGS84 centroid', (file) => {
-    const outline = JSON.parse(readFileSync(resolve(DIR, file), 'utf8')) as {
-      centroid?: { lat: number; lon: number };
-    };
-    expect(outline.centroid).toBeDefined();
-    const { lat, lon } = outline.centroid!;
-    expect(Math.abs(lat)).toBeLessThanOrEqual(90);
-    expect(Math.abs(lon)).toBeLessThanOrEqual(180);
-  });
-
-  // Published coordinates of each track, hand-copied; a centroid of a lap is within ~2 km of them.
-  it.each([
-    ['it-1922', 45.6156, 9.2811],
-    ['my-1999', 2.7606, 101.7381],
-    ['us-2023', 36.1147, -115.1728],
-    ['br-1940', -23.7036, -46.6997],
-  ])('puts %s where the circuit is', (id, lat, lon) => {
-    const outline = JSON.parse(readFileSync(resolve(DIR, `${id}.json`), 'utf8')) as {
-      centroid: { lat: number; lon: number };
-    };
-    expect(Math.abs(outline.centroid.lat - lat)).toBeLessThan(0.03);
-    expect(Math.abs(outline.centroid.lon - lon)).toBeLessThan(0.03);
-  });
-});

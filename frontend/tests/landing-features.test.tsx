@@ -30,7 +30,7 @@ const FEATURE_DESCRIPTIONS = [
   'See exactly which tools the AI agent executed, in what order, and whether each succeeded. No black box — full visibility into every data-gathering step.',
   'Powered by FastF1: lap times, race results, track profiles, qualifying data, and circuit records going back decades — all available without an API key.',
   'Current championship standings, recent race pace, and head-to-head driver context synthesised into every briefing. Know who is peaking before qualifying.',
-  'OpenWeather integration pulls the race-weekend forecast for the correct circuit location — temperature, humidity, wind, and conditions that could shape strategy.',
+  'OpenWeather integration pulls the forecast for each session of the race weekend at the circuit — temperature, wind, conditions and chance of rain. It reaches five days ahead; ask sooner than that and the briefing says the forecast is not out yet.',
   'Scroll through 192 high-res animation frames to reveal what is hidden inside a 2024 F1 car — from carbon bodywork to the V6 turbo-hybrid power unit.',
 ];
 

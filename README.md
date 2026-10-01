@@ -196,8 +196,8 @@ OUTPUT (Race Briefing)
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/briefing` | POST | Synchronous briefing generation |
-| `/api/briefing/stream` | POST | SSE streaming briefing (used by frontend) |
+| `/api/briefing` | POST | Synchronous briefing generation. Behind the cost guard; 504 at the deadline |
+| `/api/briefing/stream` | POST | SSE streaming briefing (used by frontend). Behind the cost guard: 429/503 before the stream opens |
 | `/api/races/{year}` | GET | F1 calendar from FastF1, with each event's format and official name |
 | `/api/standings/{year}` | GET | Driver and constructor championship tables, derived from OpenF1 (2023 onwards) |
 | `/api/circuits/{circuit_id}/winners` | GET | Recent winners at one circuit (the three seasons before this one), matched by circuit; ~5s cold, cached after |
@@ -289,7 +289,7 @@ dominates the wall clock.
 - Each SSE event is emitted the moment its node returns, while the rest of the run is still
   going — except `briefing_delta`, which the synthesizer emits *during* its own run, one per
   chunk of prose the model produces, and `tool_result`, which `tool_executor_node` emits
-  per tool as each one completes inside the node's `as_completed` loop
+  per tool as each one completes inside the node's collection loop
 - `tool_result` carries `cached`, saying whether that tool's payload came from the result cache
   or a live fetch. Nothing in the UI renders it yet — the field exists so the transport stays
   honest about provenance
@@ -297,6 +297,39 @@ dominates the wall clock.
   and repainting on an 80ms timer rather than once per delta
 - A synthesis that dies partway still delivers the prose it wrote, marked as unfinished — see
   [ADR-0002](docs/adr/0002-serve-truncated-briefings.md)
+
+### Cost guard and deploying
+
+Every briefing is two Gemini calls, so both briefing routes sit behind an admission guard
+(`backend/api/guard.py`). Before any work starts it checks, in order:
+
+| Check | Default | Refusal |
+|---|---|---|
+| Per client IP, rolling hour | `BRIEFING_PER_IP_PER_HOUR=5` | `429 {"code": "rate_limited", ...}` |
+| Global, per UTC day (`0` = no cap) | `BRIEFING_DAILY_CAP=100` | `503 {"code": "daily_cap", ...}` |
+| Simultaneous generations (never queued) | `BRIEFING_MAX_CONCURRENT=2` | `503 {"code": "busy", ...}` |
+
+Each refusal carries `retry_after_seconds`, the `limit` that was hit and a `Retry-After` header;
+only an admitted request counts against a limit. An admitted run is stopped at
+`BRIEFING_DEADLINE_SECONDS` (90): the tool fan-out and the synthesizer stop spending, prose
+already written is served as a truncated briefing, and with none the stream ends with
+`error {"code": "deadline"}`. Gemini calls themselves time out at 15s with one retry — the
+arithmetic is in `backend/config.py`.
+
+Deploying it:
+
+- **Run exactly one worker.** The limits live in the process's memory, so two workers would each
+  allow the full limits, and a restart resets the day's count.
+- **Behind a proxy, let uvicorn rewrite the client address** — the guard keys on
+  `request.client.host` and never parses `X-Forwarded-For` itself, because anyone can send one:
+
+  ```bash
+  FORWARDED_ALLOW_IPS=<your proxy's address> uvicorn main:app --workers 1 --proxy-headers --port 8000
+  ```
+
+  Without it every visitor shares the proxy's address, and so its one hourly allowance.
+- **Set `CORS_ORIGINS`** to the deployed frontend. The API exposes `Retry-After` to it, so the
+  page can read a refusal cross-origin.
 
 ### Working on this with an AI agent
 

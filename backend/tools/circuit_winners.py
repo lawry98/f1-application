@@ -5,8 +5,9 @@ circuit id, and the agent's ``get_circuit_winners`` in ``f1_data_tools.py``, whi
 the briefing's race location to a circuit id with ``circuit_id_for_location`` first.
 
 It is also the backend's one reader of the frontend's circuit data: ``circuit_record`` for a
-circuit's own file, and ``events_at_circuit`` — the matcher below, exposed — which
-``get_recent_race_results`` uses to find the latest race *at this track*.
+circuit's own file, ``circuit_coordinates`` for its centre, and ``events_at_circuit`` — the
+matcher below, exposed — which ``get_recent_race_results`` uses to find the latest race *at
+this track*.
 
 **Matched by circuit, never by Grand Prix name.** The ``find_event`` this replaced was a
 substring match on ``EventName``, and a Grand Prix is not a track: 2026's Spanish GP is
@@ -44,7 +45,7 @@ from typing import Any
 
 import pandas as pd
 
-from config import CIRCUIT_INDEX_PATH
+from config import CIRCUIT_COORDINATES_PATH, CIRCUIT_INDEX_PATH
 from tools.fastf1_helpers import load_race_session, race_start
 from tools.schedule_cache import get_schedule
 
@@ -64,17 +65,19 @@ _cache: dict[tuple[str, int], tuple[dict[str, Any], ...]] = {}
 _circuit_locks: dict[str, threading.Lock] = {}
 _index: dict[str, str] | None = None
 _records: dict[str, dict[str, Any]] = {}
+_coordinates: dict[str, dict[str, float]] | None = None
 
 
 def clear() -> None:
-    """Drop every cached winner, record and the loaded index. Used by tests; harmless in
-    production."""
-    global _index
+    """Drop every cached winner, record, coordinate and the loaded index. Used by tests;
+    harmless in production."""
+    global _index, _coordinates
     with _cache_lock:
         _cache.clear()
         _circuit_locks.clear()
         _records.clear()
         _index = None
+        _coordinates = None
 
 
 def location_slug(location: str) -> str:
@@ -138,13 +141,29 @@ def circuit_record(circuit_id: str) -> dict[str, Any] | None:
         "name": raw["name"],
         "length_m": raw.get("lengthM"),
         "first_gp": raw.get("firstGp"),
-        # WGS84 degrees, the mean of the outline's source ring — the weather forecast's
-        # coordinates. See scripts/fetch-circuit-geometry.mjs.
-        "centroid": raw.get("centroid"),
     }
     with _cache_lock:
         _records[circuit_id] = record
     return copy.deepcopy(record)
+
+
+def circuit_coordinates(circuit_id: str) -> dict[str, float] | None:
+    """A circuit's centre, ``{"lat", "lon"}`` in WGS84 degrees, from ``coordinates.json``, or
+    None for an id it does not carry. Raises if the file cannot be read.
+
+    The weather forecast's coordinates — written beside the outlines by
+    ``scripts/fetch-circuit-geometry.mjs``, and never geocoded from a place name.
+    """
+    global _coordinates
+    with _cache_lock:
+        loaded = _coordinates
+    if loaded is None:
+        with open(CIRCUIT_COORDINATES_PATH, encoding="utf-8") as handle:
+            loaded = json.load(handle)
+        with _cache_lock:
+            _coordinates = loaded
+    centre = loaded.get(circuit_id)
+    return dict(centre) if centre else None
 
 
 def events_at_circuit(circuit_id: str, year: int) -> list[pd.Series]:

@@ -102,6 +102,103 @@ def test_an_invalid_standings_ttl_falls_back_to_the_default(reload_config, raw, 
     assert "STANDINGS_TTL_SECONDS" in caplog.text
 
 
+# ── Briefing cost guard ──────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("name", "default"),
+    [
+        ("BRIEFING_PER_IP_PER_HOUR", 5),
+        ("BRIEFING_DAILY_CAP", 100),
+        ("BRIEFING_MAX_CONCURRENT", 2),
+        ("BRIEFING_DEADLINE_SECONDS", 90),
+    ],
+)
+def test_each_briefing_limit_has_its_documented_default(reload_config, monkeypatch, name, default):
+    monkeypatch.delenv(name, raising=False)
+
+    assert getattr(reload_config(), name) == default
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "BRIEFING_PER_IP_PER_HOUR",
+        "BRIEFING_DAILY_CAP",
+        "BRIEFING_MAX_CONCURRENT",
+        "BRIEFING_DEADLINE_SECONDS",
+    ],
+)
+def test_each_briefing_limit_reads_the_environment(reload_config, name):
+    assert getattr(reload_config(**{name: "7"}), name) == 7
+
+
+def test_a_zero_daily_cap_means_unlimited_and_is_honoured(reload_config):
+    """Zero is how an operator lifts the global cap, not an invalid value."""
+    assert reload_config(BRIEFING_DAILY_CAP="0").BRIEFING_DAILY_CAP == 0
+
+
+@pytest.mark.parametrize(
+    ("name", "default"),
+    [
+        ("BRIEFING_PER_IP_PER_HOUR", 5),
+        ("BRIEFING_MAX_CONCURRENT", 2),
+        ("BRIEFING_DEADLINE_SECONDS", 90),
+    ],
+)
+def test_a_zero_that_would_refuse_every_briefing_falls_back_to_the_default(
+    reload_config, caplog, name, default
+):
+    """Only the daily cap gives zero a meaning. A zero per-IP limit, slot count or deadline
+    would refuse or kill every request, which is a typo far more often than a policy.
+    """
+    with caplog.at_level(logging.WARNING, logger="config"):
+        assert getattr(reload_config(**{name: "0"}), name) == default
+
+    assert name in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("name", "default"),
+    [
+        ("BRIEFING_PER_IP_PER_HOUR", 5),
+        ("BRIEFING_DAILY_CAP", 100),
+        ("BRIEFING_MAX_CONCURRENT", 2),
+        ("BRIEFING_DEADLINE_SECONDS", 90),
+    ],
+)
+@pytest.mark.parametrize("raw", ["five", "-1", "2.5"])
+def test_an_invalid_briefing_limit_falls_back_to_the_default(
+    reload_config, caplog, name, default, raw
+):
+    with caplog.at_level(logging.WARNING, logger="config"):
+        assert getattr(reload_config(**{name: raw}), name) == default
+
+    assert name in caplog.text
+
+
+def test_the_worst_case_llm_budget_fits_inside_the_default_deadline():
+    """The arithmetic in config.py's LLM comment, kept honest.
+
+    Every attempt of both LLM calls timing out, with tenacity's worst backoff between them,
+    plus the tool fan-out's own cap, must still end before the default deadline. Raising the
+    timeout or the attempt count without revisiting the deadline fails here.
+    """
+    from config import (
+        LLM_MAX_ATTEMPTS,
+        LLM_RETRY_BACKOFF_MAX_SECONDS,
+        LLM_TIMEOUT_SECONDS,
+        TOOL_FANOUT_TIMEOUT_SECONDS,
+    )
+
+    one_call = LLM_MAX_ATTEMPTS * LLM_TIMEOUT_SECONDS + LLM_RETRY_BACKOFF_MAX_SECONDS
+    planner, synthesizer_first_chunk = one_call, one_call
+
+    assert planner + TOOL_FANOUT_TIMEOUT_SECONDS + synthesizer_first_chunk <= 90
+    # "At most two retries" — the attempt count includes the first request.
+    assert 1 <= LLM_MAX_ATTEMPTS <= 3
+
+
 # ── The "is this key real?" predicate ────────────────────────────────────────
 
 

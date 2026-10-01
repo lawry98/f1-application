@@ -55,7 +55,6 @@ const MONZA_GEOMETRY: CircuitGeometry = {
   location: 'Monza',
   lengthM: 5793,
   firstGp: 1950,
-  centroid: { lat: 45.6206, lon: 9.2849 },
   // Four points is enough for `catmullRomPath` to emit a real `d` (it returns '' below two) and
   // keeps the fixture readable — the density of the real outlines is the loader's concern.
   points: [
@@ -72,7 +71,6 @@ const MONACO_GEOMETRY: CircuitGeometry = {
   location: 'Monaco',
   lengthM: 3337,
   firstGp: 1929,
-  centroid: { lat: 43.73716, lon: 7.4253 },
   points: [
     [0, 0],
     [0.4, 0.9],

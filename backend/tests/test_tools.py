@@ -8,12 +8,14 @@ secondary but cheap to pin alongside it.
 The five FastF1-backed tools live in ``test_fastf1_tools.py``.
 """
 
+import json
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
 from freezegun import freeze_time
 
+from config import CIRCUIT_COORDINATES_PATH, CIRCUIT_INDEX_PATH
 from tools import search_tools, weather_tools
 from tools.search_tools import search_f1_news
 from tools.weather_tools import get_race_weather
@@ -236,25 +238,25 @@ def test_weather_is_the_race_weekend_not_the_next_24_hours(monkeypatch, openweat
 
 
 @freeze_time("2026-09-30T00:05:00")
-def test_a_weekend_beyond_the_forecast_says_when_it_will_be_in_range(monkeypatch, openweather_key):
-    """Singapore's FP1 is 9 Oct; on 30 Sep the forecast ends on the 4th. That is an answer — not
-    yet forecast, back on the date the weekend's window enters the ~5-day range — never a
-    forecast for some other days."""
+def test_a_weekend_just_past_the_last_slot_is_outside_the_range(monkeypatch, openweather_key):
+    """Inside the day of slack the session times alone cannot settle it, so the forecast is
+    fetched and its own last slot decides: here it ends on 4 Oct, and FP1 is on the 5th.
+    That is an answer — not yet forecast — never a forecast for some other days."""
     monkeypatch.setattr(
         weather_tools.requests, "get", RecordingGet(FakeResponse(forecast_payload()))
     )
 
     result = _weather(
         sessions=[
-            {"name": "Practice 1", "start": "2026-10-09T08:30:00+00:00"},
-            {"name": "Race", "start": "2026-10-11T12:00:00+00:00"},
+            {"name": "Practice 1", "start": "2026-10-05T06:00:00+00:00"},
+            {"name": "Race", "start": "2026-10-07T12:00:00+00:00"},
         ]
     )
 
     assert result == {
         "status": "outside_forecast_range",
-        "weekend_starts": "2026-10-09T08:30:00+00:00",
-        "available_from": "2026-10-04",
+        "weekend_starts": "2026-10-05T06:00:00+00:00",
+        "available_from": "2026-09-30",
         "forecast_generated_at": "2026-09-30T00:05:00+00:00",
     }
 
@@ -326,6 +328,29 @@ def test_a_transport_error_never_carries_the_key_into_the_result_or_the_log(
     assert "test-openweather-key" not in result["error"]
     assert "[redacted]" in result["error"]
     assert "test-openweather-key" not in caplog.text
+
+
+def test_every_circuit_in_the_index_has_coordinates():
+    """A circuit added to the index without a centre would lose its weather silently."""
+    index = json.loads(CIRCUIT_INDEX_PATH.read_text(encoding="utf-8"))
+    coordinates = json.loads(CIRCUIT_COORDINATES_PATH.read_text(encoding="utf-8"))
+    assert set(index.values()) <= set(coordinates)
+
+
+@pytest.mark.parametrize(
+    ("circuit_id", "town_lat", "town_lon"),
+    [
+        # Where OpenWeather's geocoder puts each circuit's town, measured live on 2026-09-30.
+        ("gb-1948", 52.09, -1.02),  # Silverstone
+        ("it-1922", 45.58, 9.27),  # Monza
+        ("jp-1962", 34.88, 136.58),  # Suzuka
+    ],
+)
+def test_circuit_coordinates_are_latitude_then_longitude(circuit_id, town_lat, town_lon):
+    """GeoJSON is lon/lat; a swapped pair would put Silverstone in the Indian Ocean."""
+    centre = json.loads(CIRCUIT_COORDINATES_PATH.read_text(encoding="utf-8"))[circuit_id]
+    assert centre["lat"] == pytest.approx(town_lat, abs=0.1)
+    assert centre["lon"] == pytest.approx(town_lon, abs=0.1)
 
 
 # ── News search ──────────────────────────────────────────────────────────────

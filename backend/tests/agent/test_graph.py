@@ -371,7 +371,7 @@ def test_an_upcoming_race_keeps_weather_and_news(fake_llm):
         ("search_f1_news", {"query": "Monaco Grand Prix 2025", "max_results": 5}),
         (
             "get_race_weather",
-            {"lat": 43.73716, "lon": 7.4253, "sessions": make_race_info()["sessions"]},
+            {"lat": 43.7367, "lon": 7.4258, "sessions": make_race_info()["sessions"]},
         ),
         ("get_driver_form", {"driver_code": "VER", "as_of": AS_OF, "num_races": 5}),
         ("get_recent_race_results", {"track_id": "mc-1929", "as_of": AS_OF}),
@@ -400,11 +400,11 @@ def test_weather_for_a_race_with_no_circuit_file_has_no_coordinates_to_guess_fro
     assert tool.calls[0]["lon"] is None
 
 
-def test_an_unreadable_circuit_file_leaves_weather_without_coordinates(monkeypatch, tmp_path):
+def test_an_unreadable_coordinates_file_leaves_weather_without_coordinates(monkeypatch, tmp_path):
     """Building args must not raise: the tool reports the missing coordinates itself."""
     from tools import circuit_winners
 
-    monkeypatch.setattr(circuit_winners, "CIRCUIT_INDEX_PATH", tmp_path / "absent.json")
+    monkeypatch.setattr(circuit_winners, "CIRCUIT_COORDINATES_PATH", tmp_path / "absent.json")
     tool = make_tool("get_race_weather")
 
     _invoke_tool(tool, "get_race_weather", make_race_info())
@@ -912,6 +912,17 @@ def test_chunks_that_carried_no_prose_do_not_count_as_a_truncated_briefing(fake_
         run_synthesizer_streamed()
 
 
+def test_the_llm_client_is_built_with_a_timeout_and_a_bounded_attempt_count():
+    """The library defaults are ``timeout=None`` and six attempts, so an unanswered call held
+    a worker thread forever and a flaky one was paid for six times. ``max_retries`` is the
+    SDK's *attempt* count, first request included — see the note in config.py.
+    """
+    from config import LLM_MAX_ATTEMPTS, LLM_TIMEOUT_SECONDS
+
+    assert graph_module.llm.timeout == LLM_TIMEOUT_SECONDS
+    assert graph_module.llm.max_retries == LLM_MAX_ATTEMPTS
+
+
 def test_standings_is_a_registered_tool():
     from agent.graph import all_tools
 
@@ -991,7 +1002,7 @@ def test_standings_retries_with_the_previous_season_when_this_one_has_not_starte
 
 def test_standings_does_not_retry_on_a_transport_failure():
     """A transient failure (e.g. an HTTP 429) carries no `reason` key, so it must not
-    trigger the historical-year retry — substituting last season's final table for a
+    trigger the previous-season retry — substituting last season's final table for a
     briefing that asked for current standings is worse than serving the error, which the
     synthesizer already knows how to omit.
     """
@@ -1117,3 +1128,42 @@ def test_the_planner_sees_the_same_race_context(fake_llm):
     assert "Circuit: Sepang International Circuit (5.543 km)" in system
     assert "Briefing as of: 2026-09-30 00:00 UTC" in system
     assert "Today: 2026-09-30" in system
+
+
+def test_a_failed_tool_logs_its_error(caplog):
+    """A tool fails by returning ``{"error": ...}``, not by raising, so the
+    ``logger.exception`` in ``_invoke_tool`` never sees it. Standings failed in every
+    briefing measured on 2026-09-30 and nothing in the log said why.
+    """
+    error = "Failed to get championship standings: OpenF1 session_result returned HTTP 429"
+    fake = make_tool("get_championship_standings", {"error": error})
+
+    with caplog.at_level(logging.WARNING, logger="agent.graph"):
+        result = _invoke_tool(fake, "get_championship_standings", make_race_info())
+
+    assert result["success"] is False
+    assert "Tool 'get_championship_standings' failed" in caplog.text
+    assert error in caplog.text
+
+
+def test_a_recovered_pre_season_miss_is_not_logged_as_a_failure(caplog):
+    """The pre-season miss is an answer the previous-season retry handles; only the
+    final outcome is worth a warning.
+    """
+    from tools.standings_tools import SEASON_NOT_STARTED
+
+    class _PreSeasonTool:
+        name = "get_championship_standings"
+
+        def invoke(self, args: dict) -> dict:
+            if args["year"] == 2026:
+                return {"error": "No completed races yet", "reason": SEASON_NOT_STARTED}
+            return {"year": 2025, "drivers": []}
+
+    race_info = make_race_info(year=2026, as_of="2026-03-06T01:30:00+00:00")
+
+    with caplog.at_level(logging.WARNING, logger="agent.graph"):
+        result = _invoke_tool(_PreSeasonTool(), "get_championship_standings", race_info)
+
+    assert result["success"] is True
+    assert caplog.text == ""

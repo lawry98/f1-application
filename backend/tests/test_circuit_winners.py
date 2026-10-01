@@ -418,7 +418,6 @@ def test_circuit_record_reads_the_circuit_file():
         "name": "Sepang International Circuit",
         "length_m": 5543,
         "first_gp": 1999,
-        "centroid": {"lat": 2.76075, "lon": 101.73696},
     }
 
 
@@ -432,3 +431,11 @@ def test_a_caller_mutating_a_record_cannot_reach_the_cache():
     circuit_winners.circuit_record("my-1999")["name"] = "tampered"
 
     assert circuit_winners.circuit_record("my-1999")["name"] == "Sepang International Circuit"
+
+
+def test_circuit_coordinates_are_the_circuits_centre_from_coordinates_json():
+    """Sepang, not Kuala Lumpur city 45 km north — the weather forecast asks for these."""
+    centre = circuit_winners.circuit_coordinates("my-1999")
+    assert centre["lat"] == pytest.approx(2.7606, abs=0.02)
+    assert centre["lon"] == pytest.approx(101.7381, abs=0.02)
+    assert circuit_winners.circuit_coordinates("xx-0000") is None

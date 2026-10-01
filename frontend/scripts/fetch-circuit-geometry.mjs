@@ -35,9 +35,14 @@
  * is centred within it. Scaling each axis to fill independently would stretch Monza's straights
  * and lose the outline that makes it recognisable.
  *
- * Each file also carries `centroid` — WGS84 degrees, the unprojected mean of the same ring — for
- * the backend's weather forecast, which asks OpenWeather for coordinates rather than geocoding a
- * place name. It is the only field not derived through `project`, so adding it moved no outline.
+ * Why `coordinates.json` exists
+ * -----------------------------
+ * Projection throws the real position away, and the backend's race-day weather forecast needs it.
+ * The alternative, geocoding FastF1's `Location` by name, missed four circuits measured
+ * 2026-09-30: "Kuala Lumpur,BH" (the event's country, not the venue's), Sakhir, Yas Marina and
+ * Spa-Francorchamps all came back empty, while "Silverstone,US" found North Carolina. So each
+ * circuit's centre, the midpoint of its outline's bounding box in WGS84 degrees, is kept here and
+ * the backend reads it through the same `index.json` join the winners use.
  */
 
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -125,21 +130,20 @@ function project(coordinates) {
   ]);
 }
 
+/** The midpoint of a lon/lat ring's bounding box, as `{ lat, lon }` so the order is never guessed. */
+function centre(coordinates) {
+  const lons = coordinates.map(([lon]) => lon);
+  const lats = coordinates.map(([, lat]) => lat);
+  return {
+    lat: Number(((Math.min(...lats) + Math.max(...lats)) / 2).toFixed(4)),
+    lon: Number(((Math.min(...lons) + Math.max(...lons)) / 2).toFixed(4)),
+  };
+}
+
 /**
  * A circuit's outline can be a single LineString or a MultiLineString. Take the longest ring:
  * the extra rings are pit lanes and layout variants, and the racing loop is the long one.
  */
-/**
- * The mean of the ring's vertices, in degrees. The vertices are dense and fairly even along a
- * surveyed centre line, so this lands on the circuit — near enough for a weather forecast, whose
- * grid is kilometres wide. Five decimals is about a metre.
- */
-function centroid(coordinates) {
-  const mean = (axis) =>
-    coordinates.reduce((sum, point) => sum + point[axis], 0) / coordinates.length;
-  return { lat: Number(mean(1).toFixed(5)), lon: Number(mean(0).toFixed(5)) };
-}
-
 function longestRing(geometry) {
   if (geometry.type === 'LineString') return geometry.coordinates;
   if (geometry.type === 'MultiLineString') {
@@ -158,6 +162,8 @@ async function main() {
   /** slugged bacinger location -> circuit id, plus the FastF1 aliases pointing at the same ids. */
   const index = {};
   const catalog = [];
+  /** circuit id -> `{ lat, lon }`, for the backend's weather tool. */
+  const coordinates = {};
   let written = 0;
 
   for (const feature of collection.features) {
@@ -165,10 +171,11 @@ async function main() {
 
     const ring = longestRing(feature.geometry);
     const points = downsample(project(ring), MAX_POINTS);
+    coordinates[id] = centre(ring);
 
     await writeFile(
       join(OUT_DIR, `${id}.json`),
-      `${JSON.stringify({ id, name, location, lengthM: length ?? null, firstGp: firstgp ?? null, centroid: centroid(ring), points })}\n`,
+      `${JSON.stringify({ id, name, location, lengthM: length ?? null, firstGp: firstgp ?? null, points })}\n`,
     );
 
     index[slug(location)] = id;
@@ -191,6 +198,11 @@ async function main() {
   await writeFile(
     join(OUT_DIR, 'index.json'),
     `${JSON.stringify(Object.fromEntries(Object.entries(index).sort()), null, 2)}\n`,
+  );
+
+  await writeFile(
+    join(OUT_DIR, 'coordinates.json'),
+    `${JSON.stringify(Object.fromEntries(Object.entries(coordinates).sort()), null, 2)}\n`,
   );
 
   // The points-free view the grid and detail page read, so neither downloads an outline to learn a

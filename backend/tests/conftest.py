@@ -106,27 +106,30 @@ def _block_openf1_network(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def openf1_clock(monkeypatch):
-    """Give the OpenF1 client's rate limiter and retry backoff a fake clock, for every test.
-
-    Both are process-wide and would otherwise make the suite really wait: a tool test that
-    issues a fourth request inside a second, or a 429 retry, would sleep. A fresh limiter per
-    test also means no test inherits another's request history. Returned so a test can read
-    the clock and the waits it recorded.
+def _unpaced_openf1(monkeypatch):
+    """Turn off the OpenF1 client's request pacing, which would otherwise sleep 0.4s per
+    fake request — and, under ``freeze_time``, far worse: a frozen ``monotonic`` reads an
+    epoch-sized value, so the next start it reserves would stall every later test.
+    ``test_openf1_client.py`` covers the real ``_pace`` directly.
     """
-    from tests.factories import FakeClock
     from tools import openf1_client
 
-    clock = FakeClock()
-    monkeypatch.setattr(
-        openf1_client,
-        "_limiter",
-        openf1_client.StartRateLimiter(
-            openf1_client.OPENF1_REQUESTS_PER_SECOND, 1.0, clock=clock.now, sleep=clock.sleep
-        ),
-    )
-    monkeypatch.setattr(openf1_client, "_sleep", clock.sleep)
-    return clock
+    monkeypatch.setattr(openf1_client, "_pace", lambda: None)
+
+
+@pytest.fixture
+def openf1_retry_sleeps(monkeypatch):
+    """Record the OpenF1 client's waits — 429 back-off and pacing — instead of sleeping.
+
+    Patches ``time.sleep`` itself — the client reaches it as ``time.sleep`` — so a test
+    using this must not rely on a real ``time.sleep`` elsewhere; wait on a
+    ``threading.Event`` instead.
+    """
+    from tools import openf1_client
+
+    sleeps: list[float] = []
+    monkeypatch.setattr(openf1_client.time, "sleep", sleeps.append)
+    return sleeps
 
 
 @pytest.fixture(autouse=True)
@@ -183,6 +186,21 @@ def _clear_result_cache():
     clear_result_cache()
     yield
     clear_result_cache()
+
+
+@pytest.fixture(autouse=True)
+def briefing_guard(monkeypatch):
+    """A fresh admission guard, at the configured limits, for every test.
+
+    The guard is process-global state like the caches above, and its limits are small on
+    purpose — five briefings an hour from one IP, and TestClient is always one IP — so without
+    this the sixth briefing test in a run would be rate limited by the five before it.
+    """
+    from api import routes
+
+    guard = routes.new_briefing_guard()
+    monkeypatch.setattr(routes, "briefing_guard", guard)
+    return guard
 
 
 @pytest.fixture

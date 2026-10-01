@@ -247,7 +247,7 @@ def test_a_year_before_coverage_is_an_error():
 @freeze_time("2024-01-15")
 def test_a_season_with_no_completed_races_is_an_error(openf1_season):
     """The one error carrying `reason=SEASON_NOT_STARTED` — agent/graph.py's
-    historical-year retry keys off this sibling field, not the error prose.
+    previous-season retry keys off this sibling field, not the error prose.
     """
     result = get_championship_standings.invoke({"year": 2024})
 
@@ -661,6 +661,32 @@ def test_a_failure_is_never_cached(monkeypatch, today):
 
     assert "error" not in result
     assert len(fake.calls) > 0
+
+
+@freeze_time("2024-06-01")
+def test_a_rate_limited_fetch_is_waited_out_not_reported(monkeypatch, openf1_retry_sleeps):
+    """Measured on 2026-09-30: a cold briefing's fan-out drew a 429 on this tool's
+    ``sessions`` or ``session_result`` fetch in 2 of 3 runs. Every other tool fell back to
+    FastF1; this one has no fallback, so the briefing lost its standings each time.
+    """
+    from tests.factories import make_openf1_get
+    from tools import openf1_client
+
+    fake = make_openf1_get(
+        {
+            "sessions": OPENF1_SESSIONS_2024,
+            "session_result": OPENF1_RESULTS,
+            "drivers": OPENF1_DRIVERS,
+        },
+        throttled={"sessions": 1, "session_result": 1},
+    )
+    monkeypatch.setattr(openf1_client.requests, "get", fake)
+
+    result = get_championship_standings.invoke({"year": 2024})
+
+    assert "error" not in result
+    assert result["races_completed"] == 3
+    assert len(openf1_retry_sleeps) == 2
 
 
 def test_each_year_is_cached_separately(openf1_season):

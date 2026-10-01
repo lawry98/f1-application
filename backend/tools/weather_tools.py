@@ -4,13 +4,14 @@ Two things this used to get wrong, and why it looks the way it does:
 
 - **Where.** It geocoded ``"{Location},{country code}"`` from a hand-kept country map, so the
   2026 Bahrain Grand Prix at Sepang asked for "Kuala Lumpur,BH" and any country missing from
-  the map silently became "US". The circuit's ``centroid`` (``frontend/data/circuits``) is
-  passed in instead, and no coordinates is an error rather than a guess.
+  the map silently became "US". The circuit's centre from ``frontend/data/circuits/
+  coordinates.json`` is passed in instead, and no coordinates is an error rather than a guess.
 - **When.** It took the first eight 3-hour slots — the next 24 hours — and the briefing
   presented them as the race weekend. Only slots from the first session minus three hours to
   the race plus three hours are read now, and each session gets the slot nearest its start.
   A weekend beyond the forecast's end is ``outside_forecast_range`` with the date it will be
-  in range, never a forecast for other days.
+  in range, and one already over is ``weekend_over`` — never a forecast for other days, and
+  no request when the answer is plain from the session times alone.
 
 Weather is never cached (agent/graph.py): a stale forecast is worse than a refetch.
 """
@@ -89,7 +90,21 @@ def get_race_weather(
         first = min(start for _, start in starts)
         race = next((start for name, start in starts if name == "Race"), max(s for _, s in starts))
         window_from, window_to = first - WINDOW_MARGIN, race + WINDOW_MARGIN
-        generated_at = to_iso(datetime.now(UTC))
+        now = datetime.now(UTC)
+        generated_at = to_iso(now)
+        available_from = (window_from - FORECAST_HORIZON).date().isoformat()
+
+        # Two answers need no request: a weekend that is over, and one too far out for any
+        # forecast to reach. A day of slack on the horizon leaves the borderline case to the
+        # forecast's own last slot, below.
+        if window_to < now:
+            return {"status": "weekend_over", "weekend_ended": to_iso(window_to)}
+        if window_from > now + FORECAST_HORIZON + timedelta(days=1):
+            return {
+                "status": "outside_forecast_range",
+                "weekend_starts": to_iso(first),
+                "available_from": available_from,
+            }
 
         response = requests.get(
             FORECAST_URL,
@@ -110,7 +125,7 @@ def get_race_weather(
             return {
                 "status": "outside_forecast_range",
                 "weekend_starts": to_iso(first),
-                "available_from": (window_from - FORECAST_HORIZON).date().isoformat(),
+                "available_from": available_from,
                 "forecast_generated_at": generated_at,
             }
 

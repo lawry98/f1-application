@@ -6,7 +6,6 @@ import os
 import fastf1
 from dotenv import load_dotenv
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 
 load_dotenv()
 
@@ -16,7 +15,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-from config import CORS_ORIGINS, FASTF1_CACHE_DIR, validate_config
+from config import FASTF1_CACHE_DIR, validate_config
 
 validate_config()
 
@@ -24,6 +23,7 @@ os.makedirs(FASTF1_CACHE_DIR, exist_ok=True)
 fastf1.Cache.enable_cache(FASTF1_CACHE_DIR)
 logger.info("FastF1 cache enabled at '%s'", FASTF1_CACHE_DIR)
 
+from api.cors import add_cors
 from api.routes import router
 
 app = FastAPI(
@@ -32,12 +32,7 @@ app = FastAPI(
     version="1.0.0",
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=CORS_ORIGINS,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+add_cors(app)
 
 app.include_router(router)
 

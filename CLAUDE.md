@@ -67,6 +67,10 @@ upstream to earn a 401.
 | `FASTF1_CACHE_DIR` | Defaults to `cache/` |
 | `EXECUTOR_MAX_WORKERS` | Defaults to `4` |
 | `STANDINGS_TTL_SECONDS` | Defaults to `300`; `0` disables current-season caching; invalid/negative warns and uses `300` |
+| `BRIEFING_PER_IP_PER_HOUR` | Defaults to `5`; invalid, negative or `0` warns and uses `5` |
+| `BRIEFING_DAILY_CAP` | Defaults to `100` per UTC day; `0` means no cap; invalid/negative warns and uses `100` |
+| `BRIEFING_MAX_CONCURRENT` | Defaults to `2`; invalid, negative or `0` warns and uses `2` |
+| `BRIEFING_DEADLINE_SECONDS` | Defaults to `90`; invalid, negative or `0` warns and uses `90` |
 | `CORS_ORIGINS` | Comma-separated; defaults to `http://localhost:3000,http://localhost:3001` |
 
 `LLM_MODEL` is a **hardcoded constant** in `config.py`, not an env var — changing the model
@@ -128,6 +132,26 @@ Use `sm:text-[1rem]` (or `text-[15px]`, as `landing-features.tsx` already does) 
 breakpoint-scoped body size. Neither `pnpm test` nor a type check can see this; jsdom computes no
 CSS, and the class string reads correctly.
 
+**The cost guard's limits are per process — run exactly one worker.** `api/guard.py` keeps the
+per-IP hour, the UTC-day count and the concurrency slots in memory, so a second uvicorn worker
+doubles every limit and a restart resets the day. It keys on `request.client.host` and never
+parses `X-Forwarded-For` (anyone can send one): behind a proxy, run uvicorn with
+`--proxy-headers` and `FORWARDED_ALLOW_IPS` set to the proxy, or every visitor shares one
+allowance. Admission runs *before* `EventSourceResponse` exists, which is the only reason a
+refusal can be a 429/503 at all — once the stream opens its status is 200. Three things there are
+not guessable. **The slot is released by the response, not only the generator**: a client that
+hangs up before the first event (generator never started) or mid-send (generator parked at a
+`yield`) is not covered by the generator's `finally`, so `_ReleasingEventSourceResponse.__call__`
+closes the generator and runs the run's idempotent `finish()` itself; the ASGI-level disconnect
+tests only prove this because their `send` yields to the loop — with one that never yields, both
+passed with that teardown deleted. **Spend is stopped by a `RunBudget`, not by cancellation**:
+the nodes run on worker threads that no `CancelledError` reaches, so each node checks the
+budget's cancel event and deadline (`agent/budget.py`) before an LLM call, before submitting a
+tool and between streamed chunks; the route sets the event at the deadline and when the response
+ends. **`max_retries` on `ChatGoogleGenerativeAI` is an attempt count**, first request included,
+and its `timeout` bounds each read of a stream, not the stream — `config.py` carries the source
+citations and the deadline arithmetic, and a test re-does the sum.
+
 **The graph is not a flat pipeline.** It has four nodes, but `resolver` sits behind a
 conditional edge: when `state["current_step"] == "error"` it routes straight to `END`, skipping
 planner, tools, and synthesizer. Anything assuming the synthesizer always runs is wrong.
@@ -145,25 +169,6 @@ prompts get the resolved race as an authoritative block (`race_context`), so the
 about the circuit the race is at rather than the one its name suggests. The band's "Pre-race
 briefing as of …" line has a slot rendered from the shell on, because it lands above a loader
 already on screen.
-
-**Weather is read at the circuit's coordinates, for the weekend's sessions.** Each
-`frontend/data/circuits/<id>.json` carries `centroid` (WGS84, the mean of the outline's source
-ring, written by `scripts/fetch-circuit-geometry.mjs`). `get_race_weather` reads only the forecast
-slots from the first session − 3h to the race + 3h and gives each session the nearest one. A
-weekend past the forecast's last slot is `status: "outside_forecast_range"` with `available_from`,
-which the synthesizer states as exactly that. The geocoding it replaced sent Sepang as "Kuala
-Lumpur,BH" and any unmapped country as "US", then reported the next 24 hours as the weekend.
-
-**OpenF1 is throttled, then retried, inside the client.** Its free tier is 3 req/s and 30 req/min
-(openf1.org). A process-wide `StartRateLimiter` in `_get` admits at most three request starts in
-any rolling second, across every tool and route, and `clear()` — which every route calls — never
-resets it. Only the single-flight fetcher retries: 429 and 502/503/504, honouring Retry-After,
-at most three times within ~5s of added wait, then `OpenF1Error` naming the status. Timeouts and
-other 4xx are never retried. The per-minute limit is a budget, not a throttle — a cold briefing
-costs five to eight requests (measured: Bahrain 5, Monaco 7, Singapore 8) and a cold
-`/standings` view four; waiting out a minute would stall a
-briefing. Before this, the first briefing after a restart fanned out cold, took a 429, and lost
-its standings, which have no FastF1 fallback.
 
 **`tools/` is not uniform.** Eight `@tool` functions live across five modules
 (`fastf1_tools`, `f1_data_tools`, `search_tools`, `weather_tools`, `standings_tools`). The other
@@ -332,15 +337,28 @@ path is exactly the policy above. Don't delete the route's
 `clear_openf1_cache()` thinking the new cache replaces it — it still bounds the other
 OpenF1 tools' staleness, and the TTL miss path relies on it.
 
+**OpenF1 requests are paced, then retried, process-wide, because standings is the one tool a 429
+kills.** The free tier is 3 req/s and 30 req/min (openf1.org); a cold briefing costs five to eight
+requests (measured: Bahrain 5, Monaco 7, Singapore 8) and a cold `/standings` view four. Every
+other tool absorbed a 429 as a silent FastF1 fallback; standings has none, so briefings lost it (2
+of 3 cold fan-outs, measured 2026-09-30). `openf1_client._pace` spaces request starts
+`OPENF1_MIN_INTERVAL` apart. Pacing is the fix and the retry only its backstop: retrying alone
+spent ~25 requests on ~12 answers and tripped the separate 30 req/min limit. Only the single-flight
+fetcher retries — waiters share its result — and only 429 and 502/503/504: Retry-After when sent,
+else exponential backoff with jitter, at most `MAX_RETRIES` within `MAX_RETRY_WAIT` (~5s). Past
+that, the per-minute 429's `Retry-After: 60` included, it raises `OpenF1Error` at once. Timeouts
+and other 4xx are never retried. `_next_start` lives outside `clear()` so the per-request clear
+above leaves the pacing intact. Tests run with `_pace` stubbed by an autouse fixture — a frozen
+`monotonic` under `freeze_time` is epoch-sized, so a real reserved start would stall the suite —
+and `openf1_retry_sleeps` records the waits instead of sleeping them.
+
 **`tests/conftest.py` blocks OpenF1 as well as FastF1, and the two differ on purpose.**
 `_block_fastf1_network` raises `AssertionError` because no production path should swallow
 one. `_block_openf1_network` raises `requests.ConnectionError` because the tools *do*
 handle that — it is the FastF1 fallback — and that is what lets `test_fastf1_tools.py`
 keep testing the FastF1 path unedited. The consequence is that the fallback is the
 default under test, so `test_openf1_tools.py` asserts the OpenF1 request is genuinely
-made rather than silently fallen through. The autouse `openf1_clock` gives the client's rate
-limiter and retry backoff a `FakeClock` per test, so no test really waits and none inherits
-another's request history; take it as a fixture to read the waits it recorded.
+made rather than silently fallen through.
 
 **Anything circuit-shaped is matched by location, never by Grand Prix name — on `/circuits` and
 in the agent alike.** A Grand Prix is not a track: 2026's Spanish GP is at Madrid while 2023–25's
@@ -372,6 +390,21 @@ Abu Dhabi `Yas Island` for 2020–25 and Belgium `Spa` before 2022; without thos
 winners matcher misses them and the briefing band draws no outline for those years. Aliases live in
 `LOCATION_ALIASES` in `scripts/fetch-circuit-geometry.mjs` and nowhere else.
 `tests/circuit-catalog.test.ts` pins them.
+
+**Weather is forecast at the circuit's coordinates for the weekend's sessions, never at a geocoded
+name for "now".** `_build_tool_args` gives `get_race_weather(lat, lon, sessions)` the centre of
+`race_info["track_id"]` from `frontend/data/circuits/coordinates.json` (written only by
+`scripts/fetch-circuit-geometry.mjs`) and the weekend's session times; the tool reads only the slots
+from the first session − 3h to the race + 3h and gives each session the nearest one. The version
+this replaced geocoded `"{Location},{country code}"` and returned the next 24 hours whatever the race
+date: measured 2026-09-30, it missed Kuala Lumpur (FastF1 files it under Bahrain), Sakhir, Yas
+Marina and Spa-Francorchamps outright, and its `"US"` default for an unmapped country made
+Silverstone North Carolina. No track or no coordinates is an error, never a geocode. The free
+endpoint reaches about five days, so a weekend past its last slot is `status:
+"outside_forecast_range"` with `available_from`, and one already over is `weekend_over` — answers
+with **no `error` key**, like `SEASON_NOT_STARTED`, and neither costs a request when the session
+times alone settle it. Weather Watch in `SYNTHESIZER_PROMPT` steers on those keys, which
+`test_the_synthesizer_prompt_steers_on_keys_the_tool_really_emits` pins.
 
 **A round with no outline renders a card on `/circuits`, unlike the band.** The band hides a missing
 outline because a briefing without it is still complete; in the grid the card *is* the content, so
