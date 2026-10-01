@@ -9,7 +9,7 @@ This file carries what you **cannot derive by reading the repo** — conventions
 ```
 backend/
   agent/       graph.py (pipeline), state.py (TypedDicts), prompts.py (LLM prompts)
-  api/         routes.py (REST + SSE endpoints), models.py (Pydantic contracts)
+  api/         app.py (the app factory), routes.py (REST + SSE endpoints), models.py (Pydantic contracts)
   tools/       Mixed — see "tools/ is not uniform" below
   config.py    Every env var read in the app happens here
 
@@ -72,6 +72,7 @@ upstream to earn a 401.
 | `BRIEFING_MAX_CONCURRENT` | Defaults to `2`; invalid, negative or `0` warns and uses `2` |
 | `BRIEFING_DEADLINE_SECONDS` | Defaults to `90`; invalid, negative or `0` warns and uses `90` |
 | `CORS_ORIGINS` | Comma-separated; defaults to `http://localhost:3000,http://localhost:3001` |
+| `EXPOSE_API_DOCS` | Off: `/docs`, `/redoc` and `/openapi.json` 404 and `/` drops its `docs` link. Only `1` turns them on (`make dev` sets it); any other value but `0` warns and stays off |
 
 `LLM_MODEL` is a **hardcoded constant** in `config.py`, not an env var — changing the model
 means editing code. That is deliberate: the prompts are written against a specific model
@@ -90,6 +91,11 @@ Frontend: `NEXT_PUBLIC_API_URL` in `frontend/.env.local`, defaults to `http://lo
 time**, so it must be set for `pnpm build`. Unset falls back to `http://localhost:3000` and warns
 once per build worker (about a dozen identical lines); a path, a non-http(s) scheme or garbage
 throws.
+
+`ENABLE_INTERNAL_ROUTES=1` serves `/candy`; unset, which is production, it is the not-found page.
+`lib/internal-routes.ts` is the only reader, and it reads per request, so a page that gates on it
+must be `force-dynamic` — a static page would read it once, at `pnpm build`, and serve that answer
+forever. `make dev` and Playwright's `webServer` set it.
 
 ## Key technical details
 
@@ -867,7 +873,9 @@ required CI check (`browser` job). Things that are not guessable:
 - **The route sweeps are hand-written lists, not discovered.** `focus-rings.spec.ts`,
   `a11y-smoke.spec.ts` and `invisible-text.spec.ts` each name their routes literally; a new
   route is covered only once it is added to all three. `/candy` stays out of the focus sweep
-  because it has no focusable controls by design.
+  because it has no focusable controls by design. The suite's server sets
+  `ENABLE_INTERNAL_ROUTES=1` so the sweeps reach `/candy` at all; `internal-routes.spec.ts` starts
+  a second `next start` without it to pin the production side.
 
 ### Backend
 

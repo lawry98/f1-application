@@ -13,7 +13,7 @@ import { expect, test } from './support/test';
  * without it, on a free port so it can never collide with another run's server.
  */
 
-test('/candy renders when ENABLE_INTERNAL_ROUTES=1, kept out of search indexes', async ({ page }) => {
+test('/candy renders with the flag, kept out of search indexes', async ({ page }) => {
   await page.goto('/candy');
   await waitForMain(page);
 
@@ -65,7 +65,11 @@ function freePort(): Promise<number> {
     probe.once('error', reject);
     probe.listen(0, () => {
       const address = probe.address();
-      probe.close(() => (typeof address === 'object' && address ? resolve(address.port) : reject(new Error('no port'))));
+      probe.close(() =>
+        typeof address === 'object' && address
+          ? resolve(address.port)
+          : reject(new Error('no port')),
+      );
     });
   });
 }
