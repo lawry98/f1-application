@@ -2,7 +2,7 @@ event: status
 data: {"step": "resolving", "message": "Resolving race..."}
 
 event: race_info
-data: {"name": "Monaco Grand Prix", "year": 2025, "circuit_id": "monaco_grand_prix", "location": "Monaco", "country": "Monaco", "date": "2025-05-25 00:00:00", "is_upcoming": true, "historical_year": 2024}
+data: {"name": "Monaco Grand Prix", "year": 2025, "round": 3, "circuit_id": "monaco_grand_prix", "track_id": "mc-1929", "circuit_name": "Circuit de Monaco", "circuit_length_m": 3337, "location": "Monaco", "country": "Monaco", "date": "2025-05-25 00:00:00", "is_upcoming": true, "as_of": "2025-05-01T00:00:00+00:00", "sessions": [{"name": "Practice 1", "start": "2025-05-23T11:30:00+00:00"}, {"name": "Practice 2", "start": "2025-05-23T15:00:00+00:00"}, {"name": "Practice 3", "start": "2025-05-24T10:30:00+00:00"}, {"name": "Qualifying", "start": "2025-05-24T14:00:00+00:00"}, {"name": "Race", "start": "2025-05-25T13:00:00+00:00"}]}
 
 event: status
 data: {"step": "planning", "message": "Planning data gathering..."}

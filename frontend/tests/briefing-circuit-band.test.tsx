@@ -89,12 +89,20 @@ const MONACO_GEOMETRY: CircuitGeometry = {
 const MONZA_RACE: RaceInfo = {
   name: 'Italian Grand Prix',
   year: 2025,
+  round: 16,
   circuit_id: 'italian_grand_prix',
+  track_id: 'it-1922',
+  circuit_name: 'Autodromo Nazionale Monza',
+  circuit_length_m: 5793,
   location: 'Monza',
   country: 'Italy',
   date: '2025-05-25 00:00:00',
   is_upcoming: false,
-  historical_year: 2025,
+  as_of: '2025-05-23T11:30:00+00:00',
+  sessions: [
+    { name: 'Practice 1', start: '2025-05-23T11:30:00+00:00' },
+    { name: 'Race', start: '2025-05-25T13:00:00+00:00' },
+  ],
 };
 
 /**
@@ -107,12 +115,24 @@ const MONZA_RACE: RaceInfo = {
 const MONACO_RACE: RaceInfo = {
   name: 'Monaco Grand Prix',
   year: 2025,
+  round: 8,
   circuit_id: 'monaco_grand_prix',
+  track_id: 'mc-1929',
+  circuit_name: 'Circuit de Monaco',
+  circuit_length_m: 3337,
   location: 'Monte Carlo',
   country: 'Monaco',
   date: '2025-05-25 00:00:00',
   is_upcoming: false,
-  historical_year: 2025,
+  as_of: '2025-05-23T11:30:00+00:00',
+  sessions: [],
+};
+
+/** An upcoming race: briefed as of today, so the band says nothing about a cutoff. */
+const UPCOMING_MONZA: RaceInfo = {
+  ...MONZA_RACE,
+  is_upcoming: true,
+  as_of: '2025-05-01T00:00:00+00:00',
 };
 
 beforeEach(() => {
@@ -266,6 +286,62 @@ describe('BriefingCircuitBand', () => {
       );
 
       expect(screen.queryByText('DATE')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('a race that has been run', () => {
+    /*
+     * A past race is briefed as a reader saw it before its weekend (ADR-0004), and the band is
+     * where the page says so: the prose would otherwise read as a current briefing for a race
+     * whose result is known. One quiet line, beside the glow like every other glyph here.
+     */
+    it('says the briefing is as of the weekend’s start and that the race has been run', async () => {
+      await renderBand(<BriefingCircuitBand raceInfo={MONZA_RACE} round={16} />);
+
+      expect(
+        screen.getByText('Pre-race briefing as of 23 May 2025 · this race has been run'),
+      ).toBeInTheDocument();
+    });
+
+    it('writes the day without a leading zero', async () => {
+      await renderBand(
+        <BriefingCircuitBand
+          raceInfo={{ ...MONZA_RACE, as_of: '2026-06-05T11:30:00+00:00' }}
+          round={6}
+        />,
+      );
+
+      expect(screen.getByText(/as of 5 Jun 2026/)).toBeInTheDocument();
+    });
+
+    it('says nothing about a cutoff for an upcoming race', async () => {
+      await renderBand(<BriefingCircuitBand raceInfo={UPCOMING_MONZA} round={16} />);
+
+      expect(screen.queryByText(/Pre-race briefing/)).not.toBeInTheDocument();
+      expect(screen.getByText('LOCATION')).toBeInTheDocument();
+    });
+
+    it('drops the line for an as_of it cannot parse rather than printing it raw', async () => {
+      await renderBand(
+        <BriefingCircuitBand raceInfo={{ ...MONZA_RACE, as_of: 'last Thursday' }} round={16} />,
+      );
+
+      expect(screen.queryByText(/Pre-race briefing/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/last Thursday/)).not.toBeInTheDocument();
+    });
+
+    it('holds the line’s slot from the shell on, so a past race cannot grow the band', async () => {
+      // The same CLS rule as the outline box and the row floor: the line lands with race_info,
+      // above a loader already on screen, so its height is claimed before anyone knows the race.
+      const { container } = await renderBand(<BriefingCircuitBand raceInfo={null} round={null} />);
+      const shellSlot = container.querySelector('[data-as-of-slot]');
+      expect(shellSlot, 'the as-of slot was not reserved in the shell').not.toBeNull();
+      expect(shellSlot?.textContent).toBe('');
+
+      const upcoming = await renderBand(
+        <BriefingCircuitBand raceInfo={UPCOMING_MONZA} round={16} />,
+      );
+      expect(upcoming.container.querySelector('[data-as-of-slot]')).not.toBeNull();
     });
   });
 

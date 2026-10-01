@@ -1,14 +1,31 @@
 /** F1 domain types — mirrors backend TypedDicts in agent/state.py */
 
+/** One session of a race weekend, as FastF1 lists it. `start` is ISO-8601 UTC. */
+export interface SessionTime {
+  name: string;
+  start: string;
+}
+
 export interface RaceInfo {
   name: string;
   year: number;
+  round: number;
+  /** An *event* slug (`italian_grand_prix`), not a circuit — never print it or join on it. */
   circuit_id: string;
+  /** The circuit id the location matched (`it-1922`), or null when this app has no file for it. */
+  track_id: string | null;
+  circuit_name: string | null;
+  circuit_length_m: number | null;
   location: string;
   country: string;
   date: string;
   is_upcoming: boolean;
-  historical_year: number;
+  /**
+   * The briefing's cutoff, ISO-8601 UTC: today for an upcoming race, the first session's start for
+   * one that has been run — every source stops there (ADR-0004).
+   */
+  as_of: string;
+  sessions: SessionTime[];
 }
 
 export interface ToolResult {

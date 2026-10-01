@@ -135,7 +135,8 @@ function project(coordinates) {
  * grid is kilometres wide. Five decimals is about a metre.
  */
 function centroid(coordinates) {
-  const mean = (axis) => coordinates.reduce((sum, point) => sum + point[axis], 0) / coordinates.length;
+  const mean = (axis) =>
+    coordinates.reduce((sum, point) => sum + point[axis], 0) / coordinates.length;
   return { lat: Number(mean(1).toFixed(5)), lon: Number(mean(0).toFixed(5)) };
 }
 
