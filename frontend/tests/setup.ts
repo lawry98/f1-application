@@ -62,20 +62,25 @@ globalThis.ResizeObserver = NoopResizeObserver;
  * unless a test says otherwise. That is the safer default: the dossier stays unmounted
  * and tests assert what a phone actually renders. A test that wants the wide layout
  * overrides `window.matchMedia` itself.
+ *
+ * Skipped under `@vitest-environment node`, which has no DOM to patch. That environment exists
+ * for `share-image.test.ts`: resvg's wasm rejects a `Uint8Array` from jsdom's realm.
  */
-Element.prototype.scrollIntoView = function scrollIntoView(): void {};
+if (typeof window !== 'undefined') {
+  Element.prototype.scrollIntoView = function scrollIntoView(): void {};
 
-window.scrollTo = function scrollTo(): void {};
+  window.scrollTo = function scrollTo(): void {};
 
-window.matchMedia = function matchMedia(query: string): MediaQueryList {
-  return {
-    matches: false,
-    media: query,
-    onchange: null,
-    addEventListener: () => {},
-    removeEventListener: () => {},
-    addListener: () => {},
-    removeListener: () => {},
-    dispatchEvent: () => false,
-  } as MediaQueryList;
-};
+  window.matchMedia = function matchMedia(query: string): MediaQueryList {
+    return {
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    } as MediaQueryList;
+  };
+}
