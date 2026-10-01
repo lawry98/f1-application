@@ -847,6 +847,19 @@ describe('retrying an interrupted run', () => {
     expect(result.current.loading).toBe(false);
   });
 
+  it('keeps the interrupted prose when the retry fails to open, beside the generic error', async () => {
+    const { result } = await interruptedRun(refusedWith(500, { detail: 'boom' }));
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const partial = result.current.briefing;
+
+    await act(() => void result.current.retry());
+    await settle();
+
+    expect(result.current.error).toBe(GENERIC_BRIEFING_ERROR);
+    expect(result.current.briefing).toBe(partial);
+    expect(result.current.interrupted).toBe(true);
+  });
+
   it('does not ask again while the refusal’s wait is pending', async () => {
     const { result, queries } = await interruptedRun(
       refusedWith(503, { code: 'busy', retry_after_seconds: 10, limit: 2 }),

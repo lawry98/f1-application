@@ -231,6 +231,21 @@ never called it and each unauthenticated request spent two Gemini calls.
 **SSE discrimination uses the `event:` line** from the SSE protocol, not field-presence
 heuristics on the payload.
 
+**Every briefing stream ends with exactly one terminal event, because the frontend reads anything
+else as a dropped connection.** A run is finished on `briefing` (authoritative; `complete` follows)
+or `error` — `complete` alone does not count. When the body ends or a read rejects first,
+`streamBriefing` yields `interrupted`, a client-side event never sent on the wire, and the page
+keeps the prose with a "connection dropped" note and Try again. So the route sends a terminal
+event on every path: an empty synthesis or a graph that stops short gets the generic error (the
+deadline's once past), the synthesizer branch `return`s after `complete` so a later failure cannot
+send a second, and a `CancelledError` is re-raised only when `asyncio.current_task().cancelling()`
+says our own task is being cancelled — a hang-up, with nobody to tell; one the graph raises itself
+gets the error event. `tests/api/test_stream_terminal_events.py` pins each path. Interrupted is not
+Truncated (ADR-0002): its own state, its own wording. Broken streams in tests are the real
+`clean.sse` cut at runtime by `tests/sse-cuts.ts`, which Vitest and Playwright both import; a
+committed cut fixture would be hand-edited bytes. `retry()` keeps the interrupted view until the
+new run's first event, so a cost-guard refusal leaves the prose, with the countdown on Try again.
+
 **FastF1 session loads hit the network every time, cache or no cache — which is why three
 result tools now read OpenF1 instead.** `backend/cache/` (gitignored) never gets populated:
 FastF1 only persists a session that loaded cleanly, and these loads never do, so warming it
