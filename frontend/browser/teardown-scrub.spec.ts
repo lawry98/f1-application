@@ -103,8 +103,50 @@ for (const viewport of [
         await expectCanvasShows(page, i, 'every frame has loaded');
       }
     });
+
+    /*
+     * The route carries the 56 px site nav, and the scene's own bar sits under it, so the car has
+     * two fixed bars to clear rather than one. The car's box is still `min(92vw, …)` wide by
+     * `800 / 420`; what changed is that its height budget is the viewport *below* the nav.
+     */
+    test(`at ${viewport.width}px the resting car sits below the site nav and the page’s own bar`, async ({ page }) => {
+      await page.goto('/teardown');
+      await waitForMain(page);
+      await expect(page.getByText('Loading frames')).toBeHidden();
+
+      // The scene's own `<header>` sits inside `<main>`, so the site nav is the only banner.
+      await expect(page.getByRole('banner')).toHaveCount(1);
+      await expect(page.getByRole('banner').getByRole('navigation', { name: 'Main navigation' })).toBeVisible();
+
+      const navBox = await page.getByRole('navigation', { name: 'Main navigation' }).boundingBox();
+      const barBox = await page.locator('main header').boundingBox();
+      const carBox = await page.locator('canvas').boundingBox();
+      if (!navBox || !barBox || !carBox) throw new Error('the nav, the bar or the canvas is not laid out');
+
+      expect(barBox.y, 'the page’s bar starts below the site nav').toBeGreaterThanOrEqual(navBox.y + navBox.height - 0.5);
+      expect(carBox.y, 'the car starts below the page’s bar').toBeGreaterThanOrEqual(barBox.y + barBox.height);
+      expect(carBox.y + carBox.height, 'the car ends inside the viewport').toBeLessThanOrEqual(viewport.height);
+      expect(carBox.width / carBox.height, 'the frame keeps its 800 × 420 shape').toBeCloseTo(800 / 420, 2);
+    });
   });
 }
+
+test('while the frames load, the overlay leaves the site nav uncovered', async ({ page }) => {
+  // Every frame held, so the overlay stays up for as long as the test looks at it.
+  await page.route('**/frames/*.webp', () => new Promise(() => {}));
+  await page.goto('/teardown', { waitUntil: 'domcontentloaded' });
+  await waitForMain(page);
+  await expect(page.getByText('Loading frames')).toBeVisible();
+
+  const wordmark = page.getByRole('link', { name: 'F1 Briefing Agent' });
+  const box = await wordmark.boundingBox();
+  if (!box) throw new Error('the wordmark is not laid out');
+  const onTop = await page.evaluate(
+    ({ x, y }) => document.elementFromPoint(x, y)?.closest('a')?.textContent?.trim() ?? null,
+    { x: box.x + box.width / 2, y: box.y + box.height / 2 },
+  );
+  expect(onTop, 'what is painted at the wordmark while frames load').toBe('F1 Briefing Agent');
+});
 
 test('the overlay lifts on the first pass, and the canvas upgrades in place as closer frames land', async ({
   page,

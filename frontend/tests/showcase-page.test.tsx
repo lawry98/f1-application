@@ -18,6 +18,8 @@ import ShowcasePage from '@/app/showcase/page';
 vi.mock('@/components/3d/f1-car-showcase', () => ({
   default: () => <div data-testid="car-showcase" />,
 }));
+// `LandingNav` reads the route to mark its current link; jsdom has no Next router.
+vi.mock('next/navigation', () => ({ usePathname: () => '/showcase' }));
 
 describe('the /showcase landmarks', () => {
   it('has exactly one main landmark', () => {
@@ -35,8 +37,32 @@ describe('the /showcase landmarks', () => {
      */
     const { getByRole } = render(<ShowcasePage />);
 
-    const credits = getByRole('link', { name: /credits/i });
+    // By its full text: the nav has a "Credits" link of its own now.
+    const credits = getByRole('link', { name: '📝 Credits' });
 
     expect(getByRole('main')).toContainElement(credits);
+  });
+});
+
+describe('the /showcase site nav', () => {
+  it('renders it outside the one main landmark', () => {
+    const { getAllByRole, getByRole } = render(<ShowcasePage />);
+
+    const nav = getByRole('navigation', { name: 'Main navigation' });
+    expect(getAllByRole('main')).toHaveLength(1);
+    expect(getByRole('main')).not.toContainElement(nav);
+    expect(getByRole('banner')).toContainElement(nav);
+  });
+
+  it('marks Showcase as the current page', () => {
+    const { getByRole } = render(<ShowcasePage />);
+
+    expect(getByRole('link', { current: 'page' })).toHaveAccessibleName('Showcase');
+  });
+
+  it('starts the page below the fixed 56 px bar', () => {
+    const { getByRole } = render(<ShowcasePage />);
+
+    expect(getByRole('main')).toHaveClass('pt-14');
   });
 });

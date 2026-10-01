@@ -9,8 +9,10 @@ import dynamic from 'next/dynamic';
  */
 export const ShowcasePageClient = dynamic(() => import('@/components/3d/f1-car-showcase'), {
   ssr: false,
+  // The window below the 56 px nav, not `min-h-screen`: the page shell's `pt-14` is above this,
+  // and a full-height placeholder under it would make the loading page scroll.
   loading: () => (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-950">
+    <div className="flex min-h-[calc(100vh-3.5rem)] items-center justify-center bg-zinc-950">
       <div className="text-center">
         <div className="mx-auto mb-4 h-16 w-16 animate-spin rounded-full border-4 border-f1-red border-t-transparent" />
         <p className="text-zinc-400">Loading 3D showcase...</p>

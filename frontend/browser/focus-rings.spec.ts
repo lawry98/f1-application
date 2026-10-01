@@ -46,12 +46,17 @@ test('a flush control on base takes the red ring', async ({ page }) => {
 // (app/candy/page.tsx), so `tabThroughPage` reaches zero controls there — it's still covered
 // by the invisible-text and axe specs.
 // Routes are listed by hand, not discovered — a new route joins the sweep only when it is added here.
-for (const route of ['/', '/teams', '/tyres', '/circuits', '/circuits/monza']) {
+for (const route of ['/', '/teams', '/tyres', '/circuits', '/circuits/monza', '/credits', '/showcase', '/teardown']) {
   test(`no focusable control on ${route} paints Tailwind's default blue ring`, async ({ page }) => {
     await page.goto(route);
     await waitForMain(page);
     if (route === '/circuits') await expect(page.getByRole('list', { name: /calendar$/ })).toBeVisible();
     if (route === '/circuits/monza') await expect(page.getByRole('table')).toBeVisible();
+    // `/showcase`'s `<main>` is in the page shell, so it is up while the scene's chunk still loads.
+    // Its scene renders WebGL on the CPU without pause, so it gets `shadow-acne.spec.ts`'s allowance.
+    if (route === '/showcase') test.slow();
+    if (route === '/showcase') await expect(page.getByRole('heading', { level: 1, name: /Car Showcase/ })).toBeVisible();
+    if (route === '/teardown') await expect(page.getByText('Loading frames')).toBeHidden();
     const states = await tabThroughPage(page);
     expect(states.length, 'Tab reached no controls at all').toBeGreaterThan(0);
     const blue = states.filter((s) => s.boxShadow.includes(TAILWIND_DEFAULT_RING)).map((s) => s.label);
