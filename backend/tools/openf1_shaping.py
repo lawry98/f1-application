@@ -9,8 +9,6 @@ and belongs in exactly one place.
 
 from typing import Any
 
-from tools.fastf1_helpers import format_position
-
 # Sorts unclassified cars to the back. OpenF1 sends `None` for "no finishing position"
 # (0 is tolerated defensively below, but not what the live API actually returns), so a
 # naive ascending sort puts every retirement *above* the winner. FastF1's results frame
@@ -46,6 +44,20 @@ def derive_status(row: dict[str, Any]) -> str:
     return "Finished"
 
 
+def result_position(row: dict[str, Any]) -> int | str:
+    """A row's classified place, or 'DNF', 'DSQ' or 'DNS' — what FastF1's ``ClassifiedPosition``
+    says on the other path.
+
+    A classified place wins over the ``dnf`` flag: a car that ran 90% of the distance is
+    classified though it retired (Bottas, Baku 2026: ``position: 16``, ``dnf: True``). An
+    unclassified one carries ``position: None``."""
+    status = derive_status(row)
+    if status in ("DSQ", "DNS"):
+        return status
+    position = row.get("position")
+    return position if isinstance(position, int) and position > 0 else "DNF"
+
+
 def race_result_rows(
     rows: list[dict[str, Any]], drivers: dict[int, dict[str, str]]
 ) -> list[dict[str, Any]]:
@@ -63,7 +75,7 @@ def race_result_rows(
         identity = drivers.get(row.get("driver_number"), {})
         shaped.append(
             {
-                "Position": format_position(row.get("position") or 0),
+                "Position": result_position(row),
                 "DriverNumber": str(row.get("driver_number", "")),
                 "Abbreviation": identity.get("name_acronym", ""),
                 "TeamName": identity.get("team_name", ""),
@@ -88,7 +100,7 @@ def top_finisher_rows(
         identity = drivers.get(row.get("driver_number"), {})
         shaped.append(
             {
-                "position": format_position(row.get("position") or 0),
+                "position": result_position(row),
                 "driver": identity.get("full_name", ""),
                 "driver_code": identity.get("name_acronym", ""),
                 "team": identity.get("team_name", ""),

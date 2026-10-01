@@ -7,6 +7,8 @@ The Status derivation is the lossy part of the migration and the part most worth
 FastF1 gives prose ("+1 Lap", "Accident", "Gearbox"), OpenF1 gives three booleans.
 """
 
+import pytest
+
 from tools.openf1_shaping import derive_status, race_result_rows, top_finisher_rows
 
 DRIVERS = {
@@ -71,6 +73,25 @@ def test_race_result_rows_report_an_unclassified_finish_as_dnf():
 
     assert race_result_rows(rows, DRIVERS)[0]["Position"] == "DNF"
     assert race_result_rows(rows, DRIVERS)[0]["Status"] == "DNF"
+
+
+# A disqualified car is often flagged dnf too; DSQ is the fact worth reporting.
+NO_PLACE = [({"dsq": True, "dnf": True}, "DSQ"), ({"dns": True}, "DNS")]
+
+
+@pytest.mark.parametrize(("flags", "expected"), NO_PLACE)
+def test_race_result_rows_say_why_a_car_has_no_place(flags, expected):
+    """The answer the FastF1 path reads from ClassifiedPosition, rather than a blanket DNF."""
+    rows = [{"session_key": 1, "position": None, "driver_number": 4, "points": 0.0, **flags}]
+
+    assert race_result_rows(rows, DRIVERS)[0]["Position"] == expected
+
+
+@pytest.mark.parametrize(("flags", "expected"), NO_PLACE)
+def test_top_finisher_rows_say_why_a_car_has_no_place(flags, expected):
+    rows = [{"session_key": 1, "position": None, "driver_number": 4, "points": 0.0, **flags}]
+
+    assert top_finisher_rows(rows, DRIVERS)[0]["position"] == expected
 
 
 def test_race_result_rows_sort_by_position():
