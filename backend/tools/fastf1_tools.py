@@ -23,7 +23,7 @@ from tools.openf1_client import (
     session_results,
 )
 from tools.openf1_races import held_races, race_session_at
-from tools.openf1_shaping import derive_status, race_result_rows
+from tools.openf1_shaping import race_result_rows, result_position
 from tools.schedule_cache import get_schedule
 
 logger = logging.getLogger(__name__)
@@ -203,17 +203,6 @@ class _GrandPrix:
     finishes: list[_Finish]
 
 
-def _openf1_result(row: dict[str, Any]) -> Result:
-    """A classified place wins over the ``dnf`` flag: a car that ran 90% of the distance is
-    classified though it retired (Bottas, Baku 2026: ``position: 16``, ``dnf: True``). An
-    unclassified one carries ``position: None``."""
-    status = derive_status(row)
-    if status in ("DSQ", "DNS"):
-        return status
-    position = row.get("position")
-    return position if isinstance(position, int) and position > 0 else "DNF"
-
-
 def _openf1_grands_prix(year: int, cutoff: datetime, wanted: int) -> tuple[list[_GrandPrix], int]:
     """The last ``wanted`` held Grands Prix of ``year`` before ``cutoff``, every car in each, and
     how many that was. Raises; the caller falls back to FastF1.
@@ -247,7 +236,7 @@ def _openf1_grands_prix(year: int, cutoff: datetime, wanted: int) -> tuple[list[
                     code=identity["name_acronym"] or f"#{number}",
                     name=identity["full_name"],
                     team=identity["team_name"],
-                    result=_openf1_result(row),
+                    result=result_position(row),
                     points=float(row.get("points") or 0.0),
                 )
             )
