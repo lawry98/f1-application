@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 import { AttributionTable } from '@/components/credits/attribution-table';
+import { SiteCredit } from '@/components/landing/site-credit';
 import {
   readDriverCredits,
   readLicenceTerms,
@@ -373,6 +374,7 @@ export default function CreditsPage() {
         <section className="mb-16">
           <h2 className={cn('mb-3', HEADING)}>Licence</h2>
           <div className={RULE} />
+          <SiteCredit className={cn('mb-3', PROSE)} linkClassName={LINK} />
           <p className={cn('mb-3', PROSE)}>This project is licensed under the MIT License.</p>
           <p className={PROSE}>
             The third-party assets are not: the 3D model is CC BY 4.0, the driver photographs are CC

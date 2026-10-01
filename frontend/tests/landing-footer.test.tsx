@@ -61,6 +61,18 @@ describe('LandingFooter', () => {
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
   });
 
+  it('names the author and links the source repository', () => {
+    const { container } = render(<LandingFooter />);
+    expect(normalise(container.textContent)).toContain(
+      'Built by Lawrence Crasto · Source on GitHub',
+    );
+
+    const repo = screen.getByRole('link', { name: 'Source on GitHub' });
+    expect(repo).toHaveAttribute('href', 'https://github.com/lawry98/f1-application');
+    expect(repo).toHaveAttribute('target', '_blank');
+    expect(repo).toHaveAttribute('rel', 'noopener noreferrer');
+  });
+
   /*
    * The footer used to render every `NAV_LINKS` entry, which put the complete primary navigation
    * on screen twice — once in the fixed header that is always visible, and again 30px below it.

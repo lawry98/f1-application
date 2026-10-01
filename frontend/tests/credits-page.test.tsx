@@ -62,6 +62,18 @@ describe('/credits', () => {
     }
   });
 
+  it('names the author and links the source repository', () => {
+    const { container } = render(<CreditsPage />);
+    expect((container.textContent ?? '').replace(/\s+/g, ' ')).toContain(
+      'Built by Lawrence Crasto · Source on GitHub',
+    );
+
+    const repo = screen.getByRole('link', { name: 'Source on GitHub' });
+    expect(repo).toHaveAttribute('href', 'https://github.com/lawry98/f1-application');
+    expect(repo).toHaveAttribute('target', '_blank');
+    expect(repo.getAttribute('rel')?.split(' ')).toContain('noopener');
+  });
+
   /**
    * The circuit outlines are MIT, and MIT obliges the copyright notice to travel with any copy of
    * the work. `landing-hero.tsx` statically imports `data/circuits/mc-1929.json`, so a copy now

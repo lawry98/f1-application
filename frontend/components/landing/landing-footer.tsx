@@ -2,6 +2,7 @@ import Link from 'next/link';
 
 import { RedactedReveal } from '@/components/candy/redacted-reveal';
 import { TopoBackground } from '@/components/candy/topo-background';
+import { SiteCredit } from '@/components/landing/site-credit';
 import { focusRingOffsetBaseWarm } from '@/lib/focus';
 
 export interface FooterNext {
@@ -37,6 +38,9 @@ const DEFAULT_NEXT: FooterNext = { href: '/briefing', label: 'Race weekend brief
  * would draw a visible cold halo around every focused link.
  */
 const FOCUS_RING = focusRingOffsetBaseWarm;
+
+/** The outbound links' treatment: the data credits and the source repo. */
+const LINK = `underline underline-offset-2 transition-colors hover:text-zinc-300 ${FOCUS_RING}`;
 
 /**
  * The sign-off's type scale, shared by both lines so the display and serif runs sit on one
@@ -123,6 +127,11 @@ export function LandingFooter({ next = DEFAULT_NEXT }: LandingFooterProps = {}) 
               <p className="text-[11px] uppercase tracking-[0.2em] text-zinc-400">
                 AI-powered race weekend intelligence
               </p>
+              {/* Sentence case, unlike the tagline above it: it is a byline, read as prose. */}
+              <SiteCredit
+                className="text-[11px] leading-relaxed text-zinc-400"
+                linkClassName={LINK}
+              />
             </div>
 
             {/* One onward link, not a second copy of the header. See `LandingFooterProps.next`. */}
@@ -156,7 +165,7 @@ export function LandingFooter({ next = DEFAULT_NEXT }: LandingFooterProps = {}) 
                 href="https://theoehrly.github.io/Fast-F1/"
                 target="_blank"
                 rel="noopener noreferrer"
-                className={`underline underline-offset-2 transition-colors hover:text-zinc-300 ${FOCUS_RING}`}
+                className={LINK}
               >
                 FastF1
               </a>
@@ -166,7 +175,7 @@ export function LandingFooter({ next = DEFAULT_NEXT }: LandingFooterProps = {}) 
                 href="https://openf1.org/"
                 target="_blank"
                 rel="noopener noreferrer"
-                className={`underline underline-offset-2 transition-colors hover:text-zinc-300 ${FOCUS_RING}`}
+                className={LINK}
               >
                 OpenF1
               </a>
@@ -175,7 +184,7 @@ export function LandingFooter({ next = DEFAULT_NEXT }: LandingFooterProps = {}) 
                 href="https://openweathermap.org/"
                 target="_blank"
                 rel="noopener noreferrer"
-                className={`underline underline-offset-2 transition-colors hover:text-zinc-300 ${FOCUS_RING}`}
+                className={LINK}
               >
                 OpenWeather
               </a>
