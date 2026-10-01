@@ -23,7 +23,8 @@ export interface ContrastMeasurement {
  * against the wrong background, so the background has to be what is actually on screen.
  */
 export async function measureContrast(target: Locator): Promise<ContrastMeasurement> {
-  const backdrop = await backdropBehindGlyphs(target);
+  // Read before `backdropBehindGlyphs`, never after: restoring the glyphs is a colour change, so a
+  // `transition-colors` target would report its colour part-way back from transparent.
   const { color, opacity } = await target.evaluate((el) => {
     let product = 1;
     for (let node: Element | null = el; node; node = node.parentElement) {
@@ -34,6 +35,7 @@ export async function measureContrast(target: Locator): Promise<ContrastMeasurem
   if (opacity < 1) {
     throw new Error(`measureContrast: target is painted at opacity ${opacity}; measure after its motion settles`);
   }
+  const backdrop = await backdropBehindGlyphs(target);
   const text = composite(parseCssColor(color), backdrop);
   return { ratio: wcagRatio(text, backdrop), text, backdrop };
 }

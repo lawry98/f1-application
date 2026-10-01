@@ -48,5 +48,11 @@
       "the /showcase car takes its own shadows without hatching",
       "the /teams Inspect car takes its own shadows without hatching"
     ]
+  },
+  {
+    "patch": "08-tyres-og-drops-image.patch",
+    "reintroduces": "/tyres' metadata as the plain object it shipped as: its own openGraph replaces the inherited one whole, so the root opengraph-image is dropped from that one route and its link preview has no image (CLAUDE.md: 'A segment's openGraph drops the inherited share image')",
+    "specs": ["browser/site-identity.spec.ts"],
+    "mustFail": ["every sitemap route names an absolute og:image and twitter:image that resolve"]
   }
 ]

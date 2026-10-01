@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, ResolvingMetadata } from 'next';
 
 import { LandingFooter } from '@/components/landing/landing-footer';
 import { LandingNav } from '@/components/landing/landing-nav';
@@ -9,17 +9,29 @@ import { TyreLab } from '@/components/tyres/acts/tyre-lab';
 import { TyreArchive } from '@/components/tyres/acts/tyre-archive';
 import { TYRES_SEASON } from '@/data/tyres-data';
 
-export const metadata: Metadata = {
-  title: 'Tyre Lab',
-  description:
-    'How Formula 1 tyre compounds work — the season’s numbered dry range, how three of them become Hard, Medium and Soft at each Grand Prix, and what Intermediates and Full Wets are for.',
-  openGraph: {
-    title: `F1 Tyre Lab — the ${TYRES_SEASON} compounds`,
+/**
+ * A function, not a `metadata` object, only to reach `parent`. A segment's `openGraph` replaces
+ * the inherited one whole, so as an object this page's dropped the root `opengraph-image` and
+ * `/tyres` was the one route a link preview drew without an image. `images` carries it forward.
+ */
+export async function generateMetadata(
+  _props: unknown,
+  parent: ResolvingMetadata,
+): Promise<Metadata> {
+  const { openGraph } = await parent;
+  return {
+    title: 'Tyre Lab',
     description:
-      'An interactive tyre laboratory: five compounds, the weekend allocation that names three of them, strategy by scenario, and the life of a tyre from blanket to recycling.',
-    type: 'article',
-  },
-};
+      'How Formula 1 tyre compounds work — the season’s numbered dry range, how three of them become Hard, Medium and Soft at each Grand Prix, and what Intermediates and Full Wets are for.',
+    openGraph: {
+      title: `F1 Tyre Lab — the ${TYRES_SEASON} compounds`,
+      description:
+        'An interactive tyre laboratory: five compounds, the weekend allocation that names three of them, strategy by scenario, and the life of a tyre from blanket to recycling.',
+      type: 'article',
+      images: openGraph?.images,
+    },
+  };
+}
 
 /**
  * `/tyres` — the Tyre Lab.

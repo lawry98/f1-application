@@ -272,3 +272,19 @@ the regenerated patch reintroduces the same defect. Mutant 07 failed both titles
 Ratios of 2.00 to 4.65 against a limit of 1.5. The full browser suite passed `58 passed` on the
 same commit first. The runner rebuilt the clean tree afterwards; `git status --porcelain` was
 empty.
+
+## 08
+
+Date: 2026-10-01
+Commit: `f8700a627127c7f0aab9deaaeaf1364107c76085`
+Run: `pnpm test:browser:mutants 08`
+
+```
+│ (index) │ patch                           │ outcome  │ detail      │
+│ 0       │ '08-tyres-og-drops-image.patch' │ 'killed' │ 'failed: 1' │
+```
+
+`killed`, after the clean-tree baseline passed. The sweep failed its one title on exactly one of
+the 49 sitemap routes: `/tyres has no og:image in <head>`. Its `twitter:image` survived, as it
+did when the defect shipped — the page never set `twitter`. The runner rebuilt the clean tree
+afterwards; `git status --porcelain` was empty.
