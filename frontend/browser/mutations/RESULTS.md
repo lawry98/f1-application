@@ -288,3 +288,19 @@ Run: `pnpm test:browser:mutants 08`
 the 49 sitemap routes: `/tyres has no og:image in <head>`. Its `twitter:image` survived, as it
 did when the defect shipped — the page never set `twitter`. The runner rebuilt the clean tree
 afterwards; `git status --porcelain` was empty.
+
+## 09
+
+Date: 2026-10-01
+Commit: `da2357f1f8960ee1dfa1ccb3f80c86472aff2a30`
+Run: `pnpm test:browser:mutants 09`
+
+```
+│ (index) │ patch                         │ outcome  │ detail      │
+│ 0       │ '09-tool-trace-no-ring.patch' │ 'killed' │ 'failed: 1' │
+```
+
+`killed`, after the clean-tree baseline passed (11 of 11). The toggle's computed `box-shadow` was
+`none`. The other ten tests in `focus-rings.spec.ts` passed on the mutant, the blue-ring sweep
+included: a control with no ring paints no shadow to find blue in. The runner rebuilt the clean
+tree afterwards; `git status --porcelain` was empty.
