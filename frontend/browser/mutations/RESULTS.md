@@ -306,3 +306,21 @@ in `<main>` ("the source file") on `/credits`, "FerrariP2" on `/teams` at 375 an
 1440. The spec's two centring tests passed, as they should: `scrollIntoView()` centres the item
 too, and moving the starting point is the only thing it does wrong. The runner rebuilt the clean
 tree afterwards; `git status --porcelain` was empty.
+
+## 10
+
+Date: 2026-10-01
+Commit: `005cfde43e989df3221f743a31b92675d04c649a`
+Run: `pnpm test:browser:mutants 10`
+
+```
+│ (index) │ patch                                   │ outcome  │ detail      │
+│ 0       │ '10-scene-ignores-reduced-motion.patch' │ 'killed' │ 'failed: 3' │
+```
+
+`killed`, after the clean-tree baseline passed (`5 passed`). Both `mustFail` titles failed the way
+the route shipped: under reduce the car turned 1.67 rad across one requested frame, and the idle
+scene drew 13 frames across 10 animation frames. The team-pick test failed too, on its precondition
+(16 frames, never idle), which is not in `mustFail` because it is not what the mutant breaks. The
+two no-preference tests passed. The runner rebuilt the clean tree afterwards; `git status
+--porcelain` was empty.

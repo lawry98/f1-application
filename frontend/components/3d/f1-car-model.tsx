@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, type RefObject } from 'react';
-import { useFrame, useLoader } from '@react-three/fiber';
+import { useFrame, useLoader, useThree } from '@react-three/fiber';
 import { GLTFLoader, MeshoptDecoder } from 'three-stdlib';
 import * as THREE from 'three';
 
@@ -192,9 +192,19 @@ export function RealCar({ teamColor, rotationSpeed, float }: RealCarProps) {
     return { clonedScene: scene, liveryPaints: Array.from(paints.values()) };
   }, [gltf.scene]);
 
+  /*
+   * Asks for a frame after each repaint, because nothing else would under the reduced-motion
+   * `demand` loop: the repaint writes pixels into an existing canvas and flips
+   * `texture.needsUpdate`, outside R3F's prop diffing. Measured under `demand`: idle draws 0
+   * frames, a bare `needsUpdate = true` 0, and the same plus `invalidate()` exactly 1. Without it
+   * a team pick keeps showing the previous livery; `browser/showcase-motion.spec.ts` reads the
+   * drawn one back.
+   */
+  const invalidate = useThree((state) => state.invalidate);
   useEffect(() => {
     liveryPaints.forEach((livery) => livery.paint(teamColor));
-  }, [liveryPaints, teamColor]);
+    invalidate();
+  }, [invalidate, liveryPaints, teamColor]);
 
   useEffect(() => {
     return () => {

@@ -67,5 +67,14 @@
       "the first Tab on /credits at 1440px reaches the wordmark",
       "the first Tab on /teams at 1440px reaches the wordmark"
     ]
+  },
+  {
+    "patch": "10-scene-ignores-reduced-motion.patch",
+    "reintroduces": "the 3D scenes' reduced-motion branch removed, as /showcase shipped: under prefers-reduced-motion the car keeps turning and the frame loop draws every frame on the CPU, even with nothing moving on purpose (CLAUDE.md: 'The 3D scenes' frameloop is state')",
+    "specs": ["browser/showcase-motion.spec.ts"],
+    "mustFail": [
+      "the /showcase car holds still",
+      "the idle /showcase scene draws no frames"
+    ]
   }
 ]

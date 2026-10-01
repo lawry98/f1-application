@@ -30,8 +30,6 @@ for (const { path, width } of ROUTES) {
     if (path === '/circuits') await expect(page.getByRole('list', { name: /calendar$/ })).toBeVisible();
     if (path === '/circuits/monza') await expect(page.getByRole('table')).toBeVisible();
     // `/showcase`'s `<main>` is in the page shell, so it is up while the scene's chunk still loads.
-    // Its scene renders WebGL on the CPU without pause, so it gets `shadow-acne.spec.ts`'s allowance.
-    if (path === '/showcase') test.slow();
     if (path === '/showcase') await expect(page.getByRole('heading', { level: 1, name: /Car Showcase/ })).toBeVisible();
     if (path === '/teardown') await expect(page.getByText('Loading frames')).toBeHidden();
     // axe folds a mid-fade opacity into the colours it measures, and so does a direct pixel read:
