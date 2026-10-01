@@ -324,3 +324,19 @@ scene drew 13 frames across 10 animation frames. The team-pick test failed too, 
 (16 frames, never idle), which is not in `mustFail` because it is not what the mutant breaks. The
 two no-preference tests passed. The runner rebuilt the clean tree afterwards; `git status
 --porcelain` was empty.
+
+## 11
+
+Date: 2026-10-01
+Commit: `9f4a2f84c9a9023e8264c1acc5a20c436efaa6ca`
+Run: `pnpm test:browser:mutants 11`
+
+```
+│ (index) │ patch                         │ outcome  │ detail      │
+│ 0       │ '11-tool-trace-no-ring.patch' │ 'killed' │ 'failed: 1' │
+```
+
+`killed`, after the clean-tree baseline passed (`11 passed`). The toggle's computed `box-shadow`
+was `none`. The other ten tests in `focus-rings.spec.ts` passed on the mutant, the blue-ring
+sweep included: a control with no ring paints no shadow to find blue in. The runner rebuilt the
+clean tree afterwards; `git status --porcelain` was empty.
