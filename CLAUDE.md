@@ -489,21 +489,23 @@ reports half-extents of 5.10 and 5.56, whose corner is 7.55 from the axis, but n
 there — the real reach is 5.79, inside even the 5.98 box diagonal the fit uses. Measure vertices,
 not boxes.
 
-**The 3D scene's `frameloop` is state, and `demand` is not the default for a reason.** `f1-hero-scene.tsx`
-is reached from exactly one place — the teams page's Inspect modal — and the right rail deliberately
-has no canvas, which is what keeps `three` / `@react-three/fiber` out of the page-load bundle. The
-loop is `never` while `document.visibilityState` is not `visible`, `demand` under
-`prefers-reduced-motion`, and `always` otherwise. Setting `demand` unconditionally looks like the
-obvious optimisation and freezes the car: `RealCar`'s rotation and float run through `useFrame`,
-which under `demand` fires only on invalidation. An `Invalidator` component sits inside the
-`Canvas` for a narrower reason than it looks: R3F's reconciler already auto-invalidates on any
-scene-graph mutation, so the Suspense swap when the GLB resolves needs no help. What actually
-requires `Invalidator` is `RealCar`'s repaint of the livery texture, which writes pixels into a
-canvas and flips `texture.needsUpdate` outside R3F's prop diffing and so is never
-auto-invalidated — without it, a livery change under `demand` would show the wrong colour until
-the next invalidation. Measured in a browser in that dialog under `demand`: idle draws **0**
-frames, a bare `texture.needsUpdate = true` draws **0**, and the same mutation plus `invalidate()`
-draws exactly **1**.
+**The 3D scenes' `frameloop` is state, and `demand` is not the default for a reason.** Both scenes
+— `/showcase` and the teams page's Inspect modal (`f1-hero-scene.tsx`, reached from exactly one
+place; the right rail deliberately has no canvas, which keeps `three` / `@react-three/fiber` out of
+the page-load bundle) — take the loop and the car's motion together from `hooks/use-scene-motion.ts`:
+`never` while `document.visibilityState` is not `visible`, `demand` with the car still under
+`prefers-reduced-motion`, `always` otherwise. `/showcase` shipped with neither half: under `reduce`
+its car turned and its canvas drew every frame on the CPU, about a second per key press in the
+browser suite. Setting `demand` unconditionally looks like the obvious optimisation and freezes the
+car: `RealCar`'s rotation and float run through `useFrame`, which under `demand` fires only on
+invalidation, and a car still moving under `demand` jumps by the idle time whenever a frame does
+draw. R3F's reconciler already auto-invalidates on any scene-graph mutation, so the Suspense swap
+when the GLB resolves needs no help. `RealCar`'s repaint of the livery texture does: it writes
+pixels into a canvas and flips `texture.needsUpdate` outside R3F's prop diffing, so `RealCar` calls
+`invalidate()` after each repaint, in both scenes. Measured under `demand`: idle draws **0** frames,
+a bare `texture.needsUpdate = true` draws **0**, and the same mutation plus `invalidate()` draws
+exactly **1**. `browser/showcase-motion.spec.ts` counts the frames the app draws and reads the drawn
+livery back out of the buffer; mutant 10 proves it.
 
 **The livery recolour rewrites the texture, and `material.color` is the trap.** `color`
 *multiplies* into `.map`, and the committed GLB's base texel is `#003572` — **red channel zero**,

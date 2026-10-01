@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Canvas } from '@react-three/fiber';
 import { TEAMS, type Team } from '@/data/teams-data';
 import { LiverySelect } from '@/components/showcase/livery-select';
+import { useSceneMotion } from '@/hooks/use-scene-motion';
 import { focusRing } from '@/lib/focus';
 import { CAR_SWEPT, CAR_TARGET, SHOWCASE_FIT_MARGIN } from '@/lib/scene-fit';
 import { cn } from '@/lib/utils';
@@ -24,20 +25,26 @@ const FOG_COLOR = '#0a0a0a';
  */
 const FALLBACK_SCALE = 2.4;
 
-function ShowcaseCarModel({ teamColor }: { teamColor: string }) {
+function ShowcaseCarModel({
+  teamColor,
+  rotationSpeed,
+}: {
+  teamColor: string;
+  rotationSpeed: number;
+}) {
   const fallback = (
     <PrimitiveCar
       bodyColor={teamColor}
       sidepodColor={teamColor}
       scale={FALLBACK_SCALE}
-      rotationSpeed={0.15}
+      rotationSpeed={rotationSpeed}
       exhaustEmissiveIntensity={0.3}
     />
   );
 
   return (
     <Suspense fallback={fallback}>
-      <RealCar teamColor={teamColor} rotationSpeed={0.15} />
+      <RealCar teamColor={teamColor} rotationSpeed={rotationSpeed} />
     </Suspense>
   );
 }
@@ -46,6 +53,8 @@ export default function F1CarShowcase() {
   const [selectedTeam, setSelectedTeam] = useState<Team>(
     () => TEAMS.find((team) => team.id === 'ferrari') ?? TEAMS[0]!,
   );
+  // Under reduced motion the car holds still and the canvas draws only when asked to.
+  const { frameloop, rotationSpeed } = useSceneMotion({ rotationSpeed: 0.15 });
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white">
@@ -62,7 +71,7 @@ export default function F1CarShowcase() {
             canvas it can actually measure. The `fov` stays here because it is the lens choice
             this route was authored with, and the fit is computed against it.
           */}
-          <Canvas camera={{ fov: 50 }} dpr={[1, 2]} shadows>
+          <Canvas camera={{ fov: 50 }} dpr={[1, 2]} shadows frameloop={frameloop}>
             <color attach="background" args={[FOG_COLOR]} />
             <FitCamera
               subject={CAR_SWEPT}
@@ -102,7 +111,7 @@ export default function F1CarShowcase() {
             />
 
             <Suspense fallback={null}>
-              <ShowcaseCarModel teamColor={selectedTeam.color} />
+              <ShowcaseCarModel teamColor={selectedTeam.color} rotationSpeed={rotationSpeed} />
 
               <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.5, 0]} receiveShadow>
                 <planeGeometry args={[50, 50]} />
