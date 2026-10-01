@@ -54,9 +54,10 @@ class NoopResizeObserver implements ResizeObserver {
 globalThis.ResizeObserver = NoopResizeObserver;
 
 /**
- * jsdom implements no scrolling and no media queries. The teams page calls all three of
- * these — `scrollIntoView` to centre the active mobile chip, `scrollTo` via anchor
- * navigation, and `matchMedia` to decide whether to mount the sticky dossier at all.
+ * jsdom implements no scrolling and no media queries. The teams page calls all four of
+ * these — `scrollIntoView` to bring a section into view, an element's `scrollTo` to centre the
+ * active mobile chip, `window.scrollTo` via anchor navigation, and `matchMedia` to decide
+ * whether to mount the sticky dossier at all.
  *
  * `matchMedia` reports **no match**, so components take their narrow-viewport branch
  * unless a test says otherwise. That is the safer default: the dossier stays unmounted
@@ -68,6 +69,8 @@ globalThis.ResizeObserver = NoopResizeObserver;
  */
 if (typeof window !== 'undefined') {
   Element.prototype.scrollIntoView = function scrollIntoView(): void {};
+
+  Element.prototype.scrollTo = function scrollTo(): void {};
 
   window.scrollTo = function scrollTo(): void {};
 

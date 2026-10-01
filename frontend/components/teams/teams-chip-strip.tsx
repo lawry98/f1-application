@@ -5,6 +5,7 @@ import { useEffect, useRef } from 'react';
 import { TEAMS } from '@/data/teams-data';
 import { cn } from '@/lib/utils';
 import { focusRingOffsetBase } from '@/lib/focus';
+import { centredScrollLeft } from '@/lib/scroll-row';
 
 interface TeamsChipStripProps {
   activeTeamId: string;
@@ -22,21 +23,29 @@ interface TeamsChipStripProps {
  */
 export function TeamsChipStrip({ activeTeamId, onSelectTeam, reducedMotion }: TeamsChipStripProps) {
   const activeRef = useRef<HTMLAnchorElement>(null);
+  const rowRef = useRef<HTMLDivElement>(null);
 
   // Eleven chips overflow every phone, so the active chip is routinely off screen and the
   // strip gives no sign of where you are. Centre it whenever it changes — including when
-  // scrolling changed it, not just on a tap.
+  // scrolling changed it, not just on a tap. The strip is scrolled, not the chip:
+  // `scrollIntoView()` on the chip moved the keyboard's starting point to it, so the first Tab
+  // on the page skipped the site nav (see `lib/scroll-row.ts`).
   useEffect(() => {
-    activeRef.current?.scrollIntoView({
-      inline: 'center',
-      block: 'nearest',
+    const row = rowRef.current;
+    const chip = activeRef.current;
+    if (!row || !chip) return;
+    row.scrollTo({
+      left: centredScrollLeft(row, chip),
       behavior: reducedMotion ? 'auto' : 'smooth',
     });
   }, [activeTeamId, reducedMotion]);
 
   return (
     <nav aria-label="Constructor navigation, compact" className="relative">
-      <div className="flex gap-2 overflow-x-auto px-4 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div
+        ref={rowRef}
+        className="flex gap-2 overflow-x-auto px-4 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
         {TEAMS.map((team) => {
           const isActive = activeTeamId === team.id;
           return (
