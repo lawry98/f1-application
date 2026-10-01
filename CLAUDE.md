@@ -705,6 +705,16 @@ click by itself, and the hook only handles hash restore, `popstate`, and `replac
 scrolling. Scroll offsets are `--teams-scroll-offset` in `app/globals.css` consumed as
 `scroll-mt-[…]`, never maths in a handler.
 
+**Centre an item in a horizontal scroller by scrolling the scroller — `centredScrollLeft` in
+`lib/scroll-row.ts`.** `item.scrollIntoView({ inline: 'center' })` looks equivalent and also moves
+Chromium's sequential focus navigation starting point to the item. The site nav and the `/teams`
+chip strip centred their current item that way on mount, so on every route with a nav link the
+first Tab skipped the wordmark and landed on whatever followed the current item (`/tyres` →
+"Circuits", `/teams` at 375 → "FerrariP2"). jsdom has no starting point, so only
+`browser/first-tab.spec.ts` can see it, and mutant 09 proves it does; a spec that Tabs from page
+load waits for hydration first, since the defect lives in a mount effect. A deliberate jump to content (a section, a stage) is the
+other case: there, moving the starting point with the scroll is what Tab should do next.
+
 **Team colours are brand assets and must go through `lib/team-utils.ts` before carrying text.**
 `readableOnDark` lifts a livery until it clears WCAG AA as small text on `zinc-950`; `ringOnDark`
 does the same against the lower non-text bar for focus rings; `onColor` picks black or white to
@@ -822,8 +832,8 @@ Vitest with jsdom, in `frontend/tests/`. A few things about them are not guessab
   from the format the backend really serves, which is the one thing they exist to catch.
 - **`tests/setup.ts` stubs `IntersectionObserver`.** jsdom has none, and `BlurFade` wraps most
   page sections, so without it any test that renders one dies inside framer-motion's `useInView`.
-  It also stubs `scrollIntoView`, `scrollTo`, and `matchMedia` for the same reason — the teams
-  page calls all three, and jsdom implements none of them. `matchMedia` reports no match, so
+  It also stubs `scrollIntoView`, `scrollTo` (on `window` and on every element), and `matchMedia`
+  for the same reason — the teams page calls all of them, and jsdom implements none of them. `matchMedia` reports no match, so
   components take their narrow branch unless a test overrides it.
 - **`next/image` renders two different `src` shapes, and a test that assumes one fails on the
   other.** Next's default loader refuses to proxy an SVG without `dangerouslyAllowSVG`, so

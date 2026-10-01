@@ -288,3 +288,21 @@ Run: `pnpm test:browser:mutants 08`
 the 49 sitemap routes: `/tyres has no og:image in <head>`. Its `twitter:image` survived, as it
 did when the defect shipped — the page never set `twitter`. The runner rebuilt the clean tree
 afterwards; `git status --porcelain` was empty.
+
+## 09
+
+Date: 2026-10-01
+Commit: `082f6f1c7e2c70f75fe625fb67f92f4a7780cdb7`
+Run: `pnpm test:browser:mutants 09`
+
+```
+│ (index) │ patch                           │ outcome  │ detail      │
+│ 0       │ '09-nav-scroll-into-view.patch' │ 'killed' │ 'failed: 6' │
+```
+
+`killed`, after the clean-tree baseline passed (`8 passed`). All six first-Tab titles failed, and
+the first Tab landed where it did when the defect shipped: "Circuits" on `/tyres`, the first link
+in `<main>` ("the source file") on `/credits`, "FerrariP2" on `/teams` at 375 and "Showcase" at
+1440. The spec's two centring tests passed, as they should: `scrollIntoView()` centres the item
+too, and moving the starting point is the only thing it does wrong. The runner rebuilt the clean
+tree afterwards; `git status --porcelain` was empty.

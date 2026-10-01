@@ -196,27 +196,6 @@ describe('LandingNav', () => {
     expect(screen.queryAllByRole('link', { current: 'page' })).toHaveLength(0);
   });
 
-  /*
-   * Seven links do not fit a 390 px viewport, so the row scrolls — which means the link for the page
-   * you are actually on can start off screen, and the nav then shows no sign of where you are.
-   * `teams-chip-strip.tsx` solves the identical problem the identical way.
-   */
-  it('brings the current page into view in the scrolling row', () => {
-    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
-    renderNav('/credits');
-
-    expect(scrollIntoView).toHaveBeenCalledWith(
-      expect.objectContaining({ inline: 'center', block: 'nearest' }),
-    );
-  });
-
-  it('does not scroll when no nav link is current', () => {
-    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
-    renderNav('/somewhere-else');
-
-    expect(scrollIntoView).not.toHaveBeenCalled();
-  });
-
   it('holds every resting neutral above AA on the page background', () => {
     const { container } = renderNav();
 
@@ -246,9 +225,9 @@ describe('LandingNav', () => {
  * and that a Tabbed-to ring really clears them — is `browser/nav-overflow.spec.ts`.
  *
  * Scroll events are queued and flushed by the test rather than fired from the setter, because a
- * browser fires them asynchronously. That is what makes the on-load tests mean something: the
- * current link is scrolled into view during mount, and the right fade has to be showing *before*
- * the event for that scroll arrives.
+ * browser fires them asynchronously. That is what makes the on-load tests mean something: the row
+ * is scrolled to the current link during mount, and the right fade has to be showing *before* the
+ * event for that scroll arrives.
  */
 
 /** Where the row starts at 375: after the gutter, the wordmark and the bar's gap. */
@@ -369,13 +348,6 @@ function installLayoutModel(): void {
       return rect(ROW_LEFT + linkOffset(index) - layout.scrollLeft, LINK_WIDTHS[index]!);
     return rect(0, 0);
   });
-
-  // `scrollIntoView({ inline: 'center' })` on a nav link: centre it, clamped, as a browser does.
-  vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(function (this: Element) {
-    const index = linkIndex(this);
-    if (index < 0) return;
-    setScrollLeft(linkOffset(index) + LINK_WIDTHS[index]! / 2 - layout.rowWidth / 2);
-  });
 }
 
 function removeLayoutModel(): void {
@@ -407,6 +379,47 @@ function shownFades(): { start: boolean; end: boolean } {
   }
   return { start: isShowing(start), end: isShowing(end) };
 }
+
+/*
+ * Eight links do not fit a phone, so the row scrolls — which means the link for the page you are
+ * actually on can start off screen, and the nav then shows no sign of where you are. So on arrival
+ * the row centres it. The row is scrolled, never the link: `scrollIntoView()` on the link would
+ * also move Chromium's focus navigation starting point to it, and the first Tab then skipped the
+ * wordmark (`browser/first-tab.spec.ts`). The model has no `scrollIntoView`, so only a moved
+ * `scrollLeft` passes here.
+ */
+describe('bringing the current page into view', () => {
+  beforeEach(() => {
+    layout = { rowWidth: PHONE_ROW_WIDTH, scrollLeft: 0 };
+    pendingScroll = false;
+    installLayoutModel();
+  });
+
+  afterEach(() => {
+    removeLayoutModel();
+  });
+
+  it('centres the current page’s link in the row', () => {
+    renderNav('/tyres');
+
+    // Tyres starts at 6 + (75.6 + 4) + (109.9 + 4) = 199.5 and is 60.6 wide, so its centre is at
+    // 229.8; half the 206 px row is 103.
+    expect(layout.scrollLeft).toBeCloseTo(126.8, 6);
+  });
+
+  it('stops at the row’s end when the current link is the last', () => {
+    renderNav('/credits');
+
+    expect(layout.scrollLeft).toBe(maxScroll());
+  });
+
+  it('leaves the row alone when no nav link is current', () => {
+    layout.scrollLeft = 100;
+    renderNav('/somewhere-else');
+
+    expect(layout.scrollLeft).toBe(100);
+  });
+});
 
 describe('the overflow fades', () => {
   beforeEach(() => {
