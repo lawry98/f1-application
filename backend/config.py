@@ -60,6 +60,10 @@ CIRCUIT_INDEX_PATH: Path = (
     Path(__file__).resolve().parent.parent / "frontend" / "data" / "circuits" / "index.json"
 )
 
+# Circuit id → the centre of its outline in WGS84, which tools/weather_tools.py forecasts at. Same
+# directory and writer (scripts/fetch-circuit-geometry.mjs); without it the weather tool errors.
+CIRCUIT_COORDINATES_PATH: Path = CIRCUIT_INDEX_PATH.with_name("coordinates.json")
+
 # ── API ──────────────────────────────────────────────────────────────────────
 
 CORS_ORIGINS: list[str] = [
@@ -69,32 +73,6 @@ CORS_ORIGINS: list[str] = [
     )
     if origin.strip()
 ]
-
-# ── Country codes for weather lookup ─────────────────────────────────────────
-
-COUNTRY_CODE_MAP: dict[str, str] = {
-    "Monaco": "MC",
-    "United Kingdom": "GB",
-    "Italy": "IT",
-    "Belgium": "BE",
-    "Japan": "JP",
-    "Singapore": "SG",
-    "United States": "US",
-    "Bahrain": "BH",
-    "Saudi Arabia": "SA",
-    "Australia": "AU",
-    "Spain": "ES",
-    "Canada": "CA",
-    "Austria": "AT",
-    "Hungary": "HU",
-    "Netherlands": "NL",
-    "Mexico": "MX",
-    "Brazil": "BR",
-    "United Arab Emirates": "AE",
-    "Qatar": "QA",
-    "China": "CN",
-    "Azerbaijan": "AZ",
-}
 
 
 def validate_config() -> None:

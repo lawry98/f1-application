@@ -326,7 +326,7 @@ def test_planner_logs_which_llm_failure_caused_the_fallback(fake_llm, caplog):
             {"circuit_name": "Monaco Grand Prix", "location": "Monaco", "years_back": 3},
         ),
         ("search_f1_news", {"query": "Monaco Grand Prix 2025", "max_results": 5}),
-        ("get_race_weather", {"city": "Monaco", "country_code": "MC"}),
+        ("get_race_weather", {"location": "Monaco", "race_date": "2025-05-25"}),
         ("get_driver_form", {"driver_code": "VER", "year": 2024, "num_races": 5}),
         ("get_recent_race_results", {"event_name": "Monaco Grand Prix", "year": 2024}),
     ],
@@ -340,13 +340,6 @@ def test_each_tool_receives_arguments_derived_from_race_info(task_name, expected
     tool = make_tool(task_name, result={"ok": True})
     _invoke_tool(tool, task_name, make_race_info())
     assert tool.calls == [expected_args]
-
-
-def test_weather_falls_back_to_us_for_an_unmapped_country():
-    """COUNTRY_CODE_MAP has no entry for every country FastF1 can return."""
-    tool = make_tool("get_race_weather")
-    _invoke_tool(tool, "get_race_weather", make_race_info(country="Atlantis", location="Poseidon"))
-    assert tool.calls == [{"city": "Poseidon", "country_code": "US"}]
 
 
 def test_a_tool_returning_an_error_key_is_marked_unsuccessful():
