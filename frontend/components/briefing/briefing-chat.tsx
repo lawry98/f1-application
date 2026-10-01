@@ -7,6 +7,7 @@ import { RedactedReveal } from '@/components/candy/redacted-reveal';
 import { focusRing, focusRingOnRedFill } from '@/lib/focus';
 import { useBriefing } from '@/hooks/use-briefing';
 import { useRaces, roundFor } from '@/hooks/use-races';
+import { formatCountdown, noticeAnnouncement, noticeMessage } from '@/lib/briefing-notice';
 import { toPoints } from '@/lib/circuit-geometry';
 import { cn } from '@/lib/utils';
 import monaco from '@/data/circuits/mc-1929.json';
@@ -43,9 +44,14 @@ export function BriefingChat() {
     statusMessage,
     step,
     startedAt,
+    notice,
+    retryInSeconds,
     setQuery,
     submit,
   } = useBriefing();
+  // A refusal is waiting out its Retry-After: nothing that could start a briefing is live, and
+  // the hook clears `notice` itself when the wait is over, which is what unlocks them again.
+  const waiting = notice !== null;
   // `races` is the whole calendar and `upcoming` the six the chip row shows. They are separate
   // because the slice is a layout decision: joining the round against it made ROUND — the band's
   // headline row — exist only when the requested race happened to be one of the next six events.
@@ -63,7 +69,7 @@ export function BriefingChat() {
           races={upcoming}
           loading={racesLoading}
           onSelectRace={handleRaceSelect}
-          disabled={loading}
+          disabled={loading || waiting}
           activeRace={query}
         />
 
@@ -105,7 +111,7 @@ export function BriefingChat() {
           />
           <Button
             onClick={() => submit()}
-            disabled={loading || !query.trim()}
+            disabled={loading || waiting || !query.trim()}
             className={cn(
               'bg-f1-red font-semibold text-white hover:bg-red-700 disabled:bg-zinc-700',
               /*
@@ -125,7 +131,11 @@ export function BriefingChat() {
               'focus-visible:ring-offset-zinc-900',
             )}
           >
-            {loading ? 'Generating...' : 'Generate'}
+            {loading
+              ? 'Generating...'
+              : waiting
+                ? `Retry in ${formatCountdown(retryInSeconds)}`
+                : 'Generate'}
           </Button>
         </div>
       </div>
@@ -176,6 +186,31 @@ export function BriefingChat() {
         </div>
       )}
 
+      {notice && (
+        /*
+         * The cost guard's refusal — busy, or a limit spent. Not a failure, so it is neither the
+         * red box above nor `role="alert"`: `role="status"` is a polite live region, and the copy
+         * is plain grey on an **opaque** `bg-zinc-900`, the form card's own fill. Opaque on
+         * purpose: the composite behind the glyphs is then that one colour whatever the topo
+         * backdrop does underneath, and `zinc-300` on `zinc-900` is ~12:1 — measured in the
+         * browser by `browser/briefing-limits.spec.ts`, not assumed. A neutral rule replaces
+         * the red one for the same reason the box is not red.
+         *
+         * The visible copy is hidden from assistive technology and an `sr-only` twin carries
+         * it instead, because a busy wait's number ticks every second and a live region
+         * re-announces every change; the twin states the wait once. Body size is fixed, never a
+         * breakpoint `text-base` — that is this theme's colour token and paints the text
+         * `#09090b` (see CLAUDE.md).
+         */
+        <div className="mb-8 rounded-lg border border-zinc-700 bg-zinc-900 p-4" role="status">
+          <p className="flex items-start gap-3 text-zinc-300">
+            <span className="mt-1.5 h-4 w-0.5 shrink-0 rounded-full bg-zinc-500" aria-hidden="true" />
+            <span aria-hidden="true">{noticeMessage(notice, retryInSeconds)}</span>
+            <span className="sr-only">{noticeAnnouncement(notice)}</span>
+          </p>
+        </div>
+      )}
+
       {briefing && (
         <>
           <BriefingCard race={race} briefing={briefing} truncated={truncated} loading={loading} />
@@ -183,7 +218,7 @@ export function BriefingChat() {
         </>
       )}
 
-      {!briefing && !loading && !error && (
+      {!briefing && !loading && !error && !notice && (
         <div className="relative py-20 text-center">
           {/*
             The car emoji's replacement. Grey, plain-variant Monaco behind the copy at 20%, which

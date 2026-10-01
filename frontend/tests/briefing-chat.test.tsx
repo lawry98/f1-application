@@ -347,3 +347,153 @@ describe('BriefingChat empty state and reveal wiring', () => {
     expect(trace.querySelector('svg'), 'the completed trace drew no laurel').not.toBeNull();
   });
 });
+
+/**
+ * The cost guard's refusals, end to end through the page. Busy and limit states are not
+ * failures, so they get the neutral `role="status"` box and never the red `role="alert"` one;
+ * while the wait is pending every control that could start a briefing is locked and says so.
+ */
+function stubRefusal(status: number, body: Record<string, unknown>): void {
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = typeof input === 'string' ? input : input.toString();
+    if (url.includes('/api/races/')) {
+      return { ok: true, json: async () => ({ races: RACES }) } as unknown as Response;
+    }
+    return {
+      ok: false,
+      status,
+      json: async () => body,
+      headers: { get: () => null },
+    } as unknown as Response;
+  }) as typeof fetch;
+}
+
+async function generate(): Promise<void> {
+  fireEvent.change(screen.getByLabelText('Circuit name'), { target: { value: 'Monaco' } });
+  fireEvent.click(screen.getByRole('button', { name: /^generate$/i }));
+  await settle();
+}
+
+describe('BriefingChat busy and limit states', () => {
+  it('shows a busy refusal in a status box, not the error box', async () => {
+    stubRefusal(503, { code: 'busy', retry_after_seconds: 10, limit: 2 });
+    render(<BriefingChat />);
+    await settle();
+
+    await generate();
+
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Another briefing is being generated. Try again in 10s.',
+    );
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('locks Generate and the race chips and shows the countdown on the button', async () => {
+    stubRefusal(503, { code: 'busy', retry_after_seconds: 10, limit: 2 });
+    render(<BriefingChat />);
+    await settle();
+
+    await generate();
+
+    const button = screen.getByRole('button', { name: /retry in 10s/i });
+    expect(button).toBeDisabled();
+    expect(screen.getByRole('button', { name: /monaco grand prix/i })).toBeDisabled();
+  });
+
+  it('ticks the countdown down and re-enables everything when it reaches zero', async () => {
+    stubRefusal(503, { code: 'busy', retry_after_seconds: 3, limit: 2 });
+    render(<BriefingChat />);
+    await settle();
+    await generate();
+
+    await settle(1000);
+    expect(screen.getByRole('button', { name: /retry in 2s/i })).toBeDisabled();
+    expect(screen.getByRole('status')).toHaveTextContent('Try again in 2s.');
+
+    await settle(2000);
+    expect(screen.getByRole('button', { name: /^generate$/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /monaco grand prix/i })).toBeEnabled();
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it('announces a busy wait once rather than every second', async () => {
+    // A live region re-announces on every change; the ticking number is painted outside the
+    // accessible text, which carries the wait as it stood when the refusal arrived.
+    stubRefusal(503, { code: 'busy', retry_after_seconds: 10, limit: 2 });
+    render(<BriefingChat />);
+    await settle();
+    await generate();
+    const before = screen.getByRole('status').querySelector('.sr-only')?.textContent;
+
+    await settle(3000);
+
+    expect(screen.getByRole('status').querySelector('.sr-only')?.textContent).toBe(before);
+    expect(before).toContain('10 seconds');
+  });
+
+  it('names the hourly limit the server sent', async () => {
+    stubRefusal(429, { code: 'rate_limited', retry_after_seconds: 1200, limit: 3 });
+    render(<BriefingChat />);
+    await settle();
+
+    await generate();
+
+    expect(screen.getByRole('status')).toHaveTextContent(
+      /You've used your 3 briefings for this hour\. Next one (tomorrow )?at .+\./,
+    );
+    expect(screen.getByRole('button', { name: /retry in 20:00/i })).toBeDisabled();
+  });
+
+  it('says when the daily budget resets', async () => {
+    stubRefusal(503, { code: 'daily_cap', retry_after_seconds: 7200, limit: 100 });
+    render(<BriefingChat />);
+    await settle();
+
+    await generate();
+
+    expect(screen.getByRole('status')).toHaveTextContent(
+      /Today's briefing budget is used up\. It resets (tomorrow )?at .+\./,
+    );
+    expect(screen.getByRole('button', { name: /retry in 2:00:00/i })).toBeDisabled();
+  });
+
+  it('hides the empty state while a notice is up', async () => {
+    stubRefusal(503, { code: 'busy', retry_after_seconds: 10, limit: 2 });
+    render(<BriefingChat />);
+    await settle();
+
+    await generate();
+
+    expect(screen.queryByText('Select a race')).toBeNull();
+  });
+
+  it('shows a deadline as an error, in the error box', async () => {
+    const feed = new ChunkFeed();
+    stubFetch(feed);
+    render(<BriefingChat />);
+    await settle();
+    await generate();
+
+    feed.push(frame('error', { message: 'Stopped.', code: 'deadline' }));
+    feed.close();
+    await settle();
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'This briefing took too long and was stopped. Try again.',
+    );
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it('sets the notice text in a fixed size, never a breakpoint-scoped text-base', async () => {
+    // `sm:text-base` resolves to this theme's colour token and paints the text #09090b.
+    stubRefusal(503, { code: 'busy', retry_after_seconds: 10, limit: 2 });
+    render(<BriefingChat />);
+    await settle();
+    await generate();
+
+    const box = screen.getByRole('status');
+    for (const el of [box, ...Array.from(box.querySelectorAll('*'))]) {
+      expect(el.className).not.toMatch(/(^|\s)\w+:text-base(\s|$)/);
+    }
+  });
+});

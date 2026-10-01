@@ -17,6 +17,35 @@ function fixture(name: string): unknown {
   return JSON.parse(readFileSync(path.join(FIXTURES, name), 'utf8'));
 }
 
+export interface BriefingRefusal {
+  status: 429 | 503;
+  code: 'busy' | 'rate_limited' | 'daily_cap';
+  retryAfterSeconds: number;
+  limit: number;
+}
+
+/**
+ * Answer `/api/briefing/stream` with the cost guard's refusal — the JSON body and Retry-After
+ * header `backend/api/routes.py` sends — instead of a run.
+ *
+ * Registered after `mockApi` by any test that calls it, so it wins: Playwright tries routes in
+ * reverse order of registration. A refusal never opens the event stream, which is why this is
+ * a plain JSON response and not one of the captured `.sse` fixtures.
+ */
+export async function mockBriefingRefusal(page: Page, refusal: BriefingRefusal): Promise<void> {
+  await page.route('**/api/briefing/stream', (route) =>
+    route.fulfill({
+      status: refusal.status,
+      json: {
+        code: refusal.code,
+        retry_after_seconds: refusal.retryAfterSeconds,
+        limit: refusal.limit,
+      },
+      headers: { 'Retry-After': String(refusal.retryAfterSeconds) },
+    }),
+  );
+}
+
 export async function mockApi(page: Page): Promise<string[]> {
   const unmocked: string[] = [];
   await page.route('**/api/**', async (route) => {
