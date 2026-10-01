@@ -60,13 +60,13 @@ class FakeAgent:
         self.states: list[dict[str, Any]] = []
         self.stream_modes: list[Any] = []
 
-    async def ainvoke(self, state: dict[str, Any]) -> dict[str, Any]:
+    async def ainvoke(self, state: dict[str, Any], config: Any = None) -> dict[str, Any]:
         self.states.append(state)
         if self.raises is not None:
             raise self.raises
         return self.result
 
-    async def astream(self, state: dict[str, Any], stream_mode: Any = None):
+    async def astream(self, state: dict[str, Any], config: Any = None, stream_mode: Any = None):
         self.states.append(state)
         self.stream_modes.append(stream_mode)
         if self.raises is not None and self.raises_after is None:
@@ -103,7 +103,7 @@ class GatedAgent:
         self.steps = steps
         self.gate = gate
 
-    async def astream(self, state: dict[str, Any], stream_mode: Any = None):
+    async def astream(self, state: dict[str, Any], config: Any = None, stream_mode: Any = None):
         yield ("updates", self.steps[0])
         await self.gate.wait()
         for step in self.steps[1:]:
