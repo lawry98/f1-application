@@ -885,6 +885,13 @@ required CI check (`browser` job). Things that are not guessable:
   `gl.readPixels` in the same task as `gl.render()`. An element screenshot also captures CSS
   transforms and overlays, and the Inspect dialog's entrance scale made one pose read two
   different values.
+- **The blue-ring sweep passes a control with no ring at all, and a computed `box-shadow` passes a
+  ring nothing paints.** The sweep looks for Tailwind's default blue *inside* a painted shadow, so
+  a control no `ring-*` class reaches reads `box-shadow: none` and passes — the `/briefing` tool
+  trace toggle shipped that way (mutant 09). And the ring colour in the computed value says nothing
+  about clipping: inside an `overflow-hidden` parent an outset ring reads correctly and paints
+  nothing, and an inset one loses its corners unless the control carries the parent's radius.
+  Prove a ring from pixels, focused against unfocused — `ringSamples` in `focus-rings.spec.ts`.
 - **The route sweeps are hand-written lists, not discovered.** `focus-rings.spec.ts`,
   `a11y-smoke.spec.ts` and `invisible-text.spec.ts` each name their routes literally; a new
   route is covered only once it is added to all three. `/candy` stays out of the focus sweep
