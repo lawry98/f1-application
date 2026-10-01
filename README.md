@@ -9,6 +9,7 @@ An AI-powered F1 race weekend briefing generator that provides comprehensive pre
 - **AI-Powered Insights**: Gemini 3.6 Flash synthesizes data into expert-level briefings
 - **Multi-Source Data**: race results and standings (OpenF1, FastF1), web search (Tavily), weather forecasts (OpenWeather)
 - **Agent Transparency**: View the tool execution trace for each briefing
+- **Saved examples**: when a live briefing cannot run — the cost guard is busy, the deadline passes, the backend is down — `/briefing` offers a saved, fact-checked example for that race, and "See an example briefing" opens one for anyone who only wants to look
 - **Real-time Streaming**: Server-Sent Events for live updates as the agent works, with the briefing prose filling in as the model writes it
 - **Modern 3D UI**: Three.js F1 car visualization with team liveries
 - **F1 Car Teardown**: Scroll-driven anatomy page — 192 frames reveal the car's internals as you scroll
@@ -216,7 +217,7 @@ OUTPUT (Race Briefing)
 | Route | Description |
 |-------|-------------|
 | `/` | Landing page — features overview and entry point |
-| `/briefing` | AI race weekend briefing chat |
+| `/briefing` | AI race weekend briefing chat; `?example=<id>` shows a saved example, with no backend needed |
 | `/teardown` | Scroll-driven F1 car anatomy (192-frame canvas animation) |
 | `/showcase` | Interactive 3D car with all 11 team liveries |
 | `/standings` | Drivers' and constructors' championship tables for every season since 2023, with a season picker |
@@ -241,6 +242,7 @@ uvicorn main:app --reload --port 8000   # Dev server
 ruff check .                             # Lint
 ruff format .                            # Format
 pytest                                   # Tests (no network; ~7s)
+python scripts/capture_briefing_example.py --query "Singapore Grand Prix"   # Capture a saved example (live; 2 Gemini requests)
 ```
 
 Tests live in `backend/tests/` and never touch the network — every external boundary is
