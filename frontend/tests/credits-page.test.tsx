@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -7,6 +7,9 @@ import CreditsPage from '@/app/credits/page';
 import { focusRing, focusRingOnRedFill } from '@/lib/focus';
 import { contrastRatio, DARK_BG, MIN_CONTRAST } from '@/lib/team-utils';
 import { restingTextNeutrals } from './zinc';
+
+// `LandingNav` reads the route to mark its current link; jsdom has no Next router.
+vi.mock('next/navigation', () => ({ usePathname: () => '/credits' }));
 
 function count(dir: string, ext: string): number {
   return readdirSync(join(process.cwd(), 'public', dir)).filter((f) => f.endsWith(ext)).length;
@@ -18,6 +21,33 @@ function count(dir: string, ext: string): number {
  * could not be rendered here at all, which is why the parser and the table are separate units.
  */
 describe('/credits', () => {
+  describe('the site nav', () => {
+    it('renders it outside the page’s one main landmark', () => {
+      // A banner inside `<main>` is not a banner, and two `<main>`s fail axe's landmark rules —
+      // the same shape every other route with the nav already has.
+      render(<CreditsPage />);
+
+      const nav = screen.getByRole('navigation', { name: 'Main navigation' });
+      expect(screen.getAllByRole('main')).toHaveLength(1);
+      expect(screen.getByRole('main')).not.toContainElement(nav);
+      expect(screen.getByRole('banner')).toContainElement(nav);
+    });
+
+    it('marks Credits as the current page', () => {
+      render(<CreditsPage />);
+
+      expect(screen.getByRole('link', { current: 'page' })).toHaveAccessibleName('Credits');
+    });
+
+    it('starts the page below the fixed 56 px bar', () => {
+      // `LandingNav` is `fixed` and `h-14`, so without this the heading's top 8 px sat under it:
+      // the page's own `py-16` was all the clearance it had.
+      render(<CreditsPage />);
+
+      expect(screen.getByRole('main')).toHaveClass('pt-14');
+    });
+  });
+
   it('carries the fragment the /teams footer links to', () => {
     const { container } = render(<CreditsPage />);
     expect(container.querySelector('#driver-photographs')).not.toBeNull();

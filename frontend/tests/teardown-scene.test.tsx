@@ -90,6 +90,16 @@ describe('TeardownScene', () => {
     expect(slot).toHaveStyle({ width: '120px', height: '36px' });
   });
 
+  it('keeps its own bar inside main, so the site nav above it is the only banner', () => {
+    // The route renders `LandingNav` now, and that `<header>` is the site's banner. A second
+    // top-level `<header>` would be a second banner, which axe reports; inside `<main>` this one is
+    // the page's own header, and the title it carries is inside the page's landmark.
+    render(<TeardownScene />);
+
+    expect(screen.queryAllByRole('banner')).toHaveLength(0);
+    expect(screen.getByRole('main')).toContainElement(screen.getByRole('heading', { level: 1 }));
+  });
+
   it('keeps the title copy, re-set as display caps plus a serif accent', () => {
     render(<TeardownScene />);
 

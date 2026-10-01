@@ -16,6 +16,9 @@ const ROUTES = [
   { path: '/standings', width: 1440 },
   { path: '/circuits', width: 1440 },
   { path: '/circuits/monza', width: 1440 },
+  { path: '/credits', width: 1440 },
+  { path: '/showcase', width: 1440 },
+  { path: '/teardown', width: 1440 },
 ] as const;
 
 for (const { path, width } of ROUTES) {
@@ -26,6 +29,9 @@ for (const { path, width } of ROUTES) {
     if (path === '/standings') await expect(page.getByRole('table').first()).toBeVisible();
     if (path === '/circuits') await expect(page.getByRole('list', { name: /calendar$/ })).toBeVisible();
     if (path === '/circuits/monza') await expect(page.getByRole('table')).toBeVisible();
+    // `/showcase`'s `<main>` is in the page shell, so it is up while the scene's chunk still loads.
+    if (path === '/showcase') await expect(page.getByRole('heading', { level: 1, name: /Car Showcase/ })).toBeVisible();
+    if (path === '/teardown') await expect(page.getByText('Loading frames')).toBeHidden();
     // axe folds a mid-fade opacity into the colours it measures, and so does a direct pixel read:
     // entrance motion still fades opacity under `reducedMotion: 'reduce'` (BlurFade, the teams
     // dossier's swap), so a check that lands mid-fade reports a ratio that depends on timing.

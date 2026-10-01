@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { act, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { LandingNav } from '@/components/landing/landing-nav';
 import { NAV_LINKS } from '@/components/landing/links';
@@ -103,6 +103,15 @@ describe('LandingNav', () => {
       const { container } = render(<LandingNav />);
 
       expect(container.querySelector('ul')).toHaveClass('py-1.5');
+    });
+
+    it('gives the first and last links the same clearance at the row’s ends', () => {
+      // The same clip, sideways. Measured on main at 375 and at 1440 alike: with no horizontal
+      // padding the first link sat flush at the row's left edge, so the left 4 px of its ring were
+      // cut off, and the last link's right side the same once the row was scrolled to its end.
+      const { container } = render(<LandingNav />);
+
+      expect(container.querySelector('ul')).toHaveClass('px-1.5');
     });
 
     it('keeps every label on one line at its natural width', () => {
@@ -217,5 +226,370 @@ describe('LandingNav', () => {
         MIN_CONTRAST,
       );
     }
+  });
+});
+
+/*
+ * ---------------------------------------------------------------------------
+ * The overflow fades, and why they are tested through a modelled layout
+ * ---------------------------------------------------------------------------
+ *
+ * At 375 px the row shows about two of its eight links, the scrollbar is hidden, and nothing else
+ * says there is more. The fades are that signal, so what matters is whether each one is showing at
+ * a given scroll position — and jsdom has no scroll position, no widths and no layout at all.
+ *
+ * So, as in `use-scroll-spy.test.ts`, the geometry is a model: the row's box and every link's
+ * offset are fixed numbers (measured at 375×812 on main), `scrollLeft` is a variable, and every
+ * width and rect the component can read is derived from them. The expected fade state is computed
+ * from that model alone, never from the component. The browser half — that the fades really paint,
+ * and that a Tabbed-to ring really clears them — is `browser/nav-overflow.spec.ts`.
+ *
+ * Scroll events are queued and flushed by the test rather than fired from the setter, because a
+ * browser fires them asynchronously. That is what makes the on-load tests mean something: the
+ * current link is scrolled into view during mount, and the right fade has to be showing *before*
+ * the event for that scroll arrives.
+ */
+
+/** Where the row starts at 375: after the gutter, the wordmark and the bar's gap. */
+const ROW_LEFT = 153;
+/** The row's box at 375 — measured as `clientWidth` on main. */
+const PHONE_ROW_WIDTH = 206;
+/** Each label's natural width at 375, in nav order. */
+const LINK_WIDTHS = [75.6, 109.9, 60.6, 74.2, 90, 67.8, 92.2, 71.2];
+/** `gap-1`. */
+const LINK_GAP = 4;
+/** The row's own horizontal padding, which `scrollWidth` includes. */
+const ROW_PADDING = 6;
+/** How far a focus ring paints outside its link: `ring-offset-2` plus `ring-2` (lib/focus.ts). */
+const RING_REACH = 4;
+/** The width of each fade. Copied, not imported, so the test states the contract. */
+const FADE_WIDTH = 24;
+
+const CONTENT_WIDTH =
+  ROW_PADDING * 2 +
+  LINK_WIDTHS.reduce((sum, w) => sum + w, 0) +
+  LINK_GAP * (LINK_WIDTHS.length - 1);
+
+const linkOffset = (index: number): number =>
+  ROW_PADDING + LINK_WIDTHS.slice(0, index).reduce((sum, w) => sum + w + LINK_GAP, 0);
+
+interface Layout {
+  rowWidth: number;
+  scrollLeft: number;
+}
+
+let layout: Layout = { rowWidth: PHONE_ROW_WIDTH, scrollLeft: 0 };
+let pendingScroll = false;
+
+const maxScroll = (): number => Math.max(0, CONTENT_WIDTH - layout.rowWidth);
+
+const rect = (left: number, width: number): DOMRect =>
+  ({
+    left,
+    right: left + width,
+    width,
+    top: 0,
+    bottom: 32,
+    height: 32,
+    x: left,
+    y: 0,
+    toJSON: () => ({}),
+  }) as DOMRect;
+
+const isRow = (el: Element): boolean =>
+  el.matches('nav[aria-label="Main navigation"] ul');
+
+/** The index of a nav link in the model, or -1 for anything else. */
+const linkIndex = (el: Element): number =>
+  el.matches('nav[aria-label="Main navigation"] ul a')
+    ? NAV_LINKS.findIndex(({ href }) => href === el.getAttribute('href'))
+    : -1;
+
+/** Moves the virtual scroll position the way a browser does: clamped, then a scroll event later. */
+function setScrollLeft(value: number): void {
+  const next = Math.min(maxScroll(), Math.max(0, value));
+  if (next === layout.scrollLeft) return;
+  layout.scrollLeft = next;
+  pendingScroll = true;
+}
+
+/** Delivers the scroll event the last move queued, as the browser's next frame would. */
+function flushScroll(): void {
+  if (!pendingScroll) return;
+  pendingScroll = false;
+  const row = document.querySelector('nav[aria-label="Main navigation"] ul');
+  act(() => {
+    row?.dispatchEvent(new Event('scroll'));
+  });
+}
+
+/** One user scroll: move, then the event. */
+function scrollRowTo(value: number): void {
+  setScrollLeft(value);
+  flushScroll();
+}
+
+const originals = new Map<string, PropertyDescriptor>();
+
+function installLayoutModel(): void {
+  for (const prop of ['scrollLeft', 'scrollWidth', 'clientWidth'] as const) {
+    originals.set(prop, Object.getOwnPropertyDescriptor(Element.prototype, prop)!);
+  }
+  const original = (prop: string) => originals.get(prop)!;
+
+  Object.defineProperty(Element.prototype, 'scrollLeft', {
+    configurable: true,
+    get(this: Element) {
+      return isRow(this) ? layout.scrollLeft : original('scrollLeft').get!.call(this);
+    },
+    set(this: Element, value: number) {
+      if (isRow(this)) setScrollLeft(value);
+      else original('scrollLeft').set!.call(this, value);
+    },
+  });
+  Object.defineProperty(Element.prototype, 'scrollWidth', {
+    configurable: true,
+    get(this: Element) {
+      return isRow(this) ? Math.max(CONTENT_WIDTH, layout.rowWidth) : original('scrollWidth').get!.call(this);
+    },
+  });
+  Object.defineProperty(Element.prototype, 'clientWidth', {
+    configurable: true,
+    get(this: Element) {
+      return isRow(this) ? layout.rowWidth : original('clientWidth').get!.call(this);
+    },
+  });
+
+  vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+    if (isRow(this)) return rect(ROW_LEFT, layout.rowWidth);
+    const index = linkIndex(this);
+    if (index >= 0) return rect(ROW_LEFT + linkOffset(index) - layout.scrollLeft, LINK_WIDTHS[index]!);
+    return rect(0, 0);
+  });
+
+  // `scrollIntoView({ inline: 'center' })` on a nav link: centre it, clamped, as a browser does.
+  vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(function (this: Element) {
+    const index = linkIndex(this);
+    if (index < 0) return;
+    setScrollLeft(linkOffset(index) + LINK_WIDTHS[index]! / 2 - layout.rowWidth / 2);
+  });
+}
+
+function removeLayoutModel(): void {
+  for (const [prop, descriptor] of originals) Object.defineProperty(Element.prototype, prop, descriptor);
+  originals.clear();
+}
+
+/** What the model says should be showing, computed without going near the component. */
+function expectedFades(): { start: boolean; end: boolean } {
+  return {
+    start: layout.scrollLeft > 0.5 && maxScroll() > 0,
+    end: maxScroll() - layout.scrollLeft > 1,
+  };
+}
+
+const fade = (edge: 'start' | 'end'): HTMLElement => screen.getByTestId(`nav-fade-${edge}`);
+const isShowing = (el: HTMLElement): boolean => el.classList.contains('opacity-100');
+
+function shownFades(): { start: boolean; end: boolean } {
+  const start = fade('start');
+  const end = fade('end');
+  // Exactly one of the two states, so a fade carrying both classes cannot read as either.
+  for (const el of [start, end]) {
+    expect(el.classList.contains('opacity-100')).not.toBe(el.classList.contains('opacity-0'));
+  }
+  return { start: isShowing(start), end: isShowing(end) };
+}
+
+describe('the overflow fades', () => {
+  beforeEach(() => {
+    layout = { rowWidth: PHONE_ROW_WIDTH, scrollLeft: 0 };
+    pendingScroll = false;
+    installLayoutModel();
+  });
+
+  afterEach(() => {
+    removeLayoutModel();
+  });
+
+  it('shows only the end fade at the start of a row that overflows', () => {
+    renderNav('/');
+    flushScroll();
+
+    expect(expectedFades()).toEqual({ start: false, end: true });
+    expect(shownFades()).toEqual(expectedFades());
+  });
+
+  it('shows both part-way along', () => {
+    renderNav('/');
+    scrollRowTo(200);
+
+    expect(expectedFades()).toEqual({ start: true, end: true });
+    expect(shownFades()).toEqual(expectedFades());
+  });
+
+  it('shows only the start fade at the end', () => {
+    renderNav('/');
+    scrollRowTo(maxScroll());
+
+    expect(expectedFades()).toEqual({ start: true, end: false });
+    expect(shownFades()).toEqual(expectedFades());
+  });
+
+  it('treats a sub-pixel remainder as the end', () => {
+    // A browser at a fractional device pixel ratio can stop scrolling a fraction short of
+    // `scrollWidth - clientWidth`. Without a tolerance the end fade would stay up over nothing.
+    renderNav('/');
+    scrollRowTo(maxScroll() - 0.5);
+
+    expect(shownFades()).toEqual({ start: true, end: false });
+  });
+
+  it('agrees with the geometry at every position along the row', () => {
+    renderNav('/');
+    const wrong: string[] = [];
+    for (let x = 0; x <= maxScroll(); x += 20) {
+      scrollRowTo(x);
+      const shown = shownFades();
+      const want = expectedFades();
+      if (shown.start !== want.start || shown.end !== want.end) {
+        wrong.push(`at ${x}: showed ${JSON.stringify(shown)}, wanted ${JSON.stringify(want)}`);
+      }
+    }
+    expect(wrong).toEqual([]);
+  });
+
+  it('shows neither fade when every link fits', () => {
+    layout.rowWidth = CONTENT_WIDTH;
+    renderNav('/');
+    flushScroll();
+
+    expect(shownFades()).toEqual({ start: false, end: false });
+  });
+
+  describe('on arrival, with the current link already scrolled into view', () => {
+    it('is at the end on the last link’s page, before any scroll event arrives', () => {
+      renderNav('/credits');
+
+      expect(expectedFades()).toEqual({ start: true, end: false });
+      expect(shownFades()).toEqual(expectedFades());
+    });
+
+    it('is part-way along on a middle link’s page', () => {
+      renderNav('/circuits');
+
+      expect(expectedFades()).toEqual({ start: true, end: true });
+      expect(shownFades()).toEqual(expectedFades());
+    });
+  });
+
+  it('follows the row when it grows to fit', () => {
+    // Turning a phone to landscape gives the row room for every link; nothing scrolls, so only a
+    // size change can tell the fades.
+    let notify: () => void = () => {};
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: () => void) {
+          notify = callback;
+        }
+        observe(): void {}
+        unobserve(): void {}
+        disconnect(): void {}
+      },
+    );
+    renderNav('/');
+    flushScroll();
+    expect(shownFades()).toEqual({ start: false, end: true });
+
+    layout.rowWidth = CONTENT_WIDTH;
+    act(() => notify());
+
+    expect(shownFades()).toEqual({ start: false, end: false });
+    vi.unstubAllGlobals();
+  });
+
+  it('keeps the fades out of the accessibility tree and out of the pointer’s way', () => {
+    renderNav('/');
+
+    for (const edge of ['start', 'end'] as const) {
+      expect(fade(edge)).toHaveAttribute('aria-hidden', 'true');
+      expect(fade(edge)).toHaveClass('pointer-events-none');
+    }
+  });
+
+  it('changes the fades without animating them, so reduced motion has nothing to remove', () => {
+    renderNav('/');
+
+    for (const edge of ['start', 'end'] as const) {
+      const animated = Array.from(fade(edge).classList).filter((c) => /^(transition|animate|duration)/.test(c));
+      expect(animated).toEqual([]);
+    }
+  });
+
+  /*
+   * A Tabbed-to link must not sit under a fade, or its ring is painted over. Chromium does not
+   * guarantee that by itself: measured at 375, focusing a link that is partly scrolled out of the
+   * row does not scroll it at all, so the ring sits clipped at the edge, under the fade.
+   */
+  describe('a link reached by keyboard', () => {
+    /** jsdom has no input modality, so `:focus-visible` is modelled: keyboard focus, or not. */
+    function focusByKeyboard(link: HTMLElement, keyboard = true): void {
+      const matches = Element.prototype.matches;
+      const spy = vi.spyOn(Element.prototype, 'matches').mockImplementation(function (
+        this: Element,
+        selector: string,
+      ) {
+        if (selector === ':focus-visible') return keyboard && this === document.activeElement;
+        return matches.call(this, selector);
+      });
+      act(() => link.focus());
+      flushScroll();
+      spy.mockRestore();
+    }
+
+    /** The ring's box in the model, and every visible fade it overlaps. */
+    function ringProblems(index: number): string[] {
+      const left = ROW_LEFT + linkOffset(index) - layout.scrollLeft - RING_REACH;
+      const right = left + LINK_WIDTHS[index]! + RING_REACH * 2;
+      const problems: string[] = [];
+      if (left < ROW_LEFT || right > ROW_LEFT + layout.rowWidth) problems.push('clipped by the row');
+      const shown = shownFades();
+      if (shown.start && left < ROW_LEFT + FADE_WIDTH) problems.push('under the start fade');
+      if (shown.end && right > ROW_LEFT + layout.rowWidth - FADE_WIDTH) problems.push('under the end fade');
+      return problems;
+    }
+
+    it('scrolls each link, in Tab order, clear of both fades and of the row’s edges', () => {
+      renderNav('/');
+      const problems: string[] = [];
+      NAV_LINKS.forEach(({ label }, index) => {
+        focusByKeyboard(screen.getByRole('link', { name: label }));
+        for (const problem of ringProblems(index)) problems.push(`${label}: ${problem}`);
+      });
+      expect(problems).toEqual([]);
+    });
+
+    it('does the same coming back with Shift+Tab', () => {
+      renderNav('/');
+      scrollRowTo(maxScroll());
+      const problems: string[] = [];
+      [...NAV_LINKS].reverse().forEach(({ label }) => {
+        const index = NAV_LINKS.findIndex((link) => link.label === label);
+        focusByKeyboard(screen.getByRole('link', { name: label }));
+        for (const problem of ringProblems(index)) problems.push(`${label}: ${problem}`);
+      });
+      expect(problems).toEqual([]);
+    });
+
+    it('leaves the row alone when the focus came from a pointer', () => {
+      // A mouse focuses a link on mousedown. Scrolling the row then would slide the link out from
+      // under the pointer before mouseup, and the click would land on whatever took its place.
+      renderNav('/');
+      const before = layout.scrollLeft;
+      focusByKeyboard(screen.getByRole('link', { name: 'Tyres' }), false);
+
+      expect(layout.scrollLeft).toBe(before);
+    });
   });
 });
