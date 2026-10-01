@@ -63,3 +63,11 @@ curl -sf http://localhost:8000/api/circuits/it-1922/winners | python3 -m json.to
 ```
 
 A cold call costs one FastF1 session load per season, about five seconds in all.
+
+# Briefing check cases
+
+`briefing-check-cases.json` is the one hand-written fixture here, on purpose: it is a set of
+specifications, not a capture. Each case starts from a base example, swaps a sentence, and names
+the checks it must fail and the sentences it must flag. `backend/tests/test_briefing_checks.py`
+and `briefing-example-checks.test.ts` both run every case, which is what keeps the Python checker
+and its TypeScript port in step. Add a case here, never to one side.

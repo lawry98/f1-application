@@ -599,6 +599,34 @@ literals, held to `tailwind.config.ts` by `tests/share-image.test.ts`, which run
 from `app/icon.svg` by `scripts/build-site-icons.mjs` — never edit them by hand; `--check` proves
 they are fresh.
 
+**Saved example briefings are captured, never written.** When a live briefing cannot run — a
+cost-guard refusal, the deadline, an error, a stream cut before any prose, an unreachable backend —
+`/briefing` offers the race's saved example, and `/briefing?example=<id>` shows one through the
+same card under a permanent "not a live briefing" label. Every file in
+`frontend/data/briefing-examples/` comes from `backend/scripts/capture_briefing_example.py`, which
+runs the real graph the way the SSE route does (two Gemini requests each, against the shared
+free-tier 20 a day), keeps the minimal tool data the checks read as `evidence`, and rebuilds
+`index.json` from the files on every write. The prose is the model's: an example that fails a check
+is recaptured, at most twice, or dropped. `tests/briefing-example-checks.test.ts` recomputes every
+committed example's stored verdict, so an edited sentence or number fails CI. The checks exist
+twice — Python stdlib in `backend/scripts/briefing_checks.py`, a line-for-line TypeScript port in
+`frontend/tests/briefing-example-checks.ts` — held together by
+`frontend/tests/fixtures/briefing-check-cases.json` and by those stored verdicts: change both, and
+add the case to the fixture. A failure is a claim the evidence contradicts; whatever it cannot
+settle (circuit knowledge, a season outside the data) is flagged for a person, and the PR lists
+every flag. Two traps each cost a capture: OpenF1 names a race by its circuit ("Hungaroring",
+"Madring"), so each results entry carries that label as an alias; and the model states the season
+length from memory ("24 races"), which FastF1's 23-round 2026 calendar fails.
+
+An offer matches an event's exact name and year — `race_info` when it arrived, else the submitted
+query against the calendar year — so a quick-select chip matches and a typed "Monaco" offers
+nothing. Each example is its own chunk through `loadBriefingExample`; only `index.json` is imported
+statically, which `tests/briefing-examples.test.ts` enforces. The example id lives in the URL alone:
+`BriefingChatFromUrl` reads it with `useSearchParams` (hence `/briefing` is `force-dynamic`), and a
+live run drops it with `replaceState` — the `/standings` rule. The offer sits in exactly one box,
+outside its live region, and in the red error box takes `focusRingInk`, because the red ring
+measures 3.07:1 there.
+
 **The landing page composes, it doesn't contain.** `app/page.tsx` is seven imports from
 `components/landing/`; the hero, features, and footer markup are not inline.
 
