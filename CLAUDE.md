@@ -362,6 +362,20 @@ winners matcher misses them and the briefing band draws no outline for those yea
 `LOCATION_ALIASES` in `scripts/fetch-circuit-geometry.mjs` and nowhere else.
 `tests/circuit-catalog.test.ts` pins them.
 
+**Weather is forecast at the circuit's coordinates for race day, never at a geocoded name for
+"now".** `get_race_weather(location, race_date)` resolves `location` with `circuit_id_for_location`
+to a centre in `frontend/data/circuits/coordinates.json` (written only by
+`scripts/fetch-circuit-geometry.mjs`) and keeps the slots whose *circuit-local* date is race day,
+using the payload's `city.timezone` — slots sit on UTC's 3-hour marks, so at Sepang they read 02:00,
+05:00 … 23:00. The version this replaced geocoded `"{Location},{country code}"` and returned the
+next 24 hours whatever the race date: measured 2026-09-30, it missed Kuala Lumpur (FastF1 files it
+under Bahrain), Sakhir, Yas Marina and Spa-Francorchamps outright, and its `"US"` default for an
+unmapped country made Silverstone North Carolina. A location the index lacks is an error, never a
+geocode. The free endpoint reaches about five days, so a race day outside it returns
+`forecast_available: False` with a `reason` and **no `error` key** — it is an answer, like
+`SEASON_NOT_STARTED`, and Weather Watch in `SYNTHESIZER_PROMPT` steers on those keys, which
+`test_the_synthesizer_prompt_steers_on_keys_the_tool_really_emits` pins.
+
 **A round with no outline renders a card on `/circuits`, unlike the band.** The band hides a missing
 outline because a briefing without it is still complete; in the grid the card *is* the content, so
 it keeps its box, says "No track map", and is not a link. The grid loads one lazy chunk per unique

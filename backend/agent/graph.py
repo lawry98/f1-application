@@ -18,7 +18,6 @@ from agent.budget import BriefingStoppedError, budget_from
 from agent.prompts import DEFAULT_TOOLS, PLANNER_PROMPT, SYNTHESIZER_PROMPT
 from agent.state import AgentState, RaceInfo, ToolResult
 from config import (
-    COUNTRY_CODE_MAP,
     EXECUTOR_MAX_WORKERS,
     GOOGLE_API_KEY,
     LLM_MAX_ATTEMPTS,
@@ -250,8 +249,8 @@ def _build_tool_args(task_name: str, race_info: dict) -> dict[str, Any] | None:
     if task_name == "search_f1_news":
         return {"query": f"{race_info['name']} {race_info['year']}", "max_results": 5}
     if task_name == "get_race_weather":
-        country_code = COUNTRY_CODE_MAP.get(race_info["country"], "US")
-        return {"city": race_info["location"], "country_code": country_code}
+        # `date` is str(FastF1's EventDate), "2025-05-25 00:00:00" — the circuit-local race day.
+        return {"location": race_info["location"], "race_date": race_info["date"][:10]}
     if task_name == "get_driver_form":
         # Hardcoded to Verstappen — the planner prompt advertises exactly this scope.
         return {"driver_code": "VER", "year": race_info["historical_year"], "num_races": 5}

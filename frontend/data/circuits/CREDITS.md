@@ -6,7 +6,9 @@ a repository of Formula 1 circuits in GeoJSON format, used under the MIT licence
 The files here are not the upstream data verbatim. `frontend/scripts/fetch-circuit-geometry.mjs`
 projects the source's WGS84 lon/lat into a normalised 0..1 box — scaling longitude by
 `cos(mean latitude)`, flipping the y axis for SVG, preserving each circuit's aspect ratio — and
-downsamples each outline to at most 240 points. Re-run that script to refresh or extend the set.
+downsamples each outline to at most 240 points. `coordinates.json` keeps the one real position
+the projection discards — each circuit's centre in WGS84 degrees — for the backend's weather
+forecast. Re-run that script to refresh or extend the set.
 
 `index.json` maps a slugged **location** to a circuit id. Location is the join key because the
 backend's `circuit_id` is derived from the _event_ name (`italian_grand_prix`), not the circuit,
