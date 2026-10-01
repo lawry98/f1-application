@@ -546,6 +546,8 @@ def capture(query: str, out_dir: Path, reject_dir: Path | None) -> bool:
     # As main.py does for the app.
     Path(FASTF1_CACHE_DIR).mkdir(parents=True, exist_ok=True)
     fastf1.Cache.enable_cache(FASTF1_CACHE_DIR)
+    # Its per-request INFO lines would bury the report this prints.
+    fastf1.set_log_level("WARNING")
 
     try:
         run = asyncio.run(run_briefing(agent, query, BRIEFING_DEADLINE_SECONDS))
