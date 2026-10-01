@@ -496,9 +496,9 @@ def test_stream_does_not_leak_a_provider_error_payload(client, install_agent):
     assert GENERIC_BRIEFING_ERROR in body
 
 
-def test_stream_omits_the_briefing_event_when_the_synthesizer_produces_nothing(
-    client, install_agent
-):
+def test_stream_reports_a_synthesizer_that_produced_nothing_as_an_error(client, install_agent):
+    """No briefing event — there is nothing to deliver — but never silence: a stream that just
+    stops reads to the frontend as a dropped connection."""
     install_agent(
         steps=[
             {"resolver": {"race_info": make_race_info(), "current_step": "planning"}},
@@ -506,7 +506,8 @@ def test_stream_omits_the_briefing_event_when_the_synthesizer_produces_nothing(
         ]
     )
     events = parse_sse(client.post("/api/briefing/stream", json={"query": "monaco"}).text)
-    assert [event_type for event_type, _ in events] == ["status", "race_info", "status"]
+    assert [event_type for event_type, _ in events] == ["status", "race_info", "status", "error"]
+    assert events[-1][1] == {"message": GENERIC_BRIEFING_ERROR}
 
 
 def test_stream_delivers_events_while_the_agent_is_still_running(monkeypatch):
