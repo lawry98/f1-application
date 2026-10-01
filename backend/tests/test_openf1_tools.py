@@ -594,15 +594,15 @@ def test_driver_form_reports_every_driver_who_started_from_openf1(grid_2024, no_
         "grands_prix": ["2024 Sakhir", "2024 Miami", "2024 Monte Carlo"],
         "drivers": [
             "VER Max VERSTAPPEN, Red Bull Racing: Sakhir P1, Miami P2, Monte Carlo P1"
-            " | 68 pts, avg finish 1.3, 0 DNF, 3 of 3 races",
+            " | 68 pts, avg P1.3, 0 DNF, 3/3 races",
             "NOR Lando NORRIS, McLaren: Sakhir P2, Miami P1, Monte Carlo P16"
-            " | 43 pts, avg finish 6.3, 0 DNF, 3 of 3 races",
+            " | 43 pts, avg P6.3, 0 DNF, 3/3 races",
             "HAM Lewis HAMILTON, Mercedes: Sakhir P3, Miami DNF, Monte Carlo P2"
-            " | 33 pts, avg finish 2.5, 1 DNF, 3 of 3 races",
+            " | 33 pts, avg P2.5, 1 DNF, 3/3 races",
             "BEA Oliver BEARMAN, Haas F1 Team (earlier Ferrari): Sakhir P7, Monte Carlo P10"
-            " | 7 pts, avg finish 8.5, 0 DNF, 2 of 3 races",
+            " | 7 pts, avg P8.5, 0 DNF, 2/3 races",
             "ALB Alexander ALBON, Williams: Miami P10, Monte Carlo DSQ"
-            " | 1 pts, avg finish 10.0, 0 DNF, 2 of 3 races",
+            " | 1 pts, avg P10.0, 0 DNF, 2/3 races",
         ],
     }
 
@@ -614,7 +614,7 @@ def test_driver_form_shows_a_dnf_with_no_position_and_leaves_it_out_of_the_avera
     row = _row(_form(), "HAM")
 
     assert "Miami DNF" in row
-    assert "avg finish 2.5, 1 DNF" in row
+    assert "avg P2.5, 1 DNF" in row
 
 
 def test_driver_form_counts_a_classified_retirement_as_its_place(grid_2024, no_fastf1):
@@ -622,14 +622,14 @@ def test_driver_form_counts_a_classified_retirement_as_its_place(grid_2024, no_f
     row = _row(_form(), "NOR")
 
     assert "Monte Carlo P16" in row
-    assert "avg finish 6.3, 0 DNF" in row
+    assert "avg P6.3, 0 DNF" in row
 
 
 def test_driver_form_shows_fewer_races_for_a_driver_absent_from_one(grid_2024, no_fastf1):
     row = _row(_form(), "BEA")
 
     assert "Miami" not in row
-    assert row.endswith("2 of 3 races")
+    assert row.endswith("2/3 races")
 
 
 def test_driver_form_keys_a_driver_by_acronym_through_a_number_and_team_change(
@@ -664,7 +664,7 @@ def test_driver_form_honours_num_races(grid_2024, no_fastf1):
     result = _form(num_races=2)
 
     assert result["grands_prix"] == ["2024 Miami", "2024 Monte Carlo"]
-    assert _row(result, "BEA").endswith("1 of 2 races")
+    assert _row(result, "BEA").endswith("1/2 races")
 
 
 def test_driver_form_passes_over_a_race_with_no_results(monkeypatch, no_fastf1):
@@ -752,35 +752,60 @@ def test_driver_form_costs_no_request_the_other_result_tools_have_not_made(grid_
     assert len([c for c in grid_2024.calls if c["url"].endswith("/session_result")]) == 1
 
 
-def _grid_of(drivers: int, races: int) -> dict[str, Any]:
-    """A full OpenF1 season tail: ``races`` Grands Prix, ``drivers`` cars in each."""
+# The 2026 grid and the five Grands Prix before Singapore, as OpenF1 served them on 2026-10-01.
+_GRID_2026 = [
+    ("ANT", "Kimi ANTONELLI", "Mercedes"),
+    ("NOR", "Lando NORRIS", "McLaren"),
+    ("RUS", "George RUSSELL", "Mercedes"),
+    ("VER", "Max VERSTAPPEN", "Red Bull Racing"),
+    ("LEC", "Charles LECLERC", "Ferrari"),
+    ("HAM", "Lewis HAMILTON", "Ferrari"),
+    ("HAD", "Isack HADJAR", "Red Bull Racing"),
+    ("PIA", "Oscar PIASTRI", "McLaren"),
+    ("LAW", "Liam LAWSON", "Racing Bulls"),
+    ("LIN", "Arvid LINDBLAD", "Racing Bulls"),
+    ("COL", "Franco COLAPINTO", "Alpine"),
+    ("HUL", "Nico HULKENBERG", "Audi"),
+    ("GAS", "Pierre GASLY", "Alpine"),
+    ("OCO", "Esteban OCON", "Haas F1 Team"),
+    ("ALO", "Fernando ALONSO", "Aston Martin"),
+    ("BEA", "Oliver BEARMAN", "Haas F1 Team"),
+    ("SAI", "Carlos SAINZ", "Williams"),
+    ("BOR", "Gabriel BORTOLETO", "Audi"),
+    ("STR", "Lance STROLL", "Aston Martin"),
+    ("PER", "Sergio PEREZ", "Cadillac"),
+    ("ALB", "Alexander ALBON", "Williams"),
+    ("BOT", "Valtteri BOTTAS", "Cadillac"),
+]
+_WINDOW_2026 = ["Hungaroring", "Zandvoort", "Monza", "Madring", "Baku"]
+
+
+def _full_grid() -> dict[str, Any]:
     sessions, rows, roster = [], [], []
-    for race in range(races):
-        key = 20000 + race
+    for race, circuit in enumerate(_WINDOW_2026):
+        key = 11300 + race
         sessions.append(
             {
                 "session_key": key,
                 "session_name": "Race",
-                "circuit_short_name": "Spa-Francorchamps",
-                "date_start": f"2026-0{race + 3}-01T13:00:00+00:00",
+                "circuit_short_name": circuit,
+                "date_start": f"2026-0{race + 4}-01T13:00:00+00:00",
             }
         )
-        for car in range(drivers):
-            position = None if car == race else (car + race) % drivers + 1
-            rows.append(_result(key, position, car + 1, 25.0, dnf=position is None))
-            roster += _driver(
-                car + 1, f"D{car:02d}", "Alexander ANTONELLI-HULKENBERG", "Visa Cash App RB", key
-            )
+        for car, (code, name, team) in enumerate(_GRID_2026, start=1):
+            position = None if car % 7 == race else (car + race) % 22 + 1
+            rows.append(_result(key, position, car, 10.0, dnf=position is None))
+            roster += _driver(car, code, name, team, key)
     return {"sessions": sessions, "session_result": rows, "drivers": roster}
 
 
 def test_a_full_grids_form_stays_inside_the_synthesizer_budget(monkeypatch, no_fastf1):
-    """Twenty-two drivers over five races, with long names and a long team, as the synthesizer
-    serialises it (`indent=2`). A list of {race, position} objects per driver was 15.8 KB there."""
-    monkeypatch.setattr(openf1_client.requests, "get", make_openf1_get(_grid_of(22, 5)))
+    """Twenty-two drivers over five Grands Prix, as the synthesizer serialises it (`indent=2`):
+    about 3 KB. A list of {race, position} objects per driver came to 15.8 KB there."""
+    monkeypatch.setattr(openf1_client.requests, "get", make_openf1_get(_full_grid()))
 
-    result = _form(as_of="2026-09-01T00:00:00+00:00")
+    result = _form(as_of="2026-10-01T00:00:00+00:00")
 
     assert len(result["drivers"]) == 22
     rendered = json.dumps([{"tool": "get_driver_form", "success": True, "data": result}], indent=2)
-    assert len(rendered) < 3_500
+    assert len(rendered) < 3_600

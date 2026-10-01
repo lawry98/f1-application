@@ -6,6 +6,7 @@ the one being briefed — must not reach the prompt.
 """
 
 import logging
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
@@ -14,8 +15,13 @@ from langchain_core.tools import tool
 
 from tools.circuit_winners import circuit_record, events_at_circuit
 from tools.cutoff import parse_utc
-from tools.fastf1_helpers import format_position, load_race_session, race_start
-from tools.openf1_client import OPENF1_FIRST_YEAR, driver_index, session_results
+from tools.fastf1_helpers import load_race_session, race_start
+from tools.openf1_client import (
+    OPENF1_FIRST_YEAR,
+    driver_index,
+    drivers_by_session,
+    session_results,
+)
 from tools.openf1_races import held_races, race_session_at
 from tools.openf1_shaping import derive_status, race_result_rows
 from tools.schedule_cache import get_schedule
@@ -174,50 +180,93 @@ def get_recent_race_results(track_id: str | None, as_of: str) -> dict[str, Any]:
         return {"error": f"Failed to get race results: {exc}"}
 
 
-FormRows = tuple[list[dict[str, Any]], int]
+# A Grand Prix result is a classified place, or why there is none.
+Result = int | str
+
+# FastF1's ``ClassifiedPosition`` for a car with no classified place. ``Position`` cannot say: a
+# retired car keeps its place in the finishing order (17-20 in a real 2022 load), not 0.
+_FASTF1_UNCLASSIFIED = {"R": "DNF", "N": "DNF", "D": "DSQ", "E": "DSQ", "W": "DNS", "F": "DNS"}
 
 
-def _openf1_form(driver_code: str, year: int, cutoff: datetime, wanted: int) -> FormRows:
-    """The driver's results in the last ``wanted`` held races of ``year`` before ``cutoff``, and
-    how many races that was, from OpenF1. Raises; the caller falls back to FastF1.
+@dataclass(frozen=True)
+class _Finish:
+    """One driver's Grand Prix: who, for whom, and how it ended."""
+
+    code: str
+    name: str
+    team: str
+    result: Result
+    points: float
+
+
+@dataclass(frozen=True)
+class _GrandPrix:
+    year: int
+    label: str
+    finishes: list[_Finish]
+
+
+def _openf1_result(row: dict[str, Any]) -> Result:
+    """A classified place wins over the ``dnf`` flag: a car that ran 90% of the distance is
+    classified though it retired (Bottas, Baku 2026: ``position: 16``, ``dnf: True``). An
+    unclassified one carries ``position: None``."""
+    status = derive_status(row)
+    if status in ("DSQ", "DNS"):
+        return status
+    position = row.get("position")
+    return position if isinstance(position, int) and position > 0 else "DNF"
+
+
+def _openf1_grands_prix(year: int, cutoff: datetime, wanted: int) -> tuple[list[_GrandPrix], int]:
+    """The last ``wanted`` held Grands Prix of ``year`` before ``cutoff``, every car in each, and
+    how many that was. Raises; the caller falls back to FastF1.
+
+    Costs nothing a briefing has not already asked for. The results span is ``held_races``',
+    which standings and the top finishers share, and the roster is drawn from the season's
+    held races rather than the window's because that is the ``drivers`` span
+    ``get_recent_top_finishers`` requests.
     """
     races, rows = held_races(year, cutoff)
-    races = races[-wanted:]
     if not races:
         return [], 0
-    keys = {race["session_key"] for race in races}
-    drivers = driver_index(keys)
-    number = next(
-        (n for n, ident in drivers.items() if ident["name_acronym"] == driver_code),
-        None,
-    )
-    by_session = {
-        row["session_key"]: row
-        for row in rows
-        if row.get("session_key") in keys and row.get("driver_number") == number
-    }
+    drivers = drivers_by_session({race["session_key"] for race in races})
+    window = races[-wanted:]
 
-    results = []
-    for race in races:
-        row = by_session.get(race["session_key"])
-        if row is None:
-            continue
-        results.append(
-            {
-                "year": year,
-                "event": race["circuit_short_name"],
-                "position": format_position(row.get("position") or 0),
-                "points": float(row.get("points") or 0.0),
-                "status": derive_status(row),
-            }
-        )
-    return results, len(races)
+    by_session: dict[int, list[dict[str, Any]]] = {}
+    for row in rows:
+        by_session.setdefault(row.get("session_key"), []).append(row)
+
+    grands_prix = []
+    for race in window:
+        key = race["session_key"]
+        finishes = []
+        for row in by_session.get(key, []):
+            number = row.get("driver_number")
+            identity = drivers.get((key, number))
+            if identity is None:
+                continue
+            finishes.append(
+                _Finish(
+                    code=identity["name_acronym"] or f"#{number}",
+                    name=identity["full_name"],
+                    team=identity["team_name"],
+                    result=_openf1_result(row),
+                    points=float(row.get("points") or 0.0),
+                )
+            )
+        grands_prix.append(_GrandPrix(year, race["circuit_short_name"], finishes))
+    return grands_prix, len(window)
 
 
-def _fastf1_form(driver_code: str, year: int, cutoff: datetime, wanted: int) -> FormRows:
-    """The same from FastF1: one session load per race, ~2.4s each. A race whose session will
-    not load is dropped from the form rather than sinking the tool. Raises on a schedule
-    failure."""
+def _fastf1_result(row: pd.Series) -> Result:
+    classified = str(row["ClassifiedPosition"])
+    return int(classified) if classified.isdigit() else _FASTF1_UNCLASSIFIED.get(classified, "DNF")
+
+
+def _fastf1_grands_prix(year: int, cutoff: datetime, wanted: int) -> tuple[list[_GrandPrix], int]:
+    """The same from FastF1: one session load per race, 1.5-1.9s each (five measured at 8.1s,
+    inside the fan-out's 25s). A race whose session will not load is dropped from the window
+    rather than sinking the tool. Raises on a schedule failure."""
     schedule = get_schedule(year)
     events = [
         event
@@ -225,47 +274,87 @@ def _fastf1_form(driver_code: str, year: int, cutoff: datetime, wanted: int) -> 
         if int(event["RoundNumber"]) != 0 and race_start(event) < cutoff
     ][-wanted:]
 
-    results = []
+    grands_prix = []
     for event in events:
         try:
-            session = load_race_session(year, int(event["RoundNumber"]))
-            driver_result = session.results[session.results["Abbreviation"] == driver_code]
-        except Exception:
-            continue
-        if driver_result.empty:
-            continue
-        result_data = driver_result.iloc[0]
-        results.append(
-            {
-                "year": year,
-                "event": event["EventName"],
-                "position": format_position(result_data["Position"]),
-                "points": float(result_data["Points"]),
-                "status": result_data["Status"],
-            }
-        )
-    return results, len(events)
-
-
-def _season_form(driver_code: str, year: int, cutoff: datetime, wanted: int) -> FormRows:
-    """One season's contribution: ``(results, races counted)``, OpenF1 first where covered."""
-    if year >= OPENF1_FIRST_YEAR:
-        try:
-            return _openf1_form(driver_code, year, cutoff, wanted)
+            results = load_race_session(year, int(event["RoundNumber"])).results
         except Exception as exc:
             logger.warning(
-                "OpenF1 driver form for %s %d failed (%s: %s); falling back to FastF1",
-                driver_code,
+                "FastF1 results for %s %d failed (%s); left out of driver form",
+                event["EventName"],
+                year,
+                exc,
+            )
+            continue
+        finishes = [
+            _Finish(
+                code=row["Abbreviation"],
+                name=row["FullName"],
+                team=row["TeamName"],
+                result=_fastf1_result(row),
+                points=float(row["Points"]),
+            )
+            for _, row in results.iterrows()
+        ]
+        label = str(event["EventName"]).replace(" Grand Prix", " GP")
+        grands_prix.append(_GrandPrix(year, label, finishes))
+    return grands_prix, len(events)
+
+
+def _season_grands_prix(year: int, cutoff: datetime, wanted: int) -> tuple[list[_GrandPrix], int]:
+    """One season's contribution and how many races it counted, OpenF1 first where covered."""
+    if year >= OPENF1_FIRST_YEAR:
+        try:
+            return _openf1_grands_prix(year, cutoff, wanted)
+        except Exception as exc:
+            logger.warning(
+                "OpenF1 driver form for %d failed (%s: %s); falling back to FastF1",
                 year,
                 type(exc).__name__,
                 exc,
             )
-    return _fastf1_form(driver_code, year, cutoff, wanted)
+    return _fastf1_grands_prix(year, cutoff, wanted)
+
+
+def _form_row(code: str, entries: list[tuple[_GrandPrix, _Finish]], window: int) -> str:
+    """One driver's form as one line — compact enough that a whole grid is ~3 KB."""
+    latest = entries[-1][1]
+    earlier = list(dict.fromkeys(f.team for _, f in entries if f.team != latest.team))
+    team = latest.team + (f" (earlier {', '.join(earlier)})" if earlier else "")
+    finishes = ", ".join(
+        f"{gp.label} {'P' if isinstance(f.result, int) else ''}{f.result}" for gp, f in entries
+    )
+    places = [f.result for _, f in entries if isinstance(f.result, int)]
+    average = f"avg P{sum(places) / len(places):.1f}" if places else "no classified finish"
+    points = sum(f.points for _, f in entries)
+    dnfs = sum(1 for _, f in entries if f.result == "DNF")
+    return (
+        f"{code} {latest.name}, {team}: {finishes} | {points:g} pts, {average}, "
+        f"{dnfs} DNF, {len(entries)}/{window} races"
+    )
+
+
+def _form_rows(window: list[_GrandPrix]) -> list[str]:
+    """A row for every driver who started at least one Grand Prix in the window, by points,
+    then average finish. Keyed by acronym, never car number, which can change hands."""
+    entries: dict[str, list[tuple[_GrandPrix, _Finish]]] = {}
+    for gp in window:
+        for finish in gp.finishes:
+            entries.setdefault(finish.code, []).append((gp, finish))
+
+    def standing(code: str) -> tuple[float, float, str]:
+        finishes = [f for _, f in entries[code]]
+        places = [f.result for f in finishes if isinstance(f.result, int)]
+        average = sum(places) / len(places) if places else float("inf")
+        return (-sum(f.points for f in finishes), average, code)
+
+    started = [code for code, rows in entries.items() if any(f.result != "DNS" for _, f in rows)]
+    return [_form_row(code, entries[code], len(window)) for code in sorted(started, key=standing)]
 
 
 @tool
-def get_driver_form(driver_code: str, as_of: str, num_races: int = 5) -> dict[str, Any]:
-    """Get a driver's last N race results before the briefing's cutoff.
+def get_driver_form(as_of: str, num_races: int = 5) -> dict[str, Any]:
+    """Get every driver's results in the last N Grands Prix before the briefing's cutoff.
 
     Races are counted back from ``as_of``: the cutoff's own season first, reaching into the
     previous one only when too few had run — so early-season form is last season's tail, and
@@ -275,39 +364,34 @@ def get_driver_form(driver_code: str, as_of: str, num_races: int = 5) -> dict[st
     alongside race results on the 25-point scale would distort both the points total and
     the average finish.
 
+    Each driver is one line rather than an object: the synthesizer serialises tool data with
+    ``indent=2``, where a list of ``{race, position}`` objects for 22 drivers came to 15.8 KB.
+
     Args:
-        driver_code: Three-letter driver abbreviation (e.g., 'VER', 'HAM', 'LEC').
         as_of: The briefing's ISO-8601 cutoff; only races that started before it count.
-        num_races: Number of recent races to analyse (default: 5).
+        num_races: Number of recent Grands Prix to cover (default: 5).
 
     Returns:
-        The driver's recent results oldest first, each with its season, plus ``seasons``;
-        or an 'error' key on failure.
+        ``seasons``, ``grands_prix`` (oldest first, each with its season) and ``drivers``: one
+        line per driver who started any of them — code, name, team, each race's result
+        (``P<n>``, ``DNF``, ``DNS`` or ``DSQ``), points, average classified finish, DNFs and
+        races entered; or an 'error' key on failure.
     """
     try:
         cutoff = parse_utc(as_of)
-        results: list[dict[str, Any]] = []
-        seasons: list[int] = []
+        window: list[_GrandPrix] = []
         counted = 0
         for year in (cutoff.year, cutoff.year - 1):
             if counted >= num_races:
                 break
-            season_results, season_count = _season_form(
-                driver_code, year, cutoff, num_races - counted
-            )
-            results = season_results + results
+            grands_prix, season_count = _season_grands_prix(year, cutoff, num_races - counted)
+            window = grands_prix + window
             counted += season_count
-            if season_count:
-                seasons.insert(0, year)
+        return {
+            "seasons": sorted({gp.year for gp in window}),
+            "grands_prix": [f"{gp.year} {gp.label}" for gp in window],
+            "drivers": _form_rows(window),
+        }
     except Exception as exc:
-        logger.warning("Driver form for %s failed (%s: %s)", driver_code, type(exc).__name__, exc)
+        logger.warning("Driver form as of %s failed (%s: %s)", as_of, type(exc).__name__, exc)
         return {"error": f"Failed to get driver form: {exc}"}
-
-    numeric = [r["position"] for r in results if isinstance(r["position"], int)]
-    return {
-        "driver": driver_code,
-        "seasons": seasons,
-        "recent_results": results,
-        "total_points_last_races": float(sum(r["points"] for r in results)),
-        "average_finish": sum(numeric) / len(numeric) if numeric else None,
-    }

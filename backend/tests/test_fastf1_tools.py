@@ -363,11 +363,11 @@ def test_driver_form_reads_fastf1_before_2023_and_asks_openf1_nothing(monkeypatc
         "grands_prix": ["2022 Saudi Arabian GP", "2022 Australian GP"],
         "drivers": [
             "LEC Charles Leclerc, Ferrari: Saudi Arabian GP P2, Australian GP P1"
-            " | 44 pts, avg finish 1.5, 0 DNF, 2 of 2 races",
+            " | 44 pts, avg P1.5, 0 DNF, 2/2 races",
             "VER Max Verstappen, Red Bull Racing: Saudi Arabian GP P1, Australian GP DNF"
-            " | 25 pts, avg finish 1.0, 1 DNF, 2 of 2 races",
+            " | 25 pts, avg P1.0, 1 DNF, 2/2 races",
             "SAI Carlos Sainz, Ferrari: Saudi Arabian GP P3, Australian GP DNF"
-            " | 15 pts, avg finish 3.0, 1 DNF, 2 of 2 races",
+            " | 15 pts, avg P3.0, 1 DNF, 2/2 races",
         ],
     }
     assert openf1.calls == []
@@ -393,10 +393,10 @@ def test_driver_form_crosses_into_the_previous_season_on_fastf1(monkeypatch):
 
     assert result["seasons"] == [2021, 2022]
     assert result["grands_prix"] == ["2021 Abu Dhabi GP", "2022 Bahrain GP"]
-    assert result["drivers"][0] == (
+    assert (
         "VER Max Verstappen, Red Bull Racing: Abu Dhabi GP P1, Bahrain GP DNF"
-        " | 26 pts, avg finish 1.0, 1 DNF, 2 of 2 races"
-    )
+        " | 26 pts, avg P1.0, 1 DNF, 2/2 races"
+    ) in result["drivers"]
 
 
 def test_driver_form_reads_every_fastf1_classification_code(monkeypatch):
@@ -427,11 +427,11 @@ def test_driver_form_reads_every_fastf1_classification_code(monkeypatch):
     rows = _form("2022-04-15T00:00:00+00:00", num_races=2)["drivers"]
 
     assert [row.split(": ", 1)[1] for row in rows] == [
-        "Saudi Arabian GP P1, Australian GP DNF | 25 pts, avg finish 1.0, 1 DNF, 2 of 2 races",
-        "Saudi Arabian GP DNF, Australian GP P2 | 18 pts, avg finish 2.0, 1 DNF, 2 of 2 races",
-        "Saudi Arabian GP DNS, Australian GP P3 | 15 pts, avg finish 3.0, 0 DNF, 2 of 2 races",
-        "Saudi Arabian GP DNS, Australian GP P4 | 12 pts, avg finish 4.0, 0 DNF, 2 of 2 races",
-        "Saudi Arabian GP DSQ, Australian GP DSQ | 0 pts, no classified finish, 0 DNF, 2 of 2 races",
+        "Saudi Arabian GP P1, Australian GP DNF | 25 pts, avg P1.0, 1 DNF, 2/2 races",
+        "Saudi Arabian GP DNF, Australian GP P2 | 18 pts, avg P2.0, 1 DNF, 2/2 races",
+        "Saudi Arabian GP DNS, Australian GP P3 | 15 pts, avg P3.0, 0 DNF, 2/2 races",
+        "Saudi Arabian GP DNS, Australian GP P4 | 12 pts, avg P4.0, 0 DNF, 2/2 races",
+        "Saudi Arabian GP DSQ, Australian GP DSQ | 0 pts, no classified finish, 0 DNF, 2/2 races",
     ]
 
 
@@ -450,7 +450,7 @@ def test_driver_form_drops_a_race_whose_session_will_not_load(monkeypatch):
 
     assert result["grands_prix"] == ["2022 Australian GP"]
     assert result["drivers"] == [
-        "LEC Charles Leclerc, Ferrari: Australian GP P1 | 26 pts, avg finish 1.0, 0 DNF, 1 of 1 races"
+        "LEC Charles Leclerc, Ferrari: Australian GP P1 | 26 pts, avg P1.0, 0 DNF, 1/1 races"
     ]
 
 
@@ -478,7 +478,7 @@ def test_driver_form_falls_back_to_fastf1_when_openf1_fails(monkeypatch):
     assert result["grands_prix"] == ["2024 Bahrain GP", "2024 Saudi Arabian GP"]
     assert result["drivers"] == [
         "VER Max Verstappen, Red Bull Racing: Bahrain GP P1, Saudi Arabian GP P1"
-        " | 51 pts, avg finish 1.0, 0 DNF, 2 of 2 races"
+        " | 51 pts, avg P1.0, 0 DNF, 2/2 races"
     ]
 
 

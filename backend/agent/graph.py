@@ -57,7 +57,7 @@ all_tools = [
 # is no eviction.
 #
 # The key is the tool's args and nothing else. The five tools whose answer moves with the
-# calendar — the latest race here, the latest race anywhere, the last N races, the winners
+# calendar — the latest race here, the latest race anywhere, every driver's last N, the winners
 # window, the standings table — all take the briefing's `as_of`, and that is their date
 # component. An upcoming race's `as_of` is the start of today, so its key rolls over daily
 # and a new race weekend is picked up the day after it is held — what a separate
@@ -312,8 +312,8 @@ def _build_tool_args(task_name: str, race_info: dict) -> dict[str, Any] | None:
             "sessions": race_info["sessions"],
         }
     if task_name == "get_driver_form":
-        # Hardcoded to Verstappen — the planner prompt advertises exactly this scope.
-        return {"driver_code": "VER", "as_of": as_of, "num_races": 5}
+        # Every driver on the grid; the planner prompt advertises this window.
+        return {"as_of": as_of, "num_races": 5}
     if task_name == "get_recent_race_results":
         return {"track_id": race_info["track_id"], "as_of": as_of}
     return None
