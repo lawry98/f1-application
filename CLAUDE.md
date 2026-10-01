@@ -9,7 +9,7 @@ This file carries what you **cannot derive by reading the repo** — conventions
 ```
 backend/
   agent/       graph.py (pipeline), state.py (TypedDicts), prompts.py (LLM prompts)
-  api/         routes.py (REST + SSE endpoints), models.py (Pydantic contracts)
+  api/         app.py (the app factory), routes.py (REST + SSE endpoints), models.py (Pydantic contracts)
   tools/       Mixed — see "tools/ is not uniform" below
   config.py    Every env var read in the app happens here
 
@@ -72,6 +72,7 @@ upstream to earn a 401.
 | `BRIEFING_MAX_CONCURRENT` | Defaults to `2`; invalid, negative or `0` warns and uses `2` |
 | `BRIEFING_DEADLINE_SECONDS` | Defaults to `90`; invalid, negative or `0` warns and uses `90` |
 | `CORS_ORIGINS` | Comma-separated; defaults to `http://localhost:3000,http://localhost:3001` |
+| `EXPOSE_API_DOCS` | Off: `/docs`, `/redoc` and `/openapi.json` 404 and `/` drops its `docs` link. Only `1` turns them on (`make dev` sets it); any other value but `0` warns and stays off |
 
 `LLM_MODEL` is a **hardcoded constant** in `config.py`, not an env var — changing the model
 means editing code. That is deliberate: the prompts are written against a specific model
@@ -90,6 +91,11 @@ Frontend: `NEXT_PUBLIC_API_URL` in `frontend/.env.local`, defaults to `http://lo
 time**, so it must be set for `pnpm build`. Unset falls back to `http://localhost:3000` and warns
 once per build worker (about a dozen identical lines); a path, a non-http(s) scheme or garbage
 throws.
+
+`ENABLE_INTERNAL_ROUTES=1` serves `/candy`; unset, which is production, it is the not-found page.
+`lib/internal-routes.ts` is the only reader, and it reads per request, so a page that gates on it
+must be `force-dynamic` — a static page would read it once, at `pnpm build`, and serve that answer
+forever. `make dev` and Playwright's `webServer` set it.
 
 ## Key technical details
 
@@ -231,6 +237,21 @@ never called it and each unauthenticated request spent two Gemini calls.
 **SSE discrimination uses the `event:` line** from the SSE protocol, not field-presence
 heuristics on the payload.
 
+**Every briefing stream ends with exactly one terminal event, because the frontend reads anything
+else as a dropped connection.** A run is finished on `briefing` (authoritative; `complete` follows)
+or `error` — `complete` alone does not count. When the body ends or a read rejects first,
+`streamBriefing` yields `interrupted`, a client-side event never sent on the wire, and the page
+keeps the prose with a "connection dropped" note and Try again. So the route sends a terminal
+event on every path: an empty synthesis or a graph that stops short gets the generic error (the
+deadline's once past), the synthesizer branch `return`s after `complete` so a later failure cannot
+send a second, and a `CancelledError` is re-raised only when `asyncio.current_task().cancelling()`
+says our own task is being cancelled — a hang-up, with nobody to tell; one the graph raises itself
+gets the error event. `tests/api/test_stream_terminal_events.py` pins each path. Interrupted is not
+Truncated (ADR-0002): its own state, its own wording. Broken streams in tests are the real
+`clean.sse` cut at runtime by `tests/sse-cuts.ts`, which Vitest and Playwright both import; a
+committed cut fixture would be hand-edited bytes. `retry()` keeps the interrupted view until the
+new run's first event, so a cost-guard refusal leaves the prose, with the countdown on Try again.
+
 **FastF1 session loads hit the network every time, cache or no cache — which is why three
 result tools now read OpenF1 instead.** `backend/cache/` (gitignored) never gets populated:
 FastF1 only persists a session that loaded cleanly, and these loads never do, so warming it
@@ -273,6 +294,9 @@ OpenF1 path is `Status` fidelity: FastF1 reports *why* a car stopped ("+1 Lap", 
 OpenF1 exposes only `dnf`/`dns`/`dsq`, so `derive_status()` collapses it to
 `Finished`/`DNF`/`DNS`/`DSQ`. A real unclassified row also carries `position: None`, not `0` —
 code that coerces with `position or 0` handles this, but a naive `int(position)` will not.
+FastF1's own `Position` is the finishing order, never the classification: a retired car keeps its
+place there (2022 Italian GP: RIC/STR/ALO/VET at 17.0–20.0, `ClassifiedPosition` `"R"`), so every
+FastF1 path reads a finishing place through `fastf1_helpers.classified_position`.
 
 **The `requests` range-query encoding trap cost four tasks of this migration.** OpenF1's filter
 syntax is `session_key>=11334`. Passing `params={"session_key>=": v}` makes `requests`
@@ -874,7 +898,9 @@ required CI check (`browser` job). Things that are not guessable:
 - **The route sweeps are hand-written lists, not discovered.** `focus-rings.spec.ts`,
   `a11y-smoke.spec.ts` and `invisible-text.spec.ts` each name their routes literally; a new
   route is covered only once it is added to all three. `/candy` stays out of the focus sweep
-  because it has no focusable controls by design.
+  because it has no focusable controls by design. The suite's server sets
+  `ENABLE_INTERNAL_ROUTES=1` so the sweeps reach `/candy` at all; `internal-routes.spec.ts` starts
+  a second `next start` without it to pin the production side.
 
 ### Backend
 

@@ -10,6 +10,11 @@ export function fixture(name: FixtureName): Uint8Array {
   return new TextEncoder().encode(FIXTURES[name]);
 }
 
+/** The same bytes as text, for cutting with `sse-cuts.ts`. */
+export function fixtureText(name: FixtureName): string {
+  return FIXTURES[name];
+}
+
 /** One SSE frame, ready to be pushed through a {@link ChunkFeed}. */
 export function frame(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -27,6 +32,9 @@ export class ChunkFeed {
   private readonly queued: ReadableStreamReadResult<Uint8Array>[] = [];
   private waiting: ((result: ReadableStreamReadResult<Uint8Array>) => void) | null = null;
 
+  private failure: unknown = null;
+  private failWaiting: ((error: unknown) => void) | null = null;
+
   push(text: string): void {
     this.deliver({ done: false, value: new TextEncoder().encode(text) });
   }
@@ -35,10 +43,23 @@ export class ChunkFeed {
     this.deliver({ done: true, value: undefined });
   }
 
+  /**
+   * Reject the pending read, and every later one, with `error` — what `reader.read()` does when
+   * the connection drops mid-body, or when the request's own signal aborts it.
+   */
+  fail(error: unknown): void {
+    this.failure = error;
+    const failWaiting = this.failWaiting;
+    this.waiting = null;
+    this.failWaiting = null;
+    failWaiting?.(error);
+  }
+
   private deliver(result: ReadableStreamReadResult<Uint8Array>): void {
     const waiting = this.waiting;
     if (waiting) {
       this.waiting = null;
+      this.failWaiting = null;
       waiting(result);
       return;
     }
@@ -48,14 +69,22 @@ export class ChunkFeed {
   private read(): Promise<ReadableStreamReadResult<Uint8Array>> {
     const next = this.queued.shift();
     if (next) return Promise.resolve(next);
-    return new Promise((resolve) => {
+    if (this.failure !== null) return Promise.reject(this.failure);
+    return new Promise((resolve, reject) => {
       this.waiting = resolve;
+      this.failWaiting = reject;
     });
   }
 
-  /** A `fetch` stand-in that serves this feed as the response body. */
-  fetch = (): Promise<Response> =>
-    Promise.resolve({
+  /**
+   * A `fetch` stand-in that serves this feed as the response body. Like real `fetch`, an abort
+   * of the request's signal rejects the read in flight with an `AbortError`.
+   */
+  fetch = (_input?: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    init?.signal?.addEventListener('abort', () =>
+      this.fail(new DOMException('The operation was aborted.', 'AbortError')),
+    );
+    return Promise.resolve({
       ok: true,
       body: {
         getReader: () => ({
@@ -65,6 +94,7 @@ export class ChunkFeed {
         }),
       },
     } as unknown as Response);
+  };
 }
 
 /** A `fetch` stand-in that serves `bytes` in fixed-size chunks, then closes. */

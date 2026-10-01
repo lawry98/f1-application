@@ -337,9 +337,16 @@ async def generate_briefing_stream(
                             "event": "complete",
                             "data": json.dumps({"message": "Briefing complete"}),
                         }
+                        # The run is over for the reader. Whatever the graph does after its
+                        # last node — fail included — must not send a second terminal event.
+                        return
 
-            # A run that ended without a terminal event — no briefing, no error — failed.
-            outcome = outcome or "error"
+            # The graph ran out without a terminal event of ours: a synthesis that produced no
+            # prose, or a graph that never reached the synthesizer. Ending quietly would show
+            # the reader a dropped connection when the server is what failed.
+            outcome, event = _failure_event(run)
+            logger.error("Briefing graph ended without a briefing (outcome=%s)", outcome)
+            yield event
 
         except _BackstopReachedError:
             logger.warning(
@@ -356,17 +363,26 @@ async def generate_briefing_stream(
             else:
                 outcome = "deadline"
                 yield _deadline_event()
+        except asyncio.CancelledError:
+            task = asyncio.current_task()
+            if task is not None and task.cancelling():
+                # Our own task is being cancelled — how sse-starlette ends a response whose
+                # client hung up. Nobody is left to read an event.
+                raise
+            # Raised by the graph of its own accord (a future cancelled inside it) while the
+            # reader is still connected: a failure like any other.
+            outcome, event = _failure_event(run)
+            logger.exception("Briefing graph raised CancelledError (outcome=%s)", outcome)
+            yield event
         except Exception as exc:
-            if run.past_deadline:
-                # The synthesizer raises when it is stopped with no prose; past the deadline
-                # that is the deadline, not "something went wrong".
-                outcome = "deadline"
+            # The synthesizer raises when it is stopped with no prose; past the deadline that
+            # is the deadline, not "something went wrong".
+            outcome, event = _failure_event(run)
+            if outcome == "deadline":
                 logger.warning("Briefing stream stopped at the deadline: %s", exc)
-                yield _deadline_event()
             else:
-                outcome = "error"
                 logger.exception("Error during briefing stream generation: %s", exc)
-                yield {"event": "error", "data": json.dumps({"message": GENERIC_BRIEFING_ERROR})}
+            yield event
         finally:
             run.finish(outcome or "disconnected")
 
@@ -380,6 +396,14 @@ def _deadline_event() -> dict[str, str]:
         "event": "error",
         "data": json.dumps({"message": BRIEFING_DEADLINE_ERROR, "code": "deadline"}),
     }
+
+
+def _failure_event(run: _BriefingRun) -> tuple[str, dict[str, str]]:
+    """The outcome and terminal event for a run ending with no briefing: the deadline's once it
+    has passed, the generic error before."""
+    if run.past_deadline:
+        return "deadline", _deadline_event()
+    return "error", {"event": "error", "data": json.dumps({"message": GENERIC_BRIEFING_ERROR})}
 
 
 def _race_row(event: Any) -> dict[str, Any]:

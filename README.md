@@ -126,6 +126,11 @@ pnpm dev
 
 Frontend runs on `http://localhost:3000`.
 
+Two internal surfaces are off unless asked for: the API docs (`/docs`, `/redoc`,
+`/openapi.json`) need `EXPOSE_API_DOCS=1` on the backend, and the `/candy` styleguide needs
+`ENABLE_INTERNAL_ROUTES=1` on the frontend. `make dev` sets both; with the commands above,
+prefix them (`EXPOSE_API_DOCS=1 uvicorn …`, `ENABLE_INTERNAL_ROUTES=1 pnpm dev`).
+
 ### Or use the Makefile
 
 `make dev` does both setups above and starts both servers. Run `make` on its own for the
@@ -133,7 +138,7 @@ full target list.
 
 | Target | Does |
 |---|---|
-| `make dev` | Both servers — backend on `:8000`, frontend on `:3000` |
+| `make dev` | Both servers — backend on `:8000`, frontend on `:3000`, with the internal surfaces on |
 | `make backend` / `make frontend` | One server |
 | `make install` | `.venv` + `requirements*.txt`, then `pnpm install` |
 | `make lint` `make format` `make typecheck` `make test` | Checks, both platforms |
@@ -329,6 +334,8 @@ Deploying it:
   ```
 
   Without it every visitor shares the proxy's address, and so its one hourly allowance.
+- **Leave `EXPOSE_API_DOCS` and `ENABLE_INTERNAL_ROUTES` unset.** Off is the default: the API
+  docs 404 and `/candy` is the not-found page.
 - **Set `CORS_ORIGINS`** to the deployed frontend. The API exposes `Retry-After` to it, so the
   page can read a refusal cross-origin.
 - **Set `NEXT_PUBLIC_SITE_URL`** to the frontend's public origin, with no path, **before
