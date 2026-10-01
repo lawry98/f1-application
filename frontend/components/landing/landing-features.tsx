@@ -31,7 +31,7 @@ const FEATURES = [
     icon: Cloud,
     title: 'Race Weather Forecast',
     description:
-      'OpenWeather integration pulls the race-weekend forecast for the correct circuit location — temperature, humidity, wind, and conditions that could shape strategy.',
+      'OpenWeather integration pulls the race-day forecast at the circuit in three-hour steps — temperature, humidity, wind, and chance of rain. It reaches five days ahead; ask sooner than that and the briefing says the forecast is not out yet.',
   },
   {
     icon: Layers,
