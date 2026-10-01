@@ -74,3 +74,14 @@ export const focusRingOffsetBaseWarm = `${focusRing} focus-visible:ring-offset-2
  */
 export const focusRingOnRedFill =
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2';
+
+/**
+ * A 2px `ink` ring painted flush, for a control inside a **red-tinted surface** that is not
+ * itself red — the error box's `bg-red-900/20` over the page.
+ *
+ * Computed against `#7f1d1d` at 0.20 over the page's `#212124` composite, the default red ring is
+ * 3.07:1 — over WCAG 2.4.11's 3:1, but only just, and beside the box's own red border it reads as
+ * part of the border. `ink` is 13.8:1. No offset, because no offset token names a translucent red.
+ */
+export const focusRingInk =
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink';

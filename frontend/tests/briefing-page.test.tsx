@@ -22,7 +22,7 @@ import { EYEBROW_RED } from '@/lib/tyre-utils';
 import { restingTextNeutrals, ZINC } from './zinc';
 
 vi.mock('@/components/briefing/briefing-chat', () => ({
-  BriefingChat: () => <div data-testid="briefing-chat" />,
+  BriefingChatFromUrl: () => <div data-testid="briefing-chat" />,
 }));
 
 vi.mock('@/components/landing/landing-nav', () => ({

@@ -1,10 +1,18 @@
 'use client';
 
+import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { CircuitGlow } from '@/components/candy/circuit-glow';
 import { RedactedReveal } from '@/components/candy/redacted-reveal';
-import { focusRing, focusRingOnRedFill } from '@/lib/focus';
+import {
+  calendarYearOf,
+  exampleForFailure,
+  exampleHref,
+  featuredExample,
+} from '@/lib/briefing-examples';
+import { focusRing, focusRingInk, focusRingOnRedFill } from '@/lib/focus';
 import { useBriefing } from '@/hooks/use-briefing';
 import { useRaces, roundFor } from '@/hooks/use-races';
 import { formatCountdown, noticeAnnouncement, noticeMessage } from '@/lib/briefing-notice';
@@ -13,6 +21,7 @@ import { cn } from '@/lib/utils';
 import monaco from '@/data/circuits/mc-1929.json';
 import { BriefingCard } from './briefing-card';
 import { BriefingCircuitBand } from './briefing-circuit-band';
+import { BriefingExampleView, SavedExampleOffer } from './briefing-example';
 import { BriefingLoader } from './briefing-loader';
 import { InterruptedNote } from './interrupted-note';
 import { ToolTrace } from './tool-trace';
@@ -31,9 +40,22 @@ import { RaceSelector } from './race-selector';
  */
 const MONACO_POINTS = toPoints(monaco.points);
 
-export function BriefingChat() {
+export interface BriefingChatProps {
+  /**
+   * The saved example to show instead of a live briefing — `/briefing?example=<id>`. Read from
+   * the URL by {@link BriefingChatFromUrl}, never seeded into state: the URL is the one source,
+   * the rule `/standings` learnt the hard way (see CLAUDE.md).
+   */
+  exampleId?: string | null;
+}
+
+/** The example the page links to from under the input; `null` when none is committed. */
+const FEATURED_EXAMPLE = featuredExample();
+
+export function BriefingChat({ exampleId = null }: BriefingChatProps) {
   const {
     query,
+    lastQuery,
     loading,
     race,
     raceInfo,
@@ -60,9 +82,35 @@ export function BriefingChat() {
   // headline row — exist only when the requested race happened to be one of the next six events.
   const { races, upcoming, loading: racesLoading } = useRaces();
 
+  // The saved example replaces every live block below the form while the URL names one.
+  const live = exampleId === null;
+
+  /*
+   * A run that could not finish — refused, out of time, failed, cut before any prose, or never
+   * reached the backend — offers the saved example for its race, so the demo never dead-ends.
+   * Once, in the first of its boxes on screen: a refused retry shows the notice and the
+   * interrupted note together. A truncated briefing offers nothing: it finished, with what it
+   * had (ADR-0002), and so does an interrupted one that kept prose.
+   */
+  const cutBeforeProse = interrupted && !briefing;
+  const offer =
+    !loading && (error !== '' || notice !== null || cutBeforeProse)
+      ? exampleForFailure(raceInfo, lastQuery, calendarYearOf(startedAt))
+      : null;
+  const offerIn = !offer ? null : error ? 'error' : notice ? 'notice' : 'interrupted';
+
+  /**
+   * Starting a live run leaves the example view. The URL is the only write, as on `/standings`:
+   * `useSearchParams()` follows Next's patched `replaceState`, so the view goes with it.
+   */
+  const start = (searchQuery?: string): void => {
+    if (!live) window.history.replaceState(null, '', '/briefing');
+    void submit(searchQuery);
+  };
+
   const handleRaceSelect = (raceName: string): void => {
     setQuery(raceName);
-    submit(raceName);
+    start(raceName);
   };
 
   return (
@@ -81,7 +129,7 @@ export function BriefingChat() {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && submit()}
+            onKeyDown={(e) => e.key === 'Enter' && start()}
             placeholder="Enter a circuit name (e.g., 'Monaco', 'Silverstone', 'Spa')"
             /*
              * `placeholder:text-zinc-400`, measured against the field's **own** `bg-zinc-800`
@@ -113,7 +161,7 @@ export function BriefingChat() {
             aria-label="Circuit name"
           />
           <Button
-            onClick={() => submit()}
+            onClick={() => start()}
             disabled={loading || waiting || !query.trim()}
             className={cn(
               'bg-f1-red font-semibold text-white hover:bg-red-700 disabled:bg-zinc-700',
@@ -141,7 +189,32 @@ export function BriefingChat() {
                 : 'Generate'}
           </Button>
         </div>
+
+        {FEATURED_EXAMPLE && (
+          /*
+           * For a visitor who only wants to look. `zinc-300` on the form card's `bg-zinc-900` is
+           * 12:1; the ring is the flush red one, painted on that same card at 3.57:1, as for the
+           * field and the chips above. A fixed 13px, never a breakpoint `text-base` (CLAUDE.md).
+           */
+          <p className="mt-3 text-[13px]">
+            <Link
+              href={exampleHref(FEATURED_EXAMPLE.id)}
+              className={cn(
+                'rounded-sm text-zinc-300 underline decoration-zinc-500 underline-offset-4 hover:text-ink',
+                focusRing,
+              )}
+            >
+              See an example briefing
+            </Link>
+            <span className="text-zinc-300" aria-hidden="true">
+              {' '}
+              →
+            </span>
+          </p>
+        )}
       </div>
+
+      {!live && <BriefingExampleView id={exampleId} />}
 
       {/*
         **Mounted from the moment the run starts, not from the moment `race_info` lands.** The
@@ -156,7 +229,7 @@ export function BriefingChat() {
         put the same list on the wire twice. The join takes `raceInfo.year` because a Grand Prix
         keeps its name for decades — without it, "Monaco 1988" is handed this season's round.
       */}
-      {(loading || raceInfo) && (
+      {live && (loading || raceInfo) && (
         <BriefingCircuitBand
           raceInfo={raceInfo}
           round={raceInfo ? roundFor(races, raceInfo.name, raceInfo.year) : null}
@@ -165,7 +238,7 @@ export function BriefingChat() {
       )}
 
       {/* Not over an interrupted run: a retry keeps its note on screen until the server admits it. */}
-      {loading && !briefing && !interrupted && (
+      {live && loading && !briefing && !interrupted && (
         <BriefingLoader
           race={race}
           step={step}
@@ -176,21 +249,26 @@ export function BriefingChat() {
         />
       )}
 
-      {error && (
-        <div className="mb-8 rounded-lg border border-red-800 bg-red-900/20 p-4" role="alert">
+      {live && error && (
+        <div className="mb-8 rounded-lg border border-red-800 bg-red-900/20 p-4">
           {/* The emoji is gone across this page — the empty state's car, the trace's wrench and
               the card's flag all went with it. A 2px red rule carries the same "this is the bad
               one" signal at any font size and does not read as a different voice from the rest of
               the page. `text-red-400` stays: measured at 5.49:1 over `bg-red-900/20` composited on
               this page's topo backdrop, it clears AA with room, so there was nothing to fix. */}
-          <p className="flex items-start gap-3 text-red-400">
+          <p className="flex items-start gap-3 text-red-400" role="alert">
             <span className="mt-1.5 h-4 w-0.5 shrink-0 rounded-full bg-f1-red" aria-hidden="true" />
             {error}
           </p>
+          {/* Outside the alert, so the alert says what went wrong and nothing else. The ink ring,
+              because the red one is 3.07:1 on this red-tinted box (`lib/focus.ts`). */}
+          {offer && offerIn === 'error' && (
+            <SavedExampleOffer example={offer} ringClassName={focusRingInk} className="ml-3.5 mt-3" />
+          )}
         </div>
       )}
 
-      {notice && (
+      {live && notice && (
         /*
          * The cost guard's refusal — busy, or a limit spent. Not a failure, so it is neither the
          * red box above nor `role="alert"`: `role="status"` is a polite live region, and the copy
@@ -206,16 +284,21 @@ export function BriefingChat() {
          * breakpoint `text-base` — that is this theme's colour token and paints the text
          * `#09090b` (see CLAUDE.md).
          */
-        <div className="mb-8 rounded-lg border border-zinc-700 bg-zinc-900 p-4" role="status">
-          <p className="flex items-start gap-3 text-zinc-300">
+        <div className="mb-8 rounded-lg border border-zinc-700 bg-zinc-900 p-4">
+          <p className="flex items-start gap-3 text-zinc-300" role="status">
             <span className="mt-1.5 h-4 w-0.5 shrink-0 rounded-full bg-zinc-500" aria-hidden="true" />
             <span aria-hidden="true">{noticeMessage(notice, retryInSeconds)}</span>
             <span className="sr-only">{noticeAnnouncement(notice)}</span>
           </p>
+          {/* Outside the live region: the countdown beside it repaints every second, and the
+              offer is not news each time. The red ring sits flush on this opaque zinc-900, 3.57:1. */}
+          {offer && offerIn === 'notice' && (
+            <SavedExampleOffer example={offer} ringClassName={focusRing} className="ml-3.5 mt-3" />
+          )}
         </div>
       )}
 
-      {briefing && (
+      {live && briefing && (
         <>
           <BriefingCard race={race} briefing={briefing} truncated={truncated} loading={loading} />
           {interrupted && (
@@ -232,17 +315,21 @@ export function BriefingChat() {
         </>
       )}
 
-      {interrupted && !briefing && (
+      {live && cutBeforeProse && (
         <InterruptedNote
           hasProse={false}
           onRetry={() => void retry()}
           loading={loading}
           waitSeconds={waiting ? retryInSeconds : null}
           className="mb-8"
-        />
+        >
+          {offer && offerIn === 'interrupted' && (
+            <SavedExampleOffer example={offer} ringClassName={focusRing} className="ml-3.5" />
+          )}
+        </InterruptedNote>
       )}
 
-      {!briefing && !loading && !error && !notice && !interrupted && (
+      {live && !briefing && !loading && !error && !notice && !interrupted && (
         <div className="relative py-20 text-center">
           {/*
             The car emoji's replacement. Grey, plain-variant Monaco behind the copy at 20%, which
@@ -297,4 +384,15 @@ export function BriefingChat() {
       )}
     </div>
   );
+}
+
+/**
+ * `/briefing`'s chat, with the saved example to show read from `?example=`.
+ *
+ * A wrapper rather than a read inside `BriefingChat` so the chat's own suite needs no router, and
+ * so the one place the URL is read is this line. `useSearchParams` follows Back, Forward, links
+ * and the patched `replaceState` alike, which is why the example is never held in state.
+ */
+export function BriefingChatFromUrl() {
+  return <BriefingChat exampleId={useSearchParams().get('example')} />;
 }

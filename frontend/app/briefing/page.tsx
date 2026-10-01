@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { BriefingChat } from '@/components/briefing/briefing-chat';
+import { BriefingChatFromUrl } from '@/components/briefing/briefing-chat';
 import { TopoBackground } from '@/components/candy/topo-background';
 import { LandingNav } from '@/components/landing/landing-nav';
 import { EYEBROW_RED } from '@/lib/tyre-utils';
@@ -9,6 +9,14 @@ export const metadata: Metadata = {
   description:
     'Generate an AI-powered F1 race weekend briefing for any Grand Prix. Powered by Gemini and LangGraph.',
 };
+
+/**
+ * Per request, because the chat reads `?example=` with `useSearchParams`, which on a prerendered
+ * page needs a Suspense boundary — and one around the whole chat would prerender its fallback in
+ * place of the form. `/standings` and `/circuits` are dynamic for the same reason. The render
+ * fetches nothing, so it needs no `loading.tsx` (see CLAUDE.md on where one goes).
+ */
+export const dynamic = 'force-dynamic';
 
 export default function BriefingPage() {
   return (
@@ -64,7 +72,7 @@ export default function BriefingPage() {
         <div className="relative flex-1 overflow-hidden">
           <TopoBackground className="text-zinc-300" />
           <div className="container relative mx-auto max-w-7xl px-4 py-10">
-            <BriefingChat />
+            <BriefingChatFromUrl />
           </div>
         </div>
       </main>

@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { formatCountdown } from '@/lib/briefing-notice';
 import { INTERRUPTED_BEFORE_PROSE, INTERRUPTED_WITH_PROSE } from '@/lib/constants';
@@ -15,6 +16,8 @@ interface InterruptedNoteProps {
   /** Seconds left on a pending refusal's wait, or `null` when there is none. */
   waitSeconds: number | null;
   className?: string;
+  /** A further way on, under the note — the saved example, when the race has one. */
+  children?: ReactNode;
 }
 
 /**
@@ -39,6 +42,7 @@ export function InterruptedNote({
   loading,
   waitSeconds,
   className,
+  children,
 }: InterruptedNoteProps) {
   return (
     <div className={cn('rounded-lg border border-zinc-700 bg-zinc-900 p-4', className)}>
@@ -62,6 +66,7 @@ export function InterruptedNote({
               : 'Try again'}
         </Button>
       </div>
+      {children && <div className="mt-3">{children}</div>}
     </div>
   );
 }

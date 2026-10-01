@@ -23,6 +23,11 @@ const FLUSH_INTERVAL_MS = 80;
 
 export interface BriefingState {
   query: string;
+  /**
+   * What the latest run asked for, as submitted — not the field, which the visitor may have
+   * edited since. A failed run's saved example is matched on it when no `race_info` arrived.
+   */
+  lastQuery: string;
   loading: boolean;
   race: string;
   /**
@@ -76,6 +81,7 @@ export interface UseBriefingReturn extends BriefingState {
 
 export function useBriefing(): UseBriefingReturn {
   const [query, setQuery] = useState('');
+  const [lastQuery, setLastQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [race, setRace] = useState('');
   const [raceInfo, setRaceInfo] = useState<RaceInfo | null>(null);
@@ -154,6 +160,7 @@ export function useBriefing(): UseBriefingReturn {
       };
 
       setLoading(true);
+      setLastQuery(searchTerm);
       setError('');
       setStatusMessage('');
       setStep('');
@@ -269,6 +276,7 @@ export function useBriefing(): UseBriefingReturn {
 
   return {
     query,
+    lastQuery,
     loading,
     race,
     raceInfo,
