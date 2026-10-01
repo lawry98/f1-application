@@ -123,17 +123,19 @@ def test_explicit_year_wins_over_the_next_upcoming_race():
 
 
 @freeze_time(FROZEN_NOW)
-def test_explicit_year_in_the_past_is_not_upcoming_and_uses_its_own_year():
+def test_explicit_year_in_the_past_is_briefed_as_of_its_first_session():
+    """A past race is briefed as a reader saw it on the Thursday: the cutoff is FP1's start
+    (FastF1's Session1DateUtc), not today, so nothing from the weekend itself leaks in."""
     result = resolve_next_race("qatar 2024")
     assert result["is_upcoming"] is False
-    assert result["historical_year"] == 2024
+    assert result["as_of"] == "2024-11-29T11:30:00+00:00"
 
 
 @freeze_time(FROZEN_NOW)
-def test_explicit_year_in_the_future_is_upcoming_and_looks_back_one_year():
+def test_explicit_year_in_the_future_is_upcoming_and_briefed_as_of_today():
     result = resolve_next_race("monaco 2026")
     assert result["is_upcoming"] is True
-    assert result["historical_year"] == 2025
+    assert result["as_of"] == "2025-05-01T00:00:00+00:00"
 
 
 @freeze_time(FROZEN_NOW)
@@ -165,7 +167,7 @@ def test_resolves_to_upcoming_race_in_the_current_year():
     result = resolve_next_race("monaco")
     assert result["year"] == 2025
     assert result["is_upcoming"] is True
-    assert result["historical_year"] == 2024
+    assert result["as_of"] == "2025-05-01T00:00:00+00:00"
 
 
 @freeze_time("2025-05-25")
@@ -174,6 +176,15 @@ def test_a_race_happening_today_still_counts_as_upcoming():
     result = resolve_next_race("monaco")
     assert result["year"] == 2025
     assert result["is_upcoming"] is True
+
+
+@freeze_time("2025-05-24T18:00:00")
+def test_mid_weekend_the_race_is_upcoming_and_briefed_as_of_today():
+    """FP1 has run but the race has not: still upcoming, and the cutoff is today rather than
+    FP1 — the one case where a started weekend is briefed from the present."""
+    result = resolve_next_race("monaco")
+    assert result["is_upcoming"] is True
+    assert result["as_of"] == "2025-05-24T00:00:00+00:00"
 
 
 @freeze_time("2025-05-26")
@@ -192,7 +203,7 @@ def test_falls_through_to_next_year_when_this_year_is_done():
     result = resolve_next_race("monaco")
     assert result["year"] == 2026
     assert result["is_upcoming"] is True
-    assert result["historical_year"] == 2025
+    assert result["as_of"] == "2025-12-15T00:00:00+00:00"
 
 
 @freeze_time(FROZEN_NOW)
@@ -212,7 +223,7 @@ def test_falls_back_to_a_completed_race_this_year_when_nothing_is_upcoming():
     result = resolve_next_race("bahrain")
     assert result["year"] == 2025
     assert result["is_upcoming"] is False
-    assert result["historical_year"] == 2025
+    assert result["as_of"] == "2025-02-28T11:30:00+00:00"
 
 
 @freeze_time(FROZEN_NOW)
@@ -221,7 +232,7 @@ def test_falls_back_to_last_year_when_the_circuit_is_absent_this_year():
     result = resolve_next_race("qatar")
     assert result["year"] == 2024
     assert result["is_upcoming"] is False
-    assert result["historical_year"] == 2024
+    assert result["as_of"] == "2024-11-29T11:30:00+00:00"
 
 
 @freeze_time(FROZEN_NOW)
@@ -265,16 +276,114 @@ def test_result_carries_the_full_race_info_shape():
     assert set(result) == {
         "name",
         "year",
+        "round",
         "circuit_id",
+        "track_id",
+        "circuit_name",
+        "circuit_length_m",
         "location",
         "country",
         "date",
         "is_upcoming",
-        "historical_year",
+        "as_of",
+        "sessions",
     }
     assert result["location"] == "Monaco"
     assert result["country"] == "Monaco"
     assert result["date"].startswith("2025-05-25")
+    assert result["round"] == 3
+
+
+@freeze_time(FROZEN_NOW)
+def test_sessions_list_every_session_fastf1_lists_with_its_utc_start():
+    assert resolve_next_race("monaco")["sessions"] == [
+        {"name": "Practice 1", "start": "2025-05-23T11:30:00+00:00"},
+        {"name": "Practice 2", "start": "2025-05-23T15:00:00+00:00"},
+        {"name": "Practice 3", "start": "2025-05-24T10:30:00+00:00"},
+        {"name": "Qualifying", "start": "2025-05-24T14:00:00+00:00"},
+        {"name": "Race", "start": "2025-05-25T13:00:00+00:00"},
+    ]
+
+
+@freeze_time(FROZEN_NOW)
+def test_the_track_is_matched_by_location_and_carries_the_circuit_file(monkeypatch):
+    """The 2026 Bahrain Grand Prix is filed under Kuala Lumpur. Its track is Sepang, and the
+    name and length come from that circuit's own file — never from the Grand Prix's name."""
+    from tests.factories import make_schedule
+
+    schedule = make_schedule(
+        [
+            {
+                "name": "Bahrain Grand Prix",
+                "date": "2025-10-04",
+                "location": "Kuala Lumpur",
+                "country": "Bahrain",
+                "round": 16,
+            }
+        ]
+    )
+    monkeypatch.setattr(race_resolver, "get_schedule", lambda year: schedule)
+
+    result = resolve_next_race("bahrain")
+
+    assert result["track_id"] == "my-1999"
+    assert result["circuit_name"] == "Sepang International Circuit"
+    assert result["circuit_length_m"] == 5543
+
+
+@freeze_time(FROZEN_NOW)
+def test_a_location_with_no_circuit_file_leaves_the_track_fields_empty(monkeypatch):
+    from tests.factories import make_schedule
+
+    schedule = make_schedule([{"name": "Atlantis Grand Prix", "date": "2025-09-01"}])
+    monkeypatch.setattr(race_resolver, "get_schedule", lambda year: schedule)
+
+    result = resolve_next_race("atlantis")
+
+    assert "error" not in result
+    assert (result["track_id"], result["circuit_name"], result["circuit_length_m"]) == (
+        None,
+        None,
+        None,
+    )
+
+
+@freeze_time(FROZEN_NOW)
+def test_an_unreadable_circuit_index_still_resolves_the_race(monkeypatch, tmp_path):
+    """The track fields are context, not the race: losing the map must not lose the briefing."""
+    from tools import circuit_winners
+
+    monkeypatch.setattr(circuit_winners, "CIRCUIT_INDEX_PATH", tmp_path / "absent.json")
+
+    result = resolve_next_race("monaco")
+
+    assert result["name"] == "Monaco Grand Prix"
+    assert result["track_id"] is None
+
+
+@freeze_time(FROZEN_NOW)
+def test_a_past_race_with_no_session_times_is_briefed_as_of_two_days_before_race_day(
+    monkeypatch,
+):
+    """FastF1 carries no session times for older seasons; EventDate - 2 days stands in for FP1."""
+    from tests.factories import make_schedule
+
+    schedule = make_schedule(
+        [
+            {
+                "name": "Japanese Grand Prix",
+                "date": "2012-10-07",
+                "location": "Suzuka",
+                "sessions": [],
+            }
+        ]
+    )
+    monkeypatch.setattr(race_resolver, "get_schedule", lambda year: schedule)
+
+    result = resolve_next_race("suzuka 2012")
+
+    assert result["as_of"] == "2012-10-05T00:00:00+00:00"
+    assert result["sessions"] == []
 
 
 @freeze_time(FROZEN_NOW)

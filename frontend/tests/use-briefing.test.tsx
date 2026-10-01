@@ -301,7 +301,12 @@ describe('other events', () => {
       country: 'Italy',
       date: '2026-09-06 00:00:00',
       is_upcoming: true,
-      historical_year: 2025,
+      round: 13,
+      track_id: 'it-1922',
+      circuit_name: 'Autodromo Nazionale Monza',
+      circuit_length_m: 5793,
+      as_of: '2026-09-01T00:00:00+00:00',
+      sessions: [{ name: 'Race', start: '2026-09-06T13:00:00+00:00' }],
     };
     feed.push(frame('race_info', payload));
     await settle();

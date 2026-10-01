@@ -5,6 +5,7 @@ An AI-powered F1 race weekend briefing generator that provides comprehensive pre
 ## Features
 
 - **Comprehensive Race Analysis**: Track profiles, recent results, circuit history
+- **The right moment**: an upcoming race is briefed as of today; a race already run gets the pre-race briefing a reader saw before its weekend, with nothing after its first session ([ADR-0004](docs/adr/0004-past-races-brief-as-of-the-weekend.md))
 - **AI-Powered Insights**: Gemini 3.6 Flash synthesizes data into expert-level briefings
 - **Multi-Source Data**: race results and standings (OpenF1, FastF1), web search (Tavily), weather forecasts (OpenWeather)
 - **Agent Transparency**: View the tool execution trace for each briefing
@@ -162,13 +163,13 @@ INPUT ("Monaco GP 2025")
         │
         ▼
 ┌───────────────┐
-│   RESOLVER    │  Identify circuit → fetch FastF1 schedule → set race_info
+│   RESOLVER    │  Event → track (by location) → as_of cutoff → race_info
 └───────┬───────┘
         │
         ├────────────► END   (resolution failed)
         ▼
 ┌───────────────┐
-│   PLANNER     │  Decide which tools to call based on race_info
+│   PLANNER     │  Pick tools; a past race drops weather and news
 └───────┬───────┘
         │
         ▼
@@ -266,11 +267,13 @@ Two caches exist, and only one of them speeds anything up.
   these loads never do, so the directory (gitignored) stays empty of `.ff1pkl` files. Cold and
   warm measure the same. A briefing is slow because of upstream API latency, not cold-cache
   telemetry downloads — so there is no point warming it.
-- **The tool result cache is what makes a repeat briefing fast.** The five historical FastF1
-  tools are cached in-process across requests, taking the gathering stage from ~15s to well
-  under a second on a second briefing for the same race. Weather and news are never cached, and
-  the three tools that answer date-relative questions key on the date. See
-  [ADR-0003](docs/adr/0003-cache-tool-results-across-requests.md).
+- **The tool result cache is what makes a repeat briefing fast.** The six historical tools
+  are cached in-process across requests, taking the gathering stage from ~15s to well under a
+  second on a second briefing for the same race. Weather and news are never cached. The result
+  tools take the briefing's `as_of` cutoff, which is the key's only date: an upcoming race's
+  rolls over daily, a past race's never changes. See
+  [ADR-0003](docs/adr/0003-cache-tool-results-across-requests.md) and
+  [ADR-0004](docs/adr/0004-past-races-brief-as-of-the-weekend.md).
 
 Total request time drops less than you might expect: once gathering is cached, LLM synthesis
 dominates the wall clock.

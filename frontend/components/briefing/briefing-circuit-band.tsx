@@ -130,6 +130,22 @@ function formatBandDate(raw: string): string | null {
 }
 
 /**
+ * `"2026-06-05T11:30:00+00:00"` → `"5 Jun 2026"`, or `null` if the string is not that shape.
+ *
+ * The as-of line's sentence-case register, beside `formatBandDate`'s mono caps, and for the same
+ * reasons read out of the string rather than through a `Date`: the backend writes UTC, and a
+ * `Date` would print the local day, which for an early-morning FP1 in a negative offset is the
+ * day before the weekend began.
+ */
+function formatAsOf(raw: string): string | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T/.exec(raw);
+  if (!match) return null;
+  const [, year = '', month = '', day = ''] = match;
+  const name = MONTHS[Number(month) - 1];
+  return name ? `${Number(day)} ${name.charAt(0)}${name.slice(1).toLowerCase()} ${year}` : null;
+}
+
+/**
  * The circuit geometry for a location, or `null` while it loads and for a location this repo has
  * no outline for.
  *
@@ -200,6 +216,7 @@ export function BriefingCircuitBand({ raceInfo, round, className }: BriefingCirc
   const reducedMotion = useReducedMotionSafe();
 
   const date = raceInfo ? formatBandDate(raceInfo.date) : null;
+  const asOf = raceInfo && !raceInfo.is_upcoming ? formatAsOf(raceInfo.as_of) : null;
 
   const rows: BandRow[] = [];
 
@@ -291,40 +308,58 @@ export function BriefingCircuitBand({ raceInfo, round, className }: BriefingCirc
        * `div` wrappers around each pair are valid inside a `dl` in HTML5 and are what let one row
        * be a single motion element.
        */}
-      <dl className={cn('min-w-0 divide-y divide-white/10', ROWS_MIN_HEIGHT)}>
-        {rows.map((row, index) => (
-          <motion.div
-            key={row.label}
-            className="relative grid grid-cols-[5.5rem_minmax(0,1fr)] items-baseline gap-x-4 py-3 pl-4"
-            {...rowMotion(index, reducedMotion)}
-          >
-            {/*
-             * ROUND's red row treatment, and it is deliberately a **rule rather than red text**.
-             * `f1-red` measures 3.23:1 on this page's backdrop: it clears WCAG's 3:1 large-text
-             * bar and fails the 4.5:1 small-text one, so the `ROUND` label at 11px could not be
-             * red under any reading, and the numeral — at 30px, comfortably past the large-text
-             * threshold — would be legal but would be spending 0.23 of headroom to say something
-             * a 2px rule says with none. Red as a rule, bar, tick or fill is unconstrained.
-             *
-             * Absolutely positioned, so adding it to one row cannot shift that row's text against
-             * the other three; `pl-4` is on every row for the same reason, whether or not the rule
-             * is there to fill it.
-             */}
-            {row.accent && (
-              <span className="absolute inset-y-0 left-0 w-[2px] bg-f1-red" aria-hidden="true" />
-            )}
-            {/*
-             * The branch's mono-caps kicker register, at its `zinc-400` floor — 6.27:1 on this
-             * page's backdrop. `zinc-500` is 3.32:1 here and is not available at this size, which
-             * is the rule the whole branch now holds to.
-             */}
-            <dt className="text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-400">
-              {row.label}
-            </dt>
-            <dd className={row.valueClassName}>{row.value}</dd>
-          </motion.div>
-        ))}
-      </dl>
+      <div className="min-w-0">
+        <dl className={cn('min-w-0 divide-y divide-white/10', ROWS_MIN_HEIGHT)}>
+          {rows.map((row, index) => (
+            <motion.div
+              key={row.label}
+              className="relative grid grid-cols-[5.5rem_minmax(0,1fr)] items-baseline gap-x-4 py-3 pl-4"
+              {...rowMotion(index, reducedMotion)}
+            >
+              {/*
+               * ROUND's red row treatment, and it is deliberately a **rule rather than red text**.
+               * `f1-red` measures 3.23:1 on this page's backdrop: it clears WCAG's 3:1 large-text
+               * bar and fails the 4.5:1 small-text one, so the `ROUND` label at 11px could not be
+               * red under any reading, and the numeral — at 30px, comfortably past the large-text
+               * threshold — would be legal but would be spending 0.23 of headroom to say something
+               * a 2px rule says with none. Red as a rule, bar, tick or fill is unconstrained.
+               *
+               * Absolutely positioned, so adding it to one row cannot shift that row's text against
+               * the other three; `pl-4` is on every row for the same reason, whether or not the rule
+               * is there to fill it.
+               */}
+              {row.accent && (
+                <span className="absolute inset-y-0 left-0 w-[2px] bg-f1-red" aria-hidden="true" />
+              )}
+              {/*
+               * The branch's mono-caps kicker register, at its `zinc-400` floor — 6.27:1 on this
+               * page's backdrop. `zinc-500` is 3.32:1 here and is not available at this size, which
+               * is the rule the whole branch now holds to.
+               */}
+              <dt className="text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-400">
+                {row.label}
+              </dt>
+              <dd className={row.valueClassName}>{row.value}</dd>
+            </motion.div>
+          ))}
+        </dl>
+        {/*
+         * A race that has been run is briefed as of its first session (ADR-0004), and this is where
+         * the page says so. **Its slot is always rendered**, empty for an upcoming race and in the
+         * shell, for the reason the row floor exists: the line lands with `race_info`, above a loader
+         * already on screen, and a line that only exists once it has text would grow the band.
+         * `min-h` rather than `h`, so a phone-width wrap is a shift this accepts rather than text
+         * clipped — the same floor-not-cap standing as `ROWS_MIN_HEIGHT`.
+         *
+         * `zinc-400` at 12px, the band's label register: it sits in the text column beside the glow,
+         * on the page backdrop (`#212124`), where it measures 6.27:1. `zinc-500` is 3.32:1 there.
+         * Sentence case at a literal `text-xs` — no responsive size variant, which is how
+         * `sm:text-base` repaints text in this theme's `base` colour.
+         */}
+        <p data-as-of-slot className="mt-2 min-h-4 pl-4 text-xs leading-4 text-zinc-400">
+          {asOf && `Pre-race briefing as of ${asOf} · this race has been run`}
+        </p>
+      </div>
     </div>
   );
 }

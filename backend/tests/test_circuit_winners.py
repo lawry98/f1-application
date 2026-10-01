@@ -339,3 +339,103 @@ def test_a_missing_index_file_is_an_error_not_a_raise(install, monkeypatch, tmp_
 )
 def test_format_race_time(value, expected):
     assert format_race_time(value) == expected
+
+
+# ── A briefing's window: the seasons before the race's own, cut off at as_of ──────────────
+
+
+def test_the_window_can_end_at_the_race_season_rather_than_today(install):
+    """A Silverstone 2023 briefing wants 2020-22, not the 2023-25 the page's default gives —
+    two of which had not happened yet when that race weekend began."""
+    install(
+        {
+            y: season({"name": "British Grand Prix", "location": "Silverstone", "round": 10})
+            for y in range(2019, 2026)
+        }
+    )
+
+    result = get_recent_circuit_winners("gb-1948", season=2023)
+
+    assert (result["from_year"], result["to_year"]) == (2020, 2022)
+    assert [w["year"] for w in result["winners"]] == [2022, 2021, 2020]
+
+
+def test_an_edition_on_or_after_the_cutoff_is_never_loaded_or_cached(install):
+    """ "Singapore 2027", asked in September 2026, has 2026 in its window — but the 2026 race has
+    not run. It must be skipped rather than loaded (a race with no result is a load failure) and
+    the partial year must not be cached as that year's answer for the page."""
+    from datetime import UTC, datetime
+
+    fake = install(
+        {
+            2026: make_schedule(
+                [{"name": "Singapore Grand Prix", "date": "2026-10-11", "location": "Marina Bay"}]
+            )
+        }
+    )
+
+    briefing = get_recent_circuit_winners(
+        "sg-2008", season=2027, before=datetime(2026, 9, 28, tzinfo=UTC)
+    )
+
+    assert briefing["winners"] == []
+    assert briefing["unavailable_years"] == []
+    assert fake.loads == []
+
+    # A later view with no cutoff still goes to FastF1 for 2026, so the skip was not stored.
+    fake.schedule_calls.clear()
+    get_recent_circuit_winners("sg-2008", season=2027)
+    assert 2026 in fake.schedule_calls
+
+
+def test_an_edition_before_the_cutoff_in_the_same_year_is_kept(install):
+    from datetime import UTC, datetime
+
+    install(
+        {
+            2020: make_schedule(
+                [
+                    {"name": "Austrian Grand Prix", "date": "2020-07-05", "location": "Spielberg"},
+                    {"name": "Styrian Grand Prix", "date": "2020-07-12", "location": "Spielberg"},
+                ]
+            )
+        }
+    )
+
+    result = get_recent_circuit_winners(
+        "at-1969", years_back=1, season=2021, before=datetime(2020, 7, 10, tzinfo=UTC)
+    )
+
+    assert [w["event"] for w in result["winners"]] == ["Austrian Grand Prix"]
+
+
+# ── The circuit's own record ────────────────────────────────────────────────
+
+
+def test_circuit_record_reads_the_circuit_file():
+    assert circuit_winners.circuit_record("my-1999") == {
+        "id": "my-1999",
+        "name": "Sepang International Circuit",
+        "length_m": 5543,
+        "first_gp": 1999,
+    }
+
+
+def test_circuit_record_is_none_for_an_id_the_index_does_not_carry():
+    """Ids come from the index, so an unknown one is never turned into a file path."""
+    assert circuit_winners.circuit_record("../../secrets") is None
+    assert circuit_winners.circuit_record("xx-0000") is None
+
+
+def test_a_caller_mutating_a_record_cannot_reach_the_cache():
+    circuit_winners.circuit_record("my-1999")["name"] = "tampered"
+
+    assert circuit_winners.circuit_record("my-1999")["name"] == "Sepang International Circuit"
+
+
+def test_circuit_coordinates_are_the_circuits_centre_from_coordinates_json():
+    """Sepang, not Kuala Lumpur city 45 km north — the weather forecast asks for these."""
+    centre = circuit_winners.circuit_coordinates("my-1999")
+    assert centre["lat"] == pytest.approx(2.7606, abs=0.02)
+    assert centre["lon"] == pytest.approx(101.7381, abs=0.02)
+    assert circuit_winners.circuit_coordinates("xx-0000") is None

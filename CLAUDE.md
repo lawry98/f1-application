@@ -60,6 +60,10 @@ part worth knowing:
 | `GOOGLE_API_KEY` | **Fatal** — `validate_config()` raises `SystemExit(1)` |
 | `TAVILY_API_KEY` | Warning; news search silently disabled |
 | `OPENWEATHER_API_KEY` | Warning; weather silently disabled |
+
+"Missing" includes an `env.example` placeholder (`your-…`, `tvly-your-…`): `config.is_configured`
+is the one test, used by `validate_config` and by both tools, so a copied placeholder never reaches
+upstream to earn a 401.
 | `FASTF1_CACHE_DIR` | Defaults to `cache/` |
 | `EXECUTOR_MAX_WORKERS` | Defaults to `4` |
 | `STANDINGS_TTL_SECONDS` | Defaults to `300`; `0` disables current-season caching; invalid/negative warns and uses `300` |
@@ -152,15 +156,31 @@ citations and the deadline arithmetic, and a test re-does the sum.
 conditional edge: when `state["current_step"] == "error"` it routes straight to `END`, skipping
 planner, tools, and synthesizer. Anything assuming the synthesizer always runs is wrong.
 
+**A past race is briefed as of its weekend's start, not as of today ([ADR-0004](docs/adr/0004-past-races-brief-as-of-the-weekend.md)).**
+The resolver sets `race_info["as_of"]`: the start of today for an upcoming race (mid-weekend
+included), the first session's start for a past one. With no year, "Monaco" resolves to its
+already-run 2026 edition, so this is the default path, not an edge. Every result tool takes
+`as_of` instead of a year and counts only what started before it, crossing into the previous
+season only when the cutoff's own has too little — there is no `historical_year` any more.
+`_build_tool_args` is the result cache's key, and `as_of` is its only date component (ADR-0003, as
+amended). `get_race_weather` and `search_f1_news` cannot be cut off, so `UPCOMING_ONLY_TOOLS` are
+dropped from a past race's plan right after the planner, before `tool_plan` is announced. Both
+prompts get the resolved race as an authoritative block (`race_context`), so the model writes
+about the circuit the race is at rather than the one its name suggests. The band's "Pre-race
+briefing as of …" line has a slot rendered from the shell on, because it lands above a loader
+already on screen.
+
 **`tools/` is not uniform.** Eight `@tool` functions live across five modules
 (`fastf1_tools`, `f1_data_tools`, `search_tools`, `weather_tools`, `standings_tools`). The other
-seven files are plain helpers, **not** LLM-callable: `race_resolver.py` (used by the resolver
+eight files are plain helpers, **not** LLM-callable: `race_resolver.py` (used by the resolver
 node), `schedule_cache.py` (a FastF1 schedule cache), `fastf1_helpers.py` (shared FastF1
-lookup/session helpers), `openf1_client.py` (the OpenF1 HTTP client and its range-query
-cache), `openf1_races.py` (shared "which session is this event's race" lookups),
-`openf1_shaping.py` (converts OpenF1 rows into the tools' existing return shapes), and
-`circuit_winners.py` (recent winners per circuit, for `/circuits` and `get_circuit_winners`).
-Adding a file here does not make it a tool.
+session helpers, including a weekend's session times), `cutoff.py` (reads `as_of` back into a
+`datetime` — the one place the tools agree on "before the cutoff"), `openf1_client.py` (the
+OpenF1 HTTP client, its range-query cache and its rate limiter), `openf1_races.py` (shared
+"which races had run by the cutoff" lookups), `openf1_shaping.py` (converts OpenF1 rows into the
+tools' existing return shapes), and `circuit_winners.py` (the backend's one reader of
+`frontend/data/circuits`: the location matcher, a circuit's own file, and recent winners for
+`/circuits` and `get_circuit_winners`). Adding a file here does not make it a tool.
 
 **Tools never raise.** Every `@tool` returns `{"error": "..."}` on failure. The agent is built to
 continue on partial data — preserve this or the pipeline loses its degradation behaviour.
@@ -311,21 +331,27 @@ free tier. `get_championship_standings` now keeps its own per-year result: a sea
 `STANDINGS_TTL_SECONDS`. "Completed" is the calendar year, **not** "last race held", on
 purpose — a final race's classification can still move for days (publication lag, the
 stewards' 14-day right of review), and the season ends in early December anyway. Failures
-are never cached; `season_not_started` is, under the TTL. Don't delete the route's
+are never cached; `season_not_started` is, under the TTL. A briefing passes `as_of`, so the key
+is `(year, as_of)`: a cutoff before today is kept for good, and a cutoff of today — every
+upcoming race's — is the running season again, under the TTL. /standings passes none, and that
+path is exactly the policy above. Don't delete the route's
 `clear_openf1_cache()` thinking the new cache replaces it — it still bounds the other
 OpenF1 tools' staleness, and the TTL miss path relies on it.
 
-**OpenF1 requests are paced process-wide, because standings is the one tool a 429 kills.** A
-briefing's fan-out bursts about a dozen requests at OpenF1's 3 req/s ceiling. Every other tool
-absorbed the 429s as a silent FastF1 fallback; standings has none, so briefings lost it (2 of 3
-cold fan-outs, measured 2026-09-30). `openf1_client._pace` spaces request starts
-`OPENF1_MIN_INTERVAL` apart, and a 429 asking for at most `OPENF1_MAX_RETRY_AFTER` is retried.
-Pacing is the fix and the retry only its backstop: retrying alone spent ~25 requests on ~12
-answers and tripped the separate 30 req/min limit, whose `Retry-After: 60` raises at once.
-`_next_start` lives outside `clear()` so the per-request clear above leaves the pacing intact.
-Tests run with `_pace` stubbed by an autouse fixture — a frozen `monotonic` under `freeze_time`
-is epoch-sized, so a real reserved start would stall the suite — and `openf1_retry_sleeps`
-records the waits instead of sleeping them.
+**OpenF1 requests are paced, then retried, process-wide, because standings is the one tool a 429
+kills.** The free tier is 3 req/s and 30 req/min (openf1.org); a cold briefing costs five to eight
+requests (measured: Bahrain 5, Monaco 7, Singapore 8) and a cold `/standings` view four. Every
+other tool absorbed a 429 as a silent FastF1 fallback; standings has none, so briefings lost it (2
+of 3 cold fan-outs, measured 2026-09-30). `openf1_client._pace` spaces request starts
+`OPENF1_MIN_INTERVAL` apart. Pacing is the fix and the retry only its backstop: retrying alone
+spent ~25 requests on ~12 answers and tripped the separate 30 req/min limit. Only the single-flight
+fetcher retries — waiters share its result — and only 429 and 502/503/504: Retry-After when sent,
+else exponential backoff with jitter, at most `MAX_RETRIES` within `MAX_RETRY_WAIT` (~5s). Past
+that, the per-minute 429's `Retry-After: 60` included, it raises `OpenF1Error` at once. Timeouts
+and other 4xx are never retried. `_next_start` lives outside `clear()` so the per-request clear
+above leaves the pacing intact. Tests run with `_pace` stubbed by an autouse fixture — a frozen
+`monotonic` under `freeze_time` is epoch-sized, so a real reserved start would stall the suite —
+and `openf1_retry_sleeps` records the waits instead of sleeping them.
 
 **`tests/conftest.py` blocks OpenF1 as well as FastF1, and the two differ on purpose.**
 `_block_fastf1_network` raises `AssertionError` because no production path should swallow
@@ -335,27 +361,30 @@ keep testing the FastF1 path unedited. The consequence is that the fallback is t
 default under test, so `test_openf1_tools.py` asserts the OpenF1 request is genuinely
 made rather than silently fallen through.
 
-**Circuit winners are matched by circuit, never by Grand Prix name — on `/circuits` and in the
-agent alike.** `fastf1_helpers.find_event` is a substring match on `EventName`, and a
-Grand Prix is not a track: 2026's Spanish GP is at Madrid while 2023–25's was at Barcelona, and
-FastF1 files the rescheduled 2026 Bahrain GP under Kuala Lumpur. So `tools/circuit_winners.py`
+**Anything circuit-shaped is matched by location, never by Grand Prix name — on `/circuits` and
+in the agent alike.** A Grand Prix is not a track: 2026's Spanish GP is at Madrid while 2023–25's
+was at Barcelona, and FastF1 files the rescheduled 2026 Bahrain GP under Kuala Lumpur — matching
+it by name described Sakhir in a briefing whose band said Sepang. So `tools/circuit_winners.py`
 slugs each schedule row's `Location` and looks it up in `frontend/data/circuits/index.json`
 (`CIRCUIT_INDEX_PATH` in `config.py`) — which makes `location_slug` the **third** copy of the slug
 rule, after `locationSlug` and the converter's `slug()`. `frontend/tests/fixtures/slug-cases.json`
-is read by both test suites; add a case there, never to one side. The agent's
-`get_circuit_winners` resolves the briefing's `race_info["location"]` with
-`circuit_id_for_location` and delegates to `get_recent_circuit_winners`, so it shares the matcher
-*and* the cache; a location the index lacks gets "No recent data", never a fallback to
-`find_event`, which is the defect this replaced.
+is read by both test suites; add a case there, never to one side. The resolver stores the match as
+`race_info["track_id"]`; `get_track_info`, `get_recent_race_results` and the weather's
+coordinates all key on it, and `get_circuit_winners` shares the matcher *and* the cache. A
+location the index lacks gets "No recent data" or "No circuit data for this location" — never a
+name-based guess. A race found on FastF1's calendar is joined to OpenF1 by its start time
+(`openf1_races.race_session_at`), never by name: 2026 has two meetings called "Bahrain Grand
+Prix".
 
-**The winners cache has no expiry, on purpose.** Keyed `(circuit_id, year)` across the three
-seasons before the current one — all finished, so nothing a TTL could refresh — and bounded by the
-40 ids in `index.json`, because the route rejects an unknown id (404) before anything is stored. A
-year the circuit did not host is cached as `()`; a year whose FastF1 load *failed* is not cached
-and is reported in `unavailable_years`, so a transient outage is never remembered as "never raced
-here". A lock per circuit id makes two cold views of the same circuit pay the ~4.6s once —
-different circuits never block each other. The current season's winner is deliberately out of the
-window.
+**The winners cache has no expiry, on purpose.** Keyed `(circuit_id, year)`, and every year it
+holds is finished — so nothing a TTL could refresh — and bounded by the 40 ids in `index.json`,
+because the route rejects an unknown id (404) before anything is stored. The page's window is the
+three seasons before the current one; a briefing's is the three before *its race's* season, with
+no edition on or after its `as_of` (Silverstone 2023 gets 2020–22). A year the circuit did not host
+is cached as `()`; a year whose FastF1 load *failed*, or that the cutoff cut short, is not cached,
+and a failed one is reported in `unavailable_years`, so a transient outage is never remembered as
+"never raced here". A lock per circuit id makes two cold views of the same circuit pay the ~4.6s
+once — different circuits never block each other.
 
 **`index.json`'s aliases must cover past seasons, not just the current calendar.** FastF1 spells
 Abu Dhabi `Yas Island` for 2020–25 and Belgium `Spa` before 2022; without those aliases the
@@ -363,18 +392,19 @@ winners matcher misses them and the briefing band draws no outline for those yea
 `LOCATION_ALIASES` in `scripts/fetch-circuit-geometry.mjs` and nowhere else.
 `tests/circuit-catalog.test.ts` pins them.
 
-**Weather is forecast at the circuit's coordinates for race day, never at a geocoded name for
-"now".** `get_race_weather(location, race_date)` resolves `location` with `circuit_id_for_location`
-to a centre in `frontend/data/circuits/coordinates.json` (written only by
-`scripts/fetch-circuit-geometry.mjs`) and keeps the slots whose *circuit-local* date is race day,
-using the payload's `city.timezone` — slots sit on UTC's 3-hour marks, so at Sepang they read 02:00,
-05:00 … 23:00. The version this replaced geocoded `"{Location},{country code}"` and returned the
-next 24 hours whatever the race date: measured 2026-09-30, it missed Kuala Lumpur (FastF1 files it
-under Bahrain), Sakhir, Yas Marina and Spa-Francorchamps outright, and its `"US"` default for an
-unmapped country made Silverstone North Carolina. A location the index lacks is an error, never a
-geocode. The free endpoint reaches about five days, so a race day outside it returns
-`forecast_available: False` with a `reason` and **no `error` key** — it is an answer, like
-`SEASON_NOT_STARTED`, and Weather Watch in `SYNTHESIZER_PROMPT` steers on those keys, which
+**Weather is forecast at the circuit's coordinates for the weekend's sessions, never at a geocoded
+name for "now".** `_build_tool_args` gives `get_race_weather(lat, lon, sessions)` the centre of
+`race_info["track_id"]` from `frontend/data/circuits/coordinates.json` (written only by
+`scripts/fetch-circuit-geometry.mjs`) and the weekend's session times; the tool reads only the slots
+from the first session − 3h to the race + 3h and gives each session the nearest one. The version
+this replaced geocoded `"{Location},{country code}"` and returned the next 24 hours whatever the race
+date: measured 2026-09-30, it missed Kuala Lumpur (FastF1 files it under Bahrain), Sakhir, Yas
+Marina and Spa-Francorchamps outright, and its `"US"` default for an unmapped country made
+Silverstone North Carolina. No track or no coordinates is an error, never a geocode. The free
+endpoint reaches about five days, so a weekend past its last slot is `status:
+"outside_forecast_range"` with `available_from`, and one already over is `weekend_over` — answers
+with **no `error` key**, like `SEASON_NOT_STARTED`, and neither costs a request when the session
+times alone settle it. Weather Watch in `SYNTHESIZER_PROMPT` steers on those keys, which
 `test_the_synthesizer_prompt_steers_on_keys_the_tool_really_emits` pins.
 
 **A round with no outline renders a card on `/circuits`, unlike the band.** The band hides a missing

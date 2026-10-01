@@ -1,125 +1,155 @@
-"""OpenWeather API tool for the race-day forecast at a circuit."""
+"""OpenWeather forecast for a race weekend's sessions, at the circuit's own coordinates.
 
-import functools
-import json
-from datetime import UTC, date, datetime, timedelta, timezone
+Two things this used to get wrong, and why it looks the way it does:
+
+- **Where.** It geocoded ``"{Location},{country code}"`` from a hand-kept country map, so the
+  2026 Bahrain Grand Prix at Sepang asked for "Kuala Lumpur,BH" and any country missing from
+  the map silently became "US". The circuit's centre from ``frontend/data/circuits/
+  coordinates.json`` is passed in instead, and no coordinates is an error rather than a guess.
+- **When.** It took the first eight 3-hour slots — the next 24 hours — and the briefing
+  presented them as the race weekend. Only slots from the first session minus three hours to
+  the race plus three hours are read now, and each session gets the slot nearest its start.
+  A weekend beyond the forecast's end is ``outside_forecast_range`` with the date it will be
+  in range, and one already over is ``weekend_over`` — never a forecast for other days, and
+  no request when the answer is plain from the session times alone.
+
+Weather is never cached (agent/graph.py): a stale forecast is worse than a refetch.
+"""
+
+import logging
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import requests
 from langchain_core.tools import tool
 
-from config import CIRCUIT_COORDINATES_PATH, OPENWEATHER_API_KEY
-from tools.circuit_winners import circuit_id_for_location
+from config import OPENWEATHER_API_KEY, is_configured
+from tools.cutoff import parse_utc, to_iso
+
+logger = logging.getLogger(__name__)
 
 FORECAST_URL = "https://api.openweathermap.org/data/2.5/forecast"
 
-# The free endpoint returns 40 three-hour slots starting from the request time, so a race day
-# more than about five days out has no forecast yet.
-FORECAST_HORIZON_DAYS = 5
+# The free 5-day / 3-hour forecast: 40 slots, three hours apart.
+FORECAST_HORIZON = timedelta(days=5)
 
-# `reason` values for a race day the forecast does not reach. Both are answers, not failures,
-# so they carry no `error` key: the synthesizer says there is no forecast instead of dropping
-# the section, and the loading panel does not show the tool as failed.
-BEYOND_FORECAST_WINDOW = "beyond_forecast_window"
-RACE_DAY_PASSED = "race_day_passed"
+# How far either side of the weekend the window reaches. A session's weather is the slot nearest
+# its start, and slots are three hours apart, so this is the furthest a relevant slot can be.
+WINDOW_MARGIN = timedelta(hours=3)
 
-
-@functools.cache
-def _coordinates() -> dict[str, dict[str, float]]:
-    with open(CIRCUIT_COORDINATES_PATH, encoding="utf-8") as handle:
-        return json.load(handle)
+# The nearest slot to a covered session is at most half a slot away; anything further means the
+# forecast does not reach that session (it has already started, or is beyond the last slot).
+NEAREST_SLOT = timedelta(hours=1, minutes=30)
 
 
-def _no_forecast(location: str, race_day: date, reason: str) -> dict[str, Any]:
-    result: dict[str, Any] = {
-        "location": location,
-        "race_date": race_day.isoformat(),
-        "forecast_available": False,
-        "reason": reason,
-    }
-    if reason == BEYOND_FORECAST_WINDOW:
-        # The first day on which any of race day can appear in the forecast.
-        result["forecast_opens"] = (race_day - timedelta(days=FORECAST_HORIZON_DAYS)).isoformat()
-    return result
-
-
-def _slot(local_time: datetime, item: dict[str, Any]) -> dict[str, Any]:
+def _slot_forecast(item: dict[str, Any]) -> dict[str, Any]:
     return {
-        "local_time": local_time.strftime("%Y-%m-%d %H:%M"),
         "temperature_c": round(item["main"]["temp"], 1),
-        "feels_like_c": round(item["main"]["feels_like"], 1),
-        "humidity": item["main"]["humidity"],
-        "weather": item["weather"][0]["main"],
-        "description": item["weather"][0]["description"],
+        "rain_probability": round(item.get("pop", 0) * 100, 1),
         "wind_speed_ms": round(item["wind"]["speed"], 1),
-        "rain_probability": round(item.get("pop", 0) * 100),
+        "conditions": item["weather"][0]["main"],
+        "description": item["weather"][0]["description"],
     }
+
+
+def _nearest(slots: list[tuple[datetime, dict[str, Any]]], start: datetime):
+    """The slot nearest ``start`` — the earlier on a tie — or None when none is close enough."""
+    if not slots:
+        return None
+    moment, item = min(slots, key=lambda slot: (abs(slot[0] - start), slot[0]))
+    return item if abs(moment - start) <= NEAREST_SLOT else None
 
 
 @tool
-def get_race_weather(location: str, race_date: str) -> dict[str, Any]:
-    """Get the race-day weather forecast at a circuit using the OpenWeather API.
+def get_race_weather(
+    lat: float | None, lon: float | None, sessions: list[dict[str, str]]
+) -> dict[str, Any]:
+    """Get the forecast for each session of a race weekend, at the circuit's coordinates.
 
     Args:
-        location: FastF1 schedule ``Location`` of the event (e.g. 'Monza', 'Kuala Lumpur').
-        race_date: Race day as an ISO date (YYYY-MM-DD), local to the circuit.
+        lat: The circuit's latitude (WGS84), or None when it has no circuit data.
+        lon: The circuit's longitude.
+        sessions: The weekend's sessions, ``{"name", "start"}`` with ISO-8601 UTC starts.
 
     Returns:
-        The race day's three-hourly forecast in circuit-local time, a result with
-        ``forecast_available: False`` and a ``reason`` when the forecast does not reach race
-        day, or an 'error' key on failure.
+        ``status`` "ok" or "partial" (some session is beyond the forecast), the ``window``
+        read, ``forecast_generated_at``, and ``sessions`` each with a ``forecast`` of
+        temperature, rain probability, wind and conditions, or None. A weekend beyond the
+        forecast's reach is ``status: "outside_forecast_range"`` with ``available_from``.
+        An 'error' key on failure.
     """
     try:
-        if not OPENWEATHER_API_KEY:
+        if not is_configured(OPENWEATHER_API_KEY):
             return {"error": "OPENWEATHER_API_KEY not configured"}
+        if lat is None or lon is None:
+            return {"error": "No circuit coordinates for this race"}
+        if not sessions:
+            return {"error": "No session times for this race weekend"}
 
-        race_day = date.fromisoformat(race_date)
+        starts = [(session["name"], parse_utc(session["start"])) for session in sessions]
+        first = min(start for _, start in starts)
+        race = next((start for name, start in starts if name == "Race"), max(s for _, s in starts))
+        window_from, window_to = first - WINDOW_MARGIN, race + WINDOW_MARGIN
+        now = datetime.now(UTC)
+        generated_at = to_iso(now)
+        available_from = (window_from - FORECAST_HORIZON).date().isoformat()
 
-        # Race day is the circuit's date and today is UTC's. A circuit's clock is within a day
-        # of UTC, so outside this range no slot can land on race day and there is nothing to ask.
-        days_out = (race_day - datetime.now(UTC).date()).days
-        if days_out < -1:
-            return _no_forecast(location, race_day, RACE_DAY_PASSED)
-        if days_out > FORECAST_HORIZON_DAYS + 1:
-            return _no_forecast(location, race_day, BEYOND_FORECAST_WINDOW)
-
-        # By circuit, never by geocoding the name — see the header of
-        # frontend/scripts/fetch-circuit-geometry.mjs for the four circuits that missed.
-        circuit_id = circuit_id_for_location(location)
-        coordinates = _coordinates().get(circuit_id) if circuit_id else None
-        if coordinates is None:
-            return {"error": f"No circuit coordinates for {location}"}
+        # Two answers need no request: a weekend that is over, and one too far out for any
+        # forecast to reach. A day of slack on the horizon leaves the borderline case to the
+        # forecast's own last slot, below.
+        if window_to < now:
+            return {"status": "weekend_over", "weekend_ended": to_iso(window_to)}
+        if window_from > now + FORECAST_HORIZON + timedelta(days=1):
+            return {
+                "status": "outside_forecast_range",
+                "weekend_starts": to_iso(first),
+                "available_from": available_from,
+            }
 
         response = requests.get(
             FORECAST_URL,
-            params={
-                "lat": coordinates["lat"],
-                "lon": coordinates["lon"],
-                "appid": OPENWEATHER_API_KEY,
-                "units": "metric",
-            },
+            params={"lat": lat, "lon": lon, "appid": OPENWEATHER_API_KEY, "units": "metric"},
             timeout=10,
         )
         if response.status_code != 200:
-            return {"error": "Failed to fetch weather forecast"}
+            return {"error": f"Forecast request failed with status {response.status_code}"}
 
-        payload = response.json()
-        # The circuit's UTC offset today; a clock change inside the window shifts slots an hour.
-        circuit_tz = timezone(timedelta(seconds=payload["city"]["timezone"]))
-        slots = [(datetime.fromtimestamp(item["dt"], circuit_tz), item) for item in payload["list"]]
+        slots = [
+            (datetime.fromtimestamp(item["dt"], UTC), item)
+            for item in response.json().get("list", [])
+        ]
+        if not slots:
+            return {"error": "Forecast returned no entries"}
 
-        race_day_slots = [_slot(when, item) for when, item in slots if when.date() == race_day]
-        if not race_day_slots:
-            passed = bool(slots) and race_day < slots[0][0].date()
-            return _no_forecast(
-                location, race_day, RACE_DAY_PASSED if passed else BEYOND_FORECAST_WINDOW
+        if window_from > max(moment for moment, _ in slots):
+            return {
+                "status": "outside_forecast_range",
+                "weekend_starts": to_iso(first),
+                "available_from": available_from,
+                "forecast_generated_at": generated_at,
+            }
+
+        in_window = [slot for slot in slots if window_from <= slot[0] <= window_to]
+        per_session = []
+        for name, start in starts:
+            item = _nearest(in_window, start)
+            per_session.append(
+                {
+                    "name": name,
+                    "start": to_iso(start),
+                    "forecast": _slot_forecast(item) if item is not None else None,
+                }
             )
 
         return {
-            "location": location,
-            "race_date": race_day.isoformat(),
-            "forecast_available": True,
-            "forecasts": race_day_slots,
+            "status": "ok" if all(s["forecast"] for s in per_session) else "partial",
+            "window": {"from": to_iso(window_from), "to": to_iso(window_to)},
+            "forecast_generated_at": generated_at,
+            "sessions": per_session,
         }
     except Exception as exc:
-        return {"error": f"Failed to get weather forecast: {exc}"}
+        # A requests exception quotes the URL it failed on, query string and all — which carries
+        # the key. Its text reaches the log and the synthesizer's prompt, so the key is cut out.
+        detail = str(exc).replace(OPENWEATHER_API_KEY, "[redacted]") if OPENWEATHER_API_KEY else exc
+        logger.warning("Weather forecast failed (%s: %s)", type(exc).__name__, detail)
+        return {"error": f"Failed to get weather forecast: {detail}"}

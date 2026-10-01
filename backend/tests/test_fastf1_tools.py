@@ -16,7 +16,6 @@ import fastf1
 import pytest
 from freezegun import freeze_time
 
-from tests.conftest import FROZEN_NOW
 from tests.factories import make_schedule, make_session
 from tools import circuit_winners, f1_data_tools, fastf1_tools
 from tools.f1_data_tools import get_circuit_winners, get_recent_top_finishers
@@ -72,39 +71,79 @@ def race_session(monkeypatch):
 # ── get_track_info ───────────────────────────────────────────────────────────
 
 
-def test_track_info_shapes_the_schedule_row(monkeypatch, season_2025):
+def _track_info(round_number: int = 3, track_id: str | None = "mc-1929", year: int = 2025):
+    return get_track_info.invoke({"year": year, "round": round_number, "track_id": track_id})
+
+
+def test_track_info_shapes_this_event_and_its_circuit(monkeypatch, season_2025):
     monkeypatch.setattr(fastf1_tools, "get_schedule", lambda year: season_2025)
 
-    result = get_track_info.invoke({"circuit_name": "Monaco", "year": 2025})
-
-    assert result == {
-        "circuit_name": "Monaco Grand Prix",
-        "country": "Monaco",
+    assert _track_info() == {
+        "grand_prix": "Monaco Grand Prix",
+        "official_name": "FORMULA 1 MONACO GRAND PRIX",
+        "year": 2025,
+        "round": 3,
         "location": "Monaco",
+        "country": "Monaco",
         "date": "2025-05-25 00:00:00",
         "event_format": "conventional",
-        "official_name": "FORMULA 1 MONACO GRAND PRIX",
+        "circuit": {
+            "name": "Circuit de Monaco",
+            "length_km": 3.337,
+            "first_grand_prix": 1929,
+        },
     }
 
 
+def test_track_info_describes_the_track_the_event_is_held_at(monkeypatch):
+    """The 2026 Bahrain Grand Prix is at Sepang. The event row says Bahrain; the circuit block
+    must say Sepang, because it comes from the track id and never from the Grand Prix's name."""
+    schedule = make_schedule(
+        [
+            {
+                "name": "Bahrain Grand Prix",
+                "date": "2026-10-04",
+                "location": "Kuala Lumpur",
+                "country": "Bahrain",
+                "round": 16,
+            }
+        ]
+    )
+    monkeypatch.setattr(fastf1_tools, "get_schedule", lambda year: schedule)
+
+    result = _track_info(round_number=16, track_id="my-1999", year=2026)
+
+    assert result["grand_prix"] == "Bahrain Grand Prix"
+    assert result["circuit"]["name"] == "Sepang International Circuit"
+    assert result["circuit"]["first_grand_prix"] == 1999
+
+
+def test_track_info_says_so_when_the_location_has_no_circuit_file(monkeypatch, season_2025):
+    monkeypatch.setattr(fastf1_tools, "get_schedule", lambda year: season_2025)
+
+    result = _track_info(track_id=None)
+
+    assert result["grand_prix"] == "Monaco Grand Prix"
+    assert result["circuit"] == {"note": "No circuit data for this location"}
+
+
 def test_track_info_needs_no_session(monkeypatch, season_2025):
-    """The payload comes entirely from the schedule row — loading a session here would
-    reintroduce a 30-60s cold-cache download for data the row already carries.
+    """The payload comes entirely from the schedule row and a local file — loading a session
+    here would reintroduce a 30-60s cold-cache download for data the row already carries.
     """
     monkeypatch.setattr(fastf1_tools, "get_schedule", lambda year: season_2025)
     monkeypatch.setattr(fastf1, "get_session", _boom)
-    assert "error" not in get_track_info.invoke({"circuit_name": "Monaco", "year": 2025})
+    assert "error" not in _track_info()
 
 
-def test_track_info_reports_an_unknown_event(monkeypatch, season_2025):
+def test_track_info_reports_an_unknown_round(monkeypatch, season_2025):
     monkeypatch.setattr(fastf1_tools, "get_schedule", lambda year: season_2025)
-    result = get_track_info.invoke({"circuit_name": "Nürburgring", "year": 2025})
-    assert result == {"error": "No event found for Nürburgring in 2025"}
+    assert _track_info(round_number=9) == {"error": "No round 9 in the 2025 calendar"}
 
 
 def test_track_info_converts_a_schedule_failure_into_an_error(monkeypatch):
     monkeypatch.setattr(fastf1_tools, "get_schedule", _boom)
-    result = get_track_info.invoke({"circuit_name": "Monaco", "year": 2025})
+    result = _track_info()
     assert "error" in result
     assert "fastf1 unavailable" in result["error"]
 
@@ -112,11 +151,38 @@ def test_track_info_converts_a_schedule_failure_into_an_error(monkeypatch):
 # ── get_recent_race_results ──────────────────────────────────────────────────
 
 
-def test_race_results_return_the_top_ten_columns(race_session):
-    result = get_recent_race_results.invoke({"event_name": "Monaco Grand Prix", "year": 2024})
+def british_seasons(*years: int, fail: frozenset[int] = frozenset()):
+    """A per-year ``get_schedule`` with the British GP at Silverstone on the first Sunday of July
+    and the Bahrain GP at Sakhir in March. Years not listed have neither; years in ``fail`` raise.
+    """
 
-    assert result["year"] == 2024
-    assert result["event"] == "Monaco Grand Prix"
+    def _get_schedule(year: int):
+        if year in fail:
+            raise ConnectionError(f"schedule {year} unavailable")
+        if year not in years:
+            return make_schedule([])
+        return make_schedule(
+            [
+                {"name": "Bahrain Grand Prix", "date": f"{year}-03-05", "location": "Sakhir"},
+                {"name": "British Grand Prix", "date": f"{year}-07-03", "location": "Silverstone"},
+            ]
+        )
+
+    return _get_schedule
+
+
+def _race_results(track_id: str = "gb-1948", as_of: str = "2022-07-01T11:30:00+00:00"):
+    return get_recent_race_results.invoke({"track_id": track_id, "as_of": as_of})
+
+
+def test_race_results_are_the_latest_race_at_this_circuit_before_as_of(monkeypatch, race_session):
+    """As of FP1 of the 2022 British GP, the latest Silverstone race is 2021's — the weekend
+    being briefed has not produced a result yet, and must never be the one reported."""
+    monkeypatch.setattr(circuit_winners, "get_schedule", british_seasons(2020, 2021, 2022))
+
+    result = _race_results()
+
+    assert (result["year"], result["event"]) == (2021, "British Grand Prix")
     assert [row["Abbreviation"] for row in result["results"]] == ["VER", "NOR", "HAM"]
     assert set(result["results"][0]) == {
         "Position",
@@ -128,23 +194,97 @@ def test_race_results_return_the_top_ten_columns(race_session):
     }
 
 
-def test_race_results_load_the_session_without_laps_or_telemetry(race_session):
+def test_race_results_load_the_session_without_laps_or_telemetry(monkeypatch, race_session):
     """Laps, telemetry, weather and messages all stay off.
 
     Telemetry and friends are megabytes the tools never read. Laps matter for a second
     reason: their endpoints fail on every call, and FastF1 refuses to persist a session
     that loaded partially — so loading laps made these calls slow *and* uncacheable.
     """
-    get_recent_race_results.invoke({"event_name": "Monaco Grand Prix", "year": 2024})
+    monkeypatch.setattr(circuit_winners, "get_schedule", british_seasons(2021))
+
+    _race_results()
 
     assert race_session.loads == [
         {"laps": False, "telemetry": False, "weather": False, "messages": False}
     ]
 
 
-def test_race_results_convert_a_session_failure_into_an_error(monkeypatch):
+def test_race_results_load_the_race_by_round_not_by_name(monkeypatch):
+    """FastF1 resolves a name fuzzily; a round number is exact."""
+    monkeypatch.setattr(circuit_winners, "get_schedule", british_seasons(2021))
+    asked: list[tuple] = []
+
+    def _get_session(year, event, kind):
+        asked.append((year, event, kind))
+        return make_session(RESULTS_ROWS)
+
+    monkeypatch.setattr(fastf1, "get_session", _get_session)
+
+    _race_results()
+
+    assert asked == [(2021, 2, "R")]
+
+
+def test_a_circuit_with_no_race_in_range_is_a_success_that_says_so(monkeypatch):
+    """Sepang last hosted in 2017. "No race here since" is an answer, and a Sakhir-hosted Bahrain
+    Grand Prix in the window must not be offered in its place."""
+    monkeypatch.setattr(circuit_winners, "get_schedule", british_seasons(2023, 2024, 2025, 2026))
     monkeypatch.setattr(fastf1, "get_session", _boom)
-    result = get_recent_race_results.invoke({"event_name": "Monaco Grand Prix", "year": 2024})
+
+    result = _race_results(track_id="my-1999", as_of="2026-09-30T00:00:00+00:00")
+
+    assert "error" not in result
+    assert result["results"] == []
+    assert result["searched_years"] == [2026, 2025, 2024, 2023]
+    assert result["note"] == "No Grand Prix at this circuit from 2023 to 2026 before the cutoff"
+
+
+def test_a_season_that_would_not_load_is_an_error_rather_than_none_found(monkeypatch):
+    """A "none here" built on a schedule that never loaded would be cached as an answer."""
+    monkeypatch.setattr(
+        circuit_winners, "get_schedule", british_seasons(2023, 2024, fail=frozenset({2025}))
+    )
+
+    result = _race_results(track_id="my-1999", as_of="2026-09-30T00:00:00+00:00")
+
+    assert "error" in result
+
+
+def test_race_results_without_a_track_say_there_is_no_circuit_to_match(monkeypatch):
+    monkeypatch.setattr(circuit_winners, "get_schedule", _boom)
+
+    result = _race_results(track_id=None)
+
+    assert result == {"results": [], "note": "No circuit data for this location"}
+
+
+def test_a_season_without_session_times_dates_its_race_by_event_date(monkeypatch, race_session):
+    """Older FastF1 seasons carry no session times, so a race starts at midnight UTC on its
+    EventDate. The 2012 race on 8 July has not started as of 7 July, so 2011's is the latest."""
+
+    def _get_schedule(year):
+        return make_schedule(
+            [
+                {
+                    "name": "British Grand Prix",
+                    "date": f"{year}-07-08",
+                    "location": "Silverstone",
+                    "sessions": [],
+                }
+            ]
+        )
+
+    monkeypatch.setattr(circuit_winners, "get_schedule", _get_schedule)
+
+    assert _race_results(as_of="2012-07-07T00:00:00+00:00")["year"] == 2011
+    assert _race_results(as_of="2012-07-08T00:00:01+00:00")["year"] == 2012
+
+
+def test_race_results_convert_a_session_failure_into_an_error(monkeypatch):
+    monkeypatch.setattr(circuit_winners, "get_schedule", british_seasons(2021))
+    monkeypatch.setattr(fastf1, "get_session", _boom)
+    result = _race_results()
     assert "error" in result
     assert "fastf1 unavailable" in result["error"]
 
@@ -152,51 +292,81 @@ def test_race_results_convert_a_session_failure_into_an_error(monkeypatch):
 # ── get_driver_form ──────────────────────────────────────────────────────────
 
 
-@freeze_time(FROZEN_NOW)
-def test_driver_form_aggregates_the_completed_races(monkeypatch, season_2025, race_session):
-    """Only Bahrain and Miami are behind the frozen clock; both count toward form."""
-    monkeypatch.setattr(fastf1_tools, "get_schedule", lambda year: season_2025)
+def _form(driver_code: str = "VER", as_of: str = "2025-05-01T00:00:00+00:00", **kwargs):
+    return get_driver_form.invoke({"driver_code": driver_code, "as_of": as_of, **kwargs})
 
-    result = get_driver_form.invoke({"driver_code": "VER", "year": 2025, "num_races": 5})
+
+def test_driver_form_aggregates_the_races_before_as_of(
+    monkeypatch, fake_get_schedule, race_session
+):
+    """Bahrain and Miami 2025 ran before the cutoff; 2024 is reached for the other three."""
+    monkeypatch.setattr(fastf1_tools, "get_schedule", fake_get_schedule)
+
+    result = _form(num_races=3)
 
     assert result["driver"] == "VER"
+    assert result["seasons"] == [2024, 2025]
+    assert [(r["year"], r["event"]) for r in result["recent_results"]] == [
+        (2024, "Qatar Grand Prix"),
+        (2025, "Bahrain Grand Prix"),
+        (2025, "Miami Grand Prix"),
+    ]
+    assert result["recent_results"][0]["position"] == 1
+    assert result["total_points_last_races"] == 75.0
+    assert result["average_finish"] == 1.0
+
+
+def test_driver_form_stays_in_one_season_when_it_has_enough(
+    monkeypatch, fake_get_schedule, race_session
+):
+    monkeypatch.setattr(fastf1_tools, "get_schedule", fake_get_schedule)
+
+    result = _form(num_races=2)
+
+    assert result["seasons"] == [2025]
     assert [r["event"] for r in result["recent_results"]] == [
         "Bahrain Grand Prix",
         "Miami Grand Prix",
     ]
-    assert result["recent_results"][0]["position"] == 1
-    assert result["total_points_last_races"] == 50.0
-    assert result["average_finish"] == 1.0
 
 
-@freeze_time(FROZEN_NOW)
 def test_driver_form_reports_dnfs_and_excludes_them_from_the_average(
-    monkeypatch, season_2025, race_session
+    monkeypatch, fake_get_schedule, race_session
 ):
-    monkeypatch.setattr(fastf1_tools, "get_schedule", lambda year: season_2025)
+    monkeypatch.setattr(fastf1_tools, "get_schedule", fake_get_schedule)
 
-    result = get_driver_form.invoke({"driver_code": "HAM", "year": 2025})
+    result = _form("HAM", num_races=2)
 
     assert [r["position"] for r in result["recent_results"]] == ["DNF", "DNF"]
     assert result["average_finish"] is None
     assert result["total_points_last_races"] == 0.0
 
 
-@freeze_time(FROZEN_NOW)
-def test_driver_form_skips_races_whose_session_fails(monkeypatch, season_2025):
+def test_driver_form_skips_races_whose_session_fails(monkeypatch, fake_get_schedule):
     """A dead session drops that race from the form rather than sinking the tool."""
-    monkeypatch.setattr(fastf1_tools, "get_schedule", lambda year: season_2025)
+    monkeypatch.setattr(fastf1_tools, "get_schedule", fake_get_schedule)
     monkeypatch.setattr(fastf1, "get_session", _boom)
 
-    result = get_driver_form.invoke({"driver_code": "VER", "year": 2025})
+    result = _form(num_races=2)
 
     assert result["recent_results"] == []
     assert result["average_finish"] is None
 
 
+def test_driver_form_omits_a_race_the_driver_did_not_start(
+    monkeypatch, fake_get_schedule, race_session
+):
+    monkeypatch.setattr(fastf1_tools, "get_schedule", fake_get_schedule)
+
+    result = _form("ZZZ", num_races=2)
+
+    assert result["recent_results"] == []
+    assert result["seasons"] == [2025]
+
+
 def test_driver_form_converts_a_schedule_failure_into_an_error(monkeypatch):
     monkeypatch.setattr(fastf1_tools, "get_schedule", _boom)
-    result = get_driver_form.invoke({"driver_code": "VER", "year": 2025})
+    result = _form()
     assert "error" in result
     assert "fastf1 unavailable" in result["error"]
 
@@ -204,15 +374,18 @@ def test_driver_form_converts_a_schedule_failure_into_an_error(monkeypatch):
 # ── get_recent_top_finishers ─────────────────────────────────────────────────
 
 
-@freeze_time(FROZEN_NOW)
-def test_top_finishers_come_from_the_most_recent_completed_race(
-    monkeypatch, season_2025, race_session
+def _top(as_of: str = "2025-05-01T00:00:00+00:00"):
+    return get_recent_top_finishers.invoke({"as_of": as_of})
+
+
+def test_top_finishers_come_from_the_latest_race_before_as_of(
+    monkeypatch, fake_get_schedule, race_session
 ):
-    monkeypatch.setattr(f1_data_tools, "get_schedule", lambda year: season_2025)
+    monkeypatch.setattr(f1_data_tools, "get_schedule", fake_get_schedule)
 
-    result = get_recent_top_finishers.invoke({"year": 2025})
+    result = _top()
 
-    assert result["last_race"] == "Miami Grand Prix"
+    assert (result["year"], result["last_race"]) == (2025, "Miami Grand Prix")
     assert result["top_finishers"][0] == {
         "position": 1,
         "driver": "Max Verstappen",
@@ -224,16 +397,26 @@ def test_top_finishers_come_from_the_most_recent_completed_race(
     assert result["note"] == "Positions from most recent race (not cumulative season standings)"
 
 
-@freeze_time(FROZEN_NOW)
-def test_top_finishers_report_a_season_with_no_completed_races(monkeypatch, season_2026):
-    monkeypatch.setattr(f1_data_tools, "get_schedule", lambda year: season_2026)
-    result = get_recent_top_finishers.invoke({"year": 2026})
-    assert result == {"error": "No completed races found for 2026 season yet"}
+def test_top_finishers_reach_back_a_season_only_when_none_has_run(
+    monkeypatch, fake_get_schedule, race_session
+):
+    """As of 1 Feb 2025 nothing in 2025 has run, so the latest race is 2024's last."""
+    monkeypatch.setattr(f1_data_tools, "get_schedule", fake_get_schedule)
+
+    result = _top("2025-02-01T00:00:00+00:00")
+
+    assert (result["year"], result["last_race"]) == (2024, "Qatar Grand Prix")
+
+
+def test_top_finishers_report_when_neither_season_has_a_race(monkeypatch):
+    monkeypatch.setattr(f1_data_tools, "get_schedule", lambda year: make_schedule([]))
+    result = _top("2022-02-01T00:00:00+00:00")
+    assert result == {"error": "No completed races found before 2022-02-01 in 2022 or 2021"}
 
 
 def test_top_finishers_convert_a_schedule_failure_into_an_error(monkeypatch):
     monkeypatch.setattr(f1_data_tools, "get_schedule", _boom)
-    result = get_recent_top_finishers.invoke({"year": 2025})
+    result = _top("2022-05-01T00:00:00+00:00")
     assert "error" in result
     assert "fastf1 unavailable" in result["error"]
 
@@ -281,9 +464,21 @@ def past_seasons(monkeypatch):
     return loaded
 
 
-def _winners_at(circuit_name: str, location: str, years_back: int = 3) -> dict[str, Any]:
+def _winners_at(
+    circuit_name: str,
+    location: str,
+    years_back: int = 3,
+    race_year: int = 2026,
+    as_of: str = "2026-09-28T00:00:00+00:00",
+) -> dict[str, Any]:
     return get_circuit_winners.invoke(
-        {"circuit_name": circuit_name, "location": location, "years_back": years_back}
+        {
+            "circuit_name": circuit_name,
+            "location": location,
+            "race_year": race_year,
+            "as_of": as_of,
+            "years_back": years_back,
+        }
     )
 
 
@@ -301,6 +496,18 @@ def test_circuit_winners_shape_each_winner_newest_first(past_seasons):
         "team": "Red Bull Racing",
         "time": "1:30:00.000",
     }
+
+
+@freeze_time("2026-09-28")
+def test_circuit_winners_are_the_seasons_before_the_race_not_before_today(past_seasons):
+    """A 2025 Monaco briefing, asked in 2026, covers 2022-24: 2025's own winner is the result of
+    the weekend being briefed. The seasons searched travel with the answer."""
+    result = _winners_at(
+        "Monaco Grand Prix", "Monaco", race_year=2025, as_of="2025-05-23T11:30:00+00:00"
+    )
+
+    assert [winner["year"] for winner in result["recent_winners"]] == [2024, 2023]
+    assert result["seasons"] == {"from": 2022, "to": 2024}
 
 
 @freeze_time("2026-09-28")

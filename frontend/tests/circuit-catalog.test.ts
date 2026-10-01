@@ -14,7 +14,9 @@ import { locationSlug } from '@/lib/circuit-geometry';
  */
 const DIR = resolve(__dirname, '..', 'data', 'circuits');
 const OUTLINE_FILE = /^[a-z]{2}-\d{4}\.json$/;
-const files = readdirSync(DIR).filter((name) => OUTLINE_FILE.test(name)).sort();
+const files = readdirSync(DIR)
+  .filter((name) => OUTLINE_FILE.test(name))
+  .sort();
 const LOCATION_TO_ID: Record<string, string> = index;
 
 describe('catalog.json', () => {

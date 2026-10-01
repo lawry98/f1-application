@@ -15,7 +15,6 @@ from typing import Any
 import pytest
 from freezegun import freeze_time
 
-from agent.prompts import SYNTHESIZER_PROMPT
 from config import CIRCUIT_COORDINATES_PATH, CIRCUIT_INDEX_PATH
 from tools import search_tools, weather_tools
 from tools.search_tools import search_f1_news
@@ -33,47 +32,58 @@ class FakeResponse:
         return self._payload
 
 
-# The weather tests run at the moment this was measured live: 21:32 UTC on 2026-09-30, when
-# OpenWeather's 40 slots ran from 2026-10-01 00:00 to 2026-10-05 21:00 UTC. The race in the
-# window was the 2026 Bahrain Grand Prix — run at Kuala Lumpur (Sepang), UTC+8, on 2026-10-04.
-NOW = "2026-09-30 21:32:00"
-FIRST_SLOT = datetime(2026, 10, 1, tzinfo=UTC)
-KUALA_LUMPUR = {"location": "Kuala Lumpur", "race_date": "2026-10-04"}
-UTC_PLUS_8 = 8 * 3600
+FORECAST_FROM = datetime(2026, 9, 30, tzinfo=UTC)
 
 
-def forecast_payload(
-    count: int = 40, start: datetime = FIRST_SLOT, utc_offset: int = UTC_PLUS_8
-) -> dict[str, Any]:
-    """An OpenWeather 5-day/3-hour payload: ``count`` slots from ``start``, 3 hours apart."""
-    return {
-        "city": {"timezone": utc_offset},
-        "list": [
+def forecast_payload(count: int = 40, start: datetime = FORECAST_FROM) -> dict[str, Any]:
+    """An OpenWeather 5-day/3-hour payload: ``count`` entries three hours apart from ``start``.
+
+    Entry ``i`` is 20 + i degrees, so a test can tell exactly which slot a session was given.
+    """
+    entries = []
+    for index in range(count):
+        moment = start + timedelta(hours=3 * index)
+        entries.append(
             {
-                "dt": int((start + timedelta(hours=3 * index)).timestamp()),
-                "main": {"temp": 30.44, "feels_like": 36.55, "humidity": 70},
-                "weather": [{"main": "Rain", "description": "light rain"}],
+                "dt": int(moment.timestamp()),
+                "dt_txt": moment.strftime("%Y-%m-%d %H:%M:%S"),
+                "main": {"temp": 20.04 + index, "feels_like": 20.55, "humidity": 60},
+                "weather": [
+                    {
+                        "main": "Rain" if index % 2 else "Clear",
+                        "description": "light rain" if index % 2 else "clear sky",
+                    }
+                ],
                 "wind": {"speed": 3.77},
-                "pop": 0.29,
+                "pop": 0.25 if index % 2 else 0.0,
             }
-            for index in range(count)
-        ],
-    }
+        )
+    return {"cod": "200", "cnt": count, "list": entries}
 
 
-def serve(payload: Any, status_code: int = 200):
-    """A ``requests.get`` stand-in that serves one payload and records every call."""
-
-    def fake_get(url: str, **kwargs: Any) -> FakeResponse:
-        fake_get.calls.append({"url": url, **kwargs})
-        return FakeResponse(payload, status_code)
-
-    fake_get.calls = []
-    return fake_get
+# A Sepang weekend whose FP1 and race fall on forecast slots 18 (2 Oct 06:00) and 34 (4 Oct 06:00).
+SEPANG = {"lat": 2.76075, "lon": 101.73696}
+WEEKEND = [
+    {"name": "Practice 1", "start": "2026-10-02T06:00:00+00:00"},
+    {"name": "Qualifying", "start": "2026-10-03T09:00:00+00:00"},
+    {"name": "Race", "start": "2026-10-04T06:00:00+00:00"},
+]
 
 
-def refuse(*args: Any, **kwargs: Any) -> None:
-    raise AssertionError("the weather tool made a request it had no reason to make")
+def _weather(sessions=WEEKEND, **coords):
+    return get_race_weather.invoke({**SEPANG, **coords, "sessions": sessions})
+
+
+class RecordingGet:
+    """A ``requests.get`` stand-in that serves one response and records every call."""
+
+    def __init__(self, response: FakeResponse) -> None:
+        self.response = response
+        self.calls: list[dict[str, Any]] = []
+
+    def __call__(self, url: str, params: dict | None = None, **kwargs):
+        self.calls.append({"url": url, "params": params or {}})
+        return self.response
 
 
 @pytest.fixture
@@ -95,154 +105,199 @@ def tavily_key(monkeypatch):
 # ── Weather ──────────────────────────────────────────────────────────────────
 
 
-def test_weather_without_a_key_reports_it_and_does_not_call_out(monkeypatch):
+def test_weather_without_a_key_reports_it_and_does_not_call_out():
     """The missing-key branch must short-circuit before any network attempt.
 
     conftest removes OPENWEATHER_API_KEY from the environment for the whole suite, so
     this is the default state rather than something this test arranges.
     """
-    monkeypatch.setattr(weather_tools.requests, "get", refuse)
-    result = get_race_weather.invoke(KUALA_LUMPUR)
-    assert result == {"error": "OPENWEATHER_API_KEY not configured"}
+    assert _weather() == {"error": "OPENWEATHER_API_KEY not configured"}
 
 
-@freeze_time(NOW)
-def test_weather_returns_only_race_day_in_the_circuits_local_time(monkeypatch, openweather_key):
-    """The defect this replaced: the first 8 slots — the next 24 hours, whatever the race date.
+def _refuse_network(*args, **kwargs):
+    raise AssertionError("a tool with no usable key must not reach the network")
 
-    Slots fall on UTC's three-hour marks, which are 02:00, 05:00 … 23:00 at a UTC+8 circuit,
-    so race day's first slot is 18:00 UTC the day before. Bucketing by UTC date would instead
-    return 08:00 on the 4th to 05:00 on the 5th.
+
+@pytest.mark.parametrize("key", ["", "your-openweather-api-key-here", "  your-openweather-key "])
+def test_weather_with_an_unusable_key_is_not_configured_and_makes_no_request(monkeypatch, key):
+    """An env.example placeholder used to reach OpenWeather and earn a 401 while the startup
+    log claimed weather was disabled. It must be treated exactly like no key at all.
     """
-    monkeypatch.setattr(weather_tools.requests, "get", serve(forecast_payload()))
-    result = get_race_weather.invoke(KUALA_LUMPUR)
+    monkeypatch.setattr(weather_tools, "OPENWEATHER_API_KEY", key)
+    monkeypatch.setattr(weather_tools.requests, "get", _refuse_network)
 
-    assert result["forecast_available"] is True
-    assert result["race_date"] == "2026-10-04"
-    times = [slot["local_time"] for slot in result["forecasts"]]
-    assert times == [f"2026-10-04 {hour:02d}:00" for hour in range(2, 24, 3)]
+    assert _weather() == {"error": "OPENWEATHER_API_KEY not configured"}
 
 
-@freeze_time(NOW)
-def test_weather_asks_for_the_circuit_by_coordinates_and_never_geocodes(
+def test_weather_without_circuit_coordinates_is_an_error_and_makes_no_request(
     monkeypatch, openweather_key
 ):
-    """Geocoding FastF1's Location missed four real circuits, measured live on 2026-09-30:
-    "Kuala Lumpur,BH" (the event's country, not the venue's), Sakhir, Yas Marina and
-    Spa-Francorchamps all came back empty. The circuit's own coordinates cannot miss.
-    """
-    fake_get = serve(forecast_payload())
-    monkeypatch.setattr(weather_tools.requests, "get", fake_get)
-    get_race_weather.invoke(KUALA_LUMPUR)
+    """No track, no centroid, no forecast. The geocoding this replaced guessed instead — Sepang
+    became "Kuala Lumpur,BH", and a country missing from its map silently became "US"."""
+    monkeypatch.setattr(weather_tools.requests, "get", _refuse_network)
 
-    assert [call["url"] for call in fake_get.calls] == [
+    assert _weather(lat=None, lon=None) == {"error": "No circuit coordinates for this race"}
+
+
+def test_weather_without_session_times_is_an_error_and_makes_no_request(
+    monkeypatch, openweather_key
+):
+    monkeypatch.setattr(weather_tools.requests, "get", _refuse_network)
+
+    assert _weather(sessions=[]) == {"error": "No session times for this race weekend"}
+
+
+def test_weather_asks_only_the_forecast_endpoint_for_the_circuit_coordinates(
+    monkeypatch, openweather_key
+):
+    fake = RecordingGet(FakeResponse(forecast_payload()))
+    monkeypatch.setattr(weather_tools.requests, "get", fake)
+
+    _weather()
+
+    assert [call["url"] for call in fake.calls] == [
         "https://api.openweathermap.org/data/2.5/forecast"
     ]
-    params = fake_get.calls[0]["params"]
-    # Sepang International Circuit, ~50km south of Kuala Lumpur's city centre.
-    assert params["lat"] == pytest.approx(2.76, abs=0.05)
-    assert params["lon"] == pytest.approx(101.74, abs=0.05)
-
-
-@freeze_time(NOW)
-def test_weather_shapes_each_slot(monkeypatch, openweather_key):
-    monkeypatch.setattr(weather_tools.requests, "get", serve(forecast_payload()))
-    slot = get_race_weather.invoke(KUALA_LUMPUR)["forecasts"][0]
-
-    assert slot == {
-        "local_time": "2026-10-04 02:00",
-        "temperature_c": 30.4,
-        "feels_like_c": 36.5,
-        "humidity": 70,
-        "weather": "Rain",
-        "description": "light rain",
-        "wind_speed_ms": 3.8,
-        "rain_probability": 29,  # pop is a fraction; 0.29 * 100 is 28.999999999999996
+    assert fake.calls[0]["params"] == {
+        "lat": 2.76075,
+        "lon": 101.73696,
+        "appid": "test-openweather-key",
+        "units": "metric",
     }
 
 
-@freeze_time(NOW)
-def test_weather_for_a_race_beyond_the_window_says_so_without_calling_out(
-    monkeypatch, openweather_key
-):
-    """A briefing three weeks out used to present today's weather as the race forecast."""
-    monkeypatch.setattr(weather_tools.requests, "get", refuse)
-    result = get_race_weather.invoke({"location": "Austin", "race_date": "2026-10-25"})
-
-    assert result == {
-        "location": "Austin",
-        "race_date": "2026-10-25",
-        "forecast_available": False,
-        "reason": "beyond_forecast_window",
-        "forecast_opens": "2026-10-20",
-    }
-
-
-@freeze_time(NOW)
-def test_weather_for_a_race_already_run_says_so_without_calling_out(monkeypatch, openweather_key):
-    monkeypatch.setattr(weather_tools.requests, "get", refuse)
-    result = get_race_weather.invoke({"location": "Baku", "race_date": "2026-09-27"})
-
-    assert result == {
-        "location": "Baku",
-        "race_date": "2026-09-27",
-        "forecast_available": False,
-        "reason": "race_day_passed",
-    }
-
-
-@freeze_time(NOW)
-def test_the_synthesizer_prompt_steers_on_keys_the_tool_really_emits(monkeypatch, openweather_key):
-    """Weather Watch is told what to write from these two keys. Renaming either here would
-    leave the model looking for a key that is never there, and it would fill the gap itself."""
-    monkeypatch.setattr(weather_tools.requests, "get", refuse)
-    result = get_race_weather.invoke({"location": "Austin", "race_date": "2026-10-25"})
-    for key in ("forecast_available", "forecast_opens"):
-        assert key in SYNTHESIZER_PROMPT
-        assert key in result
-
-
-@freeze_time(NOW)
-def test_weather_trusts_the_forecast_when_race_day_is_past_its_last_slot(
-    monkeypatch, openweather_key
-):
-    """Near the window's edge only the payload knows whether race day is covered."""
-    monkeypatch.setattr(weather_tools.requests, "get", serve(forecast_payload(count=8)))
-    result = get_race_weather.invoke(KUALA_LUMPUR)
-
-    assert result["forecast_available"] is False
-    assert result["reason"] == "beyond_forecast_window"
-    assert "forecasts" not in result
-
-
-@freeze_time(NOW)
-def test_weather_trusts_the_forecast_when_race_day_ended_before_its_first_slot(
-    monkeypatch, openweather_key
-):
-    """It is already 05:32 on 1 October in Kuala Lumpur, so a 30 September race day is over."""
-    monkeypatch.setattr(weather_tools.requests, "get", serve(forecast_payload()))
-    result = get_race_weather.invoke({"location": "Kuala Lumpur", "race_date": "2026-09-30"})
-
-    assert result["forecast_available"] is False
-    assert result["reason"] == "race_day_passed"
-
-
-@freeze_time(NOW)
-def test_weather_reports_a_location_with_no_circuit_coordinates(monkeypatch, openweather_key):
-    """No fallback to geocoding by name: that is how "Silverstone,US" became North Carolina."""
-    monkeypatch.setattr(weather_tools.requests, "get", refuse)
-    result = get_race_weather.invoke({"location": "Atlantis", "race_date": "2026-10-04"})
-    assert result == {"error": "No circuit coordinates for Atlantis"}
-
-
-@freeze_time(NOW)
 def test_weather_reports_a_failed_forecast_fetch(monkeypatch, openweather_key):
-    monkeypatch.setattr(weather_tools.requests, "get", serve({}, status_code=500))
-    result = get_race_weather.invoke(KUALA_LUMPUR)
-    assert result == {"error": "Failed to fetch weather forecast"}
+    monkeypatch.setattr(weather_tools.requests, "get", RecordingGet(FakeResponse({}, 500)))
+
+    assert _weather() == {"error": "Forecast request failed with status 500"}
 
 
-@freeze_time(NOW)
+@freeze_time("2026-09-30T00:05:00")
+def test_weather_gives_each_session_its_own_forecast(monkeypatch, openweather_key):
+    monkeypatch.setattr(
+        weather_tools.requests, "get", RecordingGet(FakeResponse(forecast_payload()))
+    )
+
+    result = _weather()
+
+    assert result["status"] == "ok"
+    assert result["forecast_generated_at"] == "2026-09-30T00:05:00+00:00"
+    assert result["sessions"] == [
+        {
+            "name": "Practice 1",
+            "start": "2026-10-02T06:00:00+00:00",
+            "forecast": {
+                "temperature_c": 38.0,
+                "rain_probability": 0.0,
+                "wind_speed_ms": 3.8,
+                "conditions": "Clear",
+                "description": "clear sky",
+            },
+        },
+        {
+            "name": "Qualifying",
+            "start": "2026-10-03T09:00:00+00:00",
+            "forecast": {
+                "temperature_c": 47.0,
+                "rain_probability": 25.0,
+                "wind_speed_ms": 3.8,
+                "conditions": "Rain",
+                "description": "light rain",
+            },
+        },
+        {
+            "name": "Race",
+            "start": "2026-10-04T06:00:00+00:00",
+            "forecast": {
+                "temperature_c": 54.0,
+                "rain_probability": 0.0,
+                "wind_speed_ms": 3.8,
+                "conditions": "Clear",
+                "description": "clear sky",
+            },
+        },
+    ]
+
+
+def test_weather_is_the_race_weekend_not_the_next_24_hours(monkeypatch, openweather_key):
+    """The defect: the first eight 3-hour slots, i.e. the next day, presented as the weekend —
+    a Singapore briefing quoted 30 Sep rain odds for an 11 Oct race. The window is FP1 - 3h to
+    race + 3h, and nothing outside it reaches the result."""
+    monkeypatch.setattr(
+        weather_tools.requests, "get", RecordingGet(FakeResponse(forecast_payload()))
+    )
+
+    result = _weather()
+
+    assert result["window"] == {
+        "from": "2026-10-02T03:00:00+00:00",
+        "to": "2026-10-04T09:00:00+00:00",
+    }
+    temperatures = {s["forecast"]["temperature_c"] for s in result["sessions"]}
+    assert temperatures.isdisjoint({20.0 + index for index in range(8)})
+
+
+@freeze_time("2026-09-30T00:05:00")
+def test_a_weekend_just_past_the_last_slot_is_outside_the_range(monkeypatch, openweather_key):
+    """Inside the day of slack the session times alone cannot settle it, so the forecast is
+    fetched and its own last slot decides: here it ends on 4 Oct, and FP1 is on the 5th.
+    That is an answer — not yet forecast — never a forecast for some other days."""
+    monkeypatch.setattr(
+        weather_tools.requests, "get", RecordingGet(FakeResponse(forecast_payload()))
+    )
+
+    result = _weather(
+        sessions=[
+            {"name": "Practice 1", "start": "2026-10-05T06:00:00+00:00"},
+            {"name": "Race", "start": "2026-10-07T12:00:00+00:00"},
+        ]
+    )
+
+    assert result == {
+        "status": "outside_forecast_range",
+        "weekend_starts": "2026-10-05T06:00:00+00:00",
+        "available_from": "2026-09-30",
+        "forecast_generated_at": "2026-09-30T00:05:00+00:00",
+    }
+
+
+def test_a_weekend_that_runs_past_the_forecast_is_partial(monkeypatch, openweather_key):
+    """FP1 is in range and the race is not: the race says so rather than borrowing FP1's."""
+    monkeypatch.setattr(
+        weather_tools.requests, "get", RecordingGet(FakeResponse(forecast_payload(count=30)))
+    )
+
+    result = _weather()
+
+    assert result["status"] == "partial"
+    by_name = {s["name"]: s["forecast"] for s in result["sessions"]}
+    assert by_name["Practice 1"]["temperature_c"] == 38.0
+    assert by_name["Race"] is None
+
+
+def test_sessions_already_under_way_get_no_forecast(monkeypatch, openweather_key):
+    """Late on race day the forecast starts after the window closes: every session says it has
+    no forecast rather than borrowing tomorrow's."""
+    monkeypatch.setattr(
+        weather_tools.requests,
+        "get",
+        RecordingGet(FakeResponse(forecast_payload(start=datetime(2026, 10, 4, 12, tzinfo=UTC)))),
+    )
+
+    result = _weather()
+
+    assert result["status"] == "partial"
+    assert [s["forecast"] for s in result["sessions"]] == [None, None, None]
+
+
+def test_an_empty_forecast_is_an_error_not_a_dry_weekend(monkeypatch, openweather_key):
+    monkeypatch.setattr(
+        weather_tools.requests, "get", RecordingGet(FakeResponse({"cod": "200", "list": []}))
+    )
+
+    assert _weather() == {"error": "Forecast returned no entries"}
+
+
 def test_weather_converts_an_unexpected_exception_into_an_error(monkeypatch, openweather_key):
     """A tool must never raise — the agent is built to continue on partial data."""
 
@@ -250,9 +305,29 @@ def test_weather_converts_an_unexpected_exception_into_an_error(monkeypatch, ope
         raise ConnectionError("network down")
 
     monkeypatch.setattr(weather_tools.requests, "get", boom)
-    result = get_race_weather.invoke(KUALA_LUMPUR)
+    result = _weather()
     assert "error" in result
     assert "network down" in result["error"]
+
+
+def test_a_transport_error_never_carries_the_key_into_the_result_or_the_log(
+    monkeypatch, openweather_key, caplog
+):
+    """requests quotes the failing URL, and the key is in its query string."""
+
+    def boom(*args, **kwargs):
+        raise ConnectionError(
+            "Max retries exceeded with url: /data/2.5/forecast?lat=2.7&appid=test-openweather-key"
+        )
+
+    monkeypatch.setattr(weather_tools.requests, "get", boom)
+
+    with caplog.at_level("WARNING", logger="tools.weather_tools"):
+        result = _weather()
+
+    assert "test-openweather-key" not in result["error"]
+    assert "[redacted]" in result["error"]
+    assert "test-openweather-key" not in caplog.text
 
 
 def test_every_circuit_in_the_index_has_coordinates():
@@ -301,6 +376,22 @@ def make_tavily_client(response: dict[str, Any] | None = None, raises: Exception
 
 def test_search_without_a_key_reports_it():
     result = search_f1_news.invoke({"query": "Monaco Grand Prix 2025"})
+    assert result == {"error": "TAVILY_API_KEY not configured"}
+
+
+@pytest.mark.parametrize("key", ["", "tvly-your-tavily-api-key-here", "TVLY-YOUR-KEY-HERE"])
+def test_search_with_an_unusable_key_is_not_configured_and_makes_no_request(monkeypatch, key):
+    """Same trap as the weather key: a placeholder is a missing key, not a credential to try."""
+
+    class _RefusingClient:
+        def __init__(self, *args, **kwargs):
+            _refuse_network()
+
+    monkeypatch.setattr(search_tools, "TAVILY_API_KEY", key)
+    monkeypatch.setattr(search_tools, "TavilyClient", _RefusingClient)
+
+    result = search_f1_news.invoke({"query": "Monaco Grand Prix 2025"})
+
     assert result == {"error": "TAVILY_API_KEY not configured"}
 
 

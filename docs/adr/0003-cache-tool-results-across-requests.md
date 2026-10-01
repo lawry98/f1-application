@@ -54,3 +54,12 @@ left exactly as it was.
   fetch; two concurrent misses on one key both fetch and the last write wins.
 - **A visible seam.** The `tool_result` SSE event carries `cached: true/false` so the transport
   stays honest about provenance; the frontend ignores it for now.
+
+## Amended by ADR-0004: the cutoff is the date component
+
+The result tools now take the briefing's `as_of` (see
+[ADR-0004](0004-past-races-brief-as-of-the-weekend.md)), so the key is `(tool_name, arguments)`
+for every cached tool, and `DATE_DEPENDENT_TOOLS` is gone. An upcoming race's `as_of` is the
+start of today, so its key still rolls over daily, as the date component did. A past race's
+`as_of` is fixed, and nothing that started before it can change, so its entries are good for
+the life of the process. A date component on top would only refetch them every day.

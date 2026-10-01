@@ -467,7 +467,10 @@ def openf1_season(monkeypatch):
             "session_result": OPENF1_RESULTS,
             "drivers": OPENF1_DRIVERS,
             "meetings": [],
-        }
+        },
+        # Year-aware, as OpenF1 is: a tool that reaches back into 2023 for more races must find
+        # none there, not a second copy of 2024.
+        by_year=True,
     )
     monkeypatch.setattr(openf1_client.requests, "get", fake)
     return fake

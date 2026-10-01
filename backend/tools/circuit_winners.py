@@ -4,7 +4,12 @@ A plain helper, not a ``@tool``. Two callers share it and its cache: the winners
 circuit id, and the agent's ``get_circuit_winners`` in ``f1_data_tools.py``, which resolves
 the briefing's race location to a circuit id with ``circuit_id_for_location`` first.
 
-**Matched by circuit, never by Grand Prix name.** ``fastf1_helpers.find_event`` is a
+It is also the backend's one reader of the frontend's circuit data: ``circuit_record`` for a
+circuit's own file, ``circuit_coordinates`` for its centre, and ``events_at_circuit`` — the
+matcher below, exposed — which ``get_recent_race_results`` uses to find the latest race *at
+this track*.
+
+**Matched by circuit, never by Grand Prix name.** The ``find_event`` this replaced was a
 substring match on ``EventName``, and a Grand Prix is not a track: 2026's Spanish GP is
 at Madrid while 2023-25's was at Barcelona, and FastF1 files the rescheduled 2026 Bahrain
 GP under Kuala Lumpur. So each schedule row's ``Location`` is slugged and looked up in the
@@ -12,13 +17,14 @@ frontend's ``index.json`` — the same map, and the same aliases, the page draws
 ``location_slug`` is therefore a third copy of the slug rule; ``slug-cases.json`` pins
 all three.
 
-**Cached per (circuit, year), with no expiry.** The window is the three seasons before
-the current one — the same window the agent's tool uses — and a finished season's winner
-does not change, so there is nothing a TTL would refresh. A year the circuit did not host
-is cached as an empty tuple; a year whose load *failed* is not cached at all, so a
-transient FastF1 failure is not remembered as "never raced here". The key space is
-bounded by the 40 ids in ``index.json`` — never by client input, because the route
-rejects an unknown id before anything is stored.
+**Cached per (circuit, year), with no expiry.** The page's window is the three seasons before
+the current one; a briefing's is the three before *its race's* season, cut off at its
+``as_of`` (ADR-0004). A finished season's winner does not change, so there is nothing a TTL
+would refresh. A year the circuit did not host is cached as an empty tuple; a year whose
+load *failed* is not cached at all, so a transient FastF1 failure is not remembered as
+"never raced here" — and nor is a year the cutoff cut short, which is a partial answer. The
+key space is bounded by the 40 ids in ``index.json`` — never by client input, because the
+route rejects an unknown id before anything is stored.
 
 **Single flight per circuit.** A cold circuit costs ~1.5s per hosted year (~4.6s for
 three), so two people opening the same circuit at once would otherwise pay it twice. A
@@ -34,13 +40,13 @@ import logging
 import re
 import threading
 import unicodedata
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 import pandas as pd
 
-from config import CIRCUIT_INDEX_PATH
-from tools.fastf1_helpers import load_race_session
+from config import CIRCUIT_COORDINATES_PATH, CIRCUIT_INDEX_PATH
+from tools.fastf1_helpers import load_race_session, race_start
 from tools.schedule_cache import get_schedule
 
 logger = logging.getLogger(__name__)
@@ -58,15 +64,20 @@ _cache_lock = threading.Lock()
 _cache: dict[tuple[str, int], tuple[dict[str, Any], ...]] = {}
 _circuit_locks: dict[str, threading.Lock] = {}
 _index: dict[str, str] | None = None
+_records: dict[str, dict[str, Any]] = {}
+_coordinates: dict[str, dict[str, float]] | None = None
 
 
 def clear() -> None:
-    """Drop every cached winner and the loaded index. Used by tests; harmless in production."""
-    global _index
+    """Drop every cached winner, record, coordinate and the loaded index. Used by tests;
+    harmless in production."""
+    global _index, _coordinates
     with _cache_lock:
         _cache.clear()
         _circuit_locks.clear()
+        _records.clear()
         _index = None
+        _coordinates = None
 
 
 def location_slug(location: str) -> str:
@@ -110,6 +121,65 @@ def circuit_id_for_location(location: str) -> str | None:
     return _circuit_index().get(location_slug(location))
 
 
+def circuit_record(circuit_id: str) -> dict[str, Any] | None:
+    """A circuit's own facts from ``frontend/data/circuits/<id>.json``, or None for an id the
+    index does not carry. Raises if the files cannot be read.
+
+    The id is checked against the index's values before it becomes a path, so nothing but one
+    of the 40 shipped files is ever opened. The outline's points are dropped: callers want the
+    name and numbers, not a few kilobytes of geometry.
+    """
+    if circuit_id not in set(_circuit_index().values()):
+        return None
+    with _cache_lock:
+        if circuit_id in _records:
+            return copy.deepcopy(_records[circuit_id])
+    with open(CIRCUIT_INDEX_PATH.parent / f"{circuit_id}.json", encoding="utf-8") as handle:
+        raw = json.load(handle)
+    record = {
+        "id": raw["id"],
+        "name": raw["name"],
+        "length_m": raw.get("lengthM"),
+        "first_gp": raw.get("firstGp"),
+    }
+    with _cache_lock:
+        _records[circuit_id] = record
+    return copy.deepcopy(record)
+
+
+def circuit_coordinates(circuit_id: str) -> dict[str, float] | None:
+    """A circuit's centre, ``{"lat", "lon"}`` in WGS84 degrees, from ``coordinates.json``, or
+    None for an id it does not carry. Raises if the file cannot be read.
+
+    The weather forecast's coordinates — written beside the outlines by
+    ``scripts/fetch-circuit-geometry.mjs``, and never geocoded from a place name.
+    """
+    global _coordinates
+    with _cache_lock:
+        loaded = _coordinates
+    if loaded is None:
+        with open(CIRCUIT_COORDINATES_PATH, encoding="utf-8") as handle:
+            loaded = json.load(handle)
+        with _cache_lock:
+            _coordinates = loaded
+    centre = loaded.get(circuit_id)
+    return dict(centre) if centre else None
+
+
+def events_at_circuit(circuit_id: str, year: int) -> list[pd.Series]:
+    """Every Grand Prix ``circuit_id`` hosted in ``year``, in calendar order. Raises on failure.
+
+    Round 0 is pre-season testing, which runs at Sakhir and is not a Grand Prix.
+    """
+    index = _circuit_index()
+    return [
+        event
+        for _, event in get_schedule(year).iterrows()
+        if int(event["RoundNumber"]) != 0
+        and index.get(location_slug(str(event["Location"]))) == circuit_id
+    ]
+
+
 def _lock_for(circuit_id: str) -> threading.Lock:
     with _cache_lock:
         return _circuit_locks.setdefault(circuit_id, threading.Lock())
@@ -145,26 +215,40 @@ def _winner_row(year: int, event_name: str) -> dict[str, Any]:
     }
 
 
-def _winners_in(circuit_id: str, year: int, index: dict[str, str]) -> tuple[dict[str, Any], ...]:
-    """Every race this circuit hosted in ``year``, in calendar order. Raises on failure."""
-    schedule = get_schedule(year)
+def _winners_in(
+    circuit_id: str, year: int, before: datetime | None
+) -> tuple[tuple[dict[str, Any], ...], bool]:
+    """The winner of every race this circuit hosted in ``year`` that started before ``before``.
+
+    Returns the rows in calendar order and whether the cutoff skipped any edition — a year with
+    a skipped edition is a partial answer, which the caller must not cache. Raises on failure.
+    """
     rows = []
-    for _, event in schedule.iterrows():
-        # Round 0 is pre-season testing, which runs at Sakhir and is not a Grand Prix.
-        if int(event["RoundNumber"]) == 0:
-            continue
-        if index.get(location_slug(str(event["Location"]))) != circuit_id:
+    skipped = False
+    for event in events_at_circuit(circuit_id, year):
+        if before is not None and race_start(event) >= before:
+            skipped = True
             continue
         rows.append(_winner_row(year, str(event["EventName"])))
-    return tuple(rows)
+    return tuple(rows), skipped
 
 
-def get_recent_circuit_winners(circuit_id: str, years_back: int = WINDOW_YEARS) -> dict[str, Any]:
-    """Winners at one circuit across the ``years_back`` seasons before this one.
+def get_recent_circuit_winners(
+    circuit_id: str,
+    years_back: int = WINDOW_YEARS,
+    *,
+    season: int | None = None,
+    before: datetime | None = None,
+) -> dict[str, Any]:
+    """Winners at one circuit across the ``years_back`` seasons before ``season``.
 
     Args:
         circuit_id: A circuit id from ``index.json``'s values, e.g. ``it-1922``.
-        years_back: How many seasons before the current one to cover.
+        years_back: How many seasons before ``season`` to cover.
+        season: The season the window ends before; defaults to the current one, which is the
+            /circuits page's window. A briefing passes its race's season.
+        before: A briefing's ``as_of``. An edition starting on or after it is never loaded, so
+            a window reaching into a season still under way reports only what had run.
 
     Returns:
         ``circuit_id``, ``from_year``, ``to_year`` (inclusive), ``winners`` newest first, and
@@ -182,8 +266,8 @@ def get_recent_circuit_winners(circuit_id: str, years_back: int = WINDOW_YEARS) 
     if circuit_id not in set(index.values()):
         return {"error": f"Unknown circuit {circuit_id}", "reason": UNKNOWN_CIRCUIT}
 
-    this_year = date.today().year
-    years = list(range(this_year - years_back, this_year))
+    last_season = date.today().year if season is None else season
+    years = list(range(last_season - years_back, last_season))
     winners: list[dict[str, Any]] = []
     unavailable: list[int] = []
 
@@ -193,14 +277,18 @@ def get_recent_circuit_winners(circuit_id: str, years_back: int = WINDOW_YEARS) 
                 rows = _cached(circuit_id, year)
                 if rows is None:
                     try:
-                        rows = _winners_in(circuit_id, year, index)
+                        rows, partial = _winners_in(circuit_id, year, before)
                     except Exception as exc:
                         logger.warning(
                             "Winners for %s in %d unavailable: %s", circuit_id, year, exc
                         )
                         unavailable.append(year)
                         continue
-                    _store(circuit_id, year, rows)
+                    # A cached year is always complete: every edition in it loaded a P1, so every
+                    # one had run. The window is the seasons before the race's own, which for a
+                    # past race all precede its first session — so a hit never needs the cutoff.
+                    if not partial:
+                        _store(circuit_id, year, rows)
                 winners.extend(copy.deepcopy(rows))
     except Exception as exc:
         return {"error": f"Failed to get circuit winners: {exc}"}

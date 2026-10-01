@@ -24,9 +24,18 @@ views a minute. The freshness policy is the year:
   started" is the exception for the running season — it is an answer, not a failure, and
   from January to the first race it is the answer every view gets.
 
-Process-local and unevicted, as in ADR-0003: the key space is one entry per season. Two
-concurrent misses on one year both derive the table; the OpenF1 client's single-flight
-collapses their identical requests while they overlap.
+A briefing passes ``as_of`` (ADR-0004), and only sessions that *started* before that instant
+count — the table a reader saw before the weekend, not the season's final one. The key is
+``(year, as_of)``. /standings passes none, and that path is exactly the policy above. With a
+cutoff, a completed season is still kept for good, and so is any cutoff before today: nothing
+that started before a past instant is still moving. A cutoff of today — every upcoming race's
+— is the running season again, under the TTL, because yesterday's race may still be
+publishing. "Season not started" under a cutoff is TTL-only, like the running season's.
+
+Process-local and unevicted, as in ADR-0003. The key space is one entry per season plus one
+per briefed race weekend, bounded by the calendar. Two concurrent misses on one key both
+derive the table; the OpenF1 client's single-flight collapses their identical requests while
+they overlap.
 """
 
 import copy
@@ -40,6 +49,7 @@ from typing import Any
 from langchain_core.tools import tool
 
 from config import STANDINGS_TTL_SECONDS
+from tools.cutoff import parse_utc
 from tools.openf1_client import (
     OPENF1_FIRST_YEAR,
     driver_index,
@@ -51,7 +61,7 @@ from tools.openf1_races import scoring_sessions
 logger = logging.getLogger(__name__)
 
 # Sibling `reason` value for the pre-season error below. `_invoke_tool` in agent/graph.py
-# keys its historical-year retry off this — do not delete it as unused.
+# keys its previous-season retry off this — do not delete it as unused.
 SEASON_NOT_STARTED = "season_not_started"
 
 
@@ -63,9 +73,9 @@ def _countback(finishes: Counter[int], depth: int) -> tuple[int, ...]:
     return tuple(-finishes[place] for place in range(1, depth + 1))
 
 
-# year -> (monotonic expiry, or None for a completed season; the tool's result).
+# (year, as_of) -> (monotonic expiry, or None for an immutable table; the tool's result).
 _cache_lock = threading.Lock()
-_cache: dict[int, tuple[float | None, dict[str, Any]]] = {}
+_cache: dict[tuple[int, str | None], tuple[float | None, dict[str, Any]]] = {}
 
 
 def clear() -> None:
@@ -81,9 +91,9 @@ def _season_not_started(year: int) -> dict[str, Any]:
     }
 
 
-def _cached(year: int) -> dict[str, Any] | None:
+def _cached(year: int, as_of: str | None) -> dict[str, Any] | None:
     with _cache_lock:
-        entry = _cache.get(year)
+        entry = _cache.get((year, as_of))
     if entry is None:
         return None
     expires_at, result = entry
@@ -94,23 +104,34 @@ def _cached(year: int) -> dict[str, Any] | None:
     return copy.deepcopy(result)
 
 
-def _store(year: int, result: dict[str, Any]) -> None:
-    if year < date.today().year:
-        if "error" in result:
-            return
+def _is_immutable(year: int, as_of: str | None) -> bool:
+    """Whether nothing this table counts can still change: a finished season, or a cutoff
+    before today. A cutoff of today is not — the race it follows may still be publishing."""
+    today = date.today()
+    if year < today.year:
+        return True
+    return as_of is not None and parse_utc(as_of).date() < today
+
+
+def _store(year: int, as_of: str | None, result: dict[str, Any]) -> None:
+    not_started = result.get("reason") == SEASON_NOT_STARTED
+    if "error" in result and not not_started:
+        return
+    if _is_immutable(year, as_of) and not not_started:
         expires_at = None
+    elif as_of is None and year < date.today().year:
+        # A finished season with no results is an outage, not an answer: /standings' own rule.
+        return
     else:
-        if "error" in result and result.get("reason") != SEASON_NOT_STARTED:
-            return
         if STANDINGS_TTL_SECONDS <= 0:
             return
         expires_at = time.monotonic() + STANDINGS_TTL_SECONDS
     with _cache_lock:
-        _cache[year] = (expires_at, copy.deepcopy(result))
+        _cache[(year, as_of)] = (expires_at, copy.deepcopy(result))
 
 
 @tool
-def get_championship_standings(year: int) -> dict[str, Any]:
+def get_championship_standings(year: int, as_of: str | None = None) -> dict[str, Any]:
     """Get the driver and constructor championship tables for a season.
 
     Points are summed across every completed Race and Sprint session. A session counts as
@@ -120,34 +141,43 @@ def get_championship_standings(year: int) -> dict[str, Any]:
 
     Args:
         year: Season to query.
+        as_of: Optional ISO-8601 cutoff. When given, only sessions that started before it are
+            scored or counted — the table as it stood then. Without it, every session dated
+            before today counts, which is what /standings serves.
 
     Returns:
-        Dictionary with 'drivers' and 'constructors' tables and 'races_completed', or an
-        'error' key on failure.
+        Dictionary with 'drivers' and 'constructors' tables and 'races_completed' (plus
+        'as_of' when one was given), or an 'error' key on failure.
     """
     if year < OPENF1_FIRST_YEAR:
         return {
             "error": f"Championship standings are only available from {OPENF1_FIRST_YEAR} onwards."
         }
 
-    cached = _cached(year)
+    cached = _cached(year, as_of)
     if cached is not None:
         return cached
 
-    result = _derive_standings(year)
-    _store(year, result)
+    result = _derive_standings(year, as_of)
+    _store(year, as_of, result)
     return result
 
 
-def _derive_standings(year: int) -> dict[str, Any]:
+def _counts(session: dict[str, Any], as_of: str | None) -> bool:
+    """Whether a scoring session falls inside the table's window.
+
+    Without a cutoff this is the date-level test /standings has always used. With one it is an
+    instant: a sprint that started at 16:00 is in a table as of 16:01 and not one as of 15:59.
+    """
+    if as_of is None:
+        return date.fromisoformat(session["date_start"][:10]) < date.today()
+    return parse_utc(session["date_start"]) < parse_utc(as_of)
+
+
+def _derive_standings(year: int, as_of: str | None) -> dict[str, Any]:
     """Sum the tables from OpenF1. Never raises; a failure is ``{"error": ...}``."""
     try:
-        today = date.today()
-        sessions = [
-            session
-            for session in scoring_sessions(year)
-            if date.fromisoformat(session["date_start"][:10]) < today
-        ]
+        sessions = [session for session in scoring_sessions(year) if _counts(session, as_of)]
         if not sessions:
             return _season_not_started(year)
 
@@ -272,11 +302,17 @@ def _derive_standings(year: int) -> dict[str, Any]:
             races_completed,
         )
 
-        return {
+        table = {
             "year": year,
             "races_completed": races_completed,
             "drivers": driver_table,
             "constructors": constructor_table,
         }
+        if as_of is not None:
+            table["as_of"] = as_of
+        return table
     except Exception as exc:
+        # No FastF1 fallback here, so this is a briefing's missing Championship Context or a
+        # /standings 502 — logged, still returned as a value.
+        logger.warning("Standings for %d unavailable (%s: %s)", year, type(exc).__name__, exc)
         return {"error": f"Failed to get championship standings: {exc}"}

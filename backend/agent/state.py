@@ -1,15 +1,31 @@
 from typing import TypedDict
 
 
+class SessionTime(TypedDict):
+    name: str
+    # ISO-8601, UTC.
+    start: str
+
+
 class RaceInfo(TypedDict):
     name: str
     year: int
+    round: int
+    # An *event* slug ("british_grand_prix"), not a circuit id — see track_id.
     circuit_id: str
+    # The circuit id the location matched in frontend/data/circuits/index.json ("gb-1948"),
+    # or None. Everything circuit-shaped keys on this, never on the Grand Prix's name.
+    track_id: str | None
+    circuit_name: str | None
+    circuit_length_m: int | None
     location: str
     country: str
     date: str
     is_upcoming: bool
-    historical_year: int
+    # The briefing's cutoff, ISO-8601 UTC: today for an upcoming race, the first session's
+    # start for a past one. Every data tool answers as of it. See ADR-0004.
+    as_of: str
+    sessions: list[SessionTime]
 
 
 class ToolResult(TypedDict):
