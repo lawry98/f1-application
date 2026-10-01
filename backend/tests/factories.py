@@ -230,3 +230,20 @@ class _FakeOpenF1Response:
 
     def json(self) -> Any:
         return self._payload
+
+
+class FakeClock:
+    """A clock a test moves by hand — for anything timed in hours, where sleeping is no option.
+
+    Callable like ``time.time``/``time.monotonic``, which is the whole seam the guard and the
+    run budget take.
+    """
+
+    def __init__(self, now: float = 1_000_000.0) -> None:
+        self.now = now
+
+    def __call__(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds

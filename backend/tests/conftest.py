@@ -161,6 +161,21 @@ def _clear_result_cache():
     clear_result_cache()
 
 
+@pytest.fixture(autouse=True)
+def briefing_guard(monkeypatch):
+    """A fresh admission guard, at the configured limits, for every test.
+
+    The guard is process-global state like the caches above, and its limits are small on
+    purpose — five briefings an hour from one IP, and TestClient is always one IP — so without
+    this the sixth briefing test in a run would be rate limited by the five before it.
+    """
+    from api import routes
+
+    guard = routes.new_briefing_guard()
+    monkeypatch.setattr(routes, "briefing_guard", guard)
+    return guard
+
+
 @pytest.fixture
 def season_2025():
     """A 2025 schedule straddling FROZEN_TODAY: Bahrain past, Monaco and Silverstone ahead."""

@@ -14,6 +14,7 @@ from typing import Any
 
 import pytest
 from freezegun import freeze_time
+from starlette.requests import Request
 
 from api import routes as routes_module
 from api.errors import (
@@ -761,7 +762,10 @@ def test_stream_delivers_events_while_the_agent_is_still_running(monkeypatch):
     monkeypatch.setattr(routes_module, "agent", GatedAgent(successful_steps(), asyncio.Event()))
 
     async def drive() -> list[str]:
-        response = await routes_module.generate_briefing_stream(BriefingRequest(query="monaco"))
+        response = await routes_module.generate_briefing_stream(
+            BriefingRequest(query="monaco"),
+            Request({"type": "http", "method": "POST", "headers": [], "client": ("t", 1)}),
+        )
         events = response.body_iterator
         try:
             return [(await asyncio.wait_for(anext(events), timeout=5))["event"] for _ in range(3)]

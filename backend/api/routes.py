@@ -3,12 +3,15 @@
 import asyncio
 import json
 import logging
+from collections.abc import AsyncIterator, Callable
 from datetime import date
 from typing import Any
 
 import fastf1
-from fastapi import APIRouter, HTTPException, Path
+from fastapi import APIRouter, HTTPException, Path, Request
+from fastapi.responses import JSONResponse
 from sse_starlette.sse import EventSourceResponse
+from starlette.types import Receive, Scope, Send
 
 from agent.graph import agent
 from agent.state import AgentState
@@ -19,7 +22,14 @@ from api.errors import (
     GENERIC_SCHEDULE_ERROR,
     GENERIC_STANDINGS_ERROR,
 )
+from api.guard import AdmissionGuard, Lease, Rejection
 from api.models import BriefingRequest, BriefingResponse, ToolTraceSummary
+from config import (
+    BRIEFING_DAILY_CAP,
+    BRIEFING_DEADLINE_SECONDS,
+    BRIEFING_MAX_CONCURRENT,
+    BRIEFING_PER_IP_PER_HOUR,
+)
 from tools.circuit_winners import UNKNOWN_CIRCUIT, get_recent_circuit_winners
 from tools.openf1_client import OPENF1_FIRST_YEAR
 from tools.openf1_client import clear as clear_openf1_cache
@@ -29,6 +39,81 @@ from tools.standings_tools import SEASON_NOT_STARTED, get_championship_standings
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api")
+
+# How long past the deadline a slot may stay held before the guard's backstop frees it. Only a
+# teardown path that never ran is ever that late; the margin is there so the backstop cannot
+# free a slot out from under a run that is merely finishing.
+LEASE_MARGIN_SECONDS = 60
+
+
+def new_briefing_guard() -> AdmissionGuard:
+    return AdmissionGuard(
+        per_ip_per_hour=BRIEFING_PER_IP_PER_HOUR,
+        daily_cap=BRIEFING_DAILY_CAP,
+        max_concurrent=BRIEFING_MAX_CONCURRENT,
+        lease_seconds=BRIEFING_DEADLINE_SECONDS + LEASE_MARGIN_SECONDS,
+    )
+
+
+# One per process — the limits are per worker, so run exactly one. See api/guard.py.
+briefing_guard = new_briefing_guard()
+
+
+def _admit(http_request: Request) -> Lease | JSONResponse:
+    """Take a briefing slot for this caller, or build the plain HTTP rejection.
+
+    ``client.host`` is the TCP peer. Behind a proxy it is the visitor only when uvicorn runs
+    with ``--proxy-headers`` and ``FORWARDED_ALLOW_IPS`` naming that proxy; X-Forwarded-For is
+    never read here, because anyone can send one.
+    """
+    ip = http_request.client.host if http_request.client else "unknown"
+    outcome = briefing_guard.admit(ip)
+    if isinstance(outcome, Lease):
+        return outcome
+
+    logger.info(
+        "Briefing rejected: ip=%s code=%s retry_after=%ds",
+        ip,
+        outcome.code,
+        outcome.retry_after_seconds,
+    )
+    return _rejection_response(outcome)
+
+
+def _rejection_response(rejection: Rejection) -> JSONResponse:
+    return JSONResponse(
+        status_code=rejection.status,
+        content={
+            "code": rejection.code,
+            "retry_after_seconds": rejection.retry_after_seconds,
+            "limit": rejection.limit,
+        },
+        headers={"Retry-After": str(rejection.retry_after_seconds)},
+    )
+
+
+class _ReleasingEventSourceResponse(EventSourceResponse):
+    """An event stream that runs ``on_close`` however the response ends.
+
+    The generator's own ``finally`` is not enough by itself. When the client hangs up,
+    sse-starlette cancels its streaming task, and a generator that was parked at a ``yield`` at
+    that moment — or had not started, because the client left before the first event — is not
+    closed by that. Its ``finally`` would run whenever the garbage collector got round to it, or,
+    for one that never started, never. This does both teardowns deterministically.
+    """
+
+    def __init__(self, content: AsyncIterator[dict[str, str]], *, on_close: Callable[[], None]):
+        super().__init__(content)
+        self._on_close = on_close
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            try:
+                await self.body_iterator.aclose()
+            finally:
+                self._on_close()
 
 
 def initial_state(query: str) -> AgentState:
@@ -58,8 +143,14 @@ def _tool_trace_summary(tool_result: dict[str, Any]) -> str:
 
 
 @router.post("/briefing", response_model=BriefingResponse)
-async def generate_briefing(request: BriefingRequest) -> BriefingResponse:
+async def generate_briefing(
+    request: BriefingRequest, http_request: Request
+) -> BriefingResponse | JSONResponse:
     """Generate a complete race briefing in a single response."""
+    admission = _admit(http_request)
+    if isinstance(admission, JSONResponse):
+        return admission
+
     try:
         result: dict[str, Any] = await agent.ainvoke(initial_state(request.query))
 
@@ -94,6 +185,7 @@ async def generate_briefing(request: BriefingRequest) -> BriefingResponse:
         logger.exception("Error generating briefing for '%s': %s", request.query, exc)
         raise HTTPException(status_code=500, detail=GENERIC_BRIEFING_ERROR) from exc
     finally:
+        admission.release()
         # Both caches exist to dedupe fetches *within* one request's tool fan-out.
         # Clearing them here is what buys freshness *across* requests — a range query
         # cached before a race's results are published would otherwise report the
@@ -102,9 +194,19 @@ async def generate_briefing(request: BriefingRequest) -> BriefingResponse:
         clear_openf1_cache()
 
 
-@router.post("/briefing/stream")
-async def generate_briefing_stream(request: BriefingRequest) -> EventSourceResponse:
-    """Stream briefing generation via Server-Sent Events, one event per completed node."""
+@router.post("/briefing/stream", response_model=None)
+async def generate_briefing_stream(
+    request: BriefingRequest, http_request: Request
+) -> EventSourceResponse | JSONResponse:
+    """Stream briefing generation via Server-Sent Events, one event per completed node.
+
+    Admission runs first, while a refusal can still be an ordinary 429/503: once the event
+    stream opens, its status is 200 whatever happens.
+    """
+    admission = _admit(http_request)
+    if isinstance(admission, JSONResponse):
+        return admission
+    lease = admission
 
     async def event_generator():
         try:
@@ -206,12 +308,13 @@ async def generate_briefing_stream(request: BriefingRequest) -> EventSourceRespo
             logger.exception("Error during briefing stream generation: %s", exc)
             yield {"event": "error", "data": json.dumps({"message": GENERIC_BRIEFING_ERROR})}
         finally:
+            lease.release()
             # Same trade-off as the non-streaming route above: dedupe within the request,
             # clear afterwards so the next request cannot serve a stale cached result.
             clear_schedule_cache()
             clear_openf1_cache()
 
-    return EventSourceResponse(event_generator())
+    return _ReleasingEventSourceResponse(event_generator(), on_close=lease.release)
 
 
 def _race_row(event: Any) -> dict[str, Any]:
