@@ -952,7 +952,7 @@ def test_standings_is_invoked_with_the_current_year():
     assert fake.calls == [{"year": 2026, "as_of": "2026-09-30T00:00:00+00:00"}]
 
 
-def test_standings_retries_with_the_historical_year_when_the_season_has_not_started():
+def test_standings_retries_with_the_previous_season_when_this_one_has_not_started():
     """Pre-season, `get_championship_standings` reports `reason=SEASON_NOT_STARTED`
     alongside its error. A briefing should still get last year's final classification
     rather than nothing, so the year - 1 retry must fire on that structural marker.
