@@ -4,10 +4,13 @@ The LLM is replaced wholesale — every test that reaches planner or synthesizer
 monkeypatches ``agent.graph.llm``. No test here makes a network call.
 """
 
+import json
 import logging
 
+import httpx
 import pytest
 from freezegun import freeze_time
+from langchain_core.messages import HumanMessage
 from langgraph.graph import END, StateGraph
 
 from agent import graph as graph_module
@@ -921,6 +924,57 @@ def test_the_llm_client_is_built_with_a_timeout_and_a_bounded_attempt_count():
 
     assert graph_module.llm.timeout == LLM_TIMEOUT_SECONDS
     assert graph_module.llm.max_retries == LLM_MAX_ATTEMPTS
+
+
+_GEMINI_REPLY = {
+    "candidates": [
+        {"content": {"role": "model", "parts": [{"text": "[]"}]}, "finishReason": "STOP"}
+    ]
+}
+
+
+@pytest.mark.parametrize(
+    ("call", "body"),
+    [
+        # The planner's one-shot call: a single JSON reply.
+        (lambda llm, messages: llm.invoke(messages), json.dumps(_GEMINI_REPLY)),
+        # The synthesizer's stream: the same reply as one server-sent event.
+        (
+            lambda llm, messages: list(llm.stream(messages)),
+            f"data: {json.dumps(_GEMINI_REPLY)}\n\n",
+        ),
+    ],
+    ids=["planner-invoke", "synthesizer-stream"],
+)
+def test_gemini_is_given_the_runs_deadline_while_each_read_keeps_the_short_timeout(
+    monkeypatch, call, body
+):
+    """google-genai sends ``X-Server-Timeout: ceil(timeout)`` unless one is already set, and
+    Gemini holds the whole request to it, a stream included: with only ``timeout=15`` it ended
+    every synthesis with ``504 DEADLINE_EXCEEDED`` 15.0s in, mid-briefing. Read off the request
+    as it leaves the SDK, because the constructor kwargs say nothing about what the SDK adds.
+    """
+    from config import BRIEFING_DEADLINE_SECONDS, LLM_TIMEOUT_SECONDS
+
+    sent: list[httpx.Request] = []
+
+    def gemini(request: httpx.Request) -> httpx.Response:
+        sent.append(request)
+        return httpx.Response(200, text=body)
+
+    monkeypatch.setattr(
+        graph_module.llm.client._api_client,
+        "_httpx_client",
+        httpx.Client(transport=httpx.MockTransport(gemini)),
+    )
+
+    call(graph_module.llm, [HumanMessage(content="hi")])
+
+    [request] = sent
+    # Exactly one: the SDK checks for the header case-sensitively, so a differently cased key
+    # would go out alongside its own 15.
+    assert request.headers.get_list("x-server-timeout") == [str(BRIEFING_DEADLINE_SECONDS)]
+    assert request.extensions["timeout"]["read"] == LLM_TIMEOUT_SECONDS
 
 
 def test_standings_is_a_registered_tool():

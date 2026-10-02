@@ -18,6 +18,7 @@ from agent.budget import BriefingStoppedError, budget_from
 from agent.prompts import DEFAULT_TOOLS, PLANNER_PROMPT, SYNTHESIZER_PROMPT
 from agent.state import AgentState, RaceInfo, ToolResult
 from config import (
+    BRIEFING_DEADLINE_SECONDS,
     EXECUTOR_MAX_WORKERS,
     GOOGLE_API_KEY,
     LLM_MAX_ATTEMPTS,
@@ -94,12 +95,15 @@ def clear_result_cache() -> None:
 
 # No temperature argument — gemini-3.6-flash uses fixed sampling defaults and ignores one.
 # See the note in config.py, which also carries the timeout arithmetic. `max_retries` is the
-# SDK's attempt count, first request included, not a count of retries.
+# SDK's attempt count, first request included, not a count of retries. The header overrides
+# the `X-Server-Timeout: ceil(timeout)` the SDK would otherwise send, which Gemini enforces on
+# the whole request; the SDK checks for it with exactly this capitalisation.
 llm = ChatGoogleGenerativeAI(
     model=LLM_MODEL,
     api_key=GOOGLE_API_KEY,
     timeout=LLM_TIMEOUT_SECONDS,
     max_retries=LLM_MAX_ATTEMPTS,
+    additional_headers={"X-Server-Timeout": str(BRIEFING_DEADLINE_SECONDS)},
 )
 
 
