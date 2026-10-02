@@ -160,8 +160,14 @@ the nodes run on worker threads that no `CancelledError` reaches, so each node c
 budget's cancel event and deadline (`agent/budget.py`) before an LLM call, before submitting a
 tool and between streamed chunks; the route sets the event at the deadline and when the response
 ends. **`max_retries` on `ChatGoogleGenerativeAI` is an attempt count**, first request included,
-and its `timeout` bounds each read of a stream, not the stream — `config.py` carries the source
-citations and the deadline arithmetic, and a test re-does the sum.
+and **its `timeout` is two deadlines**: httpx's on each read, and Gemini's on the whole request,
+because google-genai also sends it as `X-Server-Timeout` — streams included. Left at 15, that
+header cut every synthesis off with a 504 exactly 15.0s in, served as a truncated briefing. The
+SDK sends its own only when the request has none, so `agent/graph.py` sets the header to
+`BRIEFING_DEADLINE_SECONDS`, spelled `X-Server-Timeout` exactly: the SDK's check is
+case-sensitive, and any other spelling goes out beside its 15. `config.py` carries the source
+citations and the deadline arithmetic, a test re-does the sum, and another reads the header off
+the outgoing request.
 
 **The graph is not a flat pipeline.** It has four nodes, but `resolver` sits behind a
 conditional edge: when `state["current_step"] == "error"` it routes straight to `END`, skipping

@@ -22,15 +22,21 @@ LLM_MODEL: str = "gemini-3.6-flash"
 # Constants rather than env vars for the same reason LLM_MODEL is: they are sized against the
 # briefing deadline below, so changing one means redoing this arithmetic in a diff.
 #
-# What the two knobs really do, read from langchain-google-genai 4.3.2 and google-genai 2.25.0
-# (backend/.venv/lib/python3.12/site-packages/):
+# What the two knobs really do, read from langchain-google-genai 4.3.2 and google-genai
+# 2.25.0-2.27.0 (backend/.venv/lib/python3.12/site-packages/):
 #   - `timeout` (seconds) becomes HttpOptions.timeout in ms (langchain_google_genai/
-#     chat_models.py, `_prepare_request` and `_build_request_config`), then an httpx per-request
-#     timeout (google/genai/_api_client.py, `_request_once`). httpx applies it to connect and to
-#     *each read*, so for the planner's `.invoke()` it bounds the whole reply, and for the
-#     synthesizer's `.stream()` it bounds the wait for the first chunk and every gap between
-#     chunks — not the length of the stream. The cancel event (see agent/budget.py) is what ends
-#     a stream that is still producing.
+#     chat_models.py, `_prepare_request` and `_build_request_config`), and google-genai turns it
+#     into two deadlines (google/genai/_api_client.py):
+#       - Client side, an httpx per-request timeout (`_request_once`), applied to connect and to
+#         *each read*: for the planner's `.invoke()` it bounds the whole reply, for the
+#         synthesizer's `.stream()` the wait for the first chunk and every gap between chunks.
+#       - Server side, `X-Server-Timeout: ceil(timeout)` (`_build_request`, streams included),
+#         which Gemini enforces on the *whole* request: with only `timeout=15`, every synthesis
+#         ended in `504 DEADLINE_EXCEEDED` exactly 15.0s after it started and was served
+#         truncated (measured 2026-10-01 and 02). The SDK sends its own only when the request
+#         has none, so agent/graph.py sends BRIEFING_DEADLINE_SECONDS: no single request
+#         outlives the run it serves, and that leaves the per-read timeout as the only short one.
+#     The cancel event (see agent/budget.py) is what ends a stream that is still producing.
 #   - `max_retries` is an *attempt* count, first request included: it becomes
 #     HttpRetryOptions(attempts=max_retries), which tenacity stops after (`retry_args` in
 #     _api_client.py). 2 means one retry. It covers opening the stream but not a stream that
@@ -43,6 +49,7 @@ LLM_MODEL: str = "gemini-3.6-flash"
 #   tool fan-out        TOOL_FANOUT_TIMEOUT_SECONDS        = 25s, stragglers "timed out"
 #   synthesizer         15 + 2 + 15 to the first chunk     = 32s
 #                                                          = 89s <= the 90s default deadline
+# The server deadline adds no term: it is the run's whole deadline, so the run ends first.
 # A normal run is ~25s end to end. tests/test_config.py re-does this sum from the constants.
 LLM_TIMEOUT_SECONDS: float = 15.0
 LLM_MAX_ATTEMPTS: int = 2
