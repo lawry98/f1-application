@@ -130,12 +130,13 @@ def make_llm(
     raises: Exception | None = None,
     chunks: list[str] | None = None,
     stream_raises_after: int | None = None,
+    stream_error: Exception | None = None,
     before_chunk: Any = None,
 ):
     """Build a stand-in for the module-level ``ChatGoogleGenerativeAI`` client.
 
-    The planner calls ``.invoke(messages)``; the synthesizer calls ``.stream(messages)``.
-    Both read ``.text`` off what they get back.
+    The planner calls ``.invoke(messages, **kwargs)``; the synthesizer calls
+    ``.stream(messages, **kwargs)``. Both read ``.text`` off what they get back.
 
     ``.content`` is modelled the way Gemini 3 actually returns it — a *list of content
     blocks*, not a string — while ``.text`` flattens to the string the graph wants. Keeping
@@ -151,11 +152,14 @@ def make_llm(
             concatenation is what a complete streamed briefing comes to.
         stream_raises_after: If given, ``.stream()`` raises after yielding this many
             chunks. ``0`` models a failure before any prose exists.
+        stream_error: What ``stream_raises_after`` raises. Defaults to a ``RuntimeError``
+            that no handler treats specially; pass a provider error to reach one that does.
         before_chunk: If given, called with each chunk's index just before that chunk is
             produced — the moment a real stream is waiting on the network, which is where a
             deadline or a hang-up lands.
 
-    The fake records ``chunks_served`` (how far the consumer read) and ``stream_closed``
+    Each call's messages go in ``calls`` and its keyword arguments in ``call_kwargs``. The
+    fake also records ``chunks_served`` (how far the consumer read) and ``stream_closed``
     (whether it let go of the stream), which is how a test sees that a stopped synthesis
     stopped *reading* rather than merely stopped *forwarding*.
     """
@@ -168,17 +172,20 @@ def make_llm(
     class _FakeLLM:
         def __init__(self) -> None:
             self.calls: list[Any] = []
+            self.call_kwargs: list[dict[str, Any]] = []
             self.chunks_served = 0
             self.stream_closed = False
 
-        def invoke(self, messages: Any) -> _FakeResponse:
+        def invoke(self, messages: Any, **kwargs: Any) -> _FakeResponse:
             self.calls.append(messages)
+            self.call_kwargs.append(kwargs)
             if raises is not None:
                 raise raises
             return _FakeResponse(content)
 
-        def stream(self, messages: Any):
+        def stream(self, messages: Any, **kwargs: Any):
             self.calls.append(messages)
+            self.call_kwargs.append(kwargs)
             if raises is not None:
                 raise raises
             try:
@@ -186,11 +193,11 @@ def make_llm(
                     if before_chunk is not None:
                         before_chunk(index)
                     if stream_raises_after is not None and index >= stream_raises_after:
-                        raise RuntimeError("stream died mid-iteration")
+                        raise stream_error or RuntimeError("stream died mid-iteration")
                     self.chunks_served += 1
                     yield _FakeResponse(chunk)
                 if stream_raises_after is not None:
-                    raise RuntimeError("stream died mid-iteration")
+                    raise stream_error or RuntimeError("stream died mid-iteration")
             except GeneratorExit:
                 self.stream_closed = True
                 raise

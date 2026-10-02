@@ -4,17 +4,19 @@ import copy
 import json
 import logging
 import threading
+from collections.abc import Iterator
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from datetime import date
 from typing import Any
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from google.genai import errors as genai_errors
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.config import get_stream_writer
 from langgraph.graph import END, StateGraph
 
-from agent.budget import BriefingStoppedError, budget_from
+from agent.budget import BriefingStoppedError, RunBudget, budget_from
 from agent.prompts import DEFAULT_TOOLS, PLANNER_PROMPT, SYNTHESIZER_PROMPT
 from agent.state import AgentState, RaceInfo, ToolResult
 from config import (
@@ -24,6 +26,10 @@ from config import (
     LLM_MAX_ATTEMPTS,
     LLM_MODEL,
     LLM_TIMEOUT_SECONDS,
+    PLANNER_THINKING_LEVEL,
+    SYNTHESIZER_MAX_ATTEMPTS,
+    SYNTHESIZER_RETRY_WAIT_SECONDS,
+    SYNTHESIZER_TIMEOUT_SECONDS,
     TOOL_FANOUT_TIMEOUT_SECONDS,
 )
 from tools.circuit_winners import circuit_coordinates
@@ -95,9 +101,10 @@ def clear_result_cache() -> None:
 
 # No temperature argument — gemini-3.6-flash uses fixed sampling defaults and ignores one.
 # See the note in config.py, which also carries the timeout arithmetic. `max_retries` is the
-# SDK's attempt count, first request included, not a count of retries. The header overrides
-# the `X-Server-Timeout: ceil(timeout)` the SDK would otherwise send, which Gemini enforces on
-# the whole request; the SDK checks for it with exactly this capitalisation.
+# SDK's attempt count, first request included, not a count of retries. Both are the planner's;
+# the synthesizer passes its own per call. The header overrides the `X-Server-Timeout:
+# ceil(timeout)` the SDK would otherwise send, which Gemini enforces on the whole request; the
+# SDK checks for it with exactly this capitalisation.
 llm = ChatGoogleGenerativeAI(
     model=LLM_MODEL,
     api_key=GOOGLE_API_KEY,
@@ -221,7 +228,9 @@ def planner_node(state: AgentState, config: RunnableConfig | None = None) -> dic
     ]
 
     try:
-        response = llm.invoke(messages)
+        # Per call, not on the client: the synthesizer shares it and keeps the default thinking.
+        # See the note in config.py.
+        response = llm.invoke(messages, thinking_level=PLANNER_THINKING_LEVEL)
     except Exception as exc:
         # Broad on purpose, and deliberately separate from the parse block below. Any
         # transport or API failure — a free-tier 429 above all — should degrade to the
@@ -516,6 +525,55 @@ def tool_executor_node(state: AgentState, config: RunnableConfig | None = None) 
     return {"tool_results": tool_results, "current_step": "synthesizing"}
 
 
+def _synthesis_stream(messages: list[BaseMessage], budget: RunBudget) -> Iterator[Any]:
+    """The synthesizer's chunks, asking again once if Gemini answers 503 before the first.
+
+    The SDK makes one attempt (see config.py): its retry would repeat a ReadTimeout too, and it
+    cannot be held to the run's deadline. A 503 "high demand" comes back in seconds, so this
+    one retry is taken only while the wait and a whole read still fit the run, which keeps it
+    out of config.py's worst case. Narrow on purpose, unlike the node's truncation catch: an
+    error it does not recognise ends the run as if there were no retry.
+
+    Only before the first chunk: after it the reader has prose on screen, and a second stream
+    would write the briefing again behind it, so a failure there is ADR-0002's truncation.
+    """
+    for attempt in (1, 2):
+        stream = llm.stream(
+            messages, timeout=SYNTHESIZER_TIMEOUT_SECONDS, max_retries=SYNTHESIZER_MAX_ATTEMPTS
+        )
+        opened = False
+        try:
+            for chunk in stream:
+                opened = True
+                yield chunk
+            return
+        except genai_errors.ServerError as exc:
+            if opened or attempt == 2 or exc.code != 503:
+                raise
+            left = budget.remaining()
+            if left < SYNTHESIZER_RETRY_WAIT_SECONDS + SYNTHESIZER_TIMEOUT_SECONDS:
+                logger.warning(
+                    "Synthesizer got a 503 before its first chunk with %.1fs left, too little "
+                    "for another %.0fs read; not retrying",
+                    left,
+                    SYNTHESIZER_TIMEOUT_SECONDS,
+                )
+                raise
+            logger.warning(
+                "Synthesizer got a 503 before its first chunk; retrying in %.0fs, %.1fs left",
+                SYNTHESIZER_RETRY_WAIT_SECONDS,
+                left,
+            )
+        finally:
+            stream.close()
+
+        budget.cancel.wait(SYNTHESIZER_RETRY_WAIT_SECONDS)
+        if budget.stopped():
+            raise BriefingStoppedError(
+                f"Stopped before retrying synthesis ({budget.stop_reason()})"
+            )
+
+
 def synthesizer_node(state: AgentState, config: RunnableConfig | None = None) -> dict[str, Any]:
     """Synthesize tool results into the final race briefing."""
     tool_results = state.get("tool_results", [])
@@ -560,7 +618,7 @@ def synthesizer_node(state: AgentState, config: RunnableConfig | None = None) ->
         # Before the call, so a run nobody is waiting for costs no Gemini call at all.
         raise BriefingStoppedError(f"Stopped before synthesis ({budget.stop_reason()})")
 
-    stream = llm.stream(messages)
+    stream = _synthesis_stream(messages, budget)
     stopped = False
     try:
         for chunk in stream:
