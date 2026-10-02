@@ -55,6 +55,13 @@ LLM_TIMEOUT_SECONDS: float = 15.0
 LLM_MAX_ATTEMPTS: int = 2
 LLM_RETRY_BACKOFF_MAX_SECONDS: float = 2.0
 
+# gemini-3.6-flash thinks before it sends its first byte, and that wait runs into the per-read
+# timeout above: the planner's first attempt once timed out at 15.04s, where its retry answered
+# in ~4.5s (measured 2026-10-02). The planner only picks tool names off a list, so low thinking
+# is enough. Passed per call, so it reaches the planner alone: the synthesizer writes the prose
+# and keeps the model's default.
+PLANNER_THINKING_LEVEL: str = "low"
+
 # How long the tool fan-out waits for its slowest tool before reporting it as timed out. FastF1
 # and Tavily set no network timeout of their own, so without this one hung tool held the whole
 # briefing. A normal fan-out finishes in ~10-15s.

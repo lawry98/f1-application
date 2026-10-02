@@ -206,7 +206,10 @@ continue on partial data — preserve this or the pipeline loses its degradation
 *any* LLM failure — a free-tier 429 above all — and falls back to `DEFAULT_TOOLS`, because the
 planner only chooses which tools to run and the pipeline works without it. The planner's two
 failure paths log differently on purpose ("LLM call failed" vs "failed to parse response") —
-one means the model was never reached, the other that it returned something unusable.
+one means the model was never reached, the other that it returned something unusable. It asks
+for `PLANNER_THINKING_LEVEL` (`low`): gemini-3.6-flash thinks before its first byte, that wait
+runs into the 15s read timeout (one attempt timed out at 15.04s, its retry answered in ~4.5s), and
+picking names off a list needs no more. The synthesizer keeps the default thinking, for the prose.
 
 `synthesizer_node` degrades only once it has prose: a stream that dies after at least one chunk
 returns the partial briefing with `briefing_truncated: True` and `current_step: "complete"`,
@@ -223,7 +226,10 @@ models this — its fake `.content` is a block list — so the tests fail if any
 
 **The LLM client is built at module scope** in `agent/graph.py`, so importing the graph without
 `GOOGLE_API_KEY` set fails at *import* time, not call time. `tests/conftest.py` seeds the key
-before any app module loads; that ordering is load-bearing.
+before any app module loads; that ordering is load-bearing. Both nodes share that one client, so
+a per-node setting is a call-time kwarg — the planner's `thinking_level="low"` is
+`llm.invoke(messages, thinking_level=...)`. A second client or a module-level `llm.bind(...)`
+would capture the real client at import and slip past every test's `graph_module.llm` fake.
 
 **Streaming is native `astream`, not a thread bridge.** `routes.py` iterates
 `agent.astream(...)` directly and emits an SSE event the moment each node returns, while the rest

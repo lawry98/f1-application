@@ -977,6 +977,59 @@ def test_gemini_is_given_the_runs_deadline_while_each_read_keeps_the_short_timeo
     assert request.extensions["timeout"]["read"] == LLM_TIMEOUT_SECONDS
 
 
+def _serve_gemini(monkeypatch) -> list[httpx.Request]:
+    """Answer the real client's requests in process, and keep each one as it left the SDK.
+
+    The planner's ``generateContent`` gets one JSON reply and the synthesizer's
+    ``streamGenerateContent`` the same reply as one server-sent event. Driving the nodes
+    rather than the client is the point: it pins what each call site passes, which the
+    client's constructor kwargs say nothing about.
+    """
+    sent: list[httpx.Request] = []
+
+    def gemini(request: httpx.Request) -> httpx.Response:
+        sent.append(request)
+        if request.url.path.endswith(":streamGenerateContent"):
+            return httpx.Response(200, text=f"data: {json.dumps(_GEMINI_REPLY)}\n\n")
+        return httpx.Response(200, json=_GEMINI_REPLY)
+
+    monkeypatch.setattr(
+        graph_module.llm.client._api_client,
+        "_httpx_client",
+        httpx.Client(transport=httpx.MockTransport(gemini)),
+    )
+    return sent
+
+
+def _plan() -> None:
+    planner_node(make_state(race_info=make_race_info()))
+
+
+def _synthesize() -> None:
+    run_synthesizer_streamed()
+
+
+@pytest.mark.parametrize(
+    ("run_node", "thinking_config"),
+    [(_plan, {"thinking_level": "LOW"}), (_synthesize, None)],
+    ids=["planner", "synthesizer"],
+)
+def test_only_the_planner_turns_geminis_thinking_down(monkeypatch, run_node, thinking_config):
+    """gemini-3.6-flash thinks before its first byte, and the client's per-read timeout is
+    what that wait runs into: the planner once timed out at 15.04s. It only picks names off a
+    list, so low thinking is enough; the synthesizer writes the prose and keeps the default.
+    The snake_case key is what google-genai puts on the wire, which proto3's JSON parsing
+    accepts — asserted as sent, not as the kwarg the node passes.
+    """
+    sent = _serve_gemini(monkeypatch)
+
+    run_node()
+
+    [request] = sent
+    generation_config = json.loads(request.content).get("generationConfig", {})
+    assert generation_config.get("thinkingConfig") == thinking_config
+
+
 def test_standings_is_a_registered_tool():
     from agent.graph import all_tools
 

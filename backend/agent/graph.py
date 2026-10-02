@@ -24,6 +24,7 @@ from config import (
     LLM_MAX_ATTEMPTS,
     LLM_MODEL,
     LLM_TIMEOUT_SECONDS,
+    PLANNER_THINKING_LEVEL,
     TOOL_FANOUT_TIMEOUT_SECONDS,
 )
 from tools.circuit_winners import circuit_coordinates
@@ -221,7 +222,9 @@ def planner_node(state: AgentState, config: RunnableConfig | None = None) -> dic
     ]
 
     try:
-        response = llm.invoke(messages)
+        # Per call, not on the client: the synthesizer shares it and keeps the default thinking.
+        # See the note in config.py.
+        response = llm.invoke(messages, thinking_level=PLANNER_THINKING_LEVEL)
     except Exception as exc:
         # Broad on purpose, and deliberately separate from the parse block below. Any
         # transport or API failure — a free-tier 429 above all — should degrade to the
