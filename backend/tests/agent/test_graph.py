@@ -31,6 +31,18 @@ from tests.factories import make_llm, make_race_info, make_state, make_tool
 
 AS_OF = "2025-05-01T00:00:00+00:00"
 
+_GEMINI_STATUS = {429: "RESOURCE_EXHAUSTED", 500: "INTERNAL", 503: "UNAVAILABLE"}
+
+
+def _gemini_error(code: int) -> dict:
+    """Gemini's error body for an HTTP status."""
+    return {"error": {"code": code, "message": "upstream failure", "status": _GEMINI_STATUS[code]}}
+
+
+def _overloaded() -> genai_errors.ServerError:
+    """The error google-genai raises for a 503 "high demand" answer."""
+    return genai_errors.ServerError(503, _gemini_error(503))
+
 
 @pytest.fixture
 def fake_llm(monkeypatch):
@@ -903,6 +915,19 @@ def test_synthesizer_propagates_a_failure_before_any_prose_exists(fake_llm):
         run_synthesizer_streamed()
 
 
+def test_a_503_after_the_first_chunk_is_truncation_not_a_retry(fake_llm):
+    """Once a chunk is out the reader has prose on screen, and a second stream would write the
+    briefing again after it. A stream that dies part way is ADR-0002's truncation, whatever
+    the status."""
+    llm = fake_llm(chunks=["Lights ", "out"], stream_raises_after=1, stream_error=_overloaded())
+
+    _, update = run_synthesizer_streamed()
+
+    assert len(llm.calls) == 1
+    assert update["briefing"] == "Lights "
+    assert update["briefing_truncated"] is True
+
+
 def test_chunks_that_carried_no_prose_do_not_count_as_a_truncated_briefing(fake_llm):
     """The ≥1 Delta rule is about prose, not chunk count.
 
@@ -934,26 +959,27 @@ _GEMINI_REPLY = {
     ]
 }
 
-_GEMINI_OVERLOADED = {
-    "error": {"code": 503, "message": "The model is overloaded.", "status": "UNAVAILABLE"}
-}
 
-
-def _serve_gemini(monkeypatch, status: int = 200) -> list[httpx.Request]:
+def _serve_gemini(monkeypatch, *failures: int | type[Exception]) -> list[httpx.Request]:
     """Answer the real client's requests in process, and keep each one as it left the SDK.
 
-    At 200 the planner's ``generateContent`` gets one JSON reply and the synthesizer's
-    ``streamGenerateContent`` the same reply as one server-sent event; any other status gets
-    Gemini's error body. Driving the nodes rather than the client is the point: it pins what
-    each call site passes, which the client's constructor kwargs say nothing about. The SDK's
-    backoff between attempts is zeroed, so a retried call costs no real sleep.
+    The first ``len(failures)`` requests fail in order — a status gets Gemini's error body, an
+    httpx exception class is raised as the transport would — and every later one succeeds: the
+    planner's ``generateContent`` gets one JSON reply and the synthesizer's
+    ``streamGenerateContent`` the same reply as one server-sent event. Driving the nodes
+    rather than the client is the point: it pins what each call site passes, which the
+    client's constructor kwargs say nothing about. Both backoffs between attempts, the SDK's
+    and the synthesizer's own, are zeroed, so a retried call costs no real sleep.
     """
     sent: list[httpx.Request] = []
 
     def gemini(request: httpx.Request) -> httpx.Response:
         sent.append(request)
-        if status != 200:
-            return httpx.Response(status, json=_GEMINI_OVERLOADED)
+        if len(sent) <= len(failures):
+            failure = failures[len(sent) - 1]
+            if isinstance(failure, int):
+                return httpx.Response(failure, json=_gemini_error(failure))
+            raise failure("no reply", request=request)
         if request.url.path.endswith(":streamGenerateContent"):
             return httpx.Response(200, text=f"data: {json.dumps(_GEMINI_REPLY)}\n\n")
         return httpx.Response(200, json=_GEMINI_REPLY)
@@ -969,6 +995,7 @@ def _serve_gemini(monkeypatch, status: int = 200) -> list[httpx.Request]:
         "retry_args",
         lambda options: {**retry_args(options), "wait": lambda _retry_state: 0},
     )
+    monkeypatch.setattr(graph_module, "SYNTHESIZER_RETRY_WAIT_SECONDS", 0)
     return sent
 
 
@@ -1008,8 +1035,8 @@ def test_each_call_gives_gemini_the_runs_deadline_and_its_own_read_timeout(
 
 def test_the_planner_retries_a_503_once(monkeypatch):
     """Two attempts, then the default tools: the planner is cheap to repeat and the pipeline
-    works without it, so it keeps the retry the synthesizer gave up."""
-    sent = _serve_gemini(monkeypatch, status=503)
+    works without it, so the SDK's own retry is enough here."""
+    sent = _serve_gemini(monkeypatch, 503, 503)
 
     result = _plan()
 
@@ -1017,13 +1044,45 @@ def test_the_planner_retries_a_503_once(monkeypatch):
     assert result["tasks"] == DEFAULT_TOOLS
 
 
-def test_the_synthesizer_makes_one_attempt_against_a_503(monkeypatch):
-    """Two 30s attempts would not fit the deadline (32 + 25 + 62 > 90), so the synthesizer
-    has one. The price is that a 503 while its stream opens ends the run on the error event,
-    where a second attempt used to try again."""
-    sent = _serve_gemini(monkeypatch, status=503)
+def test_the_synthesizer_retries_a_503_before_its_first_chunk(monkeypatch):
+    """A 503 "high demand" answers in seconds, so a run with time left can afford to ask
+    again — measured 2026-10-02, one ended on the error event 4.2s into its only attempt."""
+    sent = _serve_gemini(monkeypatch, 503)
+
+    _, update = run_synthesizer_streamed()
+
+    assert len(sent) == 2
+    assert update["briefing"] == "[]"
+    assert update["briefing_truncated"] is False
+
+
+def test_the_synthesizer_retries_a_503_only_once(monkeypatch):
+    sent = _serve_gemini(monkeypatch, 503, 503, 503)
 
     with pytest.raises(genai_errors.ServerError):
+        _synthesize()
+
+    assert len(sent) == 2
+
+
+@pytest.mark.parametrize(
+    ("failure", "raised"),
+    [
+        # A timed-out read has already spent 30s, and two would not fit the deadline (32 + 25
+        # + 62 > 90). This is also why the SDK makes one attempt: its retry repeats a
+        # ReadTimeout whatever status codes it is given.
+        (httpx.ReadTimeout, httpx.ReadTimeout),
+        # The free tier's daily quota: asking again only spends more of it.
+        (429, genai_errors.ClientError),
+        # Any other 5xx: only a 503 has been seen to be a fast, passing overload.
+        (500, genai_errors.ServerError),
+    ],
+    ids=["read-timeout", "429", "500"],
+)
+def test_the_synthesizer_retries_nothing_but_a_503(monkeypatch, failure, raised):
+    sent = _serve_gemini(monkeypatch, failure, failure)
+
+    with pytest.raises(raised):
         _synthesize()
 
     assert len(sent) == 1

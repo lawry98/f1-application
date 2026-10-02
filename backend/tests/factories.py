@@ -130,6 +130,7 @@ def make_llm(
     raises: Exception | None = None,
     chunks: list[str] | None = None,
     stream_raises_after: int | None = None,
+    stream_error: Exception | None = None,
     before_chunk: Any = None,
 ):
     """Build a stand-in for the module-level ``ChatGoogleGenerativeAI`` client.
@@ -151,6 +152,8 @@ def make_llm(
             concatenation is what a complete streamed briefing comes to.
         stream_raises_after: If given, ``.stream()`` raises after yielding this many
             chunks. ``0`` models a failure before any prose exists.
+        stream_error: What ``stream_raises_after`` raises. Defaults to a ``RuntimeError``
+            that no handler treats specially; pass a provider error to reach one that does.
         before_chunk: If given, called with each chunk's index just before that chunk is
             produced — the moment a real stream is waiting on the network, which is where a
             deadline or a hang-up lands.
@@ -190,11 +193,11 @@ def make_llm(
                     if before_chunk is not None:
                         before_chunk(index)
                     if stream_raises_after is not None and index >= stream_raises_after:
-                        raise RuntimeError("stream died mid-iteration")
+                        raise stream_error or RuntimeError("stream died mid-iteration")
                     self.chunks_served += 1
                     yield _FakeResponse(chunk)
                 if stream_raises_after is not None:
-                    raise RuntimeError("stream died mid-iteration")
+                    raise stream_error or RuntimeError("stream died mid-iteration")
             except GeneratorExit:
                 self.stream_closed = True
                 raise

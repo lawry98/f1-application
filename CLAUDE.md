@@ -169,9 +169,13 @@ case-sensitive, and any other spelling goes out beside its 15. **The per-read ti
 for the first byte, which is the model's thinking time**, so the two nodes get different pairs:
 the client carries the planner's (2 attempts × 15s), and the synthesizer passes its own to
 `.stream()` (1 × 30s) — its first chunk took 9.1s in one run and outlasted both 15s attempts in
-the next. Two 30s attempts would need a 119s deadline. `config.py` carries the source citations
-and the deadline arithmetic, a test re-does the sum per call, and others read the header, the read
-timeout and the attempt count off each node's outgoing request.
+the next. Two 30s attempts would need a 119s deadline, and the SDK's retry cannot be narrowed to
+a 503: it repeats a ReadTimeout whatever `http_status_codes` says. So `_synthesis_stream` retries a
+503 itself, once, before the first chunk, and only while its 2s wait plus a whole 30s read still
+fit the run's remaining time — which is why the retry adds nothing to the worst-case sum.
+`config.py` carries the source citations and the deadline arithmetic, a test re-does the sum per
+call, and others read the header, the read timeout and the attempt count off each node's outgoing
+request.
 
 **The graph is not a flat pipeline.** It has four nodes, but `resolver` sits behind a
 conditional edge: when `state["current_step"] == "error"` it routes straight to `END`, skipping
@@ -217,11 +221,12 @@ picking names off a list needs no more. The synthesizer keeps the default thinki
 
 `synthesizer_node` degrades only once it has prose: a stream that dies after at least one chunk
 returns the partial briefing with `briefing_truncated: True` and `current_step: "complete"`,
-while a failure before the first chunk still raises. With one attempt, that includes a 503 while
-the stream opens: it is no longer retried and the run ends on the error event. That is the price
-of the 30s first-chunk wait above. That bare `except` around an LLM call followed by a
-"complete" step is deliberate and looks wrong on sight — read
-[ADR-0002](docs/adr/0002-serve-truncated-briefings.md) before changing it.
+while a failure before the first chunk still raises. That includes a 503 the retry above cannot
+take — a second one, or one with under 32s of the run left — and every other failure: a 429, a
+500 and a ReadTimeout are never retried. A 503 after the first chunk is truncation, not a retry,
+because a second stream would write the briefing again behind the prose already on screen. That
+bare `except` around an LLM call followed by a "complete" step is deliberate and looks wrong on
+sight — read [ADR-0002](docs/adr/0002-serve-truncated-briefings.md) before changing it.
 
 **Read `response.text`, never `response.content`.** Gemini 3 returns `.content` as a *list of
 content blocks*, not a string. Using `.content` fails in two ways that both look like something

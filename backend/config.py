@@ -48,24 +48,32 @@ LLM_MODEL: str = "gemini-3.6-flash"
 #   - The backoff between attempts is tenacity's wait_exponential_jitter with the SDK defaults
 #     (initial 1s, base 2, jitter up to 1s): at most 2s before the second attempt.
 #
-# The synthesizer reads for 30s, once. Its first chunk waits on the model thinking over every
-# tool's data: 9.1s in one Singapore run, and in the next both 15s attempts hit a ReadTimeout and
-# the run ended on the error event with no prose (measured 2026-10-02). Two 30s attempts would
-# need 32 + 25 + 62 = 119s. The price of one is that a 503 while the stream opens is no longer
-# retried: the run ends on the error event, where a second attempt used to try again.
+# The synthesizer reads for 30s, and the SDK makes one attempt. Its first chunk waits on the
+# model thinking over every tool's data: 9.1s in one Singapore run, and in the next both 15s
+# attempts hit a ReadTimeout and the run ended on the error event with no prose (measured
+# 2026-10-02). Two 30s attempts would need 32 + 25 + 62 = 119s. The SDK's retry cannot be
+# narrowed to make room: it repeats a ReadTimeout (`_HTTPX_TRANSIENT_EXC`) whatever
+# `http_status_codes` says, and it never looks at the run's deadline.
+#
+# A 503 "high demand" is the exception, because it comes back in seconds (4.2s, measured
+# 2026-10-02). agent/graph.py's `_synthesis_stream` retries one itself, once, before the first
+# chunk, after SYNTHESIZER_RETRY_WAIT_SECONDS, and only while that wait plus a whole read still
+# fit the run's remaining time. With less left, the 503 ends the run on the error event.
 #
 # Worst case, every attempt of every call timing out:
 #   planner             15 + 2 + 15                        = 32s, then DEFAULT_TOOLS
 #   tool fan-out        TOOL_FANOUT_TIMEOUT_SECONDS        = 25s, stragglers "timed out"
-#   synthesizer         30 to the first chunk, no retry    = 30s
+#   synthesizer         30 to the first chunk              = 30s
 #                                                          = 87s <= the 90s default deadline
-# The server deadline adds no term: it is the run's whole deadline, so the run ends first.
+# The 503 retry adds no term: it only runs when it fits. The server deadline adds none either:
+# it is the run's whole deadline, so the run ends first.
 # A normal run is ~25s end to end. tests/test_config.py re-does this sum from the constants.
 LLM_TIMEOUT_SECONDS: float = 15.0
 LLM_MAX_ATTEMPTS: int = 2
 LLM_RETRY_BACKOFF_MAX_SECONDS: float = 2.0
 SYNTHESIZER_TIMEOUT_SECONDS: float = 30.0
 SYNTHESIZER_MAX_ATTEMPTS: int = 1
+SYNTHESIZER_RETRY_WAIT_SECONDS: float = 2.0
 
 # gemini-3.6-flash thinks before it sends its first byte, and that wait runs into the per-read
 # timeout above: the planner's first attempt once timed out at 15.04s, where its retry answered
