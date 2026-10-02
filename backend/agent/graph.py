@@ -25,6 +25,8 @@ from config import (
     LLM_MODEL,
     LLM_TIMEOUT_SECONDS,
     PLANNER_THINKING_LEVEL,
+    SYNTHESIZER_MAX_ATTEMPTS,
+    SYNTHESIZER_TIMEOUT_SECONDS,
     TOOL_FANOUT_TIMEOUT_SECONDS,
 )
 from tools.circuit_winners import circuit_coordinates
@@ -96,9 +98,10 @@ def clear_result_cache() -> None:
 
 # No temperature argument — gemini-3.6-flash uses fixed sampling defaults and ignores one.
 # See the note in config.py, which also carries the timeout arithmetic. `max_retries` is the
-# SDK's attempt count, first request included, not a count of retries. The header overrides
-# the `X-Server-Timeout: ceil(timeout)` the SDK would otherwise send, which Gemini enforces on
-# the whole request; the SDK checks for it with exactly this capitalisation.
+# SDK's attempt count, first request included, not a count of retries. Both are the planner's;
+# the synthesizer passes its own per call. The header overrides the `X-Server-Timeout:
+# ceil(timeout)` the SDK would otherwise send, which Gemini enforces on the whole request; the
+# SDK checks for it with exactly this capitalisation.
 llm = ChatGoogleGenerativeAI(
     model=LLM_MODEL,
     api_key=GOOGLE_API_KEY,
@@ -563,7 +566,11 @@ def synthesizer_node(state: AgentState, config: RunnableConfig | None = None) ->
         # Before the call, so a run nobody is waiting for costs no Gemini call at all.
         raise BriefingStoppedError(f"Stopped before synthesis ({budget.stop_reason()})")
 
-    stream = llm.stream(messages)
+    # Its own read timeout and attempt count, per call, over the client's: the first chunk waits
+    # on the model thinking about every tool's data. See the note in config.py.
+    stream = llm.stream(
+        messages, timeout=SYNTHESIZER_TIMEOUT_SECONDS, max_retries=SYNTHESIZER_MAX_ATTEMPTS
+    )
     stopped = False
     try:
         for chunk in stream:

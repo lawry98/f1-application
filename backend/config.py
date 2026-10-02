@@ -23,13 +23,14 @@ LLM_MODEL: str = "gemini-3.6-flash"
 # briefing deadline below, so changing one means redoing this arithmetic in a diff.
 #
 # What the two knobs really do, read from langchain-google-genai 4.3.2 and google-genai
-# 2.25.0-2.27.0 (backend/.venv/lib/python3.12/site-packages/):
+# 2.25.0-2.28.0 (backend/.venv/lib/python3.12/site-packages/):
 #   - `timeout` (seconds) becomes HttpOptions.timeout in ms (langchain_google_genai/
 #     chat_models.py, `_prepare_request` and `_build_request_config`), and google-genai turns it
 #     into two deadlines (google/genai/_api_client.py):
 #       - Client side, an httpx per-request timeout (`_request_once`), applied to connect and to
 #         *each read*: for the planner's `.invoke()` it bounds the whole reply, for the
 #         synthesizer's `.stream()` the wait for the first chunk and every gap between chunks.
+#         The wait for the first byte is the model's thinking time.
 #       - Server side, `X-Server-Timeout: ceil(timeout)` (`_build_request`, streams included),
 #         which Gemini enforces on the *whole* request: with only `timeout=15`, every synthesis
 #         ended in `504 DEADLINE_EXCEEDED` exactly 15.0s after it started and was served
@@ -41,19 +42,30 @@ LLM_MODEL: str = "gemini-3.6-flash"
 #     HttpRetryOptions(attempts=max_retries), which tenacity stops after (`retry_args` in
 #     _api_client.py). 2 means one retry. It covers opening the stream but not a stream that
 #     dies partway — that is ADR-0002's truncation path. The library default is 6.
+#   - The client is built with the planner's pair. The synthesizer passes its own to
+#     `.stream()`, which `_prepare_request` pops and uses for that request alone; the client's
+#     X-Server-Timeout header still goes out, so a call-time timeout moves only the per-read one.
 #   - The backoff between attempts is tenacity's wait_exponential_jitter with the SDK defaults
 #     (initial 1s, base 2, jitter up to 1s): at most 2s before the second attempt.
 #
-# Worst case, every attempt of both calls timing out:
+# The synthesizer reads for 30s, once. Its first chunk waits on the model thinking over every
+# tool's data: 9.1s in one Singapore run, and in the next both 15s attempts hit a ReadTimeout and
+# the run ended on the error event with no prose (measured 2026-10-02). Two 30s attempts would
+# need 32 + 25 + 62 = 119s. The price of one is that a 503 while the stream opens is no longer
+# retried: the run ends on the error event, where a second attempt used to try again.
+#
+# Worst case, every attempt of every call timing out:
 #   planner             15 + 2 + 15                        = 32s, then DEFAULT_TOOLS
 #   tool fan-out        TOOL_FANOUT_TIMEOUT_SECONDS        = 25s, stragglers "timed out"
-#   synthesizer         15 + 2 + 15 to the first chunk     = 32s
-#                                                          = 89s <= the 90s default deadline
+#   synthesizer         30 to the first chunk, no retry    = 30s
+#                                                          = 87s <= the 90s default deadline
 # The server deadline adds no term: it is the run's whole deadline, so the run ends first.
 # A normal run is ~25s end to end. tests/test_config.py re-does this sum from the constants.
 LLM_TIMEOUT_SECONDS: float = 15.0
 LLM_MAX_ATTEMPTS: int = 2
 LLM_RETRY_BACKOFF_MAX_SECONDS: float = 2.0
+SYNTHESIZER_TIMEOUT_SECONDS: float = 30.0
+SYNTHESIZER_MAX_ATTEMPTS: int = 1
 
 # gemini-3.6-flash thinks before it sends its first byte, and that wait runs into the per-read
 # timeout above: the planner's first attempt once timed out at 15.04s, where its retry answered

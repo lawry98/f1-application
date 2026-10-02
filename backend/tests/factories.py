@@ -135,7 +135,7 @@ def make_llm(
     """Build a stand-in for the module-level ``ChatGoogleGenerativeAI`` client.
 
     The planner calls ``.invoke(messages, **kwargs)``; the synthesizer calls
-    ``.stream(messages)``. Both read ``.text`` off what they get back.
+    ``.stream(messages, **kwargs)``. Both read ``.text`` off what they get back.
 
     ``.content`` is modelled the way Gemini 3 actually returns it — a *list of content
     blocks*, not a string — while ``.text`` flattens to the string the graph wants. Keeping
@@ -180,8 +180,9 @@ def make_llm(
                 raise raises
             return _FakeResponse(content)
 
-        def stream(self, messages: Any):
+        def stream(self, messages: Any, **kwargs: Any):
             self.calls.append(messages)
+            self.call_kwargs.append(kwargs)
             if raises is not None:
                 raise raises
             try:

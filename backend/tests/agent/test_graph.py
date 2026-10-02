@@ -10,7 +10,8 @@ import logging
 import httpx
 import pytest
 from freezegun import freeze_time
-from langchain_core.messages import HumanMessage
+from google.genai import _api_client as genai_api_client
+from google.genai import errors as genai_errors
 from langgraph.graph import END, StateGraph
 
 from agent import graph as graph_module
@@ -25,6 +26,7 @@ from agent.graph import (
 )
 from agent.prompts import DEFAULT_TOOLS
 from agent.state import AgentState
+from config import BRIEFING_DEADLINE_SECONDS, LLM_TIMEOUT_SECONDS, SYNTHESIZER_TIMEOUT_SECONDS
 from tests.factories import make_llm, make_race_info, make_state, make_tool
 
 AS_OF = "2025-05-01T00:00:00+00:00"
@@ -932,63 +934,26 @@ _GEMINI_REPLY = {
     ]
 }
 
-
-@pytest.mark.parametrize(
-    ("call", "body"),
-    [
-        # The planner's one-shot call: a single JSON reply.
-        (lambda llm, messages: llm.invoke(messages), json.dumps(_GEMINI_REPLY)),
-        # The synthesizer's stream: the same reply as one server-sent event.
-        (
-            lambda llm, messages: list(llm.stream(messages)),
-            f"data: {json.dumps(_GEMINI_REPLY)}\n\n",
-        ),
-    ],
-    ids=["planner-invoke", "synthesizer-stream"],
-)
-def test_gemini_is_given_the_runs_deadline_while_each_read_keeps_the_short_timeout(
-    monkeypatch, call, body
-):
-    """google-genai sends ``X-Server-Timeout: ceil(timeout)`` unless one is already set, and
-    Gemini holds the whole request to it, a stream included: with only ``timeout=15`` it ended
-    every synthesis with ``504 DEADLINE_EXCEEDED`` 15.0s in, mid-briefing. Read off the request
-    as it leaves the SDK, because the constructor kwargs say nothing about what the SDK adds.
-    """
-    from config import BRIEFING_DEADLINE_SECONDS, LLM_TIMEOUT_SECONDS
-
-    sent: list[httpx.Request] = []
-
-    def gemini(request: httpx.Request) -> httpx.Response:
-        sent.append(request)
-        return httpx.Response(200, text=body)
-
-    monkeypatch.setattr(
-        graph_module.llm.client._api_client,
-        "_httpx_client",
-        httpx.Client(transport=httpx.MockTransport(gemini)),
-    )
-
-    call(graph_module.llm, [HumanMessage(content="hi")])
-
-    [request] = sent
-    # Exactly one: the SDK checks for the header case-sensitively, so a differently cased key
-    # would go out alongside its own 15.
-    assert request.headers.get_list("x-server-timeout") == [str(BRIEFING_DEADLINE_SECONDS)]
-    assert request.extensions["timeout"]["read"] == LLM_TIMEOUT_SECONDS
+_GEMINI_OVERLOADED = {
+    "error": {"code": 503, "message": "The model is overloaded.", "status": "UNAVAILABLE"}
+}
 
 
-def _serve_gemini(monkeypatch) -> list[httpx.Request]:
+def _serve_gemini(monkeypatch, status: int = 200) -> list[httpx.Request]:
     """Answer the real client's requests in process, and keep each one as it left the SDK.
 
-    The planner's ``generateContent`` gets one JSON reply and the synthesizer's
-    ``streamGenerateContent`` the same reply as one server-sent event. Driving the nodes
-    rather than the client is the point: it pins what each call site passes, which the
-    client's constructor kwargs say nothing about.
+    At 200 the planner's ``generateContent`` gets one JSON reply and the synthesizer's
+    ``streamGenerateContent`` the same reply as one server-sent event; any other status gets
+    Gemini's error body. Driving the nodes rather than the client is the point: it pins what
+    each call site passes, which the client's constructor kwargs say nothing about. The SDK's
+    backoff between attempts is zeroed, so a retried call costs no real sleep.
     """
     sent: list[httpx.Request] = []
 
     def gemini(request: httpx.Request) -> httpx.Response:
         sent.append(request)
+        if status != 200:
+            return httpx.Response(status, json=_GEMINI_OVERLOADED)
         if request.url.path.endswith(":streamGenerateContent"):
             return httpx.Response(200, text=f"data: {json.dumps(_GEMINI_REPLY)}\n\n")
         return httpx.Response(200, json=_GEMINI_REPLY)
@@ -998,15 +963,70 @@ def _serve_gemini(monkeypatch) -> list[httpx.Request]:
         "_httpx_client",
         httpx.Client(transport=httpx.MockTransport(gemini)),
     )
+    retry_args = genai_api_client.retry_args
+    monkeypatch.setattr(
+        genai_api_client,
+        "retry_args",
+        lambda options: {**retry_args(options), "wait": lambda _retry_state: 0},
+    )
     return sent
 
 
-def _plan() -> None:
-    planner_node(make_state(race_info=make_race_info()))
+def _plan() -> dict:
+    return planner_node(make_state(race_info=make_race_info()))
 
 
 def _synthesize() -> None:
     run_synthesizer_streamed()
+
+
+@pytest.mark.parametrize(
+    ("run_node", "read_timeout"),
+    [(_plan, LLM_TIMEOUT_SECONDS), (_synthesize, SYNTHESIZER_TIMEOUT_SECONDS)],
+    ids=["planner", "synthesizer"],
+)
+def test_each_call_gives_gemini_the_runs_deadline_and_its_own_read_timeout(
+    monkeypatch, run_node, read_timeout
+):
+    """google-genai sends ``X-Server-Timeout: ceil(timeout)`` unless one is already set, and
+    Gemini holds the whole request to it, a stream included: with only ``timeout=15`` it ended
+    every synthesis with ``504 DEADLINE_EXCEEDED`` 15.0s in, mid-briefing. The per-read timeout
+    is the wait for the first byte, which is the model's thinking time: the synthesizer's
+    first chunk took 9.1s in one run and outlasted both 15s attempts in the next, so it reads
+    for longer than the planner. Read off the request as it leaves the SDK.
+    """
+    sent = _serve_gemini(monkeypatch)
+
+    run_node()
+
+    [request] = sent
+    # Exactly one: the SDK checks for the header case-sensitively, so a differently cased key
+    # would go out alongside its own. A call-time timeout must not bring the SDK's back either.
+    assert request.headers.get_list("x-server-timeout") == [str(BRIEFING_DEADLINE_SECONDS)]
+    assert request.extensions["timeout"]["read"] == read_timeout
+
+
+def test_the_planner_retries_a_503_once(monkeypatch):
+    """Two attempts, then the default tools: the planner is cheap to repeat and the pipeline
+    works without it, so it keeps the retry the synthesizer gave up."""
+    sent = _serve_gemini(monkeypatch, status=503)
+
+    result = _plan()
+
+    assert len(sent) == 2
+    assert result["tasks"] == DEFAULT_TOOLS
+
+
+def test_the_synthesizer_makes_one_attempt_against_a_503(monkeypatch):
+    """Two 30s attempts would not fit the deadline (32 + 25 + 62 > 90), so the synthesizer
+    has one. The price is that a 503 while its stream opens ends the run on the error event,
+    where a second attempt used to try again."""
+    sent = _serve_gemini(monkeypatch, status=503)
+
+    with pytest.raises(genai_errors.ServerError):
+        _synthesize()
+
+    assert len(sent) == 1
 
 
 @pytest.mark.parametrize(

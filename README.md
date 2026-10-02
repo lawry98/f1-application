@@ -319,8 +319,8 @@ Each refusal carries `retry_after_seconds`, the `limit` that was hit and a `Retr
 only an admitted request counts against a limit. An admitted run is stopped at
 `BRIEFING_DEADLINE_SECONDS` (90): the tool fan-out and the synthesizer stop spending, prose
 already written is served as a truncated briefing, and with none the stream ends with
-`error {"code": "deadline"}`. Gemini calls themselves time out at 15s with one retry — the
-arithmetic is in `backend/config.py`.
+`error {"code": "deadline"}`. Gemini calls themselves time out per read: the planner's at 15s
+with one retry, the synthesizer's at 30s with none — the arithmetic is in `backend/config.py`.
 
 Deploying it:
 

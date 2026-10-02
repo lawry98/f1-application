@@ -165,9 +165,13 @@ because google-genai also sends it as `X-Server-Timeout` — streams included. L
 header cut every synthesis off with a 504 exactly 15.0s in, served as a truncated briefing. The
 SDK sends its own only when the request has none, so `agent/graph.py` sets the header to
 `BRIEFING_DEADLINE_SECONDS`, spelled `X-Server-Timeout` exactly: the SDK's check is
-case-sensitive, and any other spelling goes out beside its 15. `config.py` carries the source
-citations and the deadline arithmetic, a test re-does the sum, and another reads the header off
-the outgoing request.
+case-sensitive, and any other spelling goes out beside its 15. **The per-read timeout is the wait
+for the first byte, which is the model's thinking time**, so the two nodes get different pairs:
+the client carries the planner's (2 attempts × 15s), and the synthesizer passes its own to
+`.stream()` (1 × 30s) — its first chunk took 9.1s in one run and outlasted both 15s attempts in
+the next. Two 30s attempts would need a 119s deadline. `config.py` carries the source citations
+and the deadline arithmetic, a test re-does the sum per call, and others read the header, the read
+timeout and the attempt count off each node's outgoing request.
 
 **The graph is not a flat pipeline.** It has four nodes, but `resolver` sits behind a
 conditional edge: when `state["current_step"] == "error"` it routes straight to `END`, skipping
@@ -213,8 +217,10 @@ picking names off a list needs no more. The synthesizer keeps the default thinki
 
 `synthesizer_node` degrades only once it has prose: a stream that dies after at least one chunk
 returns the partial briefing with `briefing_truncated: True` and `current_step: "complete"`,
-while a failure before the first chunk still raises. That bare `except` around an LLM call
-followed by a "complete" step is deliberate and looks wrong on sight — read
+while a failure before the first chunk still raises. With one attempt, that includes a 503 while
+the stream opens: it is no longer retried and the run ends on the error event. That is the price
+of the 30s first-chunk wait above. That bare `except` around an LLM call followed by a
+"complete" step is deliberate and looks wrong on sight — read
 [ADR-0002](docs/adr/0002-serve-truncated-briefings.md) before changing it.
 
 **Read `response.text`, never `response.content`.** Gemini 3 returns `.content` as a *list of
@@ -228,8 +234,10 @@ models this — its fake `.content` is a block list — so the tests fail if any
 `GOOGLE_API_KEY` set fails at *import* time, not call time. `tests/conftest.py` seeds the key
 before any app module loads; that ordering is load-bearing. Both nodes share that one client, so
 a per-node setting is a call-time kwarg — the planner's `thinking_level="low"` is
-`llm.invoke(messages, thinking_level=...)`. A second client or a module-level `llm.bind(...)`
-would capture the real client at import and slip past every test's `graph_module.llm` fake.
+`llm.invoke(messages, thinking_level=...)`, the synthesizer's timeout and attempt count
+`llm.stream(messages, timeout=..., max_retries=...)`. A second client or a module-level
+`llm.bind(...)` would capture the real client at import and slip past every test's
+`graph_module.llm` fake.
 
 **Streaming is native `astream`, not a thread bridge.** `routes.py` iterates
 `agent.astream(...)` directly and emits an SSE event the moment each node returns, while the rest
