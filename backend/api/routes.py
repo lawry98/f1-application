@@ -52,7 +52,7 @@ LEASE_MARGIN_SECONDS = 60
 # How long past the deadline the route waits for the graph to notice its cancelled budget
 # before it stops waiting and ends the response itself. The fan-out notices within a poll and
 # the synthesizer at its next chunk; only a Gemini stream stalled mid-reply takes longer, and
-# that is bounded by LLM_TIMEOUT_SECONDS on the worker thread, not on the response.
+# that is bounded by SYNTHESIZER_TIMEOUT_SECONDS on the worker thread, not on the response.
 DEADLINE_GRACE_SECONDS = 5
 
 

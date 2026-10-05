@@ -11,6 +11,7 @@ import threading
 from typing import Any
 
 import pytest
+from google.genai import errors as genai_errors
 from langgraph.graph import END, StateGraph
 
 from agent import graph as graph_module
@@ -361,3 +362,69 @@ def test_a_synthesis_inside_its_budget_is_untouched(monkeypatch, budget):
     assert update["briefing"] == "all of it"
     assert update["briefing_truncated"] is False
     assert not budget.cancel.is_set()
+
+
+# ── Synthesizer: a 503 before the first chunk ────────────────────────────────
+
+
+class ClockedEvent(threading.Event):
+    """A cancel event whose timed wait moves the fake clock on instead of sleeping."""
+
+    def __init__(self, clock: FakeClock) -> None:
+        super().__init__()
+        self._clock = clock
+
+    def wait(self, timeout: float | None = None) -> bool:
+        if timeout is not None and not self.is_set():
+            self._clock.advance(timeout)
+        return self.is_set()
+
+
+@pytest.fixture
+def waiting_budget(clock) -> RunBudget:
+    """The run's budget, with the synthesizer's wait before a retry spent on the fake clock."""
+    return RunBudget(cancel=ClockedEvent(clock), deadline=clock() + 90, clock=clock)
+
+
+def overloaded() -> genai_errors.ServerError:
+    return genai_errors.ServerError(503, {"error": {"code": 503, "status": "UNAVAILABLE"}})
+
+
+@pytest.mark.parametrize(
+    ("elapsed", "calls"),
+    [
+        # 32s left: the 2s wait and a whole 30s read still end by the deadline.
+        (58.0, 2),
+        # 31.5s left: a retry's read could outlast the run, so the 503 ends it.
+        (58.5, 1),
+    ],
+    ids=["fits", "does-not-fit"],
+)
+def test_a_503_is_retried_only_while_the_wait_and_another_read_fit_the_deadline(
+    monkeypatch, clock, waiting_budget, elapsed, calls
+):
+    """The SDK's retry cannot be held to the deadline, so the synthesizer makes its own,
+    and only when it adds no term to config.py's worst case."""
+    clock.advance(elapsed)
+    llm = make_llm(raises=overloaded())
+    monkeypatch.setattr(graph_module, "llm", llm)
+
+    with pytest.raises(genai_errors.ServerError):
+        run_node(synthesizer_node, "synthesizer", synth_state(), waiting_budget)
+
+    assert len(llm.calls) == calls
+
+
+def test_a_hang_up_while_gemini_answers_503_costs_no_second_call(monkeypatch, waiting_budget):
+    llm = make_llm(
+        chunks=["never"],
+        stream_raises_after=0,
+        stream_error=overloaded(),
+        before_chunk=lambda _index: waiting_budget.cancel.set(),
+    )
+    monkeypatch.setattr(graph_module, "llm", llm)
+
+    with pytest.raises(BriefingStoppedError):
+        run_node(synthesizer_node, "synthesizer", synth_state(), waiting_budget)
+
+    assert len(llm.calls) == 1

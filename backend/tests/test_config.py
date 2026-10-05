@@ -180,23 +180,32 @@ def test_an_invalid_briefing_limit_falls_back_to_the_default(
 def test_the_worst_case_llm_budget_fits_inside_the_default_deadline():
     """The arithmetic in config.py's LLM comment, kept honest.
 
-    Every attempt of both LLM calls timing out, with tenacity's worst backoff between them,
-    plus the tool fan-out's own cap, must still end before the default deadline. Raising the
-    timeout or the attempt count without revisiting the deadline fails here.
+    Every attempt of each LLM call timing out, with tenacity's worst backoff before each retry,
+    plus the tool fan-out's own cap, must still end before the default deadline. The planner
+    and the synthesizer are summed separately because each has its own timeout and attempt
+    count. Raising either without revisiting the deadline fails here.
     """
     from config import (
         LLM_MAX_ATTEMPTS,
         LLM_RETRY_BACKOFF_MAX_SECONDS,
         LLM_TIMEOUT_SECONDS,
+        SYNTHESIZER_MAX_ATTEMPTS,
+        SYNTHESIZER_TIMEOUT_SECONDS,
         TOOL_FANOUT_TIMEOUT_SECONDS,
     )
 
-    one_call = LLM_MAX_ATTEMPTS * LLM_TIMEOUT_SECONDS + LLM_RETRY_BACKOFF_MAX_SECONDS
-    planner, synthesizer_first_chunk = one_call, one_call
+    def every_attempt_timing_out(attempts: int, timeout: float) -> float:
+        return attempts * timeout + (attempts - 1) * LLM_RETRY_BACKOFF_MAX_SECONDS
+
+    planner = every_attempt_timing_out(LLM_MAX_ATTEMPTS, LLM_TIMEOUT_SECONDS)
+    synthesizer_first_chunk = every_attempt_timing_out(
+        SYNTHESIZER_MAX_ATTEMPTS, SYNTHESIZER_TIMEOUT_SECONDS
+    )
 
     assert planner + TOOL_FANOUT_TIMEOUT_SECONDS + synthesizer_first_chunk <= 90
     # "At most two retries" — the attempt count includes the first request.
     assert 1 <= LLM_MAX_ATTEMPTS <= 3
+    assert 1 <= SYNTHESIZER_MAX_ATTEMPTS <= 3
 
 
 # ── The "is this key real?" predicate ────────────────────────────────────────
