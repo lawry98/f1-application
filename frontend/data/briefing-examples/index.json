@@ -8,5 +8,15 @@
     "captured_at": "2026-10-12T15:59:35+00:00",
     "as_of": "2026-06-05T11:30:00+00:00",
     "is_upcoming": false
+  },
+  {
+    "id": "2026-18-united-states-grand-prix",
+    "event": "United States Grand Prix",
+    "year": 2026,
+    "round": 18,
+    "circuit": "Circuit of the Americas",
+    "captured_at": "2026-10-12T16:07:12+00:00",
+    "as_of": "2026-10-12T00:00:00+00:00",
+    "is_upcoming": true
   }
 ]
