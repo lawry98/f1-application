@@ -40,7 +40,6 @@ if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
 from agent.budget import RunBudget
-from api.routes import initial_state
 from scripts.briefing_checks import check_example, norm
 
 logger = logging.getLogger(__name__)
@@ -109,6 +108,10 @@ async def run_briefing(agent: Any, query: str, deadline_seconds: float) -> dict[
     The SSE route forwards only tool names and success flags; the tools' data rides on the
     ``tool_executor`` update, which is where the evidence comes from.
     """
+    # Here, not at the top: the routes import the graph, which builds the Gemini client, and
+    # `--recheck` must run without a key.
+    from api.routes import initial_state
+
     loop = asyncio.get_running_loop()
     budget = RunBudget(cancel=threading.Event(), deadline=time.monotonic() + deadline_seconds)
     timer = loop.call_later(deadline_seconds, budget.cancel.set)

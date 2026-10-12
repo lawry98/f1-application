@@ -1,0 +1,1021 @@
+{
+  "schema": 1,
+  "id": "2026-06-monaco-grand-prix",
+  "query": "Monaco Grand Prix",
+  "captured_at": "2026-10-12T15:59:35+00:00",
+  "backend_commit": "44276b4",
+  "race_info": {
+    "name": "Monaco Grand Prix",
+    "year": 2026,
+    "round": 6,
+    "circuit_id": "monaco_grand_prix",
+    "track_id": "mc-1929",
+    "circuit_name": "Circuit de Monaco",
+    "circuit_length_m": 3337,
+    "location": "Monte Carlo",
+    "country": "Monaco",
+    "date": "2026-06-07 00:00:00",
+    "is_upcoming": false,
+    "as_of": "2026-06-05T11:30:00+00:00",
+    "sessions": [
+      {
+        "name": "Practice 1",
+        "start": "2026-06-05T11:30:00+00:00"
+      },
+      {
+        "name": "Practice 2",
+        "start": "2026-06-05T15:00:00+00:00"
+      },
+      {
+        "name": "Practice 3",
+        "start": "2026-06-06T10:30:00+00:00"
+      },
+      {
+        "name": "Qualifying",
+        "start": "2026-06-06T14:00:00+00:00"
+      },
+      {
+        "name": "Race",
+        "start": "2026-06-07T13:00:00+00:00"
+      }
+    ]
+  },
+  "tool_plan": [
+    "get_track_info",
+    "get_recent_top_finishers",
+    "get_championship_standings",
+    "get_circuit_winners",
+    "get_driver_form",
+    "get_recent_race_results"
+  ],
+  "tools": [
+    {
+      "tool": "get_track_info",
+      "success": true
+    },
+    {
+      "tool": "get_recent_top_finishers",
+      "success": true
+    },
+    {
+      "tool": "get_championship_standings",
+      "success": true
+    },
+    {
+      "tool": "get_circuit_winners",
+      "success": true
+    },
+    {
+      "tool": "get_driver_form",
+      "success": true
+    },
+    {
+      "tool": "get_recent_race_results",
+      "success": true
+    }
+  ],
+  "evidence": {
+    "track": {
+      "circuit": "Circuit de Monaco",
+      "length_km": 3.337,
+      "first_grand_prix": 1929,
+      "event_format": "conventional"
+    },
+    "season": {
+      "rounds": 23,
+      "remaining_grands_prix": 18,
+      "remaining_sprints": 3,
+      "this_weekend_sprint": false
+    },
+    "standings": {
+      "year": 2026,
+      "races_completed": 5,
+      "drivers": [
+        {
+          "position": 1,
+          "driver": "Kimi ANTONELLI",
+          "driver_code": "ANT",
+          "team": "Mercedes",
+          "points": 131.0
+        },
+        {
+          "position": 2,
+          "driver": "George RUSSELL",
+          "driver_code": "RUS",
+          "team": "Mercedes",
+          "points": 88.0
+        },
+        {
+          "position": 3,
+          "driver": "Charles LECLERC",
+          "driver_code": "LEC",
+          "team": "Ferrari",
+          "points": 75.0
+        },
+        {
+          "position": 4,
+          "driver": "Lewis HAMILTON",
+          "driver_code": "HAM",
+          "team": "Ferrari",
+          "points": 72.0
+        },
+        {
+          "position": 5,
+          "driver": "Lando NORRIS",
+          "driver_code": "NOR",
+          "team": "McLaren",
+          "points": 58.0
+        },
+        {
+          "position": 6,
+          "driver": "Oscar PIASTRI",
+          "driver_code": "PIA",
+          "team": "McLaren",
+          "points": 48.0
+        },
+        {
+          "position": 7,
+          "driver": "Max VERSTAPPEN",
+          "driver_code": "VER",
+          "team": "Red Bull Racing",
+          "points": 43.0
+        },
+        {
+          "position": 8,
+          "driver": "Pierre GASLY",
+          "driver_code": "GAS",
+          "team": "Alpine",
+          "points": 20.0
+        },
+        {
+          "position": 9,
+          "driver": "Oliver BEARMAN",
+          "driver_code": "BEA",
+          "team": "Haas F1 Team",
+          "points": 18.0
+        },
+        {
+          "position": 10,
+          "driver": "Liam LAWSON",
+          "driver_code": "LAW",
+          "team": "Racing Bulls",
+          "points": 16.0
+        },
+        {
+          "position": 11,
+          "driver": "Franco COLAPINTO",
+          "driver_code": "COL",
+          "team": "Alpine",
+          "points": 15.0
+        },
+        {
+          "position": 12,
+          "driver": "Isack HADJAR",
+          "driver_code": "HAD",
+          "team": "Red Bull Racing",
+          "points": 14.0
+        },
+        {
+          "position": 13,
+          "driver": "Carlos SAINZ",
+          "driver_code": "SAI",
+          "team": "Williams",
+          "points": 6.0
+        },
+        {
+          "position": 14,
+          "driver": "Arvid LINDBLAD",
+          "driver_code": "LIN",
+          "team": "Racing Bulls",
+          "points": 5.0
+        },
+        {
+          "position": 15,
+          "driver": "Gabriel BORTOLETO",
+          "driver_code": "BOR",
+          "team": "Audi",
+          "points": 2.0
+        },
+        {
+          "position": 16,
+          "driver": "Esteban OCON",
+          "driver_code": "OCO",
+          "team": "Haas F1 Team",
+          "points": 1.0
+        },
+        {
+          "position": 17,
+          "driver": "Alexander ALBON",
+          "driver_code": "ALB",
+          "team": "Williams",
+          "points": 1.0
+        },
+        {
+          "position": 18,
+          "driver": "Nico HULKENBERG",
+          "driver_code": "HUL",
+          "team": "Audi",
+          "points": 0.0
+        },
+        {
+          "position": 19,
+          "driver": "Valtteri BOTTAS",
+          "driver_code": "BOT",
+          "team": "Cadillac",
+          "points": 0.0
+        },
+        {
+          "position": 20,
+          "driver": "Sergio PEREZ",
+          "driver_code": "PER",
+          "team": "Cadillac",
+          "points": 0.0
+        },
+        {
+          "position": 21,
+          "driver": "Lance STROLL",
+          "driver_code": "STR",
+          "team": "Aston Martin",
+          "points": 0.0
+        },
+        {
+          "position": 22,
+          "driver": "Fernando ALONSO",
+          "driver_code": "ALO",
+          "team": "Aston Martin",
+          "points": 0.0
+        }
+      ],
+      "constructors": [
+        {
+          "position": 1,
+          "team": "Mercedes",
+          "points": 219.0
+        },
+        {
+          "position": 2,
+          "team": "Ferrari",
+          "points": 147.0
+        },
+        {
+          "position": 3,
+          "team": "McLaren",
+          "points": 106.0
+        },
+        {
+          "position": 4,
+          "team": "Red Bull Racing",
+          "points": 57.0
+        },
+        {
+          "position": 5,
+          "team": "Alpine",
+          "points": 35.0
+        },
+        {
+          "position": 6,
+          "team": "Racing Bulls",
+          "points": 21.0
+        },
+        {
+          "position": 7,
+          "team": "Haas F1 Team",
+          "points": 19.0
+        },
+        {
+          "position": 8,
+          "team": "Williams",
+          "points": 7.0
+        },
+        {
+          "position": 9,
+          "team": "Audi",
+          "points": 2.0
+        },
+        {
+          "position": 10,
+          "team": "Cadillac",
+          "points": 0.0
+        },
+        {
+          "position": 11,
+          "team": "Aston Martin",
+          "points": 0.0
+        }
+      ]
+    },
+    "drivers": [
+      {
+        "code": "ANT",
+        "name": "Kimi Antonelli",
+        "surname": "Antonelli"
+      },
+      {
+        "code": "RUS",
+        "name": "George Russell",
+        "surname": "Russell"
+      },
+      {
+        "code": "LEC",
+        "name": "Charles Leclerc",
+        "surname": "Leclerc"
+      },
+      {
+        "code": "HAM",
+        "name": "Lewis Hamilton",
+        "surname": "Hamilton"
+      },
+      {
+        "code": "NOR",
+        "name": "Lando Norris",
+        "surname": "Norris"
+      },
+      {
+        "code": "PIA",
+        "name": "Oscar Piastri",
+        "surname": "Piastri"
+      },
+      {
+        "code": "VER",
+        "name": "Max Verstappen",
+        "surname": "Verstappen"
+      },
+      {
+        "code": "GAS",
+        "name": "Pierre Gasly",
+        "surname": "Gasly"
+      },
+      {
+        "code": "BEA",
+        "name": "Oliver Bearman",
+        "surname": "Bearman"
+      },
+      {
+        "code": "LAW",
+        "name": "Liam Lawson",
+        "surname": "Lawson"
+      },
+      {
+        "code": "COL",
+        "name": "Franco Colapinto",
+        "surname": "Colapinto"
+      },
+      {
+        "code": "HAD",
+        "name": "Isack Hadjar",
+        "surname": "Hadjar"
+      },
+      {
+        "code": "SAI",
+        "name": "Carlos Sainz",
+        "surname": "Sainz"
+      },
+      {
+        "code": "LIN",
+        "name": "Arvid Lindblad",
+        "surname": "Lindblad"
+      },
+      {
+        "code": "BOR",
+        "name": "Gabriel Bortoleto",
+        "surname": "Bortoleto"
+      },
+      {
+        "code": "OCO",
+        "name": "Esteban Ocon",
+        "surname": "Ocon"
+      },
+      {
+        "code": "ALB",
+        "name": "Alexander Albon",
+        "surname": "Albon"
+      },
+      {
+        "code": "HUL",
+        "name": "Nico Hulkenberg",
+        "surname": "Hulkenberg"
+      },
+      {
+        "code": "BOT",
+        "name": "Valtteri Bottas",
+        "surname": "Bottas"
+      },
+      {
+        "code": "PER",
+        "name": "Sergio Perez",
+        "surname": "Perez"
+      },
+      {
+        "code": "STR",
+        "name": "Lance Stroll",
+        "surname": "Stroll"
+      },
+      {
+        "code": "ALO",
+        "name": "Fernando Alonso",
+        "surname": "Alonso"
+      }
+    ],
+    "results": [
+      {
+        "source": "get_recent_top_finishers",
+        "year": 2026,
+        "event": "Canadian Grand Prix",
+        "location": "Montréal",
+        "circuit": "Montreal",
+        "depth": 10,
+        "positions": {
+          "ANT": 1,
+          "HAM": 2,
+          "VER": 3,
+          "LEC": 4,
+          "HAD": 5,
+          "COL": 6,
+          "LAW": 7,
+          "GAS": 8,
+          "SAI": 9,
+          "BEA": 10
+        }
+      },
+      {
+        "source": "get_recent_race_results",
+        "year": 2025,
+        "event": "Monaco Grand Prix",
+        "location": "Monte Carlo",
+        "circuit": null,
+        "depth": 10,
+        "positions": {
+          "NOR": 1,
+          "LEC": 2,
+          "PIA": 3,
+          "VER": 4,
+          "HAM": 5,
+          "HAD": 6,
+          "OCO": 7,
+          "LAW": 8,
+          "ALB": 9,
+          "SAI": 10
+        }
+      },
+      {
+        "source": "get_circuit_winners",
+        "year": 2025,
+        "event": "Monaco Grand Prix",
+        "location": "Monte Carlo",
+        "circuit": null,
+        "depth": 1,
+        "positions": {
+          "NOR": 1
+        }
+      },
+      {
+        "source": "get_circuit_winners",
+        "year": 2024,
+        "event": "Monaco Grand Prix",
+        "location": "Monte Carlo",
+        "circuit": null,
+        "depth": 1,
+        "positions": {
+          "LEC": 1
+        }
+      },
+      {
+        "source": "get_circuit_winners",
+        "year": 2023,
+        "event": "Monaco Grand Prix",
+        "location": "Monte Carlo",
+        "circuit": null,
+        "depth": 1,
+        "positions": {
+          "VER": 1
+        }
+      },
+      {
+        "source": "get_driver_form",
+        "year": 2026,
+        "event": "Australian Grand Prix",
+        "location": "Melbourne",
+        "circuit": "Melbourne",
+        "depth": null,
+        "positions": {
+          "ANT": 2,
+          "RUS": 1,
+          "HAM": 4,
+          "LEC": 3,
+          "NOR": 5,
+          "VER": 6,
+          "PIA": "DNS",
+          "GAS": 10,
+          "BEA": 7,
+          "COL": 14,
+          "HAD": "DNF",
+          "LAW": 13,
+          "SAI": 15,
+          "LIN": 8,
+          "BOR": 9,
+          "OCO": 11,
+          "ALB": 12,
+          "HUL": "DNS",
+          "PER": 16,
+          "STR": "DNF",
+          "ALO": "DNF",
+          "BOT": "DNF"
+        }
+      },
+      {
+        "source": "get_driver_form",
+        "year": 2026,
+        "event": "Chinese Grand Prix",
+        "location": "Shanghai",
+        "circuit": "Shanghai",
+        "depth": null,
+        "positions": {
+          "ANT": 1,
+          "RUS": 2,
+          "HAM": 3,
+          "LEC": 4,
+          "NOR": "DNS",
+          "VER": "DNF",
+          "PIA": "DNS",
+          "GAS": 6,
+          "BEA": 5,
+          "COL": 10,
+          "HAD": 8,
+          "LAW": 7,
+          "SAI": 9,
+          "LIN": 12,
+          "BOR": "DNS",
+          "OCO": 14,
+          "ALB": "DNS",
+          "HUL": 11,
+          "PER": 15,
+          "STR": "DNF",
+          "ALO": "DNF",
+          "BOT": 13
+        }
+      },
+      {
+        "source": "get_driver_form",
+        "year": 2026,
+        "event": "Japanese Grand Prix",
+        "location": "Suzuka",
+        "circuit": "Suzuka",
+        "depth": null,
+        "positions": {
+          "ANT": 1,
+          "RUS": 4,
+          "HAM": 6,
+          "LEC": 3,
+          "NOR": 5,
+          "VER": 8,
+          "PIA": 2,
+          "GAS": 7,
+          "BEA": "DNF",
+          "COL": 16,
+          "HAD": 12,
+          "LAW": 9,
+          "SAI": 15,
+          "LIN": 14,
+          "BOR": 13,
+          "OCO": 10,
+          "ALB": 20,
+          "HUL": 11,
+          "PER": 17,
+          "STR": "DNF",
+          "ALO": 18,
+          "BOT": 19
+        }
+      },
+      {
+        "source": "get_driver_form",
+        "year": 2026,
+        "event": "Miami Grand Prix",
+        "location": "Miami Gardens",
+        "circuit": "Miami",
+        "depth": null,
+        "positions": {
+          "ANT": 1,
+          "RUS": 4,
+          "HAM": 6,
+          "LEC": 8,
+          "NOR": 2,
+          "VER": 5,
+          "PIA": 3,
+          "GAS": "DNF",
+          "BEA": 11,
+          "COL": 7,
+          "HAD": "DNF",
+          "LAW": "DNF",
+          "SAI": 9,
+          "LIN": 14,
+          "BOR": 12,
+          "OCO": 13,
+          "ALB": 10,
+          "HUL": "DNF",
+          "PER": 16,
+          "STR": 17,
+          "ALO": 15,
+          "BOT": 18
+        }
+      },
+      {
+        "source": "get_driver_form",
+        "year": 2026,
+        "event": "Canadian Grand Prix",
+        "location": "Montréal",
+        "circuit": "Montreal",
+        "depth": null,
+        "positions": {
+          "ANT": 1,
+          "RUS": "DNF",
+          "HAM": 2,
+          "LEC": 4,
+          "NOR": "DNF",
+          "VER": 3,
+          "PIA": 11,
+          "GAS": 8,
+          "BEA": 10,
+          "COL": 6,
+          "HAD": 5,
+          "LAW": 7,
+          "SAI": 9,
+          "LIN": "DNS",
+          "BOR": 13,
+          "OCO": 14,
+          "ALB": "DNF",
+          "HUL": 12,
+          "PER": "DNF",
+          "STR": 15,
+          "ALO": "DNF",
+          "BOT": 16
+        }
+      }
+    ],
+    "circuit_seasons": {
+      "from": 2023,
+      "to": 2025
+    },
+    "searched_years": [],
+    "form": {
+      "grands_prix": [
+        "2026 Australian Grand Prix",
+        "2026 Chinese Grand Prix",
+        "2026 Japanese Grand Prix",
+        "2026 Miami Grand Prix",
+        "2026 Canadian Grand Prix"
+      ],
+      "drivers": {
+        "ANT": {
+          "results": [
+            "P2",
+            "P1",
+            "P1",
+            "P1",
+            "P1"
+          ],
+          "points": 118.0,
+          "avg": 1.2
+        },
+        "RUS": {
+          "results": [
+            "P1",
+            "P2",
+            "P4",
+            "P4",
+            "DNF"
+          ],
+          "points": 67.0,
+          "avg": 2.8
+        },
+        "HAM": {
+          "results": [
+            "P4",
+            "P3",
+            "P6",
+            "P6",
+            "P2"
+          ],
+          "points": 61.0,
+          "avg": 4.2
+        },
+        "LEC": {
+          "results": [
+            "P3",
+            "P4",
+            "P3",
+            "P8",
+            "P4"
+          ],
+          "points": 58.0,
+          "avg": 4.4
+        },
+        "NOR": {
+          "results": [
+            "P5",
+            "DNS",
+            "P5",
+            "P2",
+            "DNF"
+          ],
+          "points": 38.0,
+          "avg": 4.0
+        },
+        "VER": {
+          "results": [
+            "P6",
+            "DNF",
+            "P8",
+            "P5",
+            "P3"
+          ],
+          "points": 37.0,
+          "avg": 5.5
+        },
+        "PIA": {
+          "results": [
+            "DNS",
+            "DNS",
+            "P2",
+            "P3",
+            "P11"
+          ],
+          "points": 33.0,
+          "avg": 5.3
+        },
+        "GAS": {
+          "results": [
+            "P10",
+            "P6",
+            "P7",
+            "DNF",
+            "P8"
+          ],
+          "points": 19.0,
+          "avg": 7.8
+        },
+        "BEA": {
+          "results": [
+            "P7",
+            "P5",
+            "DNF",
+            "P11",
+            "P10"
+          ],
+          "points": 17.0,
+          "avg": 8.2
+        },
+        "COL": {
+          "results": [
+            "P14",
+            "P10",
+            "P16",
+            "P7",
+            "P6"
+          ],
+          "points": 15.0,
+          "avg": 10.6
+        },
+        "HAD": {
+          "results": [
+            "DNF",
+            "P8",
+            "P12",
+            "DNF",
+            "P5"
+          ],
+          "points": 14.0,
+          "avg": 8.3
+        },
+        "LAW": {
+          "results": [
+            "P13",
+            "P7",
+            "P9",
+            "DNF",
+            "P7"
+          ],
+          "points": 14.0,
+          "avg": 9.0
+        },
+        "SAI": {
+          "results": [
+            "P15",
+            "P9",
+            "P15",
+            "P9",
+            "P9"
+          ],
+          "points": 6.0,
+          "avg": 11.4
+        },
+        "LIN": {
+          "results": [
+            "P8",
+            "P12",
+            "P14",
+            "P14",
+            "DNS"
+          ],
+          "points": 4.0,
+          "avg": 12.0
+        },
+        "BOR": {
+          "results": [
+            "P9",
+            "DNS",
+            "P13",
+            "P12",
+            "P13"
+          ],
+          "points": 2.0,
+          "avg": 11.8
+        },
+        "OCO": {
+          "results": [
+            "P11",
+            "P14",
+            "P10",
+            "P13",
+            "P14"
+          ],
+          "points": 1.0,
+          "avg": 12.4
+        },
+        "ALB": {
+          "results": [
+            "P12",
+            "DNS",
+            "P20",
+            "P10",
+            "DNF"
+          ],
+          "points": 1.0,
+          "avg": 14.0
+        },
+        "HUL": {
+          "results": [
+            "DNS",
+            "P11",
+            "P11",
+            "DNF",
+            "P12"
+          ],
+          "points": 0.0,
+          "avg": 11.3
+        },
+        "PER": {
+          "results": [
+            "P16",
+            "P15",
+            "P17",
+            "P16",
+            "DNF"
+          ],
+          "points": 0.0,
+          "avg": 16.0
+        },
+        "STR": {
+          "results": [
+            "DNF",
+            "DNF",
+            "DNF",
+            "P17",
+            "P15"
+          ],
+          "points": 0.0,
+          "avg": 16.0
+        },
+        "ALO": {
+          "results": [
+            "DNF",
+            "DNF",
+            "P18",
+            "P15",
+            "DNF"
+          ],
+          "points": 0.0,
+          "avg": 16.5
+        },
+        "BOT": {
+          "results": [
+            "DNF",
+            "P13",
+            "P19",
+            "P18",
+            "P16"
+          ],
+          "points": 0.0,
+          "avg": 16.5
+        }
+      }
+    },
+    "weather": {
+      "status": "not_gathered"
+    },
+    "other_venues": [],
+    "later_events": [
+      "Barcelona Grand Prix",
+      "Austrian Grand Prix",
+      "British Grand Prix",
+      "Belgian Grand Prix",
+      "Hungarian Grand Prix",
+      "Dutch Grand Prix",
+      "Italian Grand Prix",
+      "Spanish Grand Prix",
+      "Azerbaijan Grand Prix",
+      "Bahrain Grand Prix",
+      "Singapore Grand Prix",
+      "United States Grand Prix",
+      "Mexico City Grand Prix",
+      "São Paulo Grand Prix",
+      "Las Vegas Grand Prix",
+      "Qatar Grand Prix",
+      "Abu Dhabi Grand Prix"
+    ],
+    "news": []
+  },
+  "briefing": {
+    "content": "## Track Profile\n\nThe **Circuit de Monaco** remains the ultimate test of precision and bravery on the Formula 1 calendar. Measuring just 3.337 km in length, this iconic street circuit through the streets of Monte Carlo hosted its first Grand Prix back in 1929 and has been a staple of motor racing legend ever since.\n\nWinding through tight armco-lined streets, landmark sections like Sainte Dévote, Casino Square, the Loews Hairpin, the Tunnel, and the Swimming Pool complex leave zero margin for error. Maximum downforce, supreme mechanical grip, and absolute driver confidence are paramount. With overtaking notoriously difficult during the race, Saturday’s qualifying session is arguably the most vital 60 minutes of the entire Formula 1 season.\n\n---\n\n## Championship Context\n\nAs we enter Round 6 of the 2026 season, Mercedes' teenage sensation **Kimi Antonelli** commands the Drivers' Championship with **131.0 points**. Antonelli holds a formidable 43-point lead over his teammate **George Russell** (**88.0 points**). \n\nFerrari's duo of **Charles Leclerc** (**75.0 points**) and **Lewis Hamilton** (**72.0 points**) sit third and fourth, poised to capitalise on any slip-up from the leaders. McLaren’s **Lando Norris** (**58.0 points**) and **Oscar Piastri** (**48.0 points**) occupy fifth and sixth, while 3-time Monaco winner **Max Verstappen** sits seventh with **43.0 points** for Red Bull Racing.\n\nIn the Constructors' Championship, Mercedes holds a commanding lead:\n1. **Mercedes** – 219.0 pts\n2. **Ferrari** – 147.0 pts (-72 pts)\n3. **McLaren** – 106.0 pts (-113 pts)\n4. **Red Bull Racing** – 57.0 pts (-162 pts)\n5. **Alpine** – 35.0 pts (-184 pts)\n\n---\n\n## Form Guide\n\n### In Form\n* **Kimi Antonelli (Mercedes):** The championship leader arrives in Monte Carlo on an astonishing run of form in 2026, having won four consecutive Grands Prix (Shanghai, Suzuka, Miami, and Montreal) following a P2 finish in the Melbourne opener.\n* **Lewis Hamilton (Ferrari):** Hamilton secured his best result of the 2026 campaign last time out in Montreal with a superb P2 finish, building on consistent top-6 finishes earlier in the year.\n* **Charles Leclerc (Ferrari):** The Monegasque local hero has maintained strong consistency in 2026 (P3 Melbourne, P4 Shanghai, P3 Suzuka, P4 Montreal) and carries fond memories of the Principality, having won the 2024 Monaco Grand Prix and finished P2 in 2025.\n\n### Needing a Reset\n* **George Russell (Mercedes):** After winning the 2026 season opener in Melbourne, Russell's momentum was halted by a costly DNF in Montreal.\n* **Max Verstappen (Red Bull Racing):** Red Bull has endured a turbulent 2026 start. Though Verstappen took P3 in Montreal, a DNF in Shanghai and P8 in Suzuka leave him trailing in seventh in the standings.\n* **Aston Martin & Cadillac:** Both constructors remain point-less through five races in 2026, with Fernando Alonso and Lance Stroll suffering three DNFs apiece.\n\n---\n\n## Key Storylines\n\n*News data was not gathered for this event as the race has already been run.*\n\n* **Can Anyone Stop Antonelli?** Kimi Antonelli's four-race winning streak makes him the man to beat in 2026, but the unforgiving walls of Monaco present the toughest challenge yet for the rookie championship leader.\n* **Leclerc's Home Turf:** Charles Leclerc broke his home race jinx with victory in 2024 and took P2 in 2025. Ferrari’s high-downforce agility could make this his best shot yet to snap Mercedes' winning streak.\n* **McLaren's Street Supremacy:** Lando Norris mastered Monte Carlo to win the 2025 Monaco Grand Prix alongside Oscar Piastri on the podium (P3). After double disappointment in Montreal, McLaren will be eager to assert themselves on the streets where they shone last year.\n* **The Importance of Saturday:** With track position king in the Principality, single-lap pace in Qualifying will dictate the flow of Sunday’s Grand Prix.\n\n---\n\n## Weather Watch\n\nWeather forecast data was not gathered for this event as the race has already been run, so no weather conditions are provided.\n\n---\n\n## Predictions\n\n### Pole Position Favorites\n1. **Charles Leclerc (Ferrari):** Unmatched single-lap precision around his home streets; previous winner (2024) and pole specialist in Monte Carlo.\n2. **Kimi Antonelli (Mercedes):** Riding a wave of four straight 2026 victories with supreme confidence.\n3. **Lando Norris (McLaren):** The 2025 Monaco GP winner knows exactly what it takes to extract maximum speed around this layout.\n\n### Podium Prediction\n1. **Charles Leclerc (Ferrari)**\n2. **Kimi Antonelli (Mercedes)**\n3. **Lewis Hamilton (Ferrari)**\n\n### Dark Horse\n* **Isack Hadjar (Red Bull Racing):** Impressed with a P5 finish in Montreal in 2026 and claimed a fine P6 around Monaco in 2025 for Racing Bulls. If top cars stumble in Qualifying, Hadjar has the skill to deliver a standout result.",
+    "truncated": false
+  },
+  "checks": {
+    "passed": [
+      {
+        "check": "tools",
+        "detail": "6 of 6 tools succeeded"
+      },
+      {
+        "check": "complete",
+        "detail": "the briefing is complete, not truncated"
+      },
+      {
+        "check": "sections",
+        "detail": "all six sections are present"
+      },
+      {
+        "check": "circuit",
+        "detail": "names Circuit de Monaco; no other venue has hosted the Monaco Grand Prix"
+      },
+      {
+        "check": "standings",
+        "detail": "17 points figures, 1 season counts and 4 table positions match the 2026 table as of the cutoff"
+      },
+      {
+        "check": "results",
+        "detail": "18 quoted results match the gathered data"
+      },
+      {
+        "check": "as_of",
+        "detail": "nothing after the cutoff (2026-06-05 11:30 UTC) is mentioned"
+      },
+      {
+        "check": "weather",
+        "detail": "quotes no conditions; no forecast was gathered for this race"
+      }
+    ],
+    "flagged": [
+      {
+        "check": "circuit",
+        "section": "Track Profile",
+        "claim": "The Circuit de Monaco remains the ultimate test of precision and bravery on the Formula 1 calendar.",
+        "reason": "circuit knowledge, not in the gathered data"
+      },
+      {
+        "check": "circuit",
+        "section": "Track Profile",
+        "claim": "Winding through tight armco-lined streets, landmark sections like Sainte Dévote, Casino Square, the Loews Hairpin, the Tunnel, and the Swimming Pool complex leave zero margin for error.",
+        "reason": "circuit knowledge, not in the gathered data"
+      },
+      {
+        "check": "circuit",
+        "section": "Track Profile",
+        "claim": "Maximum downforce, supreme mechanical grip, and absolute driver confidence are paramount.",
+        "reason": "circuit knowledge, not in the gathered data"
+      },
+      {
+        "check": "figures",
+        "section": "Track Profile",
+        "claim": "With overtaking notoriously difficult during the race, Saturday’s qualifying session is arguably the most vital 60 minutes of the entire Formula 1 season.",
+        "reason": "figure not checked against the data: 60"
+      },
+      {
+        "check": "figures",
+        "section": "Championship Context",
+        "claim": "McLaren’s Lando Norris (58.0 points) and Oscar Piastri (48.0 points) occupy fifth and sixth, while 3-time Monaco winner Max Verstappen sits seventh with 43.0 points for Red Bull Racing.",
+        "reason": "figure not checked against the data: 3"
+      },
+      {
+        "check": "figures",
+        "section": "Form Guide",
+        "claim": "Lewis Hamilton (Ferrari): Hamilton secured his best result of the 2026 campaign last time out in Montreal with a superb P2 finish, building on consistent top-6 finishes earlier in the year.",
+        "reason": "figure not checked against the data: 6"
+      },
+      {
+        "check": "results",
+        "section": "Key Storylines",
+        "claim": "Leclerc's Home Turf: Charles Leclerc broke his home race jinx with victory in 2024 and took P2 in 2025.",
+        "reason": "result not in the gathered data"
+      }
+    ]
+  }
+}

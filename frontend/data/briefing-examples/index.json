@@ -1,1 +1,12 @@
-[]
+[
+  {
+    "id": "2026-06-monaco-grand-prix",
+    "event": "Monaco Grand Prix",
+    "year": 2026,
+    "round": 6,
+    "circuit": "Circuit de Monaco",
+    "captured_at": "2026-10-12T15:59:35+00:00",
+    "as_of": "2026-06-05T11:30:00+00:00",
+    "is_upcoming": false
+  }
+]
