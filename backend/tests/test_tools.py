@@ -63,6 +63,10 @@ def forecast_payload(count: int = 40, start: datetime = FORECAST_FROM) -> dict[s
 
 # A Sepang weekend whose FP1 and race fall on forecast slots 18 (2 Oct 06:00) and 34 (4 Oct 06:00).
 SEPANG = {"lat": 2.76075, "lon": 101.73696}
+# The moment these tests run at: before WEEKEND and inside the forecast's reach. Unfrozen, the
+# tool reads the real clock, and from 4 Oct 2026 on it rightly answers `weekend_over` without a
+# request — which turned every test below that forgot the clock red at once.
+BEFORE_THE_WEEKEND = "2026-09-30T00:05:00"
 WEEKEND = [
     {"name": "Practice 1", "start": "2026-10-02T06:00:00+00:00"},
     {"name": "Qualifying", "start": "2026-10-03T09:00:00+00:00"},
@@ -147,6 +151,7 @@ def test_weather_without_session_times_is_an_error_and_makes_no_request(
     assert _weather(sessions=[]) == {"error": "No session times for this race weekend"}
 
 
+@freeze_time(BEFORE_THE_WEEKEND)
 def test_weather_asks_only_the_forecast_endpoint_for_the_circuit_coordinates(
     monkeypatch, openweather_key
 ):
@@ -166,13 +171,14 @@ def test_weather_asks_only_the_forecast_endpoint_for_the_circuit_coordinates(
     }
 
 
+@freeze_time(BEFORE_THE_WEEKEND)
 def test_weather_reports_a_failed_forecast_fetch(monkeypatch, openweather_key):
     monkeypatch.setattr(weather_tools.requests, "get", RecordingGet(FakeResponse({}, 500)))
 
     assert _weather() == {"error": "Forecast request failed with status 500"}
 
 
-@freeze_time("2026-09-30T00:05:00")
+@freeze_time(BEFORE_THE_WEEKEND)
 def test_weather_gives_each_session_its_own_forecast(monkeypatch, openweather_key):
     monkeypatch.setattr(
         weather_tools.requests, "get", RecordingGet(FakeResponse(forecast_payload()))
@@ -219,6 +225,7 @@ def test_weather_gives_each_session_its_own_forecast(monkeypatch, openweather_ke
     ]
 
 
+@freeze_time(BEFORE_THE_WEEKEND)
 def test_weather_is_the_race_weekend_not_the_next_24_hours(monkeypatch, openweather_key):
     """The defect: the first eight 3-hour slots, i.e. the next day, presented as the weekend —
     a Singapore briefing quoted 30 Sep rain odds for an 11 Oct race. The window is FP1 - 3h to
@@ -237,7 +244,7 @@ def test_weather_is_the_race_weekend_not_the_next_24_hours(monkeypatch, openweat
     assert temperatures.isdisjoint({20.0 + index for index in range(8)})
 
 
-@freeze_time("2026-09-30T00:05:00")
+@freeze_time(BEFORE_THE_WEEKEND)
 def test_a_weekend_just_past_the_last_slot_is_outside_the_range(monkeypatch, openweather_key):
     """Inside the day of slack the session times alone cannot settle it, so the forecast is
     fetched and its own last slot decides: here it ends on 4 Oct, and FP1 is on the 5th.
@@ -261,6 +268,7 @@ def test_a_weekend_just_past_the_last_slot_is_outside_the_range(monkeypatch, ope
     }
 
 
+@freeze_time(BEFORE_THE_WEEKEND)
 def test_a_weekend_that_runs_past_the_forecast_is_partial(monkeypatch, openweather_key):
     """FP1 is in range and the race is not: the race says so rather than borrowing FP1's."""
     monkeypatch.setattr(
@@ -275,6 +283,7 @@ def test_a_weekend_that_runs_past_the_forecast_is_partial(monkeypatch, openweath
     assert by_name["Race"] is None
 
 
+@freeze_time(BEFORE_THE_WEEKEND)
 def test_sessions_already_under_way_get_no_forecast(monkeypatch, openweather_key):
     """Late on race day the forecast starts after the window closes: every session says it has
     no forecast rather than borrowing tomorrow's."""
@@ -290,6 +299,7 @@ def test_sessions_already_under_way_get_no_forecast(monkeypatch, openweather_key
     assert [s["forecast"] for s in result["sessions"]] == [None, None, None]
 
 
+@freeze_time(BEFORE_THE_WEEKEND)
 def test_an_empty_forecast_is_an_error_not_a_dry_weekend(monkeypatch, openweather_key):
     monkeypatch.setattr(
         weather_tools.requests, "get", RecordingGet(FakeResponse({"cod": "200", "list": []}))
@@ -298,6 +308,7 @@ def test_an_empty_forecast_is_an_error_not_a_dry_weekend(monkeypatch, openweathe
     assert _weather() == {"error": "Forecast returned no entries"}
 
 
+@freeze_time(BEFORE_THE_WEEKEND)
 def test_weather_converts_an_unexpected_exception_into_an_error(monkeypatch, openweather_key):
     """A tool must never raise — the agent is built to continue on partial data."""
 
@@ -310,6 +321,7 @@ def test_weather_converts_an_unexpected_exception_into_an_error(monkeypatch, ope
     assert "network down" in result["error"]
 
 
+@freeze_time(BEFORE_THE_WEEKEND)
 def test_a_transport_error_never_carries_the_key_into_the_result_or_the_log(
     monkeypatch, openweather_key, caplog
 ):
