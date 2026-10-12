@@ -6,6 +6,7 @@ graph's stream exactly as ``/api/briefing/stream`` does.
 
 import asyncio
 import json
+from pathlib import Path
 
 import pytest
 
@@ -17,6 +18,7 @@ from scripts.capture_briefing_example import (
     example_id,
     other_venues_for,
     parse_form_line,
+    recheck,
     run_briefing,
     write_example,
 )
@@ -489,3 +491,51 @@ def test_a_form_line_with_no_classified_finish_has_no_average() -> None:
     line = "STR Lance STROLL, Aston Martin: Shanghai DNF | 0 pts, no classified finish, 1 DNF, 1/2 races"
 
     assert parse_form_line(line)["avg"] is None
+
+
+def _rejected(tmp_path, briefing: str):
+    """A capture as `--reject-dir` keeps it: the whole example, with the verdict that sank it."""
+    cases = json.loads(
+        (
+            Path(__file__).resolve().parents[2]
+            / "frontend"
+            / "tests"
+            / "fixtures"
+            / "briefing-check-cases.json"
+        ).read_text(encoding="utf-8")
+    )
+    example = {**cases["bases"]["monaco"], "briefing": {"content": briefing, "truncated": False}}
+    example["checks"] = {
+        "passed": [],
+        "flagged": [],
+        "failed": [{"check": "results", "detail": "old"}],
+    }
+    path = tmp_path / "rejected.json"
+    path.write_text(json.dumps(example), encoding="utf-8")
+    return example, path
+
+
+def test_a_recheck_writes_a_capture_the_checks_now_pass_with_a_fresh_verdict(tmp_path) -> None:
+    cases_base = json.loads(
+        (
+            Path(__file__).resolve().parents[2]
+            / "frontend/tests/fixtures/briefing-check-cases.json"
+        ).read_text(encoding="utf-8")
+    )["bases"]["monaco"]["briefing"]["content"]
+    example, path = _rejected(tmp_path, cases_base)
+    out = tmp_path / "out"
+
+    assert recheck(path, out) is True
+
+    written = json.loads((out / f"{example['id']}.json").read_text(encoding="utf-8"))
+    assert written["briefing"]["content"] == cases_base
+    assert set(written["checks"]) == {"passed", "flagged"}
+    assert written["checks"]["passed"][0]["check"] == "tools"
+
+
+def test_a_recheck_writes_nothing_for_a_capture_that_still_fails(tmp_path) -> None:
+    _, path = _rejected(tmp_path, "## Track Profile\nThe Circuit de Monaco is 9.9 km long.\n")
+    out = tmp_path / "out"
+
+    assert recheck(path, out) is False
+    assert not out.exists()

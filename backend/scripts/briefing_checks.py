@@ -132,6 +132,9 @@ IGNORED = [
 ]
 
 HERE = re.compile(r"\b(?:here|this circuit|this track|this venue|this race|this event)\b", FLAGS)
+# "a P2 finish in the Melbourne opener": the race a preposition ties a claim to, which beats a
+# nearer race on the claim's other side.
+LINKED = re.compile(r"^\s+(?:[A-Za-z']+\s+){0,2}?(?:in|at)\s+(?:the\s+)?$", FLAGS)
 LAST_TIME = re.compile(
     r"\b(?:last time out|last race|latest race|most recent race|last round|last weekend"
     r"|previous race|last outing|last start)\b",
@@ -171,6 +174,13 @@ STREAKS = [
         "streak",
     ),
     (re.compile(r"\b(" + NUM + r")\s+" + FORM_NOUN + r"\s+in\s+a\s+row\b", FLAGS), "streak"),
+    (
+        re.compile(
+            r"\b(" + NUM + r")-(?:race|grand prix|gp)\s+(winning|podium)\s+(?:streak|run)\b",
+            FLAGS,
+        ),
+        "streak",
+    ),
     (
         re.compile(r"\bwon\s+(" + NUM + r")\s+(?:races\s+|grands prix\s+)?(in\s+a\s+row)\b", FLAGS),
         "streak",
@@ -974,6 +984,15 @@ def result_claims(s: Sentence, skip: list[tuple[int, int]]) -> list[tuple[str, i
     return claims
 
 
+def linked_race(races: list[dict[str, Any]], end: int, text: str) -> dict[str, Any] | None:
+    """The first race after a claim that a preposition ties it to, or None."""
+    after = [race for race in races if race["start"] >= end]
+    for race in sorted(after, key=lambda race: race["start"]):
+        if LINKED.match(text[end : race["start"]]):
+            return race
+    return None
+
+
 def describe(kind: str, value: int) -> str:
     if kind == "win":
         return "won"
@@ -1002,7 +1021,7 @@ def check_results_sentence(
         paired = nearest(drivers, start, end)
         if kind == "pos" and not s.overlaps(start, end):
             s.consume(start, end)
-        race = nearest(races, start, end)
+        race = linked_race(races, end, s.norm) or nearest(races, start, end)
         pool = race["entries"] if race else []
         if years:
             pool = [e for e in pool if e["year"] in years]
@@ -1038,8 +1057,18 @@ def check_as_of_sentence(ctx: dict[str, Any], s: Sentence) -> None:
             if term_pattern(name).search(s.norm):
                 s.fail("as_of", f"mentions the {event}, run after the cutoff")
                 break
-    own = [term_pattern(race["name"]), term_pattern(race["name"].replace("Grand Prix", "GP"))]
-    if any(p.search(s.norm) for p in own) and term_pattern(str(race["year"])).search(s.norm):
+    # This race's own edition, named with its year: "the 2026 Monaco Grand Prix", "Monaco GP
+    # 2026". A year elsewhere in the sentence is some other claim's.
+    year = str(race["year"])
+    names = "|".join(
+        escape(norm(name)) for name in (race["name"], race["name"].replace("Grand Prix", "GP"))
+    )
+    own = re.compile(
+        rf"(?<![A-Za-z0-9])(?:{year}\s+(?:the\s+)?(?:{names})|(?:{names})(?:\s+(?:in|of))?\s+{year})"
+        r"(?![A-Za-z0-9])",
+        FLAGS,
+    )
+    if own.search(s.norm):
         for match in WIN.finditer(s.norm):
             if MODAL_BEFORE.search(s.norm[: match.start()]):
                 continue

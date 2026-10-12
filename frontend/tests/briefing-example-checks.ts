@@ -98,6 +98,7 @@ const IGNORED = [
 ];
 
 const HERE = ci('\\b(?:here|this circuit|this track|this venue|this race|this event)\\b');
+const LINKED = ci("^\\s+(?:[A-Za-z']+\\s+){0,2}?(?:in|at)\\s+(?:the\\s+)?$");
 const LAST_TIME = ci(
   '\\b(?:last time out|last race|latest race|most recent race|last round|last weekend' +
     '|previous race|last outing|last start)\\b',
@@ -128,6 +129,7 @@ const FORM_NOUN = '(wins|victories|podiums|podium finishes)';
 const STREAKS: [RegExp, 'streak' | 'count'][] = [
   [ci(`\\b(${NUM})\\s+(?:consecutive|straight|successive)\\s+(?:race\\s+)?${FORM_NOUN}`), 'streak'],
   [ci(`\\b(${NUM})\\s+${FORM_NOUN}\\s+in\\s+a\\s+row\\b`), 'streak'],
+  [ci(`\\b(${NUM})-(?:race|grand prix|gp)\\s+(winning|podium)\\s+(?:streak|run)\\b`), 'streak'],
   [ci(`\\bwon\\s+(${NUM})\\s+(?:races\\s+|grands prix\\s+)?(in\\s+a\\s+row)\\b`), 'streak'],
   [
     ci(`\\bwon\\s+(${NUM})\\s+(of)\\s+(?:the|his|her|their)\\s+(?:last|past)\\s+(${NUM})\\b`),
@@ -1048,6 +1050,11 @@ function resultClaims(
   return claims;
 }
 
+function linkedRace(races: RaceMention[], end: number, text: string): RaceMention | null {
+  const after = races.filter((race) => race.start >= end).sort((a, b) => a.start - b.start);
+  return after.find((race) => LINKED.test(text.slice(end, race.start))) ?? null;
+}
+
 function describe(kind: ClaimKind, value: number): string {
   if (kind === 'win') return 'won';
   if (kind === 'pos') return `finished P${value}`;
@@ -1068,7 +1075,7 @@ function checkResultsSentence(ctx: Context, s: Sentence, found: Mention[], count
   for (const [kind, value, start, end] of claims) {
     const paired = nearest(drivers, start, end)!;
     if (kind === 'pos' && !s.overlaps(start, end)) s.consume(start, end);
-    const race = nearest(races, start, end);
+    const race = linkedRace(races, end, s.norm) ?? nearest(races, start, end);
     let pool = race ? race.entries : [];
     if (years.size) {
       pool = pool.filter((e) => years.has(e.year));
@@ -1111,8 +1118,15 @@ function checkAsOfSentence(ctx: Context, s: Sentence): void {
       }
     }
   }
-  const own = [termPattern(race.name), termPattern(race.name.replace('Grand Prix', 'GP'))];
-  if (own.some((p) => p.test(s.norm)) && termPattern(String(race.year)).test(s.norm)) {
+  const year = String(race.year);
+  const names = [race.name, race.name.replace('Grand Prix', 'GP')]
+    .map((name) => escape(norm(name)))
+    .join('|');
+  const own = ci(
+    `(?<![A-Za-z0-9])(?:${year}\\s+(?:the\\s+)?(?:${names})|(?:${names})(?:\\s+(?:in|of))?\\s+${year})` +
+      '(?![A-Za-z0-9])',
+  );
+  if (own.test(s.norm)) {
     for (const m of all(WIN, s.norm)) {
       if (MODAL_BEFORE.test(s.norm.slice(0, startOf(m)))) continue;
       s.fail('as_of', `gives the result of the ${race.year} ${race.name} itself`);

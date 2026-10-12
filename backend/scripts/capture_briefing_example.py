@@ -581,13 +581,7 @@ def capture(query: str, out_dir: Path, reject_dir: Path | None) -> bool:
     result = check_example(example)
     example["checks"] = {"passed": result["passed"], "flagged": result["flagged"]}
 
-    print(f"\n{example['id']}  as_of {race_info['as_of']}  tools {len(tool_results)}")
-    for entry in result["passed"]:
-        print(f"  pass  {entry['check']}: {entry['detail']}")
-    for entry in result["flagged"]:
-        print(f"  flag  [{entry['section']}] {entry['claim']}  ({entry['reason']})")
-    for entry in result["failed"]:
-        print(f"  FAIL  {entry['check']}: {entry['detail']}")
+    _report(example, result)
 
     if result["failed"]:
         if reject_dir:
@@ -601,15 +595,50 @@ def capture(query: str, out_dir: Path, reject_dir: Path | None) -> bool:
     return True
 
 
+def recheck(path: Path, out_dir: Path) -> bool:
+    """Re-run the checks over a capture ``--reject-dir`` kept, and write it if they now pass.
+
+    For a capture a checker bug sank: the prose and evidence are the run's, untouched, and only
+    the verdict is recomputed — so fixing the checker, with a case in the shared fixture, costs
+    no Gemini call. A capture the checks still fail stays where it is.
+    """
+    example = json.loads(path.read_text(encoding="utf-8"))
+    example.pop("checks", None)
+    result = check_example(example)
+    _report(example, result)
+    if result["failed"]:
+        print("  -> still fails: recapture it or drop the race")
+        return False
+    example["checks"] = {"passed": result["passed"], "flagged": result["flagged"]}
+    print(f"  -> wrote {write_example(example, out_dir)}")
+    return True
+
+
+def _report(example: dict[str, Any], result: dict[str, list]) -> None:
+    race = example["race_info"]
+    print(f"\n{example['id']}  as_of {race['as_of']}  tools {len(example['tools'])}")
+    for entry in result["passed"]:
+        print(f"  pass  {entry['check']}: {entry['detail']}")
+    for entry in result["flagged"]:
+        print(f"  flag  [{entry['section']}] {entry['claim']}  ({entry['reason']})")
+    for entry in result["failed"]:
+        print(f"  FAIL  {entry['check']}: {entry['detail']}")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--query", action="append", required=True, help="repeatable")
+    runs = parser.add_mutually_exclusive_group(required=True)
+    runs.add_argument("--query", action="append", help="repeatable")
+    runs.add_argument("--recheck", type=Path, help="a capture --reject-dir kept")
     parser.add_argument("--out-dir", type=Path, default=EXAMPLES_DIR)
     parser.add_argument("--reject-dir", type=Path, default=None)
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
     # The planner's choice and the fan-out's tally, so a degraded run is visible.
     logging.getLogger("agent.graph").setLevel(logging.INFO)
+
+    if args.recheck:
+        return 0 if recheck(args.recheck, args.out_dir) else 1
 
     ok = True
     for query in args.query:

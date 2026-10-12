@@ -1335,6 +1335,88 @@
           "Overtaking is close to impossible, so qualifying decides most races."
         ]
       }
+    },
+    {
+      "name": "a place pairs with the race its preposition names, over a nearer one",
+      "base": "monaco",
+      "replace": [
+        [
+          "always draws a crowd.",
+          "always draws a crowd. Antonelli won in Montreal after a P2 finish at Albert Park."
+        ]
+      ],
+      "expect": {
+        "failed": [],
+        "flagged": [
+          "Overtaking is close to impossible, so qualifying decides most races."
+        ]
+      }
+    },
+    {
+      "name": "a retirement pairs with the race it was in, not the one before it",
+      "base": "monaco",
+      "replace": [
+        [
+          "always draws a crowd.",
+          "always draws a crowd. Russell took P1 at Albert Park, a DNF in Montreal."
+        ]
+      ],
+      "expect": {
+        "failed": [],
+        "flagged": [
+          "Overtaking is close to impossible, so qualifying decides most races."
+        ]
+      }
+    },
+    {
+      "name": "this race's own name with another season's year is that season's result",
+      "base": "monaco",
+      "replace": [
+        [
+          "always draws a crowd.",
+          "always draws a crowd. Leclerc, strong in 2026, won the 2024 Monaco Grand Prix."
+        ]
+      ],
+      "expect": {
+        "failed": [],
+        "flagged": [
+          "Overtaking is close to impossible, so qualifying decides most races."
+        ]
+      }
+    },
+    {
+      "name": "an N-race winning streak the form bears out passes",
+      "base": "monaco",
+      "replace": [
+        [
+          "always draws a crowd.",
+          "always draws a crowd. Antonelli is on a four-race winning streak."
+        ]
+      ],
+      "expect": {
+        "failed": [],
+        "flagged": [
+          "Overtaking is close to impossible, so qualifying decides most races."
+        ]
+      }
+    },
+    {
+      "name": "an N-race winning streak the form contradicts fails",
+      "base": "monaco",
+      "replace": [
+        [
+          "always draws a crowd.",
+          "always draws a crowd. Antonelli is on a five-race winning streak."
+        ]
+      ],
+      "expect": {
+        "failed": [
+          "results"
+        ],
+        "flagged": [
+          "Overtaking is close to impossible, so qualifying decides most races."
+        ]
+      }
     }
   ]
 }
