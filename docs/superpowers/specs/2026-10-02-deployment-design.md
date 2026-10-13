@@ -1,6 +1,6 @@
 # Deployment — design
 
-**Date:** 2026-10-02 · **Branch:** `lc/application-deployment-d233e8` (off `main` at `62d901a`) · **Status:** awaiting review
+**Date:** 2026-10-02 · **Branch:** `lc/application-deployment-d233e8` (off `main` at `62d901a`) · **Status:** approved 2026-10-02; revalidated 2026-10-13 against `main` at `1613609` — see [Revalidated 2026-10-13](#revalidated-2026-10-13), which overrides the sections above where they disagree
 
 ## Goal
 
@@ -252,3 +252,110 @@ After step 2 the names are committed into `fly.toml` and `CORS_ORIGINS`. Claude 
 - Path-gated backend deploys.
 - Preview environments with their own backend.
 - Monitoring or alerting beyond Fly's health check.
+
+## Revalidated 2026-10-13
+
+Re-checked before implementation, against `main` at `1613609` and each platform's current primary
+sources. The evidence, with a URL or file and line for every claim, is in
+[the research notes](../research/2026-10-13-deployment-platforms.md). Where this section and the
+sections above disagree, this section wins. No decision was re-brainstormed; each change below
+cites the evidence that forced it.
+
+### What `main` changed since `62d901a`
+
+| Change | Effect on this design |
+|---|---|
+| #54/#55: Gemini's server deadline is the run's `BRIEFING_DEADLINE_SECONDS`; the planner reads 2 × 15s at low thinking; the synthesizer reads 1 × 30s with one 503 retry when it fits | None. The worst case is still 87s ≤ the 90s deadline, so `BRIEFING_DEADLINE_SECONDS` stays at its default. A stream is never idle for 60s: sse-starlette pings every 15s (`DEFAULT_PING_INTERVAL = 15`, unchanged in 3.1.2). |
+| Saved example briefings (sibling branch `lc/example-briefings`, unmerged) | None for the image. The examples are static frontend data (`frontend/data/briefing-examples/`) that Vercel serves; the backend never reads them. Their capture script lives in `backend/scripts/`, which the image excludes anyway. |
+| `main`'s CI has been red since 2026-10-05 | Eight weather tests read the real clock against a fixed 2–4 Oct 2026 weekend. `deploy.yml` only runs after a green CI on `main`, so nothing could ever deploy. This branch carries the sibling's fix (`44276b4`, cherry-picked); whichever merges first, the other's merge is a no-op. |
+
+### Decisions changed
+
+| # | Was | Now | Why |
+|---|---|---|---|
+| R1 | Finding 1 quotes Fly-Client-IP as "always set by the Fly Proxy" | Fly documents it as "the IP address of the client from the perspective of Fly Proxy"; "always set" is said of `Fly-Forwarded-Port`. Decision unchanged: read `Fly-Client-IP`. | A live request to Fly's own echo app (`debug.fly.dev`, 2026-10-13) sent a forged `Fly-Client-IP` (once, and twice) and got exactly one header back carrying the real address. A forged `X-Forwarded-For` was kept leftmost with the real address appended; `X-Real-IP` passed through untouched. The overwrite is **observed, not documented**, so the post-deploy forged-header check stays and is the proof. |
+| R2 | Base image `python:3.12-slim-bookworm`, patch pinned | `python:3.12.15-slim-trixie@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1` | `3.12-slim` is now trixie (Debian 13); bookworm left regular security support for LTS on 2026-06-11. Tag *and* digest, so a rebuild is the same image until someone edits the line. |
+| R3 | Vercel env `ENABLE_EXPERIMENTAL_COREPACK=1` (Finding 6) | **Removed.** pnpm 11 comes from `frontend/package.json`'s `packageManager` field, with no Corepack. | Vercel enables Corepack from the **repo-root** `package.json` (docs, and `initCorepack` in Vercel's source), and this repo has none. With the variable set, Corepack does not start *and* Vercel's own pin path is switched off, leaving the image's default pnpm. Without it, `@vercel/build-utils` ≥ 14.3.0 honours `packageManager: pnpm@11.x` for a `lockfileVersion: '9.0'` lockfile, and pnpm 11's `pmOnFail: download` then runs exactly 11.8.0. Vercel's docs page still says pnpm 6–10; the code is ahead of it, so the first build log is checked (V1). |
+| R4 | `frontend/vercel.json` = `ignoreCommand` only | `git.deploymentEnabled: {"**": false, "main": true}` **plus** the `ignoreCommand` as a backstop | A skipped `ignoreCommand` build still creates a (cancelled) deployment that counts against Hobby's 100 a day; `deploymentEnabled` stops it being created. The catch-all must be `**`: minimatch's `*` does not match `lc/…` or `dependabot/…/…` (measured). `ignoreCommand` stays for CLI and dashboard deploys, which are not Git pushes. It fails closed: with "Automatically expose System Environment Variables" off, `VERCEL_ENV` is empty and production is skipped too, so the wizard checks that setting. |
+| R5 | `swap_size_mb` listed last in the fly.toml table | Top-level, above the first `[table]` | TOML: a key after a table header belongs to that table. |
+| R6 | `min_machines_running = 1` (credited in Finding 7) | Dropped | Fly documents it as applying only when `auto_stop_machines` is `"stop"` or `"suspend"`; under `"off"` it does nothing. `--ha=false` and `auto_stop_machines = "off"` are what keep exactly one machine, always on. |
+| R7 | No `[deploy]` table | `[deploy] strategy = "rolling"` | Already the default, and with one machine it updates that machine in place, then waits for health checks. Explicit, so a change of default can never boot a second machine (only `canary` and `bluegreen` do). |
+| R8 | — | `[http_service.http_options] compress = false` | Fly's proxy compresses by default and documents that it "buffers responses before compressing them", which "can break HTML streaming". Whether it compresses `text/event-stream` is undocumented. The backend serves small JSON, so switching compression off costs nothing measurable. `compress` is in fly-go's `HTTPOptions` and confirmed by a Fly-side forum reply, but absent from the config reference — so V3 checks the stream has no `content-encoding`, and the documented per-response fallback (`Content-Encoding: none`) is held in reserve. |
+| R9 | "Fly builds from the directory holding it" | The build context is the working directory `flyctl deploy` runs in; `[build] dockerfile` resolves relative to fly.toml's directory | flyctl source (`resolveDockerfilePath`, `readDockerignore`). Both are the repo root here, locally and in CI. No `[build] ignorefile`: the default (Depot) build path ignores it and reads the context root's `.dockerignore`. |
+| R10 | Deploy job runs when `conclusion == 'success' && event == 'push'`, checks out `workflow_run.head_sha` | `if: (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') \|\| (… == 'success' && … == 'push')`; ref `${{ github.event.workflow_run.head_sha \|\| github.sha }}` | On `workflow_dispatch` there is no `workflow_run` object, so the original condition skipped every manual run and the ref was empty. A manual run may only deploy `main`. |
+| R11 | "Until `FLY_API_TOKEN` exists it must skip" (task brief) — mechanism unstated | Job-level `env: FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}`; every step after a `::notice::` is gated on `env.FLY_API_TOKEN != ''` | GitHub forbids `secrets` in `if:`, and a job-level `if` cannot see `env`. A missing secret reads as an empty string, so the job runs green with its deploy steps skipped. |
+| R12 | `setup-flyctl`, "pinned" | `superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1  # 1.6` with `version: 0.4.115`; `actions/checkout@v7` in the new workflow | Release `1.5` (the newest GitHub *Release*) is a Node 20 action, and Node 20 left the runners on 2026-09-23; tag `1.6` is Node 24. flyctl `0.4.115` is an exact release from 2026-10-08 (flyctl ships almost daily; the README says pin it). The new `container` job in `ci.yml` keeps the file's existing `checkout@v4`, which still runs (forced onto Node 24); bumping every action in `ci.yml` is its own change. |
+| R13 | `fly tokens create deploy` | `fly tokens create deploy -a <app> -x 8760h`, piped straight into `gh secret set FLY_API_TOKEN` | The default expiry is 20 years and Fly recommends shorter. One year, and the token is never printed. An expired token fails the deploy job loudly (it is non-empty), which is the reminder to rotate. |
+| R14 | `.dockerignore` excludes `.env`, `.venv`, `tests`, `cache`, `__pycache__`, `.pytest_cache` | Also `backend/scripts`, `**/.coverage*`, `**/.ruff_cache` | Nothing in them runs in production. `scripts/` holds the fixture and example capture tools, which import from `tests/`. |
+
+### Middleware details, from the source
+
+| Question | Choice | Why |
+|---|---|---|
+| Where in the stack? | Outermost user middleware: added after `add_cors(app)` | `add_middleware` inserts at position 0, so the last added is outermost (`starlette/applications.py`). CORS answers a preflight without calling the inner app, so inside it every `OPTIONS` access line would show the proxy. |
+| Does rewriting `scope["client"]` change uvicorn's access log? | Yes, when rewritten **in place** | The protocol seeds the scope from the socket, then logs from that same dict at response start (`httptools_impl.py` L225–230 and L482–490; `h11_impl.py` the same). The line reads `<ip>:0`. |
+| Header name matching | Lowercased `bytes`, compared against the lowercased configured name | uvicorn lowercases header names; ASGI says "should". |
+| The header appears more than once | Leave the scope untouched | Fly's edge always sends exactly one (R1), so a repeat means the request did not come through the edge — a caller on the private network, which can write any value. |
+| `fe80::1%eth0` (a zone) | Leave the scope untouched | A zone means nothing in a client header, and `str()` keeps it, which would make one visitor several keys. |
+| `::ffff:1.2.3.4` | Key as `1.2.3.4` (`ip.ipv4_mapped or ip`) | One visitor, one allowance, whichever spelling arrives. `str(ip)` is used, never the raw text, so `2001:DB8::1` and `2001:db8::1` share one too. |
+| Whitespace | Stripped before parsing | `ipaddress` rejects a leading space. |
+| Invalid `CLIENT_IP_HEADER` | Warn, off | RFC 9110 §5.6.2 `token = 1*tchar`; `"Fly Client IP"` fails on its spaces. Same pattern as the other env parsing. |
+
+### Known limits, recorded rather than fixed
+
+- **An IPv6 visitor can rotate addresses inside their /64** and get a fresh hourly allowance for each.
+  `BRIEFING_DAILY_CAP=8` is the real ceiling, and the guard's `max_tracked_ips` bounds memory.
+  Keying the guard by /64 is a guard change, out of scope.
+- **Requests that do not cross Fly's edge carry no proxy-set `Fly-Client-IP`**: 6PN/`.internal`
+  callers inside the org and the health checker. Only org members can send them.
+- **With proxy headers off, `scope["scheme"]` is `http`**, so a Starlette trailing-slash redirect
+  would point at `http://<app>.fly.dev/…` (and `force_https` would bounce it back). No frontend path
+  has a trailing slash, so nothing reaches it today.
+- **iOS/WebKit over Fly's HTTP/2 edge** may receive small SSE events seconds late, until the next
+  ping (one community report, 2026-07, no Fly reply; workaround `alpn = ["http/1.1"]`). The 15s ping
+  bounds it. Not acted on without a reproduction.
+- **Vercel Hobby** also caps image transformations at 5,000 a month and deployments at 100 a day;
+  over a limit the feature pauses for 30 days and nothing bills. Hobby content may be used for model
+  training unless opted out in the team's settings — the wizard points at the toggle.
+
+### Names, chosen
+
+| Question | Choice | Why |
+|---|---|---|
+| `<app>` | `f1-race-briefing-api` → `https://f1-race-briefing-api.fly.dev` | No DNS for it on 2026-10-13. `fly apps create` is the real test; on a clash the wizard takes another name and rewrites fly.toml. |
+| `<project>` | `f1-race-briefing` → `https://f1-race-briefing.vercel.app` | `DEPLOYMENT_NOT_FOUND` on 2026-10-13. Vercel assigns a suffixed domain on a clash, so the wizard reads the real one back before writing `CORS_ORIGINS` and `NEXT_PUBLIC_SITE_URL`. |
+
+### Sizing, under a zero-Gemini budget
+
+This implementation runs with no Gemini budget, so the ≈4-call sizing load above cannot run. It is
+replaced by the heaviest load reachable without one: the container runs with a dummy
+`GOOGLE_API_KEY` **and** `--add-host generativelanguage.googleapis.com:127.0.0.1`, so no request
+reaches Google at all; the planner then degrades to `DEFAULT_TOOLS` and the full tool fan-out runs
+against the real OpenF1/FastF1. Two such briefings run concurrently, plus a `/api/standings` and an
+`/api/circuits/<id>/winners`, under `--memory 512m --memory-swap 1g`, then `memory.peak` is read.
+What it misses is the synthesizer's own allocation: one prompt of tool JSON (~tens of KB) and the
+streamed reply — small next to the pandas/FastF1 fan-out. The local container is arm64 (Colima);
+Fly's is amd64, built by the CI `container` job. The thresholds in Sizing apply unchanged, and the
+first post-deploy briefing re-reads the peak on the real machine (`fly ssh console -C "cat
+/sys/fs/cgroup/memory.peak"`, V5).
+
+### Verification, added
+
+| # | Check | Pass |
+|---|---|---|
+| V1 | Vercel's first build log | contains ``Detected `pnpm-lock.yaml` version 9 generated by pnpm@11.x from package.json#packageManager pnpm@11.8.0`` |
+| V2 | The next push to any `lc/…` branch | no Preview deployment appears in Vercel |
+| V3 | `curl -N` the briefing stream with `Accept-Encoding: gzip, br, zstd` | no `content-encoding` header, and events arrive spread over the run |
+| V4 | Forged `Fly-Client-IP` + `X-Forwarded-For` request (the original row) | the guard's and the access log's address is the real one — now the only proof of R1 |
+| V5 | `memory.peak` on the Fly machine after the first real briefing | under the Sizing thresholds |
+
+### Self-review decisions (no human in the loop)
+
+The implementation brief ran without a reviewer to ask, so each open question was decided here:
+
+| Question | Choice | Why |
+|---|---|---|
+| SSE compression: check only, or pre-empt? | Pre-empt with `compress = false`, and check (V3) | Zero app code, nothing to lose on small JSON; the check catches it if the undocumented key is ignored. |
+| Middleware on a repeated header: last value, or refuse? | Refuse (scope untouched) | Fly sends one; a repeat is off-edge by construction (R1). |
+| Bump `ci.yml`'s Node 20 action majors here? | No; flagged as its own change | It touches every job; this branch adds one. |
+| Where the research lives | `docs/superpowers/research/` (new) | The repo had no research-notes convention; it sits beside `specs/` and `plans/`. |
