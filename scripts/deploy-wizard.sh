@@ -632,6 +632,9 @@ PY
 # set_fly_token — stage 10's one action. The token lives only in a local variable, checked, then
 # piped (printf is a builtin, so it is in no process's argv) into gh secret set.
 set_fly_token() {
+  # Under `bash -x` the assignment, the [[ ]] test and the printf would each print the token.
+  # Tracing stays off from here on: the wizard is not meant to be traced past this point.
+  { set +x; } 2>/dev/null
   local token="" names=""
   if ! token=$(fly tokens create deploy -a "$FLY_APP" -x 8760h); then
     token=""
@@ -683,6 +686,57 @@ check_forged_line() {
     note "$addr should be your own public address."
   else
     bad "V4: the access line shows $addr, which is not a public address"
+  fi
+}
+
+# check_candy — stage 8: /candy must be a 404. Any other status fails. The body cannot tell the
+# not-found page from the styleguide: "Page not found" is in every page's RSC payload (the root
+# layout's notFound slot), the styleguide's included, and the styleguide's h1 splits its own name
+# across a <span>. The page's <title> is shown only to say what came back.
+check_candy() {
+  local code title
+  code=$(http_code "$VERCEL_ORIGIN/candy")
+  if [[ "$code" == 404 ]]; then
+    ok "/candy → 404"
+    return 0
+  fi
+  title=$(curl -sS --max-time 20 "$VERCEL_ORIGIN/candy" 2>/dev/null \
+    | python3 -c 'import html, re, sys; m = re.search(r"<title>(.*?)</title>", sys.stdin.read(), re.S); print(html.unescape(m.group(1)).strip() if m else "")' \
+    || true)
+  bad "/candy → $code, not 404 (its title: '${title:-none}'): ENABLE_INTERNAL_ROUTES must be unset on Vercel"
+}
+
+# names_gate — stage 9. The token waits until main's fly.toml is the one this setup used: its app
+# and CORS_ORIGINS must be what stages 3 and 6 chose, and it must match origin/main. Sets
+# NAMES_PENDING=1 otherwise, saying which differs and what to do.
+names_gate() {
+  local toml_app toml_cors
+  toml_app=$(py_fly_toml get fly.toml app || true)
+  toml_cors=$(py_fly_toml get fly.toml CORS_ORIGINS || true)
+  if [[ "$toml_app" != "$FLY_APP" ]]; then
+    NAMES_PENDING=1
+    bad "fly.toml's app is '$toml_app', not $FLY_APP: set app = \"$FLY_APP\" in fly.toml, or re-run the wizard (stage 3 rewrites it)"
+  fi
+  if [[ "$toml_cors" != "$VERCEL_ORIGIN" ]]; then
+    NAMES_PENDING=1
+    bad "fly.toml's CORS_ORIGINS is '$toml_cors', not $VERCEL_ORIGIN: re-run the wizard and answer y to stage 7's rewrite, which also redeploys the backend"
+  fi
+  if (( NAMES_PENDING )); then
+    SKIPPED+=("Stage 10, the deploy token: fix fly.toml's names (above), merge them through a pull request, then re-run this wizard")
+    return 0
+  fi
+  if ! git fetch --quiet origin main; then
+    NAMES_PENDING=1
+    bad "git fetch origin main failed, so fly.toml could not be compared with main"
+  elif git diff --quiet origin/main -- fly.toml; then
+    ok "fly.toml names $FLY_APP and $VERCEL_ORIGIN, and matches origin/main"
+  else
+    NAMES_PENDING=1
+    say "fly.toml here differs from main's:"
+    git --no-pager diff origin/main -- fly.toml
+    print_pr_steps "lc/deploy-names" "build(fly): the app and origin names setup chose"
+    note "That push to lc/deploy-names is also V2's test: Vercel → Deployments must show no Preview for it."
+    SKIPPED+=("Stage 10, the deploy token: merge fly.toml's change, then re-run this wizard")
   fi
 }
 
@@ -1127,20 +1181,7 @@ else
   bad "robots.txt's Sitemap: is '${sitemap_url:-absent}', not $VERCEL_ORIGIN/sitemap.xml"
 fi
 
-code=$(http_code "$VERCEL_ORIGIN/candy")
-if [[ "$code" == 404 ]]; then
-  ok "/candy → 404"
-elif [[ "$code" == 200 ]]; then
-  # A streamed route answers its not-found page with a 200 (CLAUDE.md), so read what it rendered.
-  candy=$(curl -fsS --max-time 20 "$VERCEL_ORIGIN/candy" 2>/dev/null || true)
-  if [[ "$candy" == *"Page not found"* && "$candy" != *"Candy component kit"* ]]; then
-    ok "/candy → 200, with the not-found page's content rather than the styleguide"
-  else
-    bad "/candy serves the styleguide: ENABLE_INTERNAL_ROUTES must be unset on Vercel"
-  fi
-else
-  bad "/candy → $code"
-fi
+check_candy
 pause "Press Enter for the checks by hand"
 
 part "Frontend checks — by hand"
@@ -1160,19 +1201,7 @@ pause_next
 stage "Commit the names"
 say "From here on every deploy is CI's, from main. A token set while main's fly.toml names a"
 say "different app or origin would ship the wrong CORS_ORIGINS on the next merge."
-if ! git fetch --quiet origin main; then
-  NAMES_PENDING=1
-  bad "git fetch origin main failed, so fly.toml could not be compared with main"
-elif git diff --quiet origin/main -- fly.toml; then
-  ok "fly.toml matches origin/main"
-else
-  NAMES_PENDING=1
-  say "fly.toml here differs from main's:"
-  git --no-pager diff origin/main -- fly.toml
-  print_pr_steps "lc/deploy-names" "build(fly): the app and origin names setup chose"
-  note "That push to lc/deploy-names is also V2's test: Vercel → Deployments must show no Preview for it."
-  SKIPPED+=("Stage 10, the deploy token: merge fly.toml's change, then re-run this wizard")
-fi
+names_gate
 pause_next
 
 # ── 10 ────────────────────────────────────────────────────────────────────
