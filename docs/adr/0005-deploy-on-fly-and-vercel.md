@@ -62,8 +62,9 @@ passes a forged value through, the per-IP limit is spoofable and only `BRIEFING_
 `.github/workflows/deploy.yml` runs on `workflow_run` when `CI` completes on `main`. It deploys
 only after a successful run that a push triggered, and it checks out that run's `head_sha`, the
 commit CI passed, which `main`'s tip may already have moved past. A manual run may deploy only
-`main`. Vercel's Git integration builds the frontend by itself and does not wait for CI, which is
-safe only while `main` changes through pull requests.
+`main`, and it skips the CI gate: it deploys `main`'s tip whether CI passed or not, so check that
+`main` is green first. Vercel's Git integration builds the frontend by itself and does not wait
+for CI, which is safe only while `main` changes through pull requests.
 
 ## Why not the alternatives
 

@@ -405,7 +405,8 @@ every "Deploy backend" run ends green with a "Deploy skipped" notice and deploys
   passed. Every merge redeploys, frontend-only ones too, and each restart resets the guard's day.
   To redeploy `main` without a merge, run `gh workflow run deploy.yml`. By hand, from the repo
   root, it is `fly deploy --ha=false`, and always with `--ha=false`: an app left with no machine
-  would come back with two.
+  would come back with two. Both skip the CI gate and deploy whatever they are given, so check
+  that `main` is green first.
 - **Frontend:** Vercel builds every push to `main` by itself. No other branch deploys. Previews
   are off, because a preview's origin is not in `CORS_ORIGINS`.
 - **The deploy token lasts a year**, and the deploy job fails once it expires. Make a new one with

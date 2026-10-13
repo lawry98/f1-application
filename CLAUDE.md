@@ -911,8 +911,12 @@ branch can exercise it. Until the `FLY_API_TOKEN` secret exists, every run ends 
 presence into an output that gates the rest. `workflow_run` fires on every `CI` completion, so the
 job also checks `conclusion == 'success'` and `event == 'push'` (a pull request from a branch named
 `main` matches `branches: [main]` too), then checks out `workflow_run.head_sha`, the commit CI
-passed, never `main`'s tip. Nothing deploys while `main`'s CI is red. The token is made with a
-one-year expiry, and an expired one is still non-empty, so the job fails red instead of skipping.
+passed, never `main`'s tip. Only that `workflow_run` path waits for a green CI. A manual
+`workflow_dispatch` run's condition tests only `github.ref == 'refs/heads/main'`, and its checkout
+falls back to `github.sha`, so it deploys `main`'s tip whether CI passed or not, and Vercel builds every push to
+`main` without waiting for CI at all. A red `main` stops only the automatic backend deploy. The
+token is made with a one-year expiry, and an expired one is still non-empty, so the job fails red
+instead of skipping.
 
 ## Code conventions
 
