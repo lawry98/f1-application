@@ -418,10 +418,12 @@ green with a "Deploy skipped" notice and deploys nothing.
   that `main` is green first.
 - **Frontend:** Vercel builds every push to `main` by itself. No other branch deploys. Previews
   are off, because a preview's origin is not in `CORS_ORIGINS`.
-- **The deploy token lasts a year**, and the deploy job fails once it expires. Make a new one with
-  `fly tokens create deploy -a <app> -x 8760h | gh secret set FLY_API_TOKEN`, after checking
-  `fly auth whoami`: in a pipe, an expired login fails instead of prompting, and `gh` receives an
-  empty token.
+- **The deploy token lasts a year**, and the deploy job fails once it expires. Re-run
+  `scripts/deploy-wizard.sh`; stage 10 replaces the token. By hand, in one guarded line:
+  `t=$(fly tokens create deploy -a <app> -x 8760h) && [[ $t == "FlyV1 "* ]] && printf %s "$t" | gh secret set FLY_API_TOKEN -R lawry98/f1-application; unset t`.
+  Piping `fly` straight into `gh` would set an empty secret if `fly` fails (a mistyped app, an
+  expired login), and an empty secret makes every deploy skip green. `-R` is needed because the
+  `origin` remote is an SSH alias, which `gh` cannot read a repository from.
 
 ### Change a URL
 
@@ -443,7 +445,7 @@ A custom domain takes both: the new origin goes into `NEXT_PUBLIC_SITE_URL` and 
 | `make docker` | Builds the image with CI's command and runs it on `localhost:8080` with `backend/.env`. Point the frontend at it with `NEXT_PUBLIC_API_URL=http://localhost:8080` |
 | `make docker-check` | Builds it and runs CI's container checks (`scripts/container-smoke.sh`) with a dummy key; nothing reaches Gemini |
 
-Both need a running Docker daemon, and so does `make ci`, which ends with `docker-check`. The
+Both need a running Docker daemon, and so does `make ci`, which includes `docker-check`. The
 image is about 932 MB on disk, since FastF1 pulls in scipy, matplotlib and pandas.
 `docker run --env-file` takes values literally, so a value quoted in `backend/.env` reaches the
 app with its quotes. `make dev` strips them, so a key that works there can fail in the container.

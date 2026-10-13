@@ -237,6 +237,19 @@ halt() {
 }
 pause_next() { pause "Press Enter for the next stage"; }
 
+# report_failures — say how many bad() calls there were. finish() prints a green "Setup complete"
+# whatever they recorded, and clears the screen first, so this runs before the last pause (it stays
+# on that prompt) and again under the summary. Silent when nothing failed.
+report_failures() {
+  local entry failed=0
+  for entry in "${SKIPPED[@]+"${SKIPPED[@]}"}"; do
+    if [[ $entry == "FAILED: "* ]]; then failed=$((failed + 1)); fi
+  done
+  if (( failed )); then
+    printf '\n  %s%s✗ %s check(s) failed — each is listed as FAILED in the summary%s\n' "$BOLD" "$RED" "$failed" "$RESET"
+  fi
+}
+
 # part "Name" — a fresh screen inside the current stage, so the step in hand never scrolls away.
 part() {
   _clear
@@ -1244,5 +1257,7 @@ SKIPPED+=("V2: on the next push to any lc/ branch, Vercel → Deployments must s
 if (( TOKEN_SET )); then
   SKIPPED+=("The next merge to main: 'Deploy backend' must deploy, not end with 'Deploy skipped' (the token's first use)")
 fi
+report_failures
 pause "Press Enter for the summary"
 finish
+report_failures

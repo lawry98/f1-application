@@ -1,7 +1,8 @@
 name: Deploy backend
 
 # Deploys the backend to Fly after CI passes on a push to main — the exact commit CI passed, not
-# main's tip. The frontend deploys itself, through Vercel's Git integration.
+# main's tip. A manual (workflow_dispatch) run deploys main's tip and skips the CI gate. The
+# frontend deploys itself, through Vercel's Git integration.
 #
 # Until the FLY_API_TOKEN secret exists, every run ends green with its deploy steps skipped, so
 # main never goes red before setup (scripts/deploy-wizard.sh sets the secret last).
@@ -15,17 +16,18 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# One deploy at a time, and a queued one waits rather than cancelling a deploy mid-flight.
-concurrency:
-  group: deploy-backend
-  cancel-in-progress: false
-
 permissions:
   contents: read
 
 jobs:
   deploy:
     name: Deploy to Fly
+    # One deploy at a time, and a queued one waits rather than cancelling a deploy mid-flight. It
+    # is on the job, not the workflow, so a run whose `if:` below skips the job (a red CI) never
+    # enters the group and cannot replace a pending deploy of an earlier green commit.
+    concurrency:
+      group: deploy-backend
+      cancel-in-progress: false
     # workflow_run fires whatever CI's conclusion, and for pull-request runs of a branch named
     # main too, so both are checked. A manual run has no workflow_run and may only deploy main.
     if: >-
@@ -38,13 +40,13 @@ jobs:
     steps:
       # Secrets cannot appear in an `if:`, and a missing one reads as an empty string, so its
       # presence is turned into an output every later step is gated on. The token itself only
-      # ever reaches the deploy step.
+      # ever reaches the deploy step: this one gets a boolean.
       - name: Check for FLY_API_TOKEN
         id: token
         env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          HAS_TOKEN: ${{ secrets.FLY_API_TOKEN != '' }}
         run: |
-          if [ -n "$FLY_API_TOKEN" ]; then
+          if [ "$HAS_TOKEN" = true ]; then
             echo "present=true" >> "$GITHUB_OUTPUT"
           else
             echo "present=false" >> "$GITHUB_OUTPUT"
@@ -55,6 +57,9 @@ jobs:
         if: steps.token.outputs.present == 'true'
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          # flyctl uploads the directory to Fly's builder; with the default, .git/config would
+          # carry the job token and only .dockerignore would keep it out.
+          persist-credentials: false
 
       # Tag 1.6 is the Node 24 build; the newest GitHub *release*, 1.5, is a Node 20 action.
       - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # 1.6

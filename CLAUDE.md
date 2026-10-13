@@ -60,10 +60,6 @@ part worth knowing:
 | `GOOGLE_API_KEY` | **Fatal** — `validate_config()` raises `SystemExit(1)` |
 | `TAVILY_API_KEY` | Warning; news search silently disabled |
 | `OPENWEATHER_API_KEY` | Warning; weather silently disabled |
-
-"Missing" includes an `env.example` placeholder (`your-…`, `tvly-your-…`): `config.is_configured`
-is the one test, used by `validate_config` and by both tools, so a copied placeholder never reaches
-upstream to earn a 401.
 | `FASTF1_CACHE_DIR` | Defaults to `cache/` |
 | `EXECUTOR_MAX_WORKERS` | Defaults to `4` |
 | `STANDINGS_TTL_SECONDS` | Defaults to `300`; `0` disables current-season caching; invalid/negative warns and uses `300` |
@@ -74,6 +70,10 @@ upstream to earn a 401.
 | `CORS_ORIGINS` | Comma-separated; defaults to `http://localhost:3000,http://localhost:3001` |
 | `EXPOSE_API_DOCS` | Off: `/docs`, `/redoc` and `/openapi.json` 404 and `/` drops its `docs` link. Only `1` turns them on (`make dev` sets it); any other value but `0` warns and stays off |
 | `CLIENT_IP_HEADER` | Unset or empty: off, so `client.host` is the TCP peer; a value that is not a header name (`Fly Client IP`) warns and stays off. `fly.toml` sets `Fly-Client-IP` |
+
+"Missing" includes an `env.example` placeholder (`your-…`, `tvly-your-…`): `config.is_configured`
+is the one test, used by `validate_config` and by both tools, so a copied placeholder never reaches
+upstream to earn a 401.
 
 `LLM_MODEL` is a **hardcoded constant** in `config.py`, not an env var — changing the model
 means editing code. That is deliberate: the prompts are written against a specific model
@@ -842,10 +842,12 @@ after the first deploy is the only proof. `scripts/container-smoke.sh` starts it
 `FORWARDED_ALLOW_IPS='*'` **on purpose**: that is the stray setting the flag exists to neutralise,
 and without it the X-Forwarded-For probe cannot fail, because uvicorn's default trust list is
 loopback and the probe arrives from the Docker bridge gateway (a mutant without the flag proved
-it). Leave it in. The script also reads PID 1's argv for `--workers 1` and `--no-proxy-headers`.
-With proxy headers off, `scope["scheme"]` is `http`, so a Starlette trailing-slash redirect would
-point at `http://<app>.fly.dev/…`. No frontend path has a trailing slash today; keep new routes
-that way.
+it). Leave it in.
+
+**With proxy headers off, `scope["scheme"]` is `http`, so a trailing-slash disagreement becomes a
+redirect to `http://`.** A backend route decorator and a `frontend/lib/api.ts` URL that differ on
+the trailing slash make Starlette answer with a redirect built from `http://<app>.fly.dev/…`. No
+frontend path has a trailing slash today; keep new routes that way.
 
 **`.dockerignore` is an allow-list, so a new runtime read outside `backend/` works everywhere but
 the image.** Only `backend/` and `frontend/data/circuits/` (read at runtime through
@@ -856,7 +858,7 @@ only the two circuit files. `backend/tests` and `backend/scripts` stay out too (
 from `tests/`), and so does every `.env`. A checkout has no `backend/.env`, so CI plants a decoy
 before `docker build`, which gives the absence check something to find. `make docker-check` plants
 none, since writing one locally could clobber a real one, so on a laptop that check bites only if
-a `.env` is already there. `make ci` ends with `docker-check`, so it needs a running Docker daemon.
+a `.env` is already there. `make ci` includes `docker-check`, so it needs a running Docker daemon.
 
 **A URL lives in two places, and each changes by a different route.** `NEXT_PUBLIC_API_URL` and
 `NEXT_PUBLIC_SITE_URL` are Vercel Production env vars that Next inlines at `pnpm build`, so
@@ -907,16 +909,9 @@ documented per-response fallback is `Content-Encoding: none` on the stream.
 **`deploy.yml` cannot run until it is merged, and a green run may have deployed nothing.**
 `workflow_run` and `workflow_dispatch` both need the workflow file on the default branch, so no
 branch can exercise it. Until the `FLY_API_TOKEN` secret exists, every run ends green with a
-"Deploy skipped" notice: secrets cannot appear in an `if:`, so a first step turns the token's
-presence into an output that gates the rest. `workflow_run` fires on every `CI` completion, so the
-job also checks `conclusion == 'success'` and `event == 'push'` (a pull request from a branch named
-`main` matches `branches: [main]` too), then checks out `workflow_run.head_sha`, the commit CI
-passed, never `main`'s tip. Only that `workflow_run` path waits for a green CI. A manual
-`workflow_dispatch` run's condition tests only `github.ref == 'refs/heads/main'`, and its checkout
-falls back to `github.sha`, so it deploys `main`'s tip whether CI passed or not, and Vercel builds every push to
-`main` without waiting for CI at all. A red `main` stops only the automatic backend deploy. The
-token is made with a one-year expiry, and an expired one is still non-empty, so the job fails red
-instead of skipping.
+"Deploy skipped" notice. A manual `workflow_dispatch` run deploys `main`'s tip whether CI passed
+or not, and Vercel builds every push to `main` without waiting for CI at all, so a red `main`
+stops only the automatic backend deploy.
 
 ## Code conventions
 
