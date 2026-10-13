@@ -37,7 +37,9 @@ for (const width of [375, 1440]) {
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
 
-    const list = page.locator(`[id="${await toggle.getAttribute('aria-controls')}"]`);
+    const listId = await toggle.getAttribute('aria-controls');
+    expect(listId, 'the toggle names the list it controls').toBeTruthy();
+    const list = page.locator(`[id="${listId}"]`);
     const cachedRow = list.getByRole('listitem').filter({ hasText: 'get_championship_standings' });
     const liveRow = list.getByRole('listitem').filter({ hasText: 'search_f1_news' });
     // Each row exists exactly once, or the "no chip on the live row" count below proves nothing.
