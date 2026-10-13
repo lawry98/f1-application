@@ -394,10 +394,19 @@ Then, from the repo root on an up-to-date `main`:
 scripts/deploy-wizard.sh
 ```
 
-It walks through the steps only the owner can take (the Fly account and card, the API keys, the
-Vercel import, the deploy token) and checks each one as it goes, including that a forged
-`Fly-Client-IP` never reaches the guard. Until it has set the `FLY_API_TOKEN` repository secret,
-every "Deploy backend" run ends green with a "Deploy skipped" notice and deploys nothing.
+[The wizard](scripts/deploy-wizard.sh) walks through the steps only the owner can take: the Fly
+account and card, the app, the API keys, the first `fly deploy --ha=false`, the Vercel import and
+the deploy token. It runs the post-deploy checks as it goes, including that a forged
+`Fly-Client-IP` never reaches the guard, and asks you to confirm the dashboard checks it cannot
+make itself. The keys go from a `backend/.env` straight into `fly secrets import`, and the token
+straight into `gh secret set`; neither is shown or saved. It keeps only the app name and the
+Vercel origin, in the gitignored `.env.deploy.local`, so a re-run picks up where the last one
+stopped. If either name was taken, it rewrites `fly.toml` and holds the token back until that
+change is merged. The last stage is optional: one real briefing, 2 Gemini calls, to check that the
+stream arrives progressively and how much memory the machine used.
+
+Until the wizard has set the `FLY_API_TOKEN` repository secret, every "Deploy backend" run ends
+green with a "Deploy skipped" notice and deploys nothing.
 
 ### Redeploy
 
