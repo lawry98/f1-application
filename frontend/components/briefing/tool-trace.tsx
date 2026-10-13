@@ -114,6 +114,10 @@ export interface ToolTraceProps {
  * 5.43:1 and `zinc-500` 2.89:1 — which is why the raw tool id below moved off `zinc-500`, where it
  * shipped, and why nothing here may move back. `tool-trace.test.tsx` composes those three layers
  * and asserts the ratio rather than the class, so a future re-shade fails on the number.
+ *
+ * **Cache provenance.** A row served from the result cache carries a `Cached` chip and its
+ * outcome run says ", from cache"; the header counts them. Only `cached === true` is rendered —
+ * absent is no claim, which is what a saved example's tools carry.
  */
 export function ToolTrace({ tools, complete = false }: ToolTraceProps) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -126,11 +130,19 @@ export function ToolTrace({ tools, complete = false }: ToolTraceProps) {
 
   if (tools.length === 0) return null;
 
+  /*
+   * Only `true` counts. `cached` is absent where no claim can be made — a saved example's capture
+   * records none — and "0 cached" on every first briefing would be noise, so the suffix appears
+   * only when at least one result was served from the cache.
+   */
+  const cachedCount = tools.filter((tool) => tool.cached === true).length;
+
   // Built once and rendered through one of two branches, so the string is provably identical
   // whether or not the laurel is there — a completed run must not silently re-word its own header.
   const heading = (
     <span className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-300">
-      Agent Tool Trace ({tools.length} tools executed)
+      Agent Tool Trace ({tools.length} tools executed
+      {cachedCount > 0 && `, ${cachedCount} cached`})
     </span>
   );
 
@@ -243,9 +255,29 @@ export function ToolTrace({ tools, complete = false }: ToolTraceProps) {
                  * get_track_info", and outside the `<h4>` so the heading's accessible name stays
                  * exactly the display label.
                  */}
-                <span className="sr-only">{tool.success ? 'Succeeded' : 'Failed'}</span>
+                <span className="sr-only">
+                  {tool.success ? 'Succeeded' : 'Failed'}
+                  {tool.cached === true && ', from cache'}
+                </span>
                 <p className="truncate font-mono text-xs text-zinc-400">{tool.tool}</p>
               </div>
+              {tool.cached === true && (
+                /*
+                 * Served from the result cache (ADR-0003) rather than fetched on this run. A
+                 * picture of what the `sr-only` run above already says, so `aria-hidden` — read at
+                 * the row's end it would follow the raw id, split from the outcome it qualifies.
+                 * No fill on purpose: its glyphs sit on the row wash every run here is judged
+                 * against, and `zinc-300` clears 4.5:1 there with room. Live rows carry no chip:
+                 * the hit is the exception worth reading, and a "Live" chip on every first briefing
+                 * would teach the reader to ignore this one.
+                 */
+                <span
+                  aria-hidden="true"
+                  className="shrink-0 rounded-full border border-white/15 px-2 py-0.5 text-[11px] font-medium text-zinc-300"
+                >
+                  Cached
+                </span>
+              )}
             </li>
           ))}
         </ul>
