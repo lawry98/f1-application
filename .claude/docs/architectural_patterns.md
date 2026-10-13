@@ -104,7 +104,7 @@ progress UI decorative. A change here that reintroduces buffering will pass ever
 - `tool_plan` -> `{tools: string[]}` (the planner's chosen tools, announced right after the
   planning `status` and before the `gathering` one, so the frontend knows the full set it is
   waiting on rather than discovering it one `tool_result` at a time)
-- `tool_result` -> `{tool: string, success: boolean}` (one per tool, emitted from
+- `tool_result` -> `{tool: string, success: boolean, cached: boolean}` (one per tool, emitted from
   `tool_executor_node`'s writer as each finishes — not batched from the node's return)
 - `briefing_delta` -> `{content: string}` (one increment of the briefing; no semantic boundaries — a delta may be a fraction of a word)
 - `briefing` -> `{content: string, truncated: boolean}` (the full markdown briefing). It no longer means "the briefing is complete" — `truncated` says that. It is retained as a reconciliation anchor: `lib/api.ts` silently swallows malformed frames, so without it a dropped delta would corrupt the rendered document undetectably.

@@ -297,8 +297,9 @@ dominates the wall clock.
   chunk of prose the model produces, and `tool_result`, which `tool_executor_node` emits
   per tool as each one completes inside the node's collection loop
 - `tool_result` carries `cached`, saying whether that tool's payload came from the result cache
-  or a live fetch. Nothing in the UI renders it yet — the field exists so the transport stays
-  honest about provenance
+  or a live fetch. The tool trace marks each cached row `Cached` (its screen-reader outcome reads
+  "Succeeded, from cache") and counts them in its header; a row without the mark was fetched on
+  this run
 - Frontend consumes the typed `AsyncGenerator<StreamEvent>` from `lib/api.ts`, buffering deltas
   and repainting on an 80ms timer rather than once per delta
 - A synthesis that dies partway still delivers the prose it wrote, marked as unfinished — see
