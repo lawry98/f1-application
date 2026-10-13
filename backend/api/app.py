@@ -8,6 +8,7 @@ import logging
 
 from fastapi import FastAPI
 
+from api.body_limit import MAX_BODY_BYTES, BodyLimitMiddleware
 from api.client_ip import ClientIPMiddleware
 from api.cors import add_cors
 from api.routes import router
@@ -30,8 +31,11 @@ def create_app(*, expose_docs: bool, client_ip_header: str | None = None) -> Fas
         **docs_urls,
     )
 
+    # Each middleware added wraps the ones before it. The body limit goes innermost, so its 413
+    # still carries CORS headers the page can read.
+    app.add_middleware(BodyLimitMiddleware, max_bytes=MAX_BODY_BYTES)
     add_cors(app)
-    # Added after CORS, so it wraps it: CORS answers a preflight without calling what it wraps,
+    # Outermost: CORS answers a preflight, and the limit a 413, without calling what they wrap,
     # and the access log should show the visitor on those lines too.
     if client_ip_header:
         app.add_middleware(ClientIPMiddleware, header=client_ip_header)
