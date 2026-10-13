@@ -1,0 +1,71 @@
+name: Deploy backend
+
+# Deploys the backend to Fly after CI passes on a push to main — the exact commit CI passed, not
+# main's tip. The frontend deploys itself, through Vercel's Git integration.
+#
+# Until the FLY_API_TOKEN secret exists, every run ends green with its deploy steps skipped, so
+# main never goes red before setup (scripts/deploy-wizard.sh sets the secret last).
+# workflow_run fires only for a workflow file on the default branch, so none of this runs before
+# it is merged.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+# One deploy at a time, and a queued one waits rather than cancelling a deploy mid-flight.
+concurrency:
+  group: deploy-backend
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to Fly
+    # workflow_run fires whatever CI's conclusion, and for pull-request runs of a branch named
+    # main too, so both are checked. A manual run has no workflow_run and may only deploy main.
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      # Secrets cannot appear in an `if:`, and a missing one reads as an empty string, so its
+      # presence is turned into an output every later step is gated on. The token itself only
+      # ever reaches the deploy step.
+      - name: Check for FLY_API_TOKEN
+        id: token
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          if [ -n "$FLY_API_TOKEN" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Deploy skipped::FLY_API_TOKEN is not set. Run scripts/deploy-wizard.sh (README → Deployment)."
+          fi
+
+      - uses: actions/checkout@v7
+        if: steps.token.outputs.present == 'true'
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      # Tag 1.6 is the Node 24 build; the newest GitHub *release*, 1.5, is a Node 20 action.
+      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # 1.6
+        if: steps.token.outputs.present == 'true'
+        with:
+          version: 0.4.115
+
+      # --ha=false matters only if the app has no machine (say, after one was destroyed): without
+      # it Fly would create two.
+      - name: Deploy
+        if: steps.token.outputs.present == 'true'
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: flyctl deploy --remote-only --ha=false
