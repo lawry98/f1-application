@@ -31,7 +31,7 @@ NODE_STAMP := frontend/node_modules/.modules.yaml
 
 # `backend` and `frontend` are also directory names — without .PHONY, make sees
 # the directories, decides the targets are up to date, and does nothing.
-.PHONY: help dev backend frontend install lint format format-check typecheck test ci clean test-browser test-mutants
+.PHONY: help dev backend frontend install lint format format-check typecheck test ci clean test-browser test-mutants docker docker-check
 
 help: ## List available targets
 	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -92,8 +92,20 @@ test-browser: $(NODE_STAMP) ## Build, then run the Playwright suite (as CI's bro
 test-mutants: $(NODE_STAMP) ## Prove the browser suite still fails on each recorded defect
 	cd frontend && $(MISE) pnpm test:browser:mutants
 
-ci: lint format-check typecheck test test-browser ## Run everything CI runs, in CI's order
+ci: lint format-check typecheck test test-browser docker-check ## Run everything CI runs, in CI's order
 	cd frontend && $(MISE) pnpm build
+
+# --- Container ------------------------------------------------------------
+
+# Both build exactly as CI's container job does. `docker` runs the image with your keys on :8080;
+# `docker-check` runs CI's checks against it, with a dummy key.
+docker: ## Build the backend image and run it on :8080 with backend/.env
+	docker build -f backend/Dockerfile -t f1-backend .
+	docker run --rm -p 8080:8080 --env-file backend/.env f1-backend
+
+docker-check: ## Build the backend image and run CI's container checks against it
+	docker build -f backend/Dockerfile -t f1-backend .
+	scripts/container-smoke.sh f1-backend
 
 # --- Housekeeping -------------------------------------------------------
 

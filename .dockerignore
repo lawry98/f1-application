@@ -1,0 +1,19 @@
+# An allow-list: everything is out unless named below. The image is the backend and the one
+# frontend directory the backend reads at runtime (config.CIRCUIT_INDEX_PATH); a new runtime file
+# outside backend/ needs a line here *and* a COPY in backend/Dockerfile.
+*
+!backend/
+!frontend/data/circuits/
+
+# …and, inside those, nothing that is only for development. backend/.env above all: a developer's
+# real keys must never be baked into an image (CI plants a decoy to prove it).
+**/.env
+**/.env.*
+backend/.venv
+backend/tests
+backend/scripts
+backend/cache
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+**/.coverage*
