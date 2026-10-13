@@ -21,6 +21,7 @@ from api.app import create_app
 REPO = Path(__file__).resolve().parents[2]
 FLY_TOML = REPO / "fly.toml"
 WIZARD = REPO / "scripts" / "deploy-wizard.sh"
+DEPLOY_WORKFLOW = REPO / ".github" / "workflows" / "deploy.yml"
 
 # ADR-0005: the site shares the free tier's roughly 20 Gemini calls a day with local work. A
 # briefing usually makes two; retries can make it four, and the guard's UTC day straddles Google's
@@ -149,6 +150,28 @@ def test_every_health_check_answers_200_itself():
         method, path = check.get("method", "GET"), check["path"]
         response = client.request(method, path, follow_redirects=False)
         assert response.status_code == 200, f"{method} {path} answered {response.status_code}"
+
+
+def _fly_deploys(path: Path) -> list[str]:
+    """Every line in ``path`` that runs ``fly deploy`` or ``flyctl deploy``: quoted strings (the
+    wizard's prose) and comments are not commands, so they are dropped before matching."""
+    commands = []
+    for line in path.read_text().splitlines():
+        code = re.sub(r'"[^"]*"|\'[^\']*\'', "", line).split("#", 1)[0]
+        if re.search(r"\bfly(ctl)? deploy\b", code):
+            commands.append(code.strip())
+    return commands
+
+
+@pytest.mark.parametrize("path", [DEPLOY_WORKFLOW, *sorted((REPO / "scripts").glob("*.sh"))])
+def test_every_scripted_fly_deploy_passes_ha_false_or_an_app_with_no_machine_gets_two(path):
+    # fly.toml has no equivalent of --ha=false, so this is the one-machine rule's only home.
+    assert all("--ha=false" in line for line in _fly_deploys(path)), _fly_deploys(path)
+
+
+def test_the_deploy_workflow_runs_fly_deploy():
+    # Without this, the check above would pass on a deploy.yml that no longer deploys at all.
+    assert _fly_deploys(DEPLOY_WORKFLOW)
 
 
 def test_the_wizards_placeholder_pattern_is_the_one_config_uses():
