@@ -288,8 +288,7 @@ describe('other events', () => {
   it('keeps each tool’s cached flag in the trace, as the route served it', async () => {
     // The real repeat-run bytes rather than hand-built frames: the flag has to survive from the
     // wire into `toolTrace`, and the hook used to rebuild each entry from `tool` and `success`
-    // alone, dropping it. `toStrictEqual` because `toEqual` treats a missing key as `undefined`
-    // and would pass a dropped `cached: false`.
+    // alone, dropping it. `toStrictEqual` pins exactly these keys, `cached` included.
     const feed = new ChunkFeed();
     const { result, submit } = start(feed);
     await submit('Monaco');
@@ -299,7 +298,7 @@ describe('other events', () => {
     await settle();
 
     expect(result.current.toolTrace).toStrictEqual([
-      { tool: 'get_track_info', success: true, cached: true },
+      { tool: 'get_championship_standings', success: true, cached: true },
       { tool: 'search_f1_news', success: false, cached: false },
     ]);
   });

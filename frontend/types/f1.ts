@@ -33,8 +33,9 @@ export interface ToolResult {
   success: boolean;
   /**
    * Whether this result was served from the backend's result cache (ADR-0003) rather than fetched
-   * on this run. Absent is no claim either way — a saved example's capture records none, and the
-   * visit showing it fetched nothing — so only `true` is ever rendered.
+   * on this run. The wire field is optional, and a trace built from a record that never carried
+   * the flag must not invent one — absent claims neither "cached" nor "live" — so only `true` is
+   * ever rendered.
    */
   cached?: boolean;
 }

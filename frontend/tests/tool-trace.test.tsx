@@ -395,8 +395,8 @@ describe('ToolTrace cache provenance', () => {
   ])(
     'leaves the header and rows as they were when no result came from the cache (cached %s)',
     (_, tools) => {
-      // No "0 cached" on every first briefing, and no claim at all where the flag is absent — a
-      // saved example's tools carry none, and its visit fetched nothing.
+      // No "0 cached" on every first briefing, and no claim at all where the flag is absent
+      // (see `ToolResult.cached`).
       render(<ToolTrace tools={tools} />);
       expect(screen.getByRole('button').textContent).toBe(
         `Agent Tool Trace (${tools.length} tools executed)▶`,
@@ -423,9 +423,10 @@ describe('ToolTrace cache provenance', () => {
   it('tells a screen reader in the row’s one outcome run, and hides the chip that restates it', () => {
     /*
      * One accessible outcome per row, read label → outcome → raw id: "Track profile, Succeeded,
-     * from cache, get_track_info". An accessible chip at the row's end would be read after the
-     * raw id, split from the outcome it qualifies — so the chip is `aria-hidden` and the `sr-only`
-     * run says it, the same split the status marks already make.
+     * from cache, get_track_info". An accessible chip on the label line would be read between the
+     * label and the outcome, splitting the cache fact from the outcome it qualifies — so the chip
+     * is `aria-hidden` and the `sr-only` run says it, the same split the status marks already
+     * make.
      */
     render(<ToolTrace tools={CACHED_TOOLS} />);
     expand();
@@ -436,7 +437,7 @@ describe('ToolTrace cache provenance', () => {
     expect(within(failed!).getByText('Failed')).toHaveClass('sr-only');
 
     const chip = within(cached!).getByText('Cached', { exact: true });
-    expect(chip.closest('[aria-hidden="true"]')).not.toBeNull();
+    expect(chip).toHaveAttribute('aria-hidden', 'true');
     // Not a control: nothing to focus, so no ring to prove.
     expect(chip.closest('button, a, [tabindex]')).toBeNull();
   });

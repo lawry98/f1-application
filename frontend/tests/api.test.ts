@@ -98,13 +98,13 @@ describe.each(CHUNK_SIZES)('streamBriefing (reader chunk size %i)', (chunkSize) 
   });
 
   it('carries each tool result’s cached flag as the route serves it', async () => {
-    // `cached.sse` is a repeat run: the track profile came from the result cache, the news
+    // `cached.sse` is a repeat run: the standings came from the result cache, the news
     // search ran live. Both values are pinned, so a parser that defaulted the flag either way
     // fails on one of them.
     const events = await collect('cached.sse', chunkSize);
 
     expect(events.filter((e) => e.type === 'tool_result').map((e) => e.data)).toEqual([
-      { tool: 'get_track_info', success: true, cached: true },
+      { tool: 'get_championship_standings', success: true, cached: true },
       { tool: 'search_f1_news', success: false, cached: false },
     ]);
   });

@@ -117,7 +117,7 @@ export interface ToolTraceProps {
  *
  * **Cache provenance.** A row served from the result cache carries a `Cached` chip and its
  * outcome run says ", from cache"; the header counts them. Only `cached === true` is rendered —
- * absent is no claim, which is what a saved example's tools carry.
+ * why absent renders nothing is on `ToolResult.cached`.
  */
 export function ToolTrace({ tools, complete = false }: ToolTraceProps) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -131,9 +131,8 @@ export function ToolTrace({ tools, complete = false }: ToolTraceProps) {
   if (tools.length === 0) return null;
 
   /*
-   * Only `true` counts. `cached` is absent where no claim can be made — a saved example's capture
-   * records none — and "0 cached" on every first briefing would be noise, so the suffix appears
-   * only when at least one result was served from the cache.
+   * Only `true` counts (see `ToolResult.cached`), and "0 cached" on every first briefing would be
+   * noise, so the suffix appears only when at least one result was served from the cache.
    */
   const cachedCount = tools.filter((tool) => tool.cached === true).length;
 
@@ -246,7 +245,39 @@ export function ToolTrace({ tools, complete = false }: ToolTraceProps) {
                 )}
               </span>
               <div className="min-w-0 flex-1">
-                <h4 className="text-sm font-medium text-zinc-200">{toolLabel(tool.tool)}</h4>
+                {/*
+                 * The chip rides the label line, at its right, rather than the row's last column:
+                 * the raw id below is the trace's debugging contract and has to keep the whole
+                 * column. `get_championship_standings` is the longest id that is ever cached
+                 * (it is in the default plan, so every repeat briefing hits it) and at 375px it
+                 * needs ~190px of a 255px column — a chip beside it took ~70px and truncated it
+                 * to "get_championship_standi…". A label has room to spare, and `min-w-0` lets a
+                 * long one wrap instead of pushing the chip out of the row.
+                 */}
+                <div className="flex items-start justify-between gap-3">
+                  <h4 className="min-w-0 text-sm font-medium text-zinc-200">
+                    {toolLabel(tool.tool)}
+                  </h4>
+                  {tool.cached === true && (
+                    /*
+                     * Served from the result cache (ADR-0003) rather than fetched on this run. A
+                     * picture of what the `sr-only` run below already says, so `aria-hidden` —
+                     * it sits between the label and that run in the tree, so left accessible it
+                     * would read "Track profile, Cached, Succeeded", the fact split from the
+                     * outcome it qualifies. No fill on purpose: its glyphs sit on the row wash
+                     * every run here is judged against, and `zinc-300` clears 4.5:1 there with
+                     * room. Live rows carry no chip: the hit is the exception worth reading, and
+                     * a "Live" chip on every first briefing would teach the reader to ignore
+                     * this one.
+                     */
+                    <span
+                      aria-hidden="true"
+                      className="shrink-0 rounded-full border border-white/15 px-2 py-0.5 text-[11px] font-medium text-zinc-300"
+                    >
+                      Cached
+                    </span>
+                  )}
+                </div>
                 {/*
                  * The badges this replaced (`OK` / `FAIL`) were the *only* accessible carrier of
                  * a tool's outcome, so removing them without this line would delete information
@@ -261,23 +292,6 @@ export function ToolTrace({ tools, complete = false }: ToolTraceProps) {
                 </span>
                 <p className="truncate font-mono text-xs text-zinc-400">{tool.tool}</p>
               </div>
-              {tool.cached === true && (
-                /*
-                 * Served from the result cache (ADR-0003) rather than fetched on this run. A
-                 * picture of what the `sr-only` run above already says, so `aria-hidden` — read at
-                 * the row's end it would follow the raw id, split from the outcome it qualifies.
-                 * No fill on purpose: its glyphs sit on the row wash every run here is judged
-                 * against, and `zinc-300` clears 4.5:1 there with room. Live rows carry no chip:
-                 * the hit is the exception worth reading, and a "Live" chip on every first briefing
-                 * would teach the reader to ignore this one.
-                 */
-                <span
-                  aria-hidden="true"
-                  className="shrink-0 rounded-full border border-white/15 px-2 py-0.5 text-[11px] font-medium text-zinc-300"
-                >
-                  Cached
-                </span>
-              )}
             </li>
           ))}
         </ul>

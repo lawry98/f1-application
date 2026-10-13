@@ -17,9 +17,10 @@ cd backend && python scripts/dump_sse_fixtures.py
 That script imports its step fixtures from `backend/tests/api/test_routes.py`, so the shape
 here follows the backend suite rather than being maintained separately.
 
-`cached.sse` is the clean run with `get_track_info` served from the result cache — the shape of
-a repeat briefing for the same race — so the tool trace's cache marking is tested against bytes
-the route really serves.
+`cached.sse` is the clean run with `get_championship_standings` served from the result cache — the
+shape of a repeat briefing for the same race — so the tool trace's cache marking is tested against
+bytes the route really serves. Standings is the longest id that is ever cached, which is why it is
+the one: a narrow-row test sees the worst case for a chip crowding the raw id.
 
 # Standings and calendar fixtures
 
