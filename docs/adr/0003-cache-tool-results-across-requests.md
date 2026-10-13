@@ -53,7 +53,7 @@ left exactly as it was.
 - **Duplicate concurrent fetches.** As in the schedule cache, the lock is released during the
   fetch; two concurrent misses on one key both fetch and the last write wins.
 - **A visible seam.** The `tool_result` SSE event carries `cached: true/false` so the transport
-  stays honest about provenance; the frontend ignores it for now (see the amendment below).
+  stays honest about provenance; the frontend ignored it at first (the tool trace renders it now — see the amendment below).
 
 ## Amended by ADR-0004: the cutoff is the date component
 

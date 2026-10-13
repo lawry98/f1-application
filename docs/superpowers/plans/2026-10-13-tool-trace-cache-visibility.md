@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-13-tool-trace-cache-visibility-design.md`
 
+> **Superseded in the final review:** the chip moved onto the label line (not the row's last column) and `cached.sse` serves `get_championship_standings` as the cached tool, not `get_track_info` — the longest cacheable id truncated at 375px beside the chip. The spec is current; the tasks below are as executed before that fix.
+
 ## Global Constraints
 
 - Frontend is **pnpm** via `mise exec -- pnpm …`; never npm. Backend venv is `backend/.venv`.
