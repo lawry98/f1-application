@@ -16,9 +16,14 @@ base="http://127.0.0.1:${port}"
 
 fail() { printf 'FAIL: %s\n' "$1" >&2; docker logs "$name" >&2 || true; exit 1; }
 
+# FORWARDED_ALLOW_IPS='*' is the stray setting --no-proxy-headers exists to neutralise: with the flag
+# gone, uvicorn would trust every peer and take the leftmost, client-written X-Forwarded-For entry
+# as the client. Without it here the XFF probe below could not fail, because uvicorn's default trust
+# list is 127.0.0.1 and the probe arrives from the Docker bridge gateway.
 docker run -d --name "$name" -p "127.0.0.1:${port}:8080" \
   -e GOOGLE_API_KEY=ci-dummy \
   -e CLIENT_IP_HEADER=Fly-Client-IP \
+  -e FORWARDED_ALLOW_IPS='*' \
   --add-host generativelanguage.googleapis.com:127.0.0.1 \
   "$image" >/dev/null
 trap 'docker rm -f "$name" >/dev/null 2>&1 || true' EXIT
@@ -38,22 +43,38 @@ for path in (config.CIRCUIT_INDEX_PATH, config.CIRCUIT_COORDINATES_PATH):
 for path in ("/app/backend/.env", "/app/backend/.venv", "/app/backend/tests", "/app/backend/scripts"):
     assert not pathlib.Path(path).exists(), f"should not ship: {path}"
 ' || fail "the image's files are wrong"
-echo "ok: circuit data present; .env, .venv, tests, scripts absent"
+echo "ok: circuit data files exist; /app/backend has no .env, .venv, tests or scripts"
 
-[[ "$(docker exec "$name" id -u)" != 0 ]] || fail "the process runs as root"
-echo "ok: runs as a non-root user"
+[[ "$(docker exec "$name" id -u)" != 0 ]] || fail "docker exec runs as root"
+echo "ok: docker exec runs as a non-root uid"
 
 [[ "$(curl -s -o /dev/null -w '%{http_code}' "${base}/openapi.json")" == 404 ]] \
   || fail "/openapi.json is served"
-echo "ok: API docs are off"
+echo "ok: /openapi.json is 404"
 
-# uvicorn's access line prints scope["client"], the address the guard keys on.
+# uvicorn's access line prints scope["client"], the address the guard keys on. With
+# FORWARDED_ALLOW_IPS='*' above, an X-Forwarded-For that reaches client.host is a proxy-headers leak.
 curl -fsS -H 'X-Forwarded-For: 203.0.113.7' "${base}/api/health?probe=xff" >/dev/null
 curl -fsS -H 'Fly-Client-IP: 203.0.113.8' "${base}/api/health?probe=fly" >/dev/null
-logs="$(docker logs "$name" 2>&1)"
-xff_line="$(grep -F 'probe=xff' <<<"$logs" || true)"
-fly_line="$(grep -F 'probe=fly' <<<"$logs" || true)"
-[[ -n "$xff_line" && -n "$fly_line" ]] || fail "no access log lines for the probes"
+
+# The json-file log driver is asynchronous, so a line can trail its request: read until both probe
+# lines are there, for at most ~5s.
+xff_line=""
+fly_line=""
+for _ in $(seq 1 10); do
+  logs="$(docker logs "$name" 2>&1)"
+  xff_line="$(grep -F 'probe=xff' <<<"$logs" || true)"
+  fly_line="$(grep -F 'probe=fly' <<<"$logs" || true)"
+  [[ -n "$xff_line" && -n "$fly_line" ]] && break
+  sleep 0.5
+done
+[[ -n "$xff_line" && -n "$fly_line" ]] || fail "no access log lines for the probes after 5s"
 [[ "$xff_line" != *203.0.113.7* ]] || fail "X-Forwarded-For reached client.host: $xff_line"
 [[ "$fly_line" == *203.0.113.8* ]] || fail "Fly-Client-IP did not reach client.host: $fly_line"
-echo "ok: X-Forwarded-For ignored; Fly-Client-IP is the client"
+echo "ok: access log: X-Forwarded-For is not the client (FORWARDED_ALLOW_IPS='*'); Fly-Client-IP is"
+
+# The effective command line of PID 1, as the container really started it.
+cmdline="$(docker exec "$name" cat /proc/1/cmdline | tr '\0' ' ')" || fail "could not read /proc/1/cmdline"
+[[ "$cmdline" == *' --workers 1 '* ]] || fail "uvicorn is not started with --workers 1: $cmdline"
+[[ "$cmdline" == *' --no-proxy-headers '* ]] || fail "uvicorn is not started with --no-proxy-headers: $cmdline"
+echo "ok: uvicorn command line has --workers 1 and --no-proxy-headers"

@@ -97,11 +97,11 @@ ci: lint format-check typecheck test test-browser docker-check ## Run everything
 
 # --- Container ------------------------------------------------------------
 
-# Both build exactly as CI's container job does. `docker` runs the image with your keys on :8080;
+# Both build exactly as CI's container job does. `docker` runs the image with your keys on localhost:8080;
 # `docker-check` runs CI's checks against it, with a dummy key.
-docker: ## Build the backend image and run it on :8080 with backend/.env
+docker: ## Build the backend image and run it on localhost:8080 with backend/.env
 	docker build -f backend/Dockerfile -t f1-backend .
-	docker run --rm -p 8080:8080 --env-file backend/.env f1-backend
+	docker run --rm -p 127.0.0.1:8080:8080 --env-file backend/.env f1-backend
 
 docker-check: ## Build the backend image and run CI's container checks against it
 	docker build -f backend/Dockerfile -t f1-backend .
