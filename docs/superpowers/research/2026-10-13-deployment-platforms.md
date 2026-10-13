@@ -1338,3 +1338,247 @@ An answer marked **UNVERIFIED** could not be confirmed from those sources.
 - https://vercel.com/kb/guide/unable-to-find-github-repository.md
 - https://docs.github.com/en/apps/using-github-apps/installing-a-github-app-from-a-third-party
 - https://docs.github.com/en/apps/using-github-apps/reviewing-and-modifying-installed-github-apps
+
+---
+
+# Part 5 — Review-fix flags (2026-10-13)
+
+Sources are primary only:
+- flyctl source: `superfly/flyctl` master @ `9068e6f` (2026-10-12), the same commit as Part 4. The latest tag is now **v0.4.117**.
+- fly-go **v0.11.3** (flyctl's `go.mod` pin). Fly docs: raw `.md` pages and `docs.fly.io/llms-full.txt`.
+- Vercel docs: raw `.md` pages. GitHub docs: `github/docs` main @ `d67ced7`, plus the REST OpenAPI description `github/rest-api-description` main @ `2297ff2`.
+- `gh` 2.95.0 `--help`, run locally. Two read-only `gh api` GETs against `lawry98/f1-application` (items 11, 13). Nothing was created, set or deployed.
+
+Verdicts: **CONFIRMED** (as assumed) · **CHANGED** (differs from the assumption) · **SILENT** (no source says) · **UNVERIFIED** (could not confirm). **INFERENCE** marks a conclusion drawn from source, not stated anywhere.
+
+---
+
+## Fly
+
+### 1. `fly tokens create deploy -n/--name, -x/--expiry`
+**Verdict:** CONFIRMED.
+- `-n/--name` is a free-form string, default `flyctl deploy token`. `-x/--expiry` is a Go duration, default `175200h0m0s` (20 years).
+- **Trap:** every token made without `--name` gets the same name, so a name cannot pick a token out later (item 3). Give each one a distinctive `--name`, e.g. `gh-actions-2026-10-13`.
+
+**Quote:** "Token name (default "flyctl deploy token")"
+**URLs:**
+- https://docs.fly.io/flyctl/cmd/fly_tokens_create_deploy.md
+- https://github.com/superfly/flyctl/blob/9068e6f/internal/command/tokens/create.go (lines 148–179)
+
+### 2. `fly tokens list`
+**Verdict:** CONFIRMED for `-a` and `--scope`. CHANGED: there is **no `--json`**.
+- Flags: `-a/--app`, `-c/--config`, `-o/--org`, `-s/--scope` (`app` or `org`). Alias `ls`. No JSON flag is registered, so `--json` fails as an unknown flag.
+- **Scope:** `-a`, `-c` or `--scope app` select app scope. With no flags it is still app scope, with the app read from `./fly.toml` (`determineScope`, lines 131–145).
+- **Yes, it lists an app's deploy tokens.** `create deploy` makes a limited-access token bound to `app_id`. App scope queries `app(name).limitedAccessTokens`.
+- **Output:** a line `Tokens for app "<app>":`, then a borderless table with columns `ID, Name, Created By, Expires At, Revoked At`.
+- Whether the server also returns revoked tokens (there is a `Revoked At` column) is **UNVERIFIED**.
+- The exact column separator is **UNVERIFIED**. Token names contain spaces, so pick the row with `grep -F '<distinctive name>'` and take the ID from the first field.
+
+**Quote:** "List all the tokens for current app, or use the `--app` option"
+**URLs:**
+- https://docs.fly.io/flyctl/cmd/fly_tokens_list.md
+- https://docs.fly.io/security/tokens.md
+- https://github.com/superfly/flyctl/blob/9068e6f/internal/command/tokens/list.go (lines 19–121)
+- https://github.com/superfly/fly-go/blob/v0.11.3/resource_tokens.go (lines 42–76)
+
+### 3. `fly tokens revoke`
+**Verdict:** CONFIRMED: `fly tokens revoke <ID> [<ID> …]`, positional IDs only. The only flag is `-h`.
+- **It takes the `ID` column of `tokens list`.** The docs' procedure is list, copy the ID, revoke.
+- **Trap: the exit code is 0 even when revocation fails.** Each failure prints `failed to revoke token <id>: …` to stderr and the loop continues. The command always returns `nil` after printing `<n> tokens revoked`.
+  - Check success from stdout: `Revoked <id>`, or a count of at least 1.
+- A subcommand `fly tokens revoke supplied` also exists. It revokes the token in `--access-token` / `FLY_ACCESS_TOKEN` / `FLY_API_TOKEN`. It is not needed here.
+
+**Quote:** "List the tokens and copy the ID of the token to revoke."
+**URLs:**
+- https://docs.fly.io/flyctl/cmd/fly_tokens_revoke.md
+- https://docs.fly.io/security/tokens.md
+- https://github.com/superfly/flyctl/blob/9068e6f/internal/command/tokens/revoke.go (lines 14–53)
+
+### 4. `fly releases -a <app> --image / --json`
+**Verdict:** CONFIRMED. Both flags exist.
+- `--image` adds a `Docker Image` column after `Version, Status, Description, User, Date`.
+- `-j/--json` prints an array of `fly.Release`. That struct has **no JSON tags**, so the keys are Go field names: `Version`, `Status`, `Description`, `ImageRef`, `Stable`, `CreatedAt`, `User`, …
+  - So use `jq -r '.[] | "\(.Version) \(.ImageRef)"'`, not `.imageRef`.
+- Only the **25 most recent** releases are returned (hard-coded `limit 25`), sorted by version, newest first.
+- The literal values of `Status` are **UNVERIFIED**.
+
+**Quote:** "Display the Docker image reference of the release"
+**URLs:**
+- https://docs.fly.io/flyctl/cmd/fly_releases.md
+- https://github.com/superfly/flyctl/blob/9068e6f/internal/command/apps/releases.go (lines 22–103)
+- https://github.com/superfly/fly-go/blob/v0.11.3/types.go (lines 625–639)
+- https://github.com/superfly/fly-go/blob/v0.11.3/resource_releases.go (lines 5–44)
+
+### 5. `fly deploy --image <ref>` with `--ha=false` / `--remote-only`, and image retention
+**Verdict:** CONFIRMED that no build runs. SILENT on how long images are retained.
+- **No build:** a non-empty `--image` (or `[build] image`) takes the pre-built branch of `determineImage` and returns before any build.
+  - It tries the local Docker daemon first. If the image is found there, flyctl re-tags and pushes it.
+  - Then it asks Fly's API: `Searching for image '<ref>' remotely...`.
+  - A miss fails with `could not find image "<ref>"`.
+- **`--ha=false` combines.** No mutual-exclusion rule exists in `deploy.go`. `--ha` is read separately as `IncreasedAvailability`.
+- **`--remote-only` is optional with `--image`.** It only removes the local-daemon option, so the local lookup is skipped (INFERENCE from `NewDockerDaemonType` + `localImageResolver`). Harmless to keep.
+- **The rollback uses the *current* `fly.toml` and secrets**, not the old release's.
+- **Retention:** no duration is documented. The docs say images "might be pruned" if not deployed for a while. For a guaranteed target, push to your own registry.
+- Existence can be checked with `docker manifest inspect registry.fly.io/<app>:<tag>` after `fly auth docker`. That edits `~/.docker/config.json`.
+
+**Quote:** "This works as long as the image is still in the Fly registry."
+**URLs:**
+- https://docs.fly.io/blueprints/rollback-guide (via https://docs.fly.io/llms-full.txt)
+- https://docs.fly.io/blueprints/using-the-fly-docker-registry
+- https://github.com/superfly/flyctl/blob/9068e6f/internal/command/deploy/deploy_build.go (lines 58–170, 349–361)
+- https://github.com/superfly/flyctl/blob/9068e6f/internal/build/imgsrc/resolver.go (lines 188–238)
+- https://github.com/superfly/flyctl/blob/9068e6f/internal/build/imgsrc/local_image_resolver.go
+- https://github.com/superfly/flyctl/blob/9068e6f/internal/build/imgsrc/remote_image_resolver.go
+
+### 6. `fly deploy --image-label <label>`
+**Verdict:** CONFIRMED. It sets the tag of the image flyctl builds and pushes: `registry.fly.io/<app>:<label>`.
+- The default is `deployment-<ULID>`, from `NewDeploymentTag`. The help text says `deployment-{timestamp}`; a ULID is time-ordered.
+- **Constraints:** flyctl does not validate the label. Docker's tag grammar `[\w][\w.-]{0,127}` applies, so a 40-character git SHA is valid.
+- **INFERENCE: reusing a label moves that tag** to the new image, so use a unique value such as the git SHA.
+- **INFERENCE: with `--image` pointing at a remote image, the label is not applied.** The remote resolver keeps the image's existing ref.
+
+**Quote:** "Image label to use when tagging and pushing to the fly registry."
+**URLs:**
+- https://docs.fly.io/flyctl/cmd/fly_deploy.md
+- https://github.com/superfly/flyctl/blob/9068e6f/internal/flag/flag.go (lines 528–533)
+- https://github.com/superfly/flyctl/blob/9068e6f/internal/build/imgsrc/docker.go (lines 868–883)
+- https://github.com/distribution/reference/blob/main/regexp.go (line 68)
+
+### 7. Fly's documented rollback
+**Verdict:** CONFIRMED. There is no rollback command. Run `fly releases --app <app> --image`, then `fly deploy --image registry.fly.io/<app>:<tag>`.
+- Optional: `--strategy immediate` (faster, with downtime) or `--max-unavailable 0.5`.
+- Rollback does not undo database migrations, config or secrets.
+
+**Quote:** "There’s no special `rollback` command because you don’t need one."
+**URLs:**
+- https://docs.fly.io/blueprints/rollback-guide
+
+---
+
+## Vercel
+
+### 8. Instant Rollback on Hobby
+**Verdict:** CONFIRMED on all three points.
+- **Hobby can only go back one deployment.** "Choose another deployment" (the full eligible list) is Pro/Enterprise only.
+- **After a rollback, auto-assignment of production domains is off.** New pushes to `main` build but are not served until the rollback is undone.
+- **UI labels:**
+  - Rollback: Production Deployment tile → **Instant Rollback** → pick a deployment → **Continue** → **Confirm Rollback**. The same action is in Deployments → ⋮ → **Instant Rollback**.
+  - Undo: **Undo Rollback** on the tile → select a deployment → **Confirm**. This re-enables auto-assignment.
+  - CLI equivalent: `vercel promote <deployment-id|url>`.
+  - Other promote labels: **Promote to Production** (preview → prod, rebuilds) and **Promote** (a staged build, no rebuild).
+- A rollback does not pick up env vars changed since that build.
+
+**Quote:** "Hobby users can roll back to the immediately previous deployment."
+**Quote:** "new pushes to your production branch won't go live automatically"
+**URLs:**
+- https://vercel.com/docs/instant-rollback.md (last_updated 2026-07-07)
+- https://vercel.com/docs/deployments/promoting-a-deployment.md
+
+---
+
+## GitHub
+
+### 9. `environment: production`: auto-create, precedence, skipped jobs
+**Verdict:** CONFIRMED on auto-create and on precedence. SILENT on skipped jobs.
+- **Auto-create:** a run that references a missing environment creates it, with no protection rules and no secrets.
+  - So a deploy job must not run before the branch policy exists: create the environment with the API first (item 10).
+- **Precedence:** environment beats repository beats organization for secrets of the same name.
+- **Skipped job (`if:` false): SILENT.** No doc says whether it creates the environment or a deployment.
+  - Related, documented: `environment: {name: production, deployment: false}` keeps secrets and branch policies but creates no deployment record.
+- State on 2026-10-13: `lawry98/f1-application` is **PUBLIC** with **0 environments** (read-only GET). Public repos get branch policies and environment secrets on the Free plan.
+
+**Quote:** "Running a workflow that references an environment that does not exist will create an environment"
+**Quote:** "the environment-level secret takes precedence."
+**URLs:**
+- https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments
+- https://docs.github.com/en/actions/reference/security/secrets
+- https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/control-deployments
+- https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments
+
+### 10. Restrict `production` to `main`
+**Verdict:** CONFIRMED. The field names are exact, from OpenAPI.
+- **PUT** `/repos/{owner}/{repo}/environments/{environment_name}` ("Create or update an environment", so it also creates it).
+  - Body: `deployment_branch_policy: {protected_branches: bool, custom_branch_policies: bool}`.
+  - Both fields are required, and exactly one is `true`. `null` means any branch.
+- **POST** `…/environments/{environment_name}/deployment-branch-policies`.
+  - Body: `name` (required, fnmatch pattern) and `type` (`branch` | `tag`).
+  - It returns **404 if `custom_branch_policies` is false**, so run the PUT first. It returns 303 if the pattern already exists.
+- **Do not use "Protected branches only".** With no branch protection rules in the repo, every branch can deploy.
+- Invocations, not run. `-F` turns `true`/`false` into JSON booleans, and `key[subkey]` nests (`gh api --help`):
+
+```bash
+gh api --method PUT repos/lawry98/f1-application/environments/production \
+  -F 'deployment_branch_policy[protected_branches]=false' \
+  -F 'deployment_branch_policy[custom_branch_policies]=true'
+gh api --method POST repos/lawry98/f1-application/environments/production/deployment-branch-policies \
+  -f name=main -f type=branch
+gh api repos/lawry98/f1-application/environments/production/deployment-branch-policies \
+  --jq '.branch_policies[].name'          # verify: prints main
+```
+- **By hand:** repo → **Settings** → **Environments** → **New environment** → name `production` → **Configure environment** → **Deployment branches and tags** dropdown → **Selected branches and tags** → **Add deployment branch or tag rule** → Ref type **Branch** → `main` → **Add rule**.
+
+**Quote:** "Not Found or `deployment_branch_policy.custom_branch_policies` property for the environment is set to false"
+**URLs:**
+- https://docs.github.com/rest/deployments/environments#create-or-update-an-environment
+- https://docs.github.com/rest/deployments/branch-policies#create-a-deployment-branch-policy
+- https://github.com/github/rest-api-description/blob/main/descriptions/api.github.com/api.github.com.json (`deployment-branch-policy-settings`, `deployment-branch-policy-name-pattern-with-type`)
+- https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments
+
+### 11. `gh secret set / list --env`
+**Verdict:** CONFIRMED flags. CHANGED: `set --env` does **not** create the environment; it fails.
+- `gh secret set NAME --env production -R lawry98/f1-application` (`-e/--env`, `-R/--repo`). The value comes from stdin, or from `-b/--body`.
+- `gh secret list --env production -R lawry98/f1-application` (`-e/--env`). Machine-readable form: `--json name,updatedAt -q '.[].name'`. The JSON fields are `name, numSelectedRepos, selectedReposURL, updatedAt, visibility`.
+- **Missing environment:** `set` first GETs `repos/{repo}/environments/{env}/secrets/public-key`.
+  - A read-only probe of a nonexistent environment returned **HTTP 404**.
+  - So `set` fails with `failed to fetch public key: HTTP 404 …` and creates nothing. Run item 10's PUT first.
+
+**Quote:** "Set deployment environment secret"
+**URLs:**
+- https://cli.github.com/manual/gh_secret_set
+- https://cli.github.com/manual/gh_secret_list
+- https://github.com/cli/cli/blob/v2.95.0/pkg/cmd/secret/set/set.go (lines 190, 249–262)
+- https://github.com/cli/cli/blob/v2.95.0/pkg/cmd/secret/set/http.go (lines 55–57)
+
+### 12. Repo-secret fallback, and branch-policy blocking
+**Verdict:** CONFIRMED on both. CHANGED for `workflow_run`.
+- **Fallback:** a job with `environment: production` still sees repository secrets. The precedence rule (item 9) only matters because every level is visible. A repo secret is shadowed only by an environment secret of the same name.
+- **Blocking:** a job whose ref fails the policy **fails and the run stops**. It does not wait; waiting is required-reviewer behaviour.
+- **Trap (INFERENCE from two documented facts):**
+  - The policy is matched against `GITHUB_REF`.
+  - For a `workflow_run`-triggered workflow, `GITHUB_REF` is the **default branch**.
+  - So a `main`-only policy **always passes** a `workflow_run` deploy, whichever branch CI ran on. It blocks only `workflow_dispatch` or `push` from other branches.
+  - Keep `if: github.event.workflow_run.head_branch == 'main'` (and the SHA check in item 13).
+
+**Quote:** "if it does not match the job will fail and the run will stop."
+**Quote:** "The deployment branch or tag rule is matched against the `GITHUB_REF`"
+**URLs:**
+- https://github.blog/changelog/2021-02-17-github-actions-limit-which-branches-can-deploy-to-an-environment/
+- https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments#deployment-branches-and-tags
+- https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflow_run (`GITHUB_REF`: "Default branch")
+
+### 13. `gh api repos/OWNER/REPO/commits/main --jq .sha`
+**Verdict:** CONFIRMED.
+- `ref` accepts a SHA, a branch (`heads/BRANCH_NAME`) or a tag (`tags/TAG_NAME`). A bare `main` resolves too.
+- Live read-only check: `commits/main` and `commits/heads/main` both returned `7ca4b0b…`, equal to `git ls-remote origin refs/heads/main`.
+- Prefer `heads/main` so a tag named `main` can never be picked (INFERENCE).
+- **Permission:** "Get a commit" needs the **Contents: read** permission, which is what `permissions: contents: read` grants `GITHUB_TOKEN`.
+
+**Quote:** "Can be a commit SHA, branch name (`heads/BRANCH_NAME`), or tag name"
+**URLs:**
+- https://docs.github.com/rest/commits/commits#get-a-commit
+- https://github.com/github/rest-api-description/blob/main/descriptions/api.github.com/api.github.com.json (`components.parameters.commit-ref`)
+- https://github.com/github/docs/blob/main/src/github-apps/data/fpt-2022-11-28/server-to-server-permissions.json (`get-a-commit` under `contents`, access `read`)
+
+### 14. Re-running an old CI run, and `workflow_run`
+**Verdict:** CONFIRMED that `completed` fires (by the docs' exclusion). INFERENCE that `head_sha` is the old SHA.
+- The docs exclude only `requested` from re-runs. So a re-run emits `in_progress` and `completed` again, and the CI-listening deploy workflow fires.
+- A re-run reuses the original run's `GITHUB_SHA` and `GITHUB_REF`. So `workflow_run.head_sha` is the **old** commit (INFERENCE: no doc states the payload field for re-runs). `workflow_run.run_attempt` is greater than 1.
+- Re-runs are possible for up to **30 days**.
+- **Consequence:** a re-run of a weeks-old green CI run would deploy that old commit. Guard with `github.event.workflow_run.head_sha == $(gh api repos/{owner}/{repo}/commits/heads/main --jq .sha)` (item 13).
+
+**Quote:** "The `requested` activity type does not occur when a workflow is re-run."
+**Quote:** "will also use the same `GITHUB_SHA` (commit SHA) and `GITHUB_REF`"
+**URLs:**
+- https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflow_run
+- https://docs.github.com/en/actions/how-tos/manage-workflow-runs/re-run-workflows-and-jobs
+- https://github.com/github/rest-api-description/blob/main/descriptions/api.github.com/api.github.com.json (`workflow-run.run_attempt`)
