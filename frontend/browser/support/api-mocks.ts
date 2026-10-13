@@ -47,7 +47,7 @@ export async function mockBriefingRefusal(page: Page, refusal: BriefingRefusal):
 }
 
 /** A captured `.sse` body as text — whole, or for cutting with `tests/sse-cuts.ts`. */
-export function sseFixture(name: 'clean.sse' | 'truncated.sse'): string {
+export function sseFixture(name: 'cached.sse' | 'clean.sse' | 'truncated.sse'): string {
   return readFileSync(path.join(FIXTURES, name), 'utf8');
 }
 

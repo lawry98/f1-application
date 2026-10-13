@@ -63,6 +63,13 @@ def main() -> None:
     }
     dump(FakeAgent(steps=truncated_steps, deltas=["## Mon", "\naco"]), "truncated.sse")
 
+    # A repeat briefing for the same race: the track profile was served from the result cache
+    # (ADR-0003) and the news search ran live — news is never cached — failing as it does in the
+    # clean run. Everything else is the clean run, so a test can tell the two apart by `cached`.
+    cached_steps = successful_steps()
+    cached_steps[2]["tool_executor"]["tool_results"][0]["cached"] = True
+    dump(FakeAgent(steps=cached_steps, deltas=successful_deltas()), "cached.sse")
+
 
 if __name__ == "__main__":
     main()

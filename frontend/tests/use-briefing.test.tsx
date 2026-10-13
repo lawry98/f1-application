@@ -285,6 +285,25 @@ describe('other events', () => {
     ]);
   });
 
+  it('keeps each tool’s cached flag in the trace, as the route served it', async () => {
+    // The real repeat-run bytes rather than hand-built frames: the flag has to survive from the
+    // wire into `toolTrace`, and the hook used to rebuild each entry from `tool` and `success`
+    // alone, dropping it. `toStrictEqual` because `toEqual` treats a missing key as `undefined`
+    // and would pass a dropped `cached: false`.
+    const feed = new ChunkFeed();
+    const { result, submit } = start(feed);
+    await submit('Monaco');
+
+    feed.push(fixtureText('cached.sse'));
+    feed.close();
+    await settle();
+
+    expect(result.current.toolTrace).toStrictEqual([
+      { tool: 'get_track_info', success: true, cached: true },
+      { tool: 'search_f1_news', success: false, cached: false },
+    ]);
+  });
+
   it('keeps the whole race_info payload, not only its name', async () => {
     // The circuit band joins on `location` — `circuit_id` is derived from the *event* name
     // (`italian_grand_prix`) and names a Grand Prix rather than a track, so it misses most of the
