@@ -87,8 +87,9 @@ name, not a unit of work with its own parameters.
 
 **Plan** — the set of Tasks chosen for one request.
 
-**Tool Trace** — the record of which Tools ran and whether each succeeded, surfaced to the
-user. Deliberately excludes the data the Tools returned.
+**Tool Trace** — the record of which Tools ran, whether each succeeded, and whether its result
+came from the cache rather than a live fetch, surfaced to the user. Deliberately excludes the
+data the Tools returned.
 
 **Degradation** — the system's response to partial failure: a Tool that cannot get its
 data reports that and the Briefing is produced from whatever else succeeded. Failing Tools
