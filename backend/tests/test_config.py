@@ -283,3 +283,40 @@ def test_an_invalid_expose_api_docs_warns_and_keeps_them_off(reload_config, raw,
         assert reload_config(EXPOSE_API_DOCS=raw).EXPOSE_API_DOCS is False
 
     assert "EXPOSE_API_DOCS" in caplog.text
+
+
+# ── Client IP header ─────────────────────────────────────────────────────────
+
+
+def test_the_client_ip_header_is_off_by_default(reload_config, monkeypatch):
+    """Local dev has no proxy in front, so the TCP peer is the visitor."""
+    monkeypatch.delenv("CLIENT_IP_HEADER", raising=False)
+
+    assert reload_config().CLIENT_IP_HEADER is None
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"), [("Fly-Client-IP", "Fly-Client-IP"), (" Fly-Client-IP ", "Fly-Client-IP")]
+)
+def test_the_client_ip_header_reads_the_environment(reload_config, raw, expected):
+    header = reload_config(CLIENT_IP_HEADER=raw).CLIENT_IP_HEADER
+
+    assert header == expected
+
+
+def test_an_empty_client_ip_header_is_off_quietly(reload_config, caplog):
+    with caplog.at_level(logging.WARNING, logger="config"):
+        assert reload_config(CLIENT_IP_HEADER="").CLIENT_IP_HEADER is None
+
+    assert "CLIENT_IP_HEADER" not in caplog.text
+
+
+@pytest.mark.parametrize("raw", ["Fly Client IP", "Fly-Client-IP:", "X(Forwarded)"])
+def test_a_client_ip_header_that_is_not_a_header_name_warns_and_stays_off(
+    reload_config, raw, caplog
+):
+    """RFC 9110 §5.6.2: a field name is a token. A typo fails closed, to the TCP peer."""
+    with caplog.at_level(logging.WARNING, logger="config"):
+        assert reload_config(CLIENT_IP_HEADER=raw).CLIENT_IP_HEADER is None
+
+    assert "CLIENT_IP_HEADER" in caplog.text

@@ -195,6 +195,26 @@ def _flag_from_env(name: str) -> bool:
 # route for anyone who looks, and nothing the site serves needs it. `make dev` turns it on.
 EXPOSE_API_DOCS: bool = _flag_from_env("EXPOSE_API_DOCS")
 
+# RFC 9110 §5.6.2: a field name is a token, `1*tchar`.
+_HTTP_TOKEN = re.compile(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
+
+
+def _header_name_from_env(name: str) -> str | None:
+    """Read an HTTP header name: unset or empty is off; anything not a header name warns and is off."""
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return None
+    if not _HTTP_TOKEN.fullmatch(raw):
+        logger.warning("Invalid %s=%r — not an HTTP header name, leaving it off", name, raw)
+        return None
+    return raw
+
+
+# The header the edge proxy writes the visitor's address into — `Fly-Client-IP` on Fly, set in
+# fly.toml. Off by default, so `client.host` is the TCP peer, which is the visitor in local dev.
+# See api/client_ip.py for why this is not uvicorn's --proxy-headers.
+CLIENT_IP_HEADER: str | None = _header_name_from_env("CLIENT_IP_HEADER")
+
 CORS_ORIGINS: list[str] = [
     origin.strip()
     for origin in os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:3001").split(

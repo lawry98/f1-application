@@ -72,9 +72,9 @@ briefing_guard = new_briefing_guard()
 def _admit(http_request: Request) -> Lease | JSONResponse:
     """Take a briefing slot for this caller, or build the plain HTTP rejection.
 
-    ``client.host`` is the TCP peer. Behind a proxy it is the visitor only when uvicorn runs
-    with ``--proxy-headers`` and ``FORWARDED_ALLOW_IPS`` naming that proxy; X-Forwarded-For is
-    never read here, because anyone can send one.
+    ``client.host`` is the TCP peer, or, with ``CLIENT_IP_HEADER`` set, the visitor the edge
+    proxy names (api/client_ip.py). X-Forwarded-For is never read here, because anyone can send
+    one.
     """
     ip = _client_ip(http_request)
     outcome = briefing_guard.admit(ip)

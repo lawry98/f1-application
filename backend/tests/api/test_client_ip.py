@@ -14,10 +14,17 @@ from starlette.responses import PlainTextResponse
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
+from api import routes as routes_module
+from api.app import create_app
 from api.client_ip import ClientIPMiddleware
+from api.guard import AdmissionGuard
+from tests.api.test_routes import FakeAgent, successful_steps
+from tests.factories import FakeClock
 
 # TestClient's own peer, which every "left untouched" case must still report.
 PEER = "testclient"
+
+T0 = 1_790_762_400.0  # 2026-09-30 10:00:00 UTC
 
 
 def whoami(request: Request) -> PlainTextResponse:
@@ -94,3 +101,82 @@ def test_a_non_http_scope_passes_through_untouched():
     asyncio.run(ClientIPMiddleware(app, header="Fly-Client-IP")(scope, None, None))
 
     assert seen == [scope]
+
+
+# ── Wired through create_app, as production runs it ─────────────────────────
+
+
+@pytest.fixture
+def one_briefing_per_ip(monkeypatch):
+    guard = AdmissionGuard(
+        per_ip_per_hour=1, daily_cap=100, max_concurrent=2, lease_seconds=150, clock=FakeClock(T0)
+    )
+    monkeypatch.setattr(routes_module, "briefing_guard", guard)
+    monkeypatch.setattr(routes_module, "agent", FakeAgent(steps=successful_steps()))
+    return guard
+
+
+def brief(client: TestClient, visitor: str) -> int:
+    return client.post(
+        "/api/briefing/stream", json={"query": "monaco"}, headers={"Fly-Client-IP": visitor}
+    ).status_code
+
+
+def test_two_visitors_get_two_allowances(one_briefing_per_ip):
+    client = TestClient(create_app(expose_docs=False, client_ip_header="Fly-Client-IP"))
+
+    assert [brief(client, "203.0.113.7"), brief(client, "198.51.100.1")] == [200, 200]
+
+
+def test_one_visitor_shares_one_allowance_across_requests(one_briefing_per_ip):
+    client = TestClient(create_app(expose_docs=False, client_ip_header="Fly-Client-IP"))
+
+    assert [brief(client, "203.0.113.7"), brief(client, "203.0.113.7")] == [200, 429]
+
+
+def test_without_a_configured_header_it_is_not_mounted(one_briefing_per_ip):
+    """Off, the header is just text a caller typed: both requests are TestClient's one peer."""
+    client = TestClient(create_app(expose_docs=False, client_ip_header=None))
+
+    assert [brief(client, "203.0.113.7"), brief(client, "198.51.100.1")] == [200, 429]
+
+
+def test_a_cors_preflight_is_logged_as_the_visitor():
+    """CORS answers a preflight without calling what it wraps, so the middleware must sit outside
+    it. uvicorn's access line is read from this same scope dict after the response."""
+    app = create_app(expose_docs=False, client_ip_header="Fly-Client-IP")
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "OPTIONS",
+        "scheme": "http",
+        "path": "/api/briefing/stream",
+        "raw_path": b"/api/briefing/stream",
+        "query_string": b"",
+        "root_path": "",
+        "headers": [
+            (b"origin", b"http://localhost:3000"),
+            (b"access-control-request-method", b"POST"),
+            (b"fly-client-ip", b"203.0.113.7"),
+        ],
+        "client": ("172.16.0.1", 50000),
+        "server": ("testserver", 80),
+    }
+    sent = []
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message):
+        sent.append(message)
+
+    asyncio.run(app(scope, receive, send))
+
+    assert sent[0]["status"] == 200  # answered by CORS itself
+    assert scope["client"] == ("203.0.113.7", 0)
+
+
+def test_the_app_still_starts_with_the_middleware_mounted():
+    with TestClient(create_app(expose_docs=False, client_ip_header="Fly-Client-IP")) as client:
+        assert client.get("/api/health").status_code == 200

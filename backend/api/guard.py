@@ -17,10 +17,11 @@ survives a restart either, which resets the day's count; for a single small depl
 is the right trade against running a shared store.
 
 **The client IP is whatever the caller passes in**, and routes.py passes
-``request.client.host``. It never parses ``X-Forwarded-For`` itself, because anyone can send
-one. Behind a proxy, run uvicorn with ``--proxy-headers`` and ``FORWARDED_ALLOW_IPS`` set to
-the proxy's address, and uvicorn rewrites ``client.host`` to the visitor — trusting the header
-from that one peer only.
+``request.client.host``. It never parses a forwarding header itself, because anyone can send
+one. Behind Fly, ``CLIENT_IP_HEADER=Fly-Client-IP`` makes ``client.host`` the visitor
+(api/client_ip.py). Behind another proxy, either name the one header it sets the same way, or
+run uvicorn with ``--proxy-headers`` and ``FORWARDED_ALLOW_IPS`` set to that proxy's exact
+address — never ``*``, which trusts the leftmost, client-written entry.
 
 **Memory is bounded.** An IP's history holds at most ``per_ip_per_hour`` timestamps and is
 dropped once the hour has passed; the table holds at most ``max_tracked_ips`` addresses, and a

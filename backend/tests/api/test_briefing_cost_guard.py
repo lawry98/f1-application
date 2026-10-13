@@ -152,8 +152,8 @@ def test_a_rejected_request_never_reaches_the_agent(client, install_guard, insta
 
 
 def test_forwarded_for_does_not_buy_a_fresh_limit(client, install_guard, install_agent):
-    """The limit keys on the TCP peer. X-Forwarded-For is whatever the caller typed; behind a
-    real proxy, uvicorn's --proxy-headers rewrites client.host from it, for that proxy only."""
+    """The limit keys on ``client.host``. X-Forwarded-For is whatever the caller typed, and
+    nothing in the app reads it."""
     install_guard(per_ip_per_hour=1)
     install_agent(steps=successful_steps())
     stream(client, headers={"X-Forwarded-For": "192.0.2.1"})
