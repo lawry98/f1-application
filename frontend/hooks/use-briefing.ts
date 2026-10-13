@@ -181,7 +181,11 @@ export function useBriefing(): UseBriefingReturn {
           } else if (event.type === 'tool_plan') {
             setToolPlan(event.data.tools);
           } else if (event.type === 'tool_result') {
-            tools.push({ tool: event.data.tool, success: event.data.success });
+            tools.push({
+              tool: event.data.tool,
+              success: event.data.success,
+              cached: event.data.cached,
+            });
             setToolTrace([...tools]);
           } else if (event.type === 'briefing_delta') {
             bufferRef.current += event.data.content;

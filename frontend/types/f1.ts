@@ -31,6 +31,13 @@ export interface RaceInfo {
 export interface ToolResult {
   tool: string;
   success: boolean;
+  /**
+   * Whether this result was served from the backend's result cache (ADR-0003) rather than fetched
+   * on this run. The wire field is optional, and a trace built from a record that never carried
+   * the flag must not invent one — absent claims neither "cached" nor "live" — so only `true` is
+   * ever rendered.
+   */
+  cached?: boolean;
 }
 
 export interface Race {
