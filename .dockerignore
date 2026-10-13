@@ -6,9 +6,9 @@
 !frontend/data/circuits/
 
 # …and, inside those, nothing that is only for development. backend/.env above all: a developer's
-# real keys must never be baked into an image (CI plants a decoy to prove it).
-**/.env
-**/.env.*
+# real keys must never be baked into an image (CI plants a decoy to prove it). `.env*` also takes
+# .env~, .env.local and .envrc, which hold the same keys.
+**/.env*
 backend/.venv
 backend/tests
 backend/scripts
@@ -17,3 +17,15 @@ backend/cache
 **/.pytest_cache
 **/.ruff_cache
 **/.coverage*
+
+# A local `fly deploy` builds from a working checkout, not a clean clone, so the gitignored clutter
+# a checkout collects inside backend/ stays out too.
+**/*~
+**/*.log
+**/.vscode
+**/.idea
+**/venv
+**/env
+**/htmlcov
+**/.mcp.json
+**/.DS_Store
