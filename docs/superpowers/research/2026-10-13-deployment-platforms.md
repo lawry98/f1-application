@@ -1,16 +1,18 @@
 # Deployment platforms — revalidation research, 2026-10-13
 
 Primary-source checks behind the "Revalidated 2026-10-13" section of
-[the deployment spec](../specs/2026-10-02-deployment-design.md). Three parts, researched in
-parallel the same day: Fly.io, Vercel, and the runtime/CI pieces (uvicorn, sse-starlette, the base
-image, GitHub Actions, Python's `ipaddress`, RFC 9110). Every claim carries the URL or file and line
-it came from. `SP/` means the backend venv's `site-packages/` at the pinned versions in
-`backend/requirements.txt`. Documentation-range addresses (`203.0.113.0/24`) are test values; the
-real addresses seen in the live Fly test are redacted.
+[the deployment spec](../specs/2026-10-02-deployment-design.md). Four parts, researched in
+parallel the same day: Fly.io; Vercel; the runtime and CI pieces (uvicorn, sse-starlette, the base
+image, GitHub Actions, Python's `ipaddress`, RFC 9110); and the exact flyctl commands and dashboard
+paths `scripts/deploy-wizard.sh` uses. Every claim carries the URL or file and line it came from.
+`SP/` means the backend venv's `site-packages/` at the pinned versions in `backend/requirements.txt`.
+Documentation-range addresses (`203.0.113.0/24`) are test values; the real addresses seen in the
+live Fly test are redacted.
 
 - [Part 1 — Fly.io](#part-1--flyio)
 - [Part 2 — Vercel](#part-2--vercel)
 - [Part 3 — Runtime and CI](#part-3--runtime-and-ci)
+- [Part 4 — The setup wizard's commands and click-paths](#part-4--the-setup-wizards-commands-and-click-paths)
 
 ---
 
@@ -980,3 +982,359 @@ tchar          = "!" / "#" / "$" / "%" / "&" / "'" / "*"
 Delimiters are `DQUOTE` and `"(),/:;<=>?@[\]{}"`. §5.1 (L1466) defines `field-name = token`.
 
 The regex is `^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$`. `"Fly Client IP"` fails it on the spaces, as the spec's test expects.
+
+---
+
+# Part 4 — The setup wizard's commands and click-paths
+
+
+Sources are primary only:
+- Fly docs: raw `.md` pages at docs.fly.io.
+- flyctl source: `superfly/flyctl` master @ `9068e6f` (2026-10-12). The latest tag is **v0.4.116**, one release past the ~0.4.115 the question assumed.
+- fly-go: `superfly/fly-go` **v0.11.3**, the version flyctl's `go.mod` pins.
+- Vercel docs: raw `.md` pages at vercel.com/docs.
+- Vercel dashboard HTML: the server-rendered page at `vercel.com/new/import`.
+- Vercel build code: `vercel/vercel` master @ `c628be7` (2026-09-08), `packages/build-utils`.
+- GitHub docs: used for the GitHub-side clicks in item 18.
+
+An answer marked **UNVERIFIED** could not be confirmed from those sources.
+
+---
+
+## Fly
+
+### 1. `fly secrets import`
+**Answer:**
+- It reads `NAME=VALUE` lines from **stdin**.
+- Both `--stage` and `-a/--app` exist.
+- Usage line: `fly secrets import [flags]`.
+- Full flags: `-a/--app`, `-c/--config`, `--detach`, `--dns-checks` (default true), `--stage`.
+
+**Parser traps** (`internal/command/secrets/parser.go`):
+- Lines starting with `#` and blank lines are skipped.
+- One pair of surrounding `"…"` or `'…'` is stripped.
+- `"""…"""` gives a multiline value.
+- An **unquoted value is cut at `#`**: `K=abc#def` becomes `abc`.
+- A **single-quoted** value containing `#` is corrupted: `K='a#b'` becomes `'a`, because the comment check counts only `"`.
+- **Rule for the wizard:** write `NAME="value"`, with double quotes, whenever a value might contain `#`.
+- Empty input fails with `requires at least one SECRET=VALUE pair`.
+
+**Printed results:**
+- With `--stage`, it prints `Secrets have been staged, but not set on VMs. Deploy or update machines in this app for the secrets to take effect.`
+- On an app with no machines that has never been deployed, it prints `Secrets are staged for the first deployment`, even without `--stage` (`secrets.go` `DeploySecrets`).
+
+**Quote:** "Values are read from stdin as NAME=VALUE pairs"
+**URLs:**
+- https://docs.fly.io/flyctl/cmd/fly_secrets_import.md
+- https://github.com/superfly/flyctl/blob/master/internal/command/secrets/import.go
+- https://github.com/superfly/flyctl/blob/master/internal/command/secrets/parser.go
+- https://github.com/superfly/flyctl/blob/master/internal/command/secrets/secrets.go
+
+### 2. `fly secrets list -a <app>`
+**Answer:**
+- **Yes, it shows names without values.**
+- Table columns are `Name | Digest | Status`.
+- **Trap:** in the table, a staged secret's name is prefixed `* ` and a partially deployed one `! `. Grepping `^NAME` on the table fails right after `secrets import --stage`.
+- For the "all three are set" check, use `-j/--json` instead. It prints an array of `{"name","digest","status"}`, so `fly secrets list -a APP --json | jq -r '.[].name'` gives the bare names.
+
+**Quote:** "The actual value of the secret is only available to the application."
+**URLs:**
+- https://docs.fly.io/flyctl/cmd/fly_secrets_list.md
+- https://github.com/superfly/flyctl/blob/master/internal/command/secrets/list.go
+
+### 3. `fly logs -a <app> --no-tail`
+**Answer:**
+- **`-n/--no-tail` exists.**
+- With it, flyctl makes **one** `GET /api/v1/apps/:app/logs` call with an empty `next_token`, prints that page, and exits (`logs/polling.go`: it returns after the first page when `NoTail` is set).
+- How far back that page reaches is decided by the server: **by default, the most recent 100 log lines from the last 24 hours.**
+- **JSON flag:** `-j/--json` exists. Output is a *stream* of pretty-printed JSON objects (4-space indent), one per entry, not an array.
+- Each entry carries the keys `level, instance, message, region, timestamp, meta`. `jq` can read the stream directly.
+
+**Quote:** "By default, the most recent 100 logs from the last 24 hours are returned."
+**URLs:**
+- https://docs.fly.io/flyctl/cmd/fly_logs.md
+- https://docs.fly.io/monitoring/logs-api-options.md
+- https://github.com/superfly/flyctl/blob/master/logs/polling.go
+- https://github.com/superfly/flyctl/blob/master/logs/entry.go
+
+### 4. `fly machines list -a <app> --json`
+**Answer:**
+- `machines` is an alias of `machine` (alias list: `machines`, `m`).
+- `--json` prints the raw flaps result: a **top-level array of `fly.Machine`**.
+- Field paths:
+  - **Memory in MB:** `.[].config.guest.memory_mb` (int).
+  - **State:** `.[].state` (string). Constants are `started`, `stopped`, `suspended`, `created`, `destroying`, `destroyed`.
+  - Also present: `.[].id`, `.[].region`, `.[].host_status` (`ok`/`unknown`/`unreachable`), and `.[].config.guest.cpus` / `cpu_kind`.
+- Type tags: `Machine.Config *MachineConfig json:"config"`, then `MachineConfig.Guest *MachineGuest json:"guest"`, then `MachineGuest.MemoryMB int json:"memory_mb"`.
+
+**Quote (source):** `MemoryMB int toml:"memory_mb,omitempty" json:"memory_mb,omitempty"`
+**URLs:**
+- https://github.com/superfly/fly-go/blob/v0.11.3/machine_types.go (lines 46–71, 470–483, 811)
+- https://github.com/superfly/flyctl/blob/master/internal/command/machine/list.go
+
+### 5. `fly ssh console -a <app> -C "<cmd>"`
+**Answer:**
+- **Yes, it runs non-interactively.** A PTY is allocated only when no `-C` is given, or when `--pty` is passed. The one exception: `-C sh`, `/bin/sh`, `bash` or `/bin/bash` forces a PTY, with a warning.
+- **First-time user:**
+  - No WireGuard install is needed. flyctl starts its own agent and a userspace WireGuard (`wireguard/tun/netstack`).
+  - **If no peer is cached, it creates one automatically** (`internal/wireguard/wg.go` `StateForOrg`: "creating a peer when none is cached").
+  - Each connection uses a 1-hour single-use SSH certificate.
+  - If certificate issuance fails, flyctl suggests running `flyctl ssh issue`.
+- **Needs a `started` machine.** Otherwise it fails with `app <name> has no started VMs. It may be unhealthy or not have been deployed yet.` This bites when `auto_stop_machines` has stopped the machine.
+- **Exit code:** a non-zero remote exit makes flyctl print `Error: ssh shell: …` and exit **1**. It does not pass the remote code through (`internal/cli/cli.go`).
+- **Shell requirement:**
+  - Docs say a shell is needed for the *interactive* console.
+  - The client sends `-C` as a raw SSH `exec` string (`sess.Run(cmd)`). Whether Fly's server (hallpass) wraps that string in a shell is **UNVERIFIED**: hallpass source is not public.
+  - Fly's own docs wrap commands that need shell features in `/bin/sh -lc '…'`. The python:3.12-slim image has `/bin/sh`, so `-C "/bin/sh -c '…'"` is safe either way.
+
+**Quote:** "You can only get a console interface on a VM if there's some sort of shell installed"
+**URLs:**
+- https://docs.fly.io/flyctl/cmd/fly_ssh_console.md
+- https://docs.fly.io/machines/guides-examples/machines-app-using-flyctl (via https://docs.fly.io/llms-full.txt)
+- https://github.com/superfly/flyctl/blob/master/internal/command/ssh/console.go
+- https://github.com/superfly/flyctl/blob/master/ssh/io.go
+- https://github.com/superfly/flyctl/blob/master/internal/wireguard/wg.go
+- https://github.com/superfly/flyctl/blob/master/agent/remote.go
+- Docs example of the `/bin/sh -lc` wrapping: https://docs.fly.io/postgres/guides-examples/phoenix-guide
+
+### 6. Auth command names
+**Answer:** `fly auth login`, `fly auth signup` and `fly auth whoami` are all current, registered in `internal/command/auth/auth.go`.
+- `login` defaults to the browser. It also takes `--code`, `--email`, `-i`, `--otp` and `--password`.
+- `signup` opens the browser.
+- `whoami` prints the email on stdout, or `{"email": …}` with `-j/--json`.
+
+**Trap:** when logged out with stdin and stdout both a TTY, `whoami` *prompts*: `You must be logged in to do this. Would you like to sign in?`
+- Capturing stdout with `$(fly auth whoami)` makes stdout a non-TTY, so there is no prompt and it exits 1.
+- `--json` also suppresses the prompt (`handleReLogin`).
+- A session older than 30 days also triggers re-login (`TokenTimeout`).
+
+**Quote:** "Show the currently authenticated user"
+**URLs:**
+- https://docs.fly.io/flyctl/cmd/fly_auth_login.md
+- https://docs.fly.io/flyctl/cmd/fly_auth_signup.md
+- https://docs.fly.io/flyctl/cmd/fly_auth_whoami.md
+- https://github.com/superfly/flyctl/blob/master/internal/command/auth/whoami.go
+- https://github.com/superfly/flyctl/blob/master/internal/command/command.go (`RequireSession`, `handleReLogin`)
+
+### 7. `fly apps create <name>`
+**Answer:**
+- **Exit status on failure is 1.** Any error falls to the `default:` branch of `internal/cli/cli.go`, which prints `Error: <msg>` to stderr and returns 1.
+- The message comes from the server: flaps returns the API body's `message`/`error` as is.
+- The exact message for a taken name is **partly verified**:
+  - Fly docs say app creation "returns `422` if the name is taken".
+  - flyctl's own preflight tests match `Name has already been taken` in stderr, but for `fly pg create`, not for `apps create`.
+- **`--org` is not needed with one personal org.** `prompt.Org` auto-selects it and prints `automatically selected personal organization: <name>` to stderr.
+- With several orgs and no TTY, it fails with `org slug must be specified when not running interactively`. Passing `--org personal` is harmless.
+- On success it prints `New app created: <name>`.
+
+**Quote:** "App creation returns `422` if the name is taken."
+**URLs:**
+- https://docs.fly.io/flyctl/cmd/fly_apps_create.md
+- https://github.com/superfly/flyctl/blob/master/internal/command/apps/create.go
+- https://github.com/superfly/flyctl/blob/master/internal/prompt/prompt.go (lines 251–291)
+- https://github.com/superfly/fly-go/blob/v0.11.3/flaps/flaps.go (`handleAPIError`)
+- https://docs.fly.io/blueprints/warm-pool-user-machines
+- https://github.com/superfly/flyctl/blob/master/test/preflight/fly_postgres_test.go
+
+### 8. `fly status`, `fly deploy --ha=false`, and fly.toml discovery
+**Answer:**
+- **`fly deploy` reads the app from `fly.toml` in the working directory: YES.**
+  - `deploy` runs the `RequireAppName` preparer.
+  - The app name is resolved in this order: `-a`, then the `FLY_APP` env var, then the `app` key of `./fly.toml` (or `fly.json` / `fly.yaml`).
+  - `-c` or a `[WORKING_DIRECTORY]` argument changes where it looks.
+- **`fly status` prints:**
+  - A vertical `App` table: `Name, Owner, Hostname, Image` (plus `Network` if set).
+  - A `Machines` table: `Process, ID, Version, Region, State, Role, Checks, Last Updated`.
+  - With no machines, it prints `No machines are available on this app <app>`.
+  - `--json` gives a map with capitalised keys (`Name, Deployed, Status, Hostname, Version, AppURL, Organization, Machines[…]`).
+- **`fly deploy --ha=false`:** `--ha` defaults to true. With `=false`, the HA lines below are skipped:
+  - `Creating a second machine for high availability and zero downtime deployments.`
+  - `To disable this, set "min_machines_running = 0" in your fly.toml.`
+- Other first-deploy output:
+  - `No machines in group app, launching a new machine`
+  - `Watch your deployment at https://fly.io/apps/<app>/monitoring`
+  - At the end: `Visit your newly deployed app at https://<app>.fly.dev/`
+  - With `auto_stop_machines = "stop"`, there is also a `NOTE: The machines for [app] have services with 'auto_stop_machines = "stop"' that will be stopped when idling`.
+
+**Quote:** "flyctl will look for a `fly.toml` file to find the name of the app"
+**URLs:**
+- https://docs.fly.io/launch/deploy.md
+- https://docs.fly.io/apps/app-availability.md (shows `fly deploy --ha=false`)
+- https://docs.fly.io/flyctl/cmd/fly_status.md
+- https://github.com/superfly/flyctl/blob/master/internal/command/command.go (lines 740–832)
+- https://github.com/superfly/flyctl/blob/master/internal/command/deploy/machines_deploymachinesapp.go (lines 380–470)
+- https://github.com/superfly/flyctl/blob/master/internal/command/status/machines.go
+
+### 9. Billing page URL
+**Answer:**
+- `https://fly.io/dashboard/<org-slug>/billing`. For a personal org that is `https://fly.io/dashboard/personal/billing`.
+- flyctl itself builds this exact URL when a payment method is missing. Its message there is "! You'll need to add a payment method in order to proceed."
+- `fly launch` also has a free-trial state ("Your free trial has you covered").
+- Docs: a card is required "for most Fly.io accounts". Prepaid cards are accepted only for buying credits (minimum $25).
+
+**Quote:** "Visit %s to add a credit card and enable deployment."
+**URLs:**
+- https://docs.fly.io/about/billing.md
+- https://github.com/superfly/flyctl/blob/master/internal/command/orgs/create.go (line 93)
+- https://github.com/superfly/flyctl/blob/master/internal/command/launch/cmd.go (lines 715–745)
+
+### 10. `fly config validate`
+**Answer:**
+- **Requires auth: yes.** It runs the `RequireSession` and `RequireAppName` preparers, so `fly.toml` needs `app = …` or `-a`.
+- **Network:** the validation itself is local when `./fly.toml` exists. It fetches the remote config only if no local file is found.
+  - The session preparer does attempt token refresh calls. Those failures are logged at debug level only.
+  - Fully offline behaviour is **UNVERIFIED** (not run).
+- **Unknown keys:**
+  - Default (non-strict) decoding is TOML → map → `json.Unmarshal` into the struct, with no `DisallowUnknownFields`. So **unknown keys are silently ignored**.
+  - Only `-s/--strict` reports them and fails with `strict validation failed`.
+- **`[http_service.http_options] compress = false` is not an unknown key.** `HTTPService.HTTPOptions` is `*fly.HTTPOptions`, which has a `Compress *bool toml:"compress"` field. It passes both default and `--strict` validation (the strict check reflects over the same struct).
+- The fly.toml reference page does not list `compress`. The Machines API docs document it with a default of false.
+- Success output ends with `✓ Configuration is valid`.
+
+**Quote:** "Enable strict validation to check for unrecognized sections and keys"
+**URLs:**
+- https://docs.fly.io/flyctl/cmd/fly_config_validate.md
+- https://github.com/superfly/flyctl/blob/master/internal/command/config/validate.go
+- https://github.com/superfly/flyctl/blob/master/internal/appconfig/patches.go (`mapToConfig`)
+- https://github.com/superfly/flyctl/blob/master/internal/appconfig/strict_validate.go
+- https://github.com/superfly/flyctl/blob/master/internal/appconfig/service.go (line 66)
+- https://github.com/superfly/fly-go/blob/v0.11.3/machine_types.go (line 762)
+- https://docs.fly.io/machines/api/machines-resource ("`compress`: bool (false) - If true, enable HTTP compression.")
+
+### 11. `fly tokens create deploy -a <app> -x 8760h | gh secret set FLY_API_TOKEN`
+**Answer:**
+- **stdout is exactly one line: the token.** The code is `fmt.Fprintln(io.Out, token)`, where the token is the `TokenHeader` (starts `FlyV1 `). With `--json` it prints `{"token": …}` instead.
+- Everything else goes to **stderr**: update notices, incident and host-issue warnings, and the org auto-select message.
+- `-x/--expiry` is a Go `duration`, so `8760h` is valid. The default is 175200h (20 years).
+- **Pipe caveat:** the re-login prompt writes to stdout, but only when stdin and stdout are both TTYs. Under a pipe, stdout is not a TTY, so an expired or missing session makes the command *fail* instead of prompting, and `gh` receives empty stdin.
+- The wizard should use `set -o pipefail`, or capture the token into a variable, check it is non-empty, then pipe it.
+- Fly docs say to keep the `FlyV1 ` prefix in the secret.
+
+**Quote:** "Copy the output, including the `FlyV1` and space at the beginning."
+**URLs:**
+- https://docs.fly.io/flyctl/cmd/fly_tokens_create_deploy.md
+- https://github.com/superfly/flyctl/blob/master/internal/command/tokens/create.go (lines 477–515)
+- https://github.com/superfly/flyctl/blob/master/internal/command/command.go (lines 459, 637–677)
+- https://github.com/superfly/flyctl/blob/master/internal/incidents/statuspage.go
+- https://docs.fly.io/launch/continuous-deployment-with-github-actions.md
+
+---
+
+## Vercel
+
+### 12. Import flow at vercel.com/new
+**Answer:**
+- Path: Add New… → Project → Import (next to the repo). This opens the configure page.
+- The live configure page (`vercel.com/new/import`, server-rendered HTML) shows, in order:
+  - Vercel Team
+  - **Project Name** (text field)
+  - **Root Directory** (shows `./`, with an **Edit** button)
+  - Application Preset
+  - Build and Output Settings
+  - **Environment Variables**: Key, Value, a **"Sensitive value" toggle (on by default)**, an **Environments** select, "Import .env", "or paste the .env contents", and "Add More"
+  - **Deploy**
+- **Env vars can be scoped at import time.** The `<select aria-label="Environments">` options are **`Production and Preview` (selected by default)**, `Production`, `Preview` and `Development`.
+- So import-time variables default to Production + Preview, not Production only. Choose `Production` explicitly.
+- Whether that one select applies per row or to every row added with "Add More" is **UNVERIFIED** (the static HTML holds a single add-form row).
+- No docs page describes the scope; the source is the live page HTML.
+
+**Quote:** "Click the **Edit** button next to the Root Directory setting"
+**URLs:**
+- https://vercel.com/new/import (HTML fetched 2026-10-13)
+- https://vercel.com/docs/monorepos.md
+- https://vercel.com/docs/git.md
+- https://vercel.com/docs/projects/managing-projects.md
+
+### 13. System Environment Variables setting
+**Answer:**
+- **Location:** Project → **Environment Variables** (sidebar) → the checkbox **"Enable access to System Environment Variables"**. That is the current docs label; "Automatically expose…" is the older wording, still used on one other docs page.
+- **Default for new projects:** on, since a changelog of 2020-11-20.
+- Turning it off also disables Skew Protection.
+- The exact current UI label is confirmed by docs only, not by a dashboard capture.
+
+**Quote:** "All new Projects created as of today… will automatically receive all System Environment Variables by default"
+**URLs:**
+- https://vercel.com/docs/environment-variables/system-environment-variables.md
+- https://vercel.com/changelog/system-environment-variables-are-now-available-by-default.md
+
+### 14. Production domain, and a taken `<project>.vercel.app`
+**Answer:**
+- **Where to see it:**
+  - Project → **Settings** → **Domains** (sidebar). Direct link: `https://vercel.com/d?to=%2F%5Bteam%5D%2F%5Bproject%5D%2Fsettings%2Fdomains`.
+  - Generated URLs also show "Under the Project's Overview and Deployments tabs".
+- **If the name is taken:** docs say only that `.vercel.app` names are "allocated on a first-come, first-served basis and cannot be reserved".
+- What name Vercel assigns instead (for example `<project>-<scope-slug>.vercel.app` or a random suffix) is **UNVERIFIED**: no primary source describes it.
+- The wizard should read the actual domain from Settings → Domains and not assume `<project>.vercel.app`.
+- Documented generated-URL shapes: `<project-name>-<unique-hash>-<scope-slug>.vercel.app`, `<project-name>-git-<branch>-<scope-slug>.vercel.app`, `<project-name>-<scope-slug>.vercel.app`.
+
+**Quote:** "allocated on a first-come, first-served basis and cannot be reserved"
+**URLs:**
+- https://vercel.com/docs/domains/working-with-domains.md
+- https://vercel.com/docs/domains/working-with-domains/add-a-domain.md
+- https://vercel.com/docs/deployments/generated-urls.md
+
+### 15. Build logs and the pnpm detection line
+**Answer:**
+- **Where:** the **Build Logs** button on the production deployment tile in the project Overview. You can also open a deployment from Deployments.
+- **Exact detection lines,** from `vercel/vercel` `packages/build-utils/src/fs/run-user-scripts.ts`. This repo has `lockfileVersion: '9.0'` (parsed as `9`) and `frontend/package.json` `"packageManager": "pnpm@11.8.0"`.
+  - **If honoured** (needs `/pnpm11` in the build image), it prints: `` Detected `pnpm-lock.yaml` version 9 generated by pnpm@11.x from package.json#packageManager pnpm@11.8.0 ``
+  - **If pnpm 11 is absent from the image,** the pin is dropped silently and it prints: `` Detected `pnpm-lock.yaml` 9 which may be generated by pnpm@9.x, pnpm@10.x, or pnpm@11.x `` followed by `Using pnpm@10.x based on project creation date`.
+  - The 10 default is because `PNPM_11_PREFERRED_AT` is 2027-03-01.
+- Whether today's build image ships `/pnpm11` is **UNVERIFIED**:
+  - The docs table lists pnpm 6–10 only.
+  - The code comment says newer majors are selected only "when the binary directory exists".
+- Corepack path: `ENABLE_EXPERIMENTAL_COREPACK=1` hands version selection to Corepack.
+
+**Quote:** "To access build logs, click the **Build Logs** button from the production deployment tile"
+**URLs:**
+- https://vercel.com/docs/deployments/logs.md
+- https://vercel.com/docs/package-managers.md
+- https://vercel.com/changelog/automatic-pnpm-v10-support.md
+- https://github.com/vercel/vercel/blob/main/packages/build-utils/src/fs/run-user-scripts.ts (lines 1137–1185, 1206–1241, 1398–1437)
+
+### 16. Hobby AI model-training opt-out
+**Answer:**
+- **Team level:** **Team Settings** (top-left of the dashboard, *not* Account Settings) → **Data Preferences** → toggle Opt-In to **Opt-Out**.
+  - Short link `vercel.fyi/team-data-preferences` resolves to `https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fsettings&title=Data+Preference+Settings`.
+- **Per project:** leave the team setting on Sharing, then opt the project out in Project Settings (`/[team]/[project]/settings`).
+- **Hobby is opted in by default.** An opt-out applies from that point on, since the 2026-03-31 cutoff has passed.
+
+**Quote:** "Hobby (including Trial Pro): Opted in for AI model training by default"
+**URLs:**
+- https://vercel.com/changelog/updates-to-terms-of-service-march-2026.md
+- Redirect targets checked with curl.
+
+### 17. Production redeploy after an env-var change
+**Answer:**
+- Path: Project → **Deployments** (sidebar) → ⋯ on the deployment → **Redeploy**. The **"Redeploy to Production"** window has a **"Use existing Build Cache"** checkbox.
+- An env change applies only to *new* deployments.
+- **Unticking for `NEXT_PUBLIC_*`:**
+  - No Vercel or Next doc says it is required, so that question is **UNVERIFIED**.
+  - The documented build-cache key is account, project, framework preset, root directory, Node version, package manager and branch. It does **not** include env vars.
+  - `NEXT_PUBLIC_*` values are inlined at `next build` time.
+  - A redeploy re-runs the build either way. Unticking only costs build time, so untick to be safe.
+- Alternative: set `VERCEL_FORCE_NO_BUILD_CACHE=1`.
+
+**Quote:** "leave the checkbox **Use existing Build Cache** unchecked"
+**URLs:**
+- https://vercel.com/docs/deployments/managing-deployments.md
+- https://vercel.com/docs/deployments/troubleshoot-a-build.md
+- https://vercel.com/docs/environment-variables/managing-environment-variables.md
+- https://nextjs.org/docs/app/guides/environment-variables.md
+
+### 18. GitHub App permission for personal account `lawry98`
+**Answer:**
+- **Requirement:** for a repo owned by a personal account, you must be its **Owner**. A collaborator cannot import it.
+- **Install on GitHub:** choose **Only select repositories** (not All repositories), use the **Select repositories** dropdown to pick only the one repo, then click **Install**.
+- **To change access later:**
+  - From Vercel: on the import screen, click **"Configure GitHub App"**.
+  - From GitHub: profile picture → **Settings** → Integrations → **Applications** → **Installed GitHub Apps** → **Configure** (next to Vercel) → Repository access → **Only select repositories** → **Save**.
+- A repo added later is not included automatically under "Only select".
+- The exact Vercel-side button labels "Install Vercel GitHub App" and "Adjust GitHub App Permissions" are **UNVERIFIED**. The current KB says "Configure GitHub App".
+
+**Quote:** "Click “Configure GitHub App” on the import screen"
+**URLs:**
+- https://vercel.com/docs/git/vercel-for-github.md
+- https://vercel.com/kb/guide/unable-to-find-github-repository.md
+- https://docs.github.com/en/apps/using-github-apps/installing-a-github-app-from-a-third-party
+- https://docs.github.com/en/apps/using-github-apps/reviewing-and-modifying-installed-github-apps
