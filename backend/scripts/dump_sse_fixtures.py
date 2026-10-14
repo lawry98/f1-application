@@ -26,12 +26,22 @@ FIXTURES = BACKEND.parent / "frontend" / "tests" / "fixtures"
 os.environ["GOOGLE_API_KEY"] = "AIza-test-key-not-real"
 sys.path.insert(0, str(BACKEND))
 
+from datetime import UTC, datetime
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from agent.quota import DailyQuotaExhaustedError, next_quota_reset
 from api import routes as routes_module
+from api.guard import AdmissionGuard
 from api.routes import router
 from tests.api.test_routes import FakeAgent, successful_deltas, successful_steps
+from tests.factories import FakeClock
+
+# The stream's daily-cap event carries a wait, so the quota fixture's guard runs on a fixed clock
+# for bytes that do not change between runs. 10:00 UTC on 30 September is 03:00 in Los Angeles,
+# 21 hours before Gemini's reset.
+QUOTA_FIXTURE_NOW = datetime(2026, 9, 30, 10, 0, tzinfo=UTC).timestamp()
 
 
 def dump(agent: FakeAgent, name: str) -> None:
@@ -73,6 +83,22 @@ def main() -> None:
     cached_steps[2]["tool_executor"]["tool_results"][0]["tool_name"] = "get_championship_standings"
     cached_steps[2]["tool_executor"]["tool_results"][0]["cached"] = True
     dump(FakeAgent(steps=cached_steps, deltas=successful_deltas()), "cached.sse")
+
+    # The planner met Gemini's spent daily quota: the run ends after the resolver on the
+    # daily-cap error event, the same body a refusal at admission sends. Last, because it closes
+    # the guard it runs against — a fresh one, at the stock limits, on the fixed clock above.
+    routes_module.briefing_guard = AdmissionGuard(
+        per_ip_per_hour=5,
+        daily_cap=100,
+        max_concurrent=2,
+        lease_seconds=150,
+        clock=FakeClock(QUOTA_FIXTURE_NOW),
+    )
+    spent = DailyQuotaExhaustedError(resets_at=next_quota_reset(QUOTA_FIXTURE_NOW))
+    dump(
+        FakeAgent(steps=successful_steps()[:1], raises=spent, raises_after=1),
+        "quota-exhausted.sse",
+    )
 
 
 if __name__ == "__main__":

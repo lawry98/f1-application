@@ -1,8 +1,14 @@
 import cachedSse from './fixtures/cached.sse?raw';
 import cleanSse from './fixtures/clean.sse?raw';
+import quotaExhaustedSse from './fixtures/quota-exhausted.sse?raw';
 import truncatedSse from './fixtures/truncated.sse?raw';
 
-const FIXTURES = { 'cached.sse': cachedSse, 'clean.sse': cleanSse, 'truncated.sse': truncatedSse };
+const FIXTURES = {
+  'cached.sse': cachedSse,
+  'clean.sse': cleanSse,
+  'quota-exhausted.sse': quotaExhaustedSse,
+  'truncated.sse': truncatedSse,
+};
 
 export type FixtureName = keyof typeof FIXTURES;
 

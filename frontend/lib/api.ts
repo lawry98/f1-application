@@ -59,7 +59,8 @@ export class BriefingRequestError extends Error {
   }
 }
 
-function positiveNumber(value: unknown): number | null {
+/** `value` when it is a finite number above zero — a wait or a limit worth stating — else `null`. */
+export function positiveNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null;
 }
 
@@ -193,7 +194,10 @@ export async function* streamBriefing(
                 break;
               case 'error':
                 finished = true;
-                yield { type: 'error', data: parsed as { message: string; code?: 'deadline' } };
+                yield {
+                  type: 'error',
+                  data: parsed as Extract<StreamEvent, { type: 'error' }>['data'],
+                };
                 break;
               default:
                 break;
