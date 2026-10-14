@@ -109,7 +109,7 @@ progress UI decorative. A change here that reintroduces buffering will pass ever
 - `briefing_delta` -> `{content: string}` (one increment of the briefing; no semantic boundaries — a delta may be a fraction of a word)
 - `briefing` -> `{content: string, truncated: boolean}` (the full markdown briefing). It no longer means "the briefing is complete" — `truncated` says that. It is retained as a reconciliation anchor: `lib/api.ts` silently swallows malformed frames, so without it a dropped delta would corrupt the rendered document undetectably.
 - `complete` -> `{message: "Briefing complete"}` (fires on a truncated run too; `error` does not)
-- `error` -> `{message: string}` (generic text — internal exception details are logged, never sent to the client)
+- `error` -> `{message: string, code?: "deadline" | "daily_cap"}` (generic text — internal exception details are logged, never sent to the client). `daily_cap` — Gemini's daily quota spent mid-run — also carries the cost guard's `retry_after_seconds` and `limit`, and the page renders it as the guard's notice
 
 **The frontend coalesces deltas rather than rendering each one.** See §8 — the wire deliberately carries every delta, and batching is a rendering decision made in `use-briefing.ts`.
 

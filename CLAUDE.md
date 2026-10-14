@@ -177,6 +177,18 @@ fit the run's remaining time — which is why the retry adds nothing to the wors
 call, and others read the header, the read timeout and the attempt count off each node's outgoing
 request.
 
+**A spent Gemini day closes the guard until Pacific midnight.** Gemini's daily quota can run out
+before `BRIEFING_DAILY_CAP` does. A 429 is a spent day only when its `QuotaFailure` names a
+`quotaId` containing `PerDay` (`agent/quota.py`); a per-minute 429, or one naming no quota, keeps
+the old behaviour, because latching on it would lock everyone out until midnight for a wait of
+seconds. On a spent day the route calls `close_until(resets_at)`, logs outcome `quota_exhausted`,
+and ends the stream on an `error` event carrying the refusal's own `daily_cap` body, so the page
+shows the daily-cap notice. The guard then refuses at the daily cap's place in the order until the
+reset: midnight in America/Los_Angeles, Google's, a constant in `agent/quota.py` — never the
+guard's UTC day, which would hold a trip between 00:00 and 07:00 UTC for ~24h and reopen at UTC
+midnight onto a quota still spent. A spent day after prose is truncation as ever (ADR-0002) and
+closes nothing; the next run's planner finds it and closes the guard.
+
 **The graph is not a flat pipeline.** It has four nodes, but `resolver` sits behind a
 conditional edge: when `state["current_step"] == "error"` it routes straight to `END`, skipping
 planner, tools, and synthesizer. Anything assuming the synthesizer always runs is wrong.
@@ -211,8 +223,13 @@ tools' existing return shapes), and `circuit_winners.py` (the backend's one read
 continue on partial data — preserve this or the pipeline loses its degradation behaviour.
 
 **The planner and the synthesizer degrade differently, on purpose.** `planner_node` catches
-*any* LLM failure — a free-tier 429 above all — and falls back to `DEFAULT_TOOLS`, because the
-planner only chooses which tools to run and the pipeline works without it. The planner's two
+every LLM failure but one — a per-minute 429 above all — and falls back to `DEFAULT_TOOLS`, because
+the planner only chooses which tools to run and the pipeline works without it. The one is a spent
+Gemini day, which raises `DailyQuotaExhaustedError`: the synthesizer calls the same model on the
+same project and cannot succeed, so a default plan would only spend OpenF1 requests and a Tavily
+credit on a briefing nobody can write. langchain wraps the planner's `ClientError` in its own
+`ChatGoogleGenerativeAIError` (the stream raises it bare), which is why `daily_quota_error` walks
+the cause chain. The planner's two
 failure paths log differently on purpose ("LLM call failed" vs "failed to parse response") —
 one means the model was never reached, the other that it returned something unusable. It asks
 for `PLANNER_THINKING_LEVEL` (`low`): gemini-3.6-flash thinks before its first byte, that wait
@@ -221,7 +238,8 @@ picking names off a list needs no more. The synthesizer keeps the default thinki
 
 `synthesizer_node` degrades only once it has prose: a stream that dies after at least one chunk
 returns the partial briefing with `briefing_truncated: True` and `current_step: "complete"`,
-while a failure before the first chunk still raises. That includes a 503 the retry above cannot
+while a failure before the first chunk still raises — a spent day as `DailyQuotaExhaustedError`,
+everything else as itself. That includes a 503 the retry above cannot
 take — a second one, or one with under 32s of the run left — and every other failure: a 429, a
 500 and a ReadTimeout are never retried. A 503 after the first chunk is truncation, not a retry,
 because a second stream would write the briefing again behind the prose already on screen. That
