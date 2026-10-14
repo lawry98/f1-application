@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { Archive } from 'lucide-react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { BlurFade } from '@/components/ui/blur-fade';
@@ -10,6 +11,8 @@ import {
   useRevealSlot,
   type RevealSlot,
 } from '@/components/briefing/reveal-ordinal';
+import { formatCapturedDate } from '@/lib/briefing-examples';
+import { cn } from '@/lib/utils';
 
 /**
  * The slice of react-markdown's `node` prop this file reads.
@@ -221,9 +224,22 @@ interface BriefingCardProps {
    * on `/briefing` — gets the every-block-reveals behaviour with no wiring at all.
    */
   loading?: boolean;
+  /**
+   * Set when the prose is a saved example rather than this visitor's live run. The card then
+   * carries a permanent label — no close control, by design — and a dashed border, so it can
+   * never be mistaken for a live result, even in a screenshot that crops the label away.
+   */
+  savedExample?: { capturedAt: string };
 }
 
-export function BriefingCard({ race, briefing, truncated, loading = false }: BriefingCardProps) {
+export function BriefingCard({
+  race,
+  briefing,
+  truncated,
+  loading = false,
+  savedExample,
+}: BriefingCardProps) {
+  const labelId = React.useId();
   // Recomputed per paint, which is one `trimEnd()` over the accumulated string every 80 ms —
   // linear, and nothing next to the markdown parse it sits beside.
   const sourceEnd = briefing.trimEnd().length;
@@ -234,7 +250,31 @@ export function BriefingCard({ race, briefing, truncated, loading = false }: Bri
 
   return (
     <BlurFade delay={0.1} inView>
-      <Card className="border-zinc-800 bg-zinc-900 shadow-xl">
+      <Card
+        className={cn(
+          'bg-zinc-900 shadow-xl',
+          savedExample ? 'overflow-hidden border-dashed border-zinc-600' : 'border-zinc-800',
+        )}
+        {...(savedExample ? { role: 'article', 'aria-labelledby': labelId } : {})}
+      >
+        {savedExample && (
+          /*
+           * An opaque `bg-zinc-800` strip, so its text is judged against that one colour and not
+           * against the card or the page: `zinc-200` on `zinc-800` is 11.7:1 at 13px. It names
+           * the card for assistive technology too (`aria-labelledby` above).
+           */
+          <div
+            id={labelId}
+            data-saved-example-label
+            className="flex items-center gap-2 border-b border-dashed border-zinc-600 bg-zinc-800 px-6 py-2.5 text-[13px] font-medium text-zinc-200"
+          >
+            <Archive className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <span>
+              Saved example · captured {formatCapturedDate(savedExample.capturedAt)} · not a live
+              briefing
+            </span>
+          </div>
+        )}
         <CardHeader className="border-b border-zinc-800">
           <CardTitle className="text-2xl font-bold text-ink">
             {/*

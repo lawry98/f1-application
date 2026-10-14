@@ -129,13 +129,24 @@ test('the tool trace toggle paints an ink ring on every side and corner of its p
 // (app/candy/page.tsx), so `tabThroughPage` reaches zero controls there — it's still covered
 // by the invisible-text and axe specs.
 // Routes are listed by hand, not discovered — a new route joins the sweep only when it is added here.
-for (const route of ['/', '/teams', '/tyres', '/circuits', '/circuits/monza', '/credits', '/showcase', '/teardown']) {
+for (const route of [
+  '/',
+  '/teams',
+  '/tyres',
+  '/circuits',
+  '/circuits/monza',
+  '/credits',
+  '/showcase',
+  '/teardown',
+  '/briefing?example=2026-06-monaco-grand-prix',
+]) {
   test(`no focusable control on ${route} paints Tailwind's default blue ring`, async ({ page }) => {
     if (route === '/showcase') await watchThreeScenes(page);
     await page.goto(route);
     await waitForMain(page);
     if (route === '/circuits') await expect(page.getByRole('list', { name: /calendar$/ })).toBeVisible();
     if (route === '/circuits/monza') await expect(page.getByRole('table')).toBeVisible();
+    if (route.includes('?example=')) await expect(page.getByText(/^Saved example · /)).toBeVisible();
     // `/showcase`'s `<main>` is in the page shell, so it is up while the scene's chunk still loads.
     if (route === '/showcase') await expect(page.getByRole('heading', { level: 1, name: /Car Showcase/ })).toBeVisible();
     // Under `reduce` the scene is already idle (the sweep measured the same with the loop stopped,
