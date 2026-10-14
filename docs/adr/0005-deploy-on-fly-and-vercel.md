@@ -17,7 +17,7 @@ backend deploy. Preview deploys are off for the same reason, since a preview's o
 
 ## One machine, one worker
 
-The cost guard (`api/guard.py`) keeps the per-IP hours, the UTC-day count and the concurrency
+The cost guard (`api/guard.py`) keeps the per-IP hours, the day's count and the concurrency
 slots in process memory. A second worker or a second machine would each allow the full limits,
 and the two would never agree. So there is exactly one of each:
 
@@ -33,6 +33,16 @@ at 122 MB and peaked at 155 MB running two briefings' tool fan-outs at once agai
 OpenF1 and FastF1, plus a standings view and a circuit-winners call, with Gemini unreachable and
 no swap touched. That was arm64 and Fly runs amd64, so the first real briefing re-reads the peak
 on the machine.
+
+## The guard's day is Gemini's day
+
+Google's rate-limit page says the free tier's requests-per-day quota resets at midnight Pacific
+(ai.google.dev/gemini-api/docs/rate-limits, checked 2026-10-13). So `fly.toml` sets
+`BRIEFING_DAY_TZ=America/Los_Angeles`, and the daily cap counts Pacific days. On the default UTC
+days, one Gemini day would span the end of one guard day and the start of the next, which turn
+over at 4pm or 5pm Pacific, and up to twice the cap could land in it. A Pacific day is 23 hours
+long when the clocks go forward and 25 when they go back; a `daily_cap` refusal's
+`retry_after_seconds` runs to the real next midnight either way.
 
 ## The visitor's address comes from `Fly-Client-IP`
 
@@ -82,13 +92,16 @@ for CI, which is safe only while `main` changes through pull requests.
   The reset it saves is harmless under the free Gemini tier.
 - **A separate Gemini key or project for production** was left out of the first deploy. The site
   shares local development's free-tier key. Google's daily quota is the hard stop, so nothing can
-  bill, and `BRIEFING_DAILY_CAP=8` at two calls a briefing keeps the site to 16 of the roughly 20
-  calls a day. Local work gets what is left.
+  bill. `BRIEFING_DAILY_CAP=8` caps briefings, not calls: at the usual two calls a briefing that is
+  16 of the roughly 20 a day, and local work gets what is left, but a briefing can take four (the
+  planner's two attempts, the synthesizer's one 503 retry), so the worst case is 32, and the
+  quota, not the cap, is what stops it.
 
 ## What we accepted
 
 - **A restart resets the guard.** Every deploy restarts the process, and every merge to `main`
-  deploys, frontend-only ones included, so the day's count and every IP's hour start again.
+  deploys, frontend-only ones included, so the day's count and every IP's hour start again. A
+  deploy part-way through a Pacific day admits another full cap into the same Gemini day.
   Google's quota is still the hard stop.
 - **A deploy cuts open streams.** Nothing drains them; a cut briefing lands in the page's
   "connection dropped" state, with Try again.

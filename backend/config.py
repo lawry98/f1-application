@@ -3,7 +3,9 @@
 import logging
 import os
 import re
+from datetime import UTC, tzinfo
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -160,6 +162,28 @@ BRIEFING_PER_IP_PER_HOUR: int = _limit_from_env("BRIEFING_PER_IP_PER_HOUR", 5, m
 BRIEFING_DAILY_CAP: int = _limit_from_env("BRIEFING_DAILY_CAP", 100, minimum=0)
 BRIEFING_MAX_CONCURRENT: int = _limit_from_env("BRIEFING_MAX_CONCURRENT", 2, minimum=1)
 BRIEFING_DEADLINE_SECONDS: int = _limit_from_env("BRIEFING_DEADLINE_SECONDS", 90, minimum=1)
+
+
+def _timezone_from_env(name: str) -> tzinfo:
+    """Read an IANA time zone name: unset or empty is UTC; one that does not resolve warns and is
+    UTC."""
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return UTC
+    try:
+        return ZoneInfo(raw)
+    # Not found; a directory of zones ("Pacific"), which is an OSError; a key that is not a
+    # relative path into the database, a ValueError.
+    except (ZoneInfoNotFoundError, OSError, ValueError):
+        logger.warning("Invalid %s=%r — not an IANA time zone, falling back to UTC", name, raw)
+        return UTC
+
+
+# The zone whose midnight starts the daily cap's day. Gemini's free-tier daily quota resets at
+# midnight Pacific ("Requests per day (RPD) quotas reset at midnight Pacific time",
+# ai.google.dev/gemini-api/docs/rate-limits, checked 2026-10-13), so fly.toml sets
+# America/Los_Angeles. UTC by default, which is what the cap counted before this was configurable.
+BRIEFING_DAY_TZ: tzinfo = _timezone_from_env("BRIEFING_DAY_TZ")
 
 # ── Circuit geometry ─────────────────────────────────────────────────────────
 

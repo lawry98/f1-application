@@ -306,13 +306,14 @@ dominates the wall clock.
 
 ### Cost guard and deploying
 
-Every briefing is two Gemini calls, so the briefing stream sits behind an admission guard
+Every briefing is two to four Gemini calls (the planner's two attempts, the synthesizer's one
+503 retry), so the briefing stream sits behind an admission guard
 (`backend/api/guard.py`). Before any work starts it checks, in order:
 
 | Check | Default | Refusal |
 |---|---|---|
 | Per client IP, rolling hour | `BRIEFING_PER_IP_PER_HOUR=5` | `429 {"code": "rate_limited", ...}` |
-| Global, per UTC day (`0` = no cap) | `BRIEFING_DAILY_CAP=100` | `503 {"code": "daily_cap", ...}` |
+| Global, per day in `BRIEFING_DAY_TZ` (`0` = no cap) | `BRIEFING_DAILY_CAP=100` | `503 {"code": "daily_cap", ...}` |
 | Simultaneous generations (never queued) | `BRIEFING_MAX_CONCURRENT=2` | `503 {"code": "busy", ...}` |
 
 Each refusal carries `retry_after_seconds`, the `limit` that was hit and a `Retry-After` header;
@@ -328,6 +329,10 @@ Deploying it, on any host (this repo's own Fly and Vercel setup is under
 
 - **Run exactly one worker.** The limits live in the process's memory, so two workers would each
   allow the full limits, and a restart resets the day's count.
+- **Set `BRIEFING_DAY_TZ` to the IANA zone your LLM quota resets in.** The daily cap's day starts
+  at midnight there, UTC by default. Gemini's free tier resets at midnight Pacific, so `fly.toml`
+  sets `America/Los_Angeles`; counted on UTC days, one quota day would span two of the guard's,
+  and up to twice the cap could land in it.
 - **Behind a proxy, set `CLIENT_IP_HEADER` to the header it writes the visitor's address into.**
   The guard keys on `request.client.host` and never parses `X-Forwarded-For` itself, because
   anyone can send one. `CLIENT_IP_HEADER=Fly-Client-IP`, which `fly.toml` sets, makes
@@ -383,7 +388,7 @@ guard's limits live in that process;
 |---|---|---|
 | API | Fly.io `shared-cpu-1x`, 512 MB, `iad`, always on | $3.69 per 30 days, plus $0.02/GB outbound. No free tier; Fly needs a card on file |
 | Frontend | Vercel Hobby | Free, for non-commercial use only |
-| Gemini | Free tier, the same key as local development | Free. `BRIEFING_DAILY_CAP=8` keeps the site to 16 of the ~20 daily calls, and local work gets the rest |
+| Gemini | Free tier, the same key as local development | Free. `BRIEFING_DAILY_CAP=8` per Pacific day, the day the quota counts: 16 of the ~20 daily calls at two a briefing, leaving local work the rest, and up to 32 if every briefing takes both retries. Google's quota is the hard stop |
 
 ### Set it up
 
@@ -402,8 +407,8 @@ make itself. The keys go from a `backend/.env` straight into `fly secrets import
 straight into `gh secret set`; neither is shown or saved. It keeps only the app name and the
 Vercel origin, in the gitignored `.env.deploy.local`, so a re-run picks up where the last one
 stopped. If either name was taken, it rewrites `fly.toml` and holds the token back until that
-change is merged. The last stage is optional: one real briefing, 2 Gemini calls, to check that the
-stream arrives progressively and how much memory the machine used.
+change is merged. The last stage is optional: one real briefing, 2 Gemini calls (4 at most), to
+check that the stream arrives progressively and how much memory the machine used.
 
 Until the wizard has set the `FLY_API_TOKEN` repository secret, every "Deploy backend" run ends
 green with a "Deploy skipped" notice and deploys nothing.

@@ -30,6 +30,7 @@ from api.guard import AdmissionGuard, Lease, Rejection
 from api.models import BriefingRequest
 from config import (
     BRIEFING_DAILY_CAP,
+    BRIEFING_DAY_TZ,
     BRIEFING_DEADLINE_SECONDS,
     BRIEFING_MAX_CONCURRENT,
     BRIEFING_PER_IP_PER_HOUR,
@@ -60,6 +61,7 @@ def new_briefing_guard() -> AdmissionGuard:
     return AdmissionGuard(
         per_ip_per_hour=BRIEFING_PER_IP_PER_HOUR,
         daily_cap=BRIEFING_DAILY_CAP,
+        day_tz=BRIEFING_DAY_TZ,
         max_concurrent=BRIEFING_MAX_CONCURRENT,
         lease_seconds=BRIEFING_DEADLINE_SECONDS + LEASE_MARGIN_SECONDS,
     )

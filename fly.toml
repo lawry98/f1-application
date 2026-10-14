@@ -21,7 +21,10 @@ swap_size_mb = 512
 [env]
   CLIENT_IP_HEADER = "Fly-Client-IP"
   CORS_ORIGINS = "https://f1-race-briefing.vercel.app"
-  BRIEFING_DAILY_CAP = "8"        # 8 briefings x 2 Gemini calls inside the free tier's ~20/day
+  # The cap counts Pacific days because Gemini's free-tier daily quota resets at midnight Pacific.
+  # On UTC days one Gemini day spans two guard days, and twice the cap could land in it.
+  BRIEFING_DAY_TZ = "America/Los_Angeles"
+  BRIEFING_DAILY_CAP = "8"        # 16 of the free tier's ~20 calls/day at 2 each, 32 at 4: ADR-0005
   BRIEFING_PER_IP_PER_HOUR = "3"
 
 [http_service]

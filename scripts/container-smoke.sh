@@ -27,6 +27,7 @@ trap 'docker rm -f "$name" >/dev/null 2>&1 || true' EXIT
 docker run -d --name "$name" -p "127.0.0.1:${port}:8080" \
   -e GOOGLE_API_KEY=ci-dummy \
   -e CLIENT_IP_HEADER=Fly-Client-IP \
+  -e BRIEFING_DAY_TZ=America/Los_Angeles \
   -e FORWARDED_ALLOW_IPS='*' \
   --add-host generativelanguage.googleapis.com:127.0.0.1 \
   "$image" >/dev/null || fail "docker run failed"
@@ -47,13 +48,15 @@ docker exec "$name" python -c '
 import pathlib, config
 for path in (config.CIRCUIT_INDEX_PATH, config.CIRCUIT_COORDINATES_PATH):
     assert path.is_file(), f"missing {path}"
+# fly.toml's zone, resolved, not config's warn-and-fall-back-to-UTC: the image has a tz database.
+assert str(config.BRIEFING_DAY_TZ) == "America/Los_Angeles", config.BRIEFING_DAY_TZ
 for path in ("/app/backend/.venv", "/app/backend/tests", "/app/backend/scripts"):
     assert not pathlib.Path(path).exists(), f"should not ship: {path}"
 # Any .env* at any depth: an editor backup (.env~) or a .env.local holds the same keys as .env.
 env_files = sorted(str(path) for path in pathlib.Path("/app").rglob(".env*"))
 assert not env_files, f"should not ship: {env_files}"
 ' || fail "the image's files are wrong"
-echo "ok: circuit data files exist; /app has no .env*, /app/backend no .venv, tests or scripts"
+echo "ok: circuit data files exist; BRIEFING_DAY_TZ resolves; /app has no .env*, /app/backend no .venv, tests or scripts"
 
 # Numeric and non-zero, so an exec that fails or prints nothing cannot pass as non-root.
 uid="$(docker exec "$name" id -u)" || fail "could not run id -u in the container"

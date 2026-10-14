@@ -64,7 +64,8 @@ part worth knowing:
 | `EXECUTOR_MAX_WORKERS` | Defaults to `4` |
 | `STANDINGS_TTL_SECONDS` | Defaults to `300`; `0` disables current-season caching; invalid/negative warns and uses `300` |
 | `BRIEFING_PER_IP_PER_HOUR` | Defaults to `5`; invalid, negative or `0` warns and uses `5` |
-| `BRIEFING_DAILY_CAP` | Defaults to `100` per UTC day; `0` means no cap; invalid/negative warns and uses `100` |
+| `BRIEFING_DAILY_CAP` | Defaults to `100` per day in `BRIEFING_DAY_TZ`; `0` means no cap; invalid/negative warns and uses `100` |
+| `BRIEFING_DAY_TZ` | Defaults to UTC; `fly.toml` sets `America/Los_Angeles`. A name that does not resolve warns and uses UTC |
 | `BRIEFING_MAX_CONCURRENT` | Defaults to `2`; invalid, negative or `0` warns and uses `2` |
 | `BRIEFING_DEADLINE_SECONDS` | Defaults to `90`; invalid, negative or `0` warns and uses `90` |
 | `CORS_ORIGINS` | Comma-separated; defaults to `http://localhost:3000,http://localhost:3001` |
@@ -145,8 +146,13 @@ breakpoint-scoped body size. Neither `pnpm test` nor a type check can see this; 
 CSS, and the class string reads correctly.
 
 **The cost guard's limits are per process — run exactly one worker.** `api/guard.py` keeps the
-per-IP hour, the UTC-day count and the concurrency slots in memory, so a second uvicorn worker
-doubles every limit and a restart resets the day. It keys on `request.client.host` and never
+per-IP hour, the day's count and the concurrency slots in memory, so a second uvicorn worker
+doubles every limit and a restart resets the day. The day runs midnight to midnight in
+`BRIEFING_DAY_TZ`, Pacific in production, because Gemini's free-tier daily quota resets at
+midnight Pacific: on UTC days one Gemini day spans two guard days, and up to twice the cap can
+land in it. The guard's default clock is `_wall_clock()`, a `time.time()` lookup per call — a
+`clock=time.time` default binds the real function at import, and `freeze_time` then moves nothing
+in the guard `new_briefing_guard()` builds. It keys on `request.client.host` and never
 parses `X-Forwarded-For` (anyone can send one): behind Fly, `CLIENT_IP_HEADER=Fly-Client-IP` makes
 `client.host` the visitor, and without it every visitor shares the proxy's one allowance. Why
 that is not uvicorn's `--proxy-headers` is under [Deploying](#deploying). Admission runs *before*

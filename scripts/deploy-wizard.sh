@@ -1247,7 +1247,7 @@ daily_cap=$(py_fly_toml get fly.toml BRIEFING_DAILY_CAP || echo "?")
 per_ip=$(py_fly_toml get fly.toml BRIEFING_PER_IP_PER_HOUR || echo "?")
 say "V3 (the stream is not buffered) and V5 (memory on the real machine) need one real briefing"
 say "against $API. It also uses 1 of the site's $daily_cap briefings today, and 1 of your $per_ip this hour."
-if confirm "Run it? It costs 2 of the ~20 free Gemini calls today"; then
+if confirm "Run it? It costs 2 (at most 4) of the ~20 free Gemini calls today"; then
   run_briefing_checks
 else
   SKIPPED+=("V3 and V5: one real briefing (stage 11); re-run the wizard when the Gemini calls can be spared")
