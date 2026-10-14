@@ -6,6 +6,9 @@ reads env vars once at import, which happened long before any test ran.
 """
 
 import logging
+import tomllib
+from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -175,6 +178,53 @@ def test_an_invalid_briefing_limit_falls_back_to_the_default(
         assert getattr(reload_config(**{name: raw}), name) == default
 
     assert name in caplog.text
+
+
+def test_the_briefing_day_is_a_utc_day_by_default(reload_config, monkeypatch):
+    """What the daily cap counted before the zone was configurable, so nothing set, nothing moves."""
+    monkeypatch.delenv("BRIEFING_DAY_TZ", raising=False)
+
+    assert str(reload_config().BRIEFING_DAY_TZ) == "UTC"
+
+
+def test_the_briefing_day_zone_reads_the_environment(reload_config):
+    zone = reload_config(BRIEFING_DAY_TZ=" America/Los_Angeles ").BRIEFING_DAY_TZ
+
+    assert zone == ZoneInfo("America/Los_Angeles")
+
+
+def test_an_empty_briefing_day_zone_is_utc_quietly(reload_config, caplog):
+    with caplog.at_level(logging.WARNING, logger="config"):
+        assert str(reload_config(BRIEFING_DAY_TZ="").BRIEFING_DAY_TZ) == "UTC"
+
+    assert "BRIEFING_DAY_TZ" not in caplog.text
+
+
+@pytest.mark.parametrize(
+    "raw",
+    ["PST", "Pacific", "../etc/passwd"],
+    ids=["unknown-key", "a-directory-not-a-zone", "not-a-relative-key"],
+)
+def test_a_briefing_day_zone_that_does_not_resolve_warns_and_is_utc(reload_config, caplog, raw):
+    """Each id is one of the three ways ZoneInfo refuses a key: not found, a directory of zones,
+    and a path outside the zone database."""
+    with caplog.at_level(logging.WARNING, logger="config"):
+        assert str(reload_config(BRIEFING_DAY_TZ=raw).BRIEFING_DAY_TZ) == "UTC"
+
+    assert "BRIEFING_DAY_TZ" in caplog.text
+
+
+def test_fly_toml_counts_the_briefing_day_in_geminis_reset_zone(reload_config, caplog):
+    """Gemini's free-tier daily quota resets at midnight Pacific. On UTC days one Gemini day
+    spans two of the guard's, and up to twice the cap could land in it."""
+    fly_toml = Path(config.__file__).resolve().parent.parent / "fly.toml"
+    raw = tomllib.loads(fly_toml.read_text())["env"]["BRIEFING_DAY_TZ"]
+
+    with caplog.at_level(logging.WARNING, logger="config"):
+        zone = reload_config(BRIEFING_DAY_TZ=raw).BRIEFING_DAY_TZ
+
+    assert zone == ZoneInfo("America/Los_Angeles")
+    assert "BRIEFING_DAY_TZ" not in caplog.text
 
 
 def test_the_worst_case_llm_budget_fits_inside_the_default_deadline():
