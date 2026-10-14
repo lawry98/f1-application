@@ -25,9 +25,18 @@ from agent.graph import (
     tool_executor_node,
 )
 from agent.prompts import DEFAULT_TOOLS
+from agent.quota import DailyQuotaExhaustedError
 from agent.state import AgentState
 from config import BRIEFING_DEADLINE_SECONDS, LLM_TIMEOUT_SECONDS, SYNTHESIZER_TIMEOUT_SECONDS
-from tests.factories import make_llm, make_race_info, make_state, make_tool
+from tests.factories import (
+    GEMINI_DAILY_QUOTA,
+    GEMINI_PER_MINUTE_QUOTA,
+    gemini_quota_body,
+    make_llm,
+    make_race_info,
+    make_state,
+    make_tool,
+)
 
 AS_OF = "2025-05-01T00:00:00+00:00"
 
@@ -876,8 +885,8 @@ def test_synthesizer_returns_partial_prose_when_the_stream_dies_mid_iteration(fa
     """Both LLM nodes degrade, but on different terms — and the difference is deliberate.
 
     ``test_planner_degrades_to_default_tools_when_the_llm_call_fails`` pins the node one
-    step earlier degrading *unconditionally*, because ``DEFAULT_TOOLS`` is always there to
-    fall back to. The synthesizer has no fallback prose, so it can only degrade once the
+    step earlier degrading on every failure but a spent Gemini day, because ``DEFAULT_TOOLS``
+    is always there to fall back to. The synthesizer has no fallback prose, so it can only degrade once the
     stream has produced some. See ADR-0002.
     """
     fake_llm(chunks=["## Monaco\n\n", "Tight, slow, ", "unforgiv"], stream_raises_after=2)
@@ -960,11 +969,12 @@ _GEMINI_REPLY = {
 }
 
 
-def _serve_gemini(monkeypatch, *failures: int | type[Exception]) -> list[httpx.Request]:
+def _serve_gemini(monkeypatch, *failures: int | dict | type[Exception]) -> list[httpx.Request]:
     """Answer the real client's requests in process, and keep each one as it left the SDK.
 
-    The first ``len(failures)`` requests fail in order — a status gets Gemini's error body, an
-    httpx exception class is raised as the transport would — and every later one succeeds: the
+    The first ``len(failures)`` requests fail in order — a status gets Gemini's error body, a
+    body is served at its own code, an httpx exception class is raised as the transport would —
+    and every later one succeeds: the
     planner's ``generateContent`` gets one JSON reply and the synthesizer's
     ``streamGenerateContent`` the same reply as one server-sent event. Driving the nodes
     rather than the client is the point: it pins what each call site passes, which the
@@ -979,6 +989,8 @@ def _serve_gemini(monkeypatch, *failures: int | type[Exception]) -> list[httpx.R
             failure = failures[len(sent) - 1]
             if isinstance(failure, int):
                 return httpx.Response(failure, json=_gemini_error(failure))
+            if isinstance(failure, dict):
+                return httpx.Response(failure["error"]["code"], json=failure)
             raise failure("no reply", request=request)
         if request.url.path.endswith(":streamGenerateContent"):
             return httpx.Response(200, text=f"data: {json.dumps(_GEMINI_REPLY)}\n\n")
@@ -1086,6 +1098,71 @@ def test_the_synthesizer_retries_nothing_but_a_503(monkeypatch, failure, raised)
         _synthesize()
 
     assert len(sent) == 1
+
+
+SPENT_DAY = gemini_quota_body(GEMINI_DAILY_QUOTA)
+# 2026-09-30 10:00 UTC is 03:00 in Los Angeles: Gemini's day comes back at 07:00 UTC tomorrow.
+SPENT_AT = "2026-09-30 10:00:00"
+RESETS_AT = 1_790_838_000.0  # 2026-10-01 07:00:00 UTC
+
+
+def test_a_spent_day_stops_the_planner_instead_of_degrading_it(monkeypatch):
+    """The synthesizer calls the same model on the same project, so a plan made from the
+    defaults would only gather data for a call that cannot succeed. Through the real client,
+    because langchain wraps the planner's ClientError and a check for the bare one misses it."""
+    sent = _serve_gemini(monkeypatch, SPENT_DAY, SPENT_DAY)
+
+    with freeze_time(SPENT_AT), pytest.raises(DailyQuotaExhaustedError) as raised:
+        _plan()
+
+    assert raised.value.resets_at == RESETS_AT
+    assert sent, "the planner never asked Gemini"
+
+
+def test_a_per_minute_429_still_degrades_the_planner(monkeypatch):
+    """Over within a minute: the run goes on, as it does for every other planner failure."""
+    _serve_gemini(monkeypatch, *[gemini_quota_body(GEMINI_PER_MINUTE_QUOTA)] * 2)
+
+    assert _plan()["tasks"] == DEFAULT_TOOLS
+
+
+def test_a_spent_day_before_the_first_chunk_ends_the_synthesis_as_a_spent_day(monkeypatch):
+    sent = _serve_gemini(monkeypatch, SPENT_DAY, SPENT_DAY)
+
+    with freeze_time(SPENT_AT), pytest.raises(DailyQuotaExhaustedError) as raised:
+        _synthesize()
+
+    assert raised.value.resets_at == RESETS_AT
+    assert len(sent) == 1
+
+
+def test_a_spent_day_after_the_first_chunk_is_truncation_not_a_spent_day(fake_llm):
+    """Prose is on screen, so ADR-0002 serves it truncated whatever the failure. The guard is
+    left open: the next run's planner meets the spent day and closes it."""
+    fake_llm(
+        chunks=["Lights ", "out"],
+        stream_raises_after=1,
+        stream_error=genai_errors.ClientError(429, SPENT_DAY),
+    )
+
+    _, update = run_synthesizer_streamed()
+
+    assert update["briefing"] == "Lights "
+    assert update["briefing_truncated"] is True
+
+
+def test_a_spent_day_at_the_planner_ends_the_run_before_any_tool(monkeypatch):
+    """Through the compiled graph: the error leaves it as itself, and nothing is gathered for
+    a briefing that cannot be written — no OpenF1 requests, no paid news search."""
+    tool = make_tool("get_track_info")
+    monkeypatch.setattr(graph_module, "all_tools", [tool])
+    monkeypatch.setattr(graph_module, "resolve_next_race", lambda query: make_race_info())
+    _serve_gemini(monkeypatch, SPENT_DAY, SPENT_DAY)
+
+    with pytest.raises(DailyQuotaExhaustedError):
+        graph_module.agent.invoke(make_state(race_query="monaco"))
+
+    assert tool.calls == []
 
 
 @pytest.mark.parametrize(

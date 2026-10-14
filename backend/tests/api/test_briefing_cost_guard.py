@@ -17,8 +17,10 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from starlette.requests import Request
 
+from agent.quota import DailyQuotaExhaustedError
 from api import routes as routes_module
 from api.cors import add_cors
+from api.errors import BRIEFING_DAILY_CAP_ERROR
 from api.guard import AdmissionGuard
 from api.models import BriefingRequest
 from tests.api.test_routes import FakeAgent, parse_sse, successful_deltas, successful_steps
@@ -55,7 +57,7 @@ class ParkedAgent:
 def install_guard(monkeypatch):
     """Replace the conftest's default guard with one at chosen limits, on a hand-driven clock."""
 
-    def _install(**limits: Any) -> AdmissionGuard:
+    def _install(clock: FakeClock | None = None, **limits: Any) -> AdmissionGuard:
         settings = {
             "per_ip_per_hour": 5,
             "daily_cap": 100,
@@ -63,7 +65,7 @@ def install_guard(monkeypatch):
             "lease_seconds": 150,
         }
         settings.update(limits)
-        guard = AdmissionGuard(clock=FakeClock(T0), **settings)
+        guard = AdmissionGuard(clock=clock or FakeClock(T0), **settings)
         monkeypatch.setattr(routes_module, "briefing_guard", guard)
         return guard
 
@@ -190,6 +192,96 @@ def test_a_rejection_is_readable_cross_origin(install_guard, install_agent):
     assert response.status_code == 429
     assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
     assert "retry-after" in response.headers["access-control-expose-headers"].lower()
+
+
+# ── Gemini's own daily quota ─────────────────────────────────────────────────
+
+# Gemini's next reset seen from T0, 07:00 UTC tomorrow: seven hours past the guard's own midnight.
+SECONDS_TO_GEMINI_RESET = 21 * 3600
+
+
+def spent_day() -> DailyQuotaExhaustedError:
+    return DailyQuotaExhaustedError(resets_at=T0 + SECONDS_TO_GEMINI_RESET)
+
+
+def planner_finds_the_day_spent() -> FakeAgent:
+    """The common case: the planner is the run's first Gemini call, so it meets a spent day."""
+    return FakeAgent(steps=successful_steps()[:1], raises=spent_day(), raises_after=1)
+
+
+def test_a_spent_gemini_day_ends_the_stream_as_the_daily_cap_with_geminis_reset(
+    client, install_guard, install_agent
+):
+    """The guard's cap had room, but Gemini's quota ran out first. The reader is told what the
+    guard's own refusal would tell them, timed to when Gemini's day comes back."""
+    install_guard(daily_cap=8)
+    install_agent(planner_finds_the_day_spent())
+
+    events = parse_sse(stream(client).text)
+
+    assert events[-1] == (
+        "error",
+        {
+            "message": BRIEFING_DAILY_CAP_ERROR,
+            "code": "daily_cap",
+            "retry_after_seconds": SECONDS_TO_GEMINI_RESET,
+            "limit": 8,
+        },
+    )
+
+
+def test_after_a_spent_gemini_day_the_next_request_is_refused_before_the_agent(
+    client, install_guard, install_agent
+):
+    install_guard(daily_cap=8)
+    agent = install_agent(planner_finds_the_day_spent())
+    stream(client)
+
+    response = stream(client)
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "code": "daily_cap",
+        "retry_after_seconds": SECONDS_TO_GEMINI_RESET,
+        "limit": 8,
+    }
+    assert len(agent.states) == 1
+
+
+def test_briefings_are_admitted_again_once_geminis_day_comes_back(
+    client, install_guard, install_agent
+):
+    clock = FakeClock(T0)
+    install_guard(clock, daily_cap=8)
+    install_agent(planner_finds_the_day_spent())
+    stream(client)
+    install_agent(steps=successful_steps(), deltas=successful_deltas())
+
+    clock.advance(SECONDS_TO_GEMINI_RESET)
+
+    assert parse_sse(stream(client).text)[-1][0] == "complete"
+
+
+def test_a_spent_day_wins_over_a_passed_deadline(client, install_guard, install_agent, deadline):
+    """It is the one failure with a definite answer: a retry in a minute meets it again."""
+    install_guard()
+    deadline(0, grace=60)
+    install_agent(raises=spent_day())
+
+    events = parse_sse(stream(client).text)
+
+    assert events[-1][1]["code"] == "daily_cap"
+
+
+def test_a_spent_day_is_logged_as_its_own_outcome(client, install_guard, install_agent, caplog):
+    install_guard()
+    install_agent(planner_finds_the_day_spent())
+
+    with caplog.at_level(logging.INFO, logger="api.routes"):
+        stream(client)
+
+    assert "outcome=quota_exhausted " in finished_lines(caplog)[0]
+    assert "refusing briefings until" in caplog.text
 
 
 # ── The slot comes back, however the response ends ──────────────────────────
