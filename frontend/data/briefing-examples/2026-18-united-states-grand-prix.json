@@ -1,0 +1,1102 @@
+{
+  "schema": 1,
+  "id": "2026-18-united-states-grand-prix",
+  "query": "United States Grand Prix",
+  "captured_at": "2026-10-12T16:07:12+00:00",
+  "backend_commit": "eb34912",
+  "race_info": {
+    "name": "United States Grand Prix",
+    "year": 2026,
+    "round": 18,
+    "circuit_id": "united_states_grand_prix",
+    "track_id": "us-2012",
+    "circuit_name": "Circuit of the Americas",
+    "circuit_length_m": 5514,
+    "location": "Austin",
+    "country": "United States",
+    "date": "2026-10-25 00:00:00",
+    "is_upcoming": true,
+    "as_of": "2026-10-12T00:00:00+00:00",
+    "sessions": [
+      {
+        "name": "Practice 1",
+        "start": "2026-10-23T17:30:00+00:00"
+      },
+      {
+        "name": "Practice 2",
+        "start": "2026-10-23T21:00:00+00:00"
+      },
+      {
+        "name": "Practice 3",
+        "start": "2026-10-24T17:30:00+00:00"
+      },
+      {
+        "name": "Qualifying",
+        "start": "2026-10-24T21:00:00+00:00"
+      },
+      {
+        "name": "Race",
+        "start": "2026-10-25T20:00:00+00:00"
+      }
+    ]
+  },
+  "tool_plan": [
+    "get_track_info",
+    "get_recent_top_finishers",
+    "get_championship_standings",
+    "get_circuit_winners",
+    "search_f1_news",
+    "get_driver_form",
+    "get_recent_race_results"
+  ],
+  "tools": [
+    {
+      "tool": "get_track_info",
+      "success": true
+    },
+    {
+      "tool": "get_recent_top_finishers",
+      "success": true
+    },
+    {
+      "tool": "get_championship_standings",
+      "success": true
+    },
+    {
+      "tool": "get_circuit_winners",
+      "success": true
+    },
+    {
+      "tool": "search_f1_news",
+      "success": true
+    },
+    {
+      "tool": "get_driver_form",
+      "success": true
+    },
+    {
+      "tool": "get_recent_race_results",
+      "success": true
+    }
+  ],
+  "evidence": {
+    "track": {
+      "circuit": "Circuit of the Americas",
+      "length_km": 5.514,
+      "first_grand_prix": 2012,
+      "event_format": "conventional"
+    },
+    "season": {
+      "rounds": 23,
+      "remaining_grands_prix": 6,
+      "remaining_sprints": 0,
+      "this_weekend_sprint": false
+    },
+    "standings": {
+      "year": 2026,
+      "races_completed": 17,
+      "drivers": [
+        {
+          "position": 1,
+          "driver": "Kimi ANTONELLI",
+          "driver_code": "ANT",
+          "team": "Mercedes",
+          "points": 340.0
+        },
+        {
+          "position": 2,
+          "driver": "George RUSSELL",
+          "driver_code": "RUS",
+          "team": "Mercedes",
+          "points": 238.0
+        },
+        {
+          "position": 3,
+          "driver": "Lewis HAMILTON",
+          "driver_code": "HAM",
+          "team": "Ferrari",
+          "points": 229.0
+        },
+        {
+          "position": 4,
+          "driver": "Max VERSTAPPEN",
+          "driver_code": "VER",
+          "team": "Red Bull Racing",
+          "points": 221.0
+        },
+        {
+          "position": 5,
+          "driver": "Charles LECLERC",
+          "driver_code": "LEC",
+          "team": "Ferrari",
+          "points": 215.0
+        },
+        {
+          "position": 6,
+          "driver": "Lando NORRIS",
+          "driver_code": "NOR",
+          "team": "McLaren",
+          "points": 201.0
+        },
+        {
+          "position": 7,
+          "driver": "Oscar PIASTRI",
+          "driver_code": "PIA",
+          "team": "McLaren",
+          "points": 138.0
+        },
+        {
+          "position": 8,
+          "driver": "Isack HADJAR",
+          "driver_code": "HAD",
+          "team": "Red Bull Racing",
+          "points": 97.0
+        },
+        {
+          "position": 9,
+          "driver": "Liam LAWSON",
+          "driver_code": "LAW",
+          "team": "Racing Bulls",
+          "points": 75.0
+        },
+        {
+          "position": 10,
+          "driver": "Pierre GASLY",
+          "driver_code": "GAS",
+          "team": "Alpine",
+          "points": 41.0
+        },
+        {
+          "position": 11,
+          "driver": "Arvid LINDBLAD",
+          "driver_code": "LIN",
+          "team": "Racing Bulls",
+          "points": 38.0
+        },
+        {
+          "position": 12,
+          "driver": "Franco COLAPINTO",
+          "driver_code": "COL",
+          "team": "Alpine",
+          "points": 27.0
+        },
+        {
+          "position": 13,
+          "driver": "Oliver BEARMAN",
+          "driver_code": "BEA",
+          "team": "Haas F1 Team",
+          "points": 23.0
+        },
+        {
+          "position": 14,
+          "driver": "Nico HULKENBERG",
+          "driver_code": "HUL",
+          "team": "Audi",
+          "points": 13.0
+        },
+        {
+          "position": 15,
+          "driver": "Gabriel BORTOLETO",
+          "driver_code": "BOR",
+          "team": "Audi",
+          "points": 10.0
+        },
+        {
+          "position": 16,
+          "driver": "Esteban OCON",
+          "driver_code": "OCO",
+          "team": "Haas F1 Team",
+          "points": 7.0
+        },
+        {
+          "position": 17,
+          "driver": "Fernando ALONSO",
+          "driver_code": "ALO",
+          "team": "Aston Martin",
+          "points": 7.0
+        },
+        {
+          "position": 18,
+          "driver": "Carlos SAINZ",
+          "driver_code": "SAI",
+          "team": "Williams",
+          "points": 7.0
+        },
+        {
+          "position": 19,
+          "driver": "Alexander ALBON",
+          "driver_code": "ALB",
+          "team": "Williams",
+          "points": 5.0
+        },
+        {
+          "position": 20,
+          "driver": "Yuki TSUNODA",
+          "driver_code": "TSU",
+          "team": "Racing Bulls",
+          "points": 1.0
+        },
+        {
+          "position": 21,
+          "driver": "Lance STROLL",
+          "driver_code": "STR",
+          "team": "Aston Martin",
+          "points": 0.0
+        },
+        {
+          "position": 22,
+          "driver": "Valtteri BOTTAS",
+          "driver_code": "BOT",
+          "team": "Cadillac",
+          "points": 0.0
+        },
+        {
+          "position": 23,
+          "driver": "Sergio PEREZ",
+          "driver_code": "PER",
+          "team": "Cadillac",
+          "points": 0.0
+        }
+      ],
+      "constructors": [
+        {
+          "position": 1,
+          "team": "Mercedes",
+          "points": 578.0
+        },
+        {
+          "position": 2,
+          "team": "Ferrari",
+          "points": 444.0
+        },
+        {
+          "position": 3,
+          "team": "McLaren",
+          "points": 339.0
+        },
+        {
+          "position": 4,
+          "team": "Red Bull Racing",
+          "points": 332.0
+        },
+        {
+          "position": 5,
+          "team": "Racing Bulls",
+          "points": 100.0
+        },
+        {
+          "position": 6,
+          "team": "Alpine",
+          "points": 68.0
+        },
+        {
+          "position": 7,
+          "team": "Haas F1 Team",
+          "points": 30.0
+        },
+        {
+          "position": 8,
+          "team": "Audi",
+          "points": 23.0
+        },
+        {
+          "position": 9,
+          "team": "Williams",
+          "points": 12.0
+        },
+        {
+          "position": 10,
+          "team": "Aston Martin",
+          "points": 7.0
+        },
+        {
+          "position": 11,
+          "team": "Cadillac",
+          "points": 0.0
+        }
+      ]
+    },
+    "drivers": [
+      {
+        "code": "ANT",
+        "name": "Kimi Antonelli",
+        "surname": "Antonelli"
+      },
+      {
+        "code": "RUS",
+        "name": "George Russell",
+        "surname": "Russell"
+      },
+      {
+        "code": "HAM",
+        "name": "Lewis Hamilton",
+        "surname": "Hamilton"
+      },
+      {
+        "code": "VER",
+        "name": "Max Verstappen",
+        "surname": "Verstappen"
+      },
+      {
+        "code": "LEC",
+        "name": "Charles Leclerc",
+        "surname": "Leclerc"
+      },
+      {
+        "code": "NOR",
+        "name": "Lando Norris",
+        "surname": "Norris"
+      },
+      {
+        "code": "PIA",
+        "name": "Oscar Piastri",
+        "surname": "Piastri"
+      },
+      {
+        "code": "HAD",
+        "name": "Isack Hadjar",
+        "surname": "Hadjar"
+      },
+      {
+        "code": "LAW",
+        "name": "Liam Lawson",
+        "surname": "Lawson"
+      },
+      {
+        "code": "GAS",
+        "name": "Pierre Gasly",
+        "surname": "Gasly"
+      },
+      {
+        "code": "LIN",
+        "name": "Arvid Lindblad",
+        "surname": "Lindblad"
+      },
+      {
+        "code": "COL",
+        "name": "Franco Colapinto",
+        "surname": "Colapinto"
+      },
+      {
+        "code": "BEA",
+        "name": "Oliver Bearman",
+        "surname": "Bearman"
+      },
+      {
+        "code": "HUL",
+        "name": "Nico Hulkenberg",
+        "surname": "Hulkenberg"
+      },
+      {
+        "code": "BOR",
+        "name": "Gabriel Bortoleto",
+        "surname": "Bortoleto"
+      },
+      {
+        "code": "OCO",
+        "name": "Esteban Ocon",
+        "surname": "Ocon"
+      },
+      {
+        "code": "ALO",
+        "name": "Fernando Alonso",
+        "surname": "Alonso"
+      },
+      {
+        "code": "SAI",
+        "name": "Carlos Sainz",
+        "surname": "Sainz"
+      },
+      {
+        "code": "ALB",
+        "name": "Alexander Albon",
+        "surname": "Albon"
+      },
+      {
+        "code": "TSU",
+        "name": "Yuki Tsunoda",
+        "surname": "Tsunoda"
+      },
+      {
+        "code": "STR",
+        "name": "Lance Stroll",
+        "surname": "Stroll"
+      },
+      {
+        "code": "BOT",
+        "name": "Valtteri Bottas",
+        "surname": "Bottas"
+      },
+      {
+        "code": "PER",
+        "name": "Sergio Perez",
+        "surname": "Perez"
+      }
+    ],
+    "results": [
+      {
+        "source": "get_recent_top_finishers",
+        "year": 2026,
+        "event": "Singapore Grand Prix",
+        "location": "Marina Bay",
+        "circuit": "Singapore",
+        "depth": 10,
+        "positions": {
+          "VER": 1,
+          "LEC": 2,
+          "ANT": 3,
+          "NOR": 4,
+          "PIA": 5,
+          "HAM": 6,
+          "LAW": 7,
+          "HUL": 8,
+          "RUS": 9,
+          "HAD": 10
+        }
+      },
+      {
+        "source": "get_recent_race_results",
+        "year": 2025,
+        "event": "United States Grand Prix",
+        "location": "Austin",
+        "circuit": null,
+        "depth": 10,
+        "positions": {
+          "VER": 1,
+          "NOR": 2,
+          "LEC": 3,
+          "HAM": 4,
+          "PIA": 5,
+          "RUS": 6,
+          "TSU": 7,
+          "HUL": 8,
+          "BEA": 9,
+          "ALO": 10
+        }
+      },
+      {
+        "source": "get_circuit_winners",
+        "year": 2025,
+        "event": "United States Grand Prix",
+        "location": "Austin",
+        "circuit": null,
+        "depth": 1,
+        "positions": {
+          "VER": 1
+        }
+      },
+      {
+        "source": "get_circuit_winners",
+        "year": 2024,
+        "event": "United States Grand Prix",
+        "location": "Austin",
+        "circuit": null,
+        "depth": 1,
+        "positions": {
+          "LEC": 1
+        }
+      },
+      {
+        "source": "get_circuit_winners",
+        "year": 2023,
+        "event": "United States Grand Prix",
+        "location": "Austin",
+        "circuit": null,
+        "depth": 1,
+        "positions": {
+          "VER": 1
+        }
+      },
+      {
+        "source": "get_driver_form",
+        "year": 2026,
+        "event": "Italian Grand Prix",
+        "location": "Monza",
+        "circuit": "Monza",
+        "depth": null,
+        "positions": {
+          "VER": 3,
+          "ANT": 1,
+          "RUS": 2,
+          "LEC": "DNF",
+          "NOR": 4,
+          "HAM": 6,
+          "PIA": 5,
+          "LAW": 14,
+          "LIN": 8,
+          "COL": 9,
+          "GAS": 7,
+          "HUL": 12,
+          "OCO": 16,
+          "ALO": "DNF",
+          "BEA": 15,
+          "TSU": 10,
+          "SAI": 13,
+          "STR": "DNF",
+          "BOR": 11,
+          "ALB": 17,
+          "PER": 18,
+          "BOT": 19
+        }
+      },
+      {
+        "source": "get_driver_form",
+        "year": 2026,
+        "event": "Spanish Grand Prix",
+        "location": "Madrid",
+        "circuit": "Madring",
+        "depth": null,
+        "positions": {
+          "VER": 2,
+          "ANT": 1,
+          "RUS": 5,
+          "LEC": 4,
+          "NOR": 3,
+          "HAM": "DNF",
+          "PIA": 8,
+          "LAW": 6,
+          "LIN": 9,
+          "COL": 7,
+          "GAS": 12,
+          "HUL": 10,
+          "OCO": 11,
+          "ALO": 17,
+          "BEA": 16,
+          "TSU": 14,
+          "SAI": "DNF",
+          "STR": "DNF",
+          "BOR": 13,
+          "ALB": 15,
+          "PER": "DNF",
+          "BOT": 18
+        }
+      },
+      {
+        "source": "get_driver_form",
+        "year": 2026,
+        "event": "Azerbaijan Grand Prix",
+        "location": "Baku",
+        "circuit": "Baku",
+        "depth": null,
+        "positions": {
+          "VER": 2,
+          "ANT": 5,
+          "RUS": 1,
+          "LEC": 4,
+          "NOR": "DNF",
+          "HAM": 6,
+          "PIA": 13,
+          "HAD": 3,
+          "LAW": 12,
+          "LIN": 7,
+          "COL": "DNF",
+          "GAS": "DNF",
+          "HUL": 11,
+          "OCO": 8,
+          "ALO": "DNF",
+          "BEA": 9,
+          "SAI": 10,
+          "STR": "DNF",
+          "BOR": 15,
+          "ALB": "DNF",
+          "PER": 14,
+          "BOT": 16
+        }
+      },
+      {
+        "source": "get_driver_form",
+        "year": 2026,
+        "event": "Bahrain Grand Prix",
+        "location": "Kuala Lumpur",
+        "circuit": "Kuala Lumpur",
+        "depth": null,
+        "positions": {
+          "VER": 1,
+          "ANT": 2,
+          "RUS": 20,
+          "LEC": 4,
+          "NOR": 9,
+          "HAM": 3,
+          "PIA": 6,
+          "HAD": 5,
+          "LAW": 7,
+          "LIN": 10,
+          "COL": 13,
+          "GAS": 16,
+          "HUL": 11,
+          "OCO": 15,
+          "ALO": 8,
+          "BEA": 14,
+          "SAI": 17,
+          "STR": 12,
+          "BOR": 18,
+          "ALB": "DNF",
+          "PER": 19,
+          "BOT": "DNF"
+        }
+      },
+      {
+        "source": "get_driver_form",
+        "year": 2026,
+        "event": "Singapore Grand Prix",
+        "location": "Marina Bay",
+        "circuit": "Singapore",
+        "depth": null,
+        "positions": {
+          "VER": 1,
+          "ANT": 3,
+          "RUS": 9,
+          "LEC": 2,
+          "NOR": 4,
+          "HAM": 6,
+          "PIA": 5,
+          "HAD": 10,
+          "LAW": 7,
+          "LIN": 15,
+          "COL": "DNF",
+          "GAS": 11,
+          "HUL": 8,
+          "OCO": 13,
+          "ALO": 16,
+          "BEA": 12,
+          "SAI": 14,
+          "STR": "DNF",
+          "BOR": "DNF",
+          "ALB": 18,
+          "PER": 17,
+          "BOT": 19
+        }
+      }
+    ],
+    "circuit_seasons": {
+      "from": 2023,
+      "to": 2025
+    },
+    "searched_years": [],
+    "form": {
+      "grands_prix": [
+        "2026 Italian Grand Prix",
+        "2026 Spanish Grand Prix",
+        "2026 Azerbaijan Grand Prix",
+        "2026 Bahrain Grand Prix",
+        "2026 Singapore Grand Prix"
+      ],
+      "drivers": {
+        "VER": {
+          "results": [
+            "P3",
+            "P2",
+            "P2",
+            "P1",
+            "P1"
+          ],
+          "points": 101.0,
+          "avg": 1.8
+        },
+        "ANT": {
+          "results": [
+            "P1",
+            "P1",
+            "P5",
+            "P2",
+            "P3"
+          ],
+          "points": 93.0,
+          "avg": 2.4
+        },
+        "RUS": {
+          "results": [
+            "P2",
+            "P5",
+            "P1",
+            "P20",
+            "P9"
+          ],
+          "points": 55.0,
+          "avg": 7.4
+        },
+        "LEC": {
+          "results": [
+            "DNF",
+            "P4",
+            "P4",
+            "P4",
+            "P2"
+          ],
+          "points": 54.0,
+          "avg": 3.5
+        },
+        "NOR": {
+          "results": [
+            "P4",
+            "P3",
+            "DNF",
+            "P9",
+            "P4"
+          ],
+          "points": 41.0,
+          "avg": 5.0
+        },
+        "HAM": {
+          "results": [
+            "P6",
+            "DNF",
+            "P6",
+            "P3",
+            "P6"
+          ],
+          "points": 39.0,
+          "avg": 5.2
+        },
+        "PIA": {
+          "results": [
+            "P5",
+            "P8",
+            "P13",
+            "P6",
+            "P5"
+          ],
+          "points": 32.0,
+          "avg": 7.4
+        },
+        "HAD": {
+          "results": [
+            "P3",
+            "P5",
+            "P10"
+          ],
+          "points": 26.0,
+          "avg": 6.0
+        },
+        "LAW": {
+          "results": [
+            "P14",
+            "P6",
+            "P12",
+            "P7",
+            "P7"
+          ],
+          "points": 20.0,
+          "avg": 9.2
+        },
+        "LIN": {
+          "results": [
+            "P8",
+            "P9",
+            "P7",
+            "P10",
+            "P15"
+          ],
+          "points": 13.0,
+          "avg": 9.8
+        },
+        "COL": {
+          "results": [
+            "P9",
+            "P7",
+            "DNF",
+            "P13",
+            "DNF"
+          ],
+          "points": 8.0,
+          "avg": 9.7
+        },
+        "GAS": {
+          "results": [
+            "P7",
+            "P12",
+            "DNF",
+            "P16",
+            "P11"
+          ],
+          "points": 6.0,
+          "avg": 11.5
+        },
+        "HUL": {
+          "results": [
+            "P12",
+            "P10",
+            "P11",
+            "P11",
+            "P8"
+          ],
+          "points": 5.0,
+          "avg": 10.4
+        },
+        "OCO": {
+          "results": [
+            "P16",
+            "P11",
+            "P8",
+            "P15",
+            "P13"
+          ],
+          "points": 4.0,
+          "avg": 12.6
+        },
+        "ALO": {
+          "results": [
+            "DNF",
+            "P17",
+            "DNF",
+            "P8",
+            "P16"
+          ],
+          "points": 4.0,
+          "avg": 13.7
+        },
+        "BEA": {
+          "results": [
+            "P15",
+            "P16",
+            "P9",
+            "P14",
+            "P12"
+          ],
+          "points": 2.0,
+          "avg": 13.2
+        },
+        "TSU": {
+          "results": [
+            "P10",
+            "P14"
+          ],
+          "points": 1.0,
+          "avg": 12.0
+        },
+        "SAI": {
+          "results": [
+            "P13",
+            "DNF",
+            "P10",
+            "P17",
+            "P14"
+          ],
+          "points": 1.0,
+          "avg": 13.5
+        },
+        "STR": {
+          "results": [
+            "DNF",
+            "DNF",
+            "DNF",
+            "P12",
+            "DNF"
+          ],
+          "points": 0.0,
+          "avg": 12.0
+        },
+        "BOR": {
+          "results": [
+            "P11",
+            "P13",
+            "P15",
+            "P18",
+            "DNF"
+          ],
+          "points": 0.0,
+          "avg": 14.2
+        },
+        "ALB": {
+          "results": [
+            "P17",
+            "P15",
+            "DNF",
+            "DNF",
+            "P18"
+          ],
+          "points": 0.0,
+          "avg": 16.7
+        },
+        "PER": {
+          "results": [
+            "P18",
+            "DNF",
+            "P14",
+            "P19",
+            "P17"
+          ],
+          "points": 0.0,
+          "avg": 17.0
+        },
+        "BOT": {
+          "results": [
+            "P19",
+            "P18",
+            "P16",
+            "DNF",
+            "P19"
+          ],
+          "points": 0.0,
+          "avg": 18.0
+        }
+      }
+    },
+    "weather": {
+      "status": "not_gathered"
+    },
+    "other_venues": [
+      "Florida",
+      "California",
+      "New York State",
+      "Phoenix",
+      "Indianapolis",
+      "Indianapolis Motor Speedway"
+    ],
+    "later_events": [],
+    "news": [
+      {
+        "title": "F1 Austin Schedule & Start Time | United States GP 2026 | RacingNews365",
+        "url": "https://racingnews365.com/f1/races/united-states-gp"
+      },
+      {
+        "title": "2026 United States Grand Prix Travel Guide - GPDestinations.com",
+        "url": "https://gpdestinations.com/us-f1-travel-guide"
+      },
+      {
+        "title": "F1 Austin 2026 Tickets | United States Grand Prix at COTA | austin.gp",
+        "url": "https://www.austin.gp"
+      },
+      {
+        "title": "United States Grand Prix 2026 - F1 Race",
+        "url": "https://www.formula1.com/en/racing/2026/united-states"
+      },
+      {
+        "title": "F1 Schedule 2026 - Official Calendar of Grand Prix Races",
+        "url": "https://www.formula1.com/en/racing/2026"
+      }
+    ]
+  },
+  "briefing": {
+    "content": "## Track Profile\n\nThe **Circuit of the Americas (COTA)** in Austin, Texas, is a 5.514 km modern classic that has served as the permanent home of the United States Grand Prix since joining the calendar in 2012. The 2026 event marks the 14th running of the Grand Prix at the venue.\n\nDesigned with inspiration from iconic circuits around the world, COTA features:\n* **Turn 1:** A signature steep, 110-foot uphill climb into a blind, sharp left-hand hairpin that frequently invites dramatic opening-lap moves and late-braking overtakes.\n* **Sector 1:** A rapid, sweeping series of high-speed S-curves reminiscent of Silverstone's Maggotts/Becketts and Suzuka's Ess-curves, testing high-speed aerodynamic balance.\n* **Sector 3 & Back Straight:** A 1.2 km back straight offering prime DRS overtaking, followed by a tight, technical stadium section inspired by Hockenheim.\n\nIn recent history at COTA, Max Verstappen claimed victory in both the 2023 and 2025 seasons, while Charles Leclerc took the win in 2024. Historically, Lewis Hamilton holds the record for the most United States Grand Prix victories with six.\n\n---\n\n## Championship Context\n\nAs Formula 1 arrives in Austin for Round 18 of the 2026 season, the championship picture is dominated by a standout campaign from rookie prodigy Kimi Antonelli.\n\n### 2026 Drivers' Championship Standings (Top 7)\n1. **Kimi Antonelli (Mercedes):** 340 pts\n2. **George Russell (Mercedes):** 238 pts *(–102)*\n3. **Lewis Hamilton (Ferrari):** 229 pts *(–111)*\n4. **Max Verstappen (Red Bull Racing):** 221 pts *(–119)*\n5. **Charles Leclerc (Ferrari):** 215 pts *(–125)*\n6. **Lando Norris (McLaren):** 201 pts *(–139)*\n7. **Oscar Piastri (McLaren):** 138 pts *(–202)*\n\n### 2026 Constructors' Championship Standings (Top 4)\n1. **Mercedes:** 578 pts\n2. **Ferrari:** 444 pts *(–134)*\n3. **McLaren:** 339 pts *(–239)*\n4. **Red Bull Racing:** 332 pts *(–246)*\n\nAntonelli holds a commanding 102-point cushion over teammate George Russell, putting Mercedes in firm control of both championships. However, the fight for runner-up honors in the Drivers' Championship is fiercely competitive: just 23 points separate Russell in 2nd from Leclerc in 5th.\n\n---\n\n## Form Guide\n\n### Who's Hot\n* **Max Verstappen (Red Bull Racing):** Verstappen is on a red-hot run, securing back-to-back victories in Kuala Lumpur and Singapore. Across the last five 2026 Grands Prix (Monza, Madring, Baku, Kuala Lumpur, Singapore), he has accumulated 101 points with an outstanding average finish of P1.8 (P3, P2, P2, P1, P1).\n* **Kimi Antonelli (Mercedes):** The championship leader continues his incredible rookie season consistency. Over the past five races in 2026, he secured 93 points with wins in Monza and Madring, a P2 in Kuala Lumpur, and a P3 finish last time out in Singapore.\n* **Charles Leclerc (Ferrari):** Showing steady momentum, Leclerc delivered a strong P2 finish in Singapore and an average finish of P3.5 across his four classified finishes in the last five 2026 rounds.\n\n### Who's Struggling\n* **George Russell (Mercedes):** Despite a race win in Baku during the 2026 season, Russell's recent results have been erratic, including a P20 finish in Kuala Lumpur and P9 in Singapore.\n* **Lance Stroll (Aston Martin):** Stroll has endured a nightmare stretch, suffering four DNFs in the last five 2026 races and failing to add to his points tally.\n* **Cadillac F1 Team:** Debutants Sergio Perez and Valtteri Bottas remain on 0 points for the 2026 season, frequently locked at the rear of the field.\n\n---\n\n## Key Storylines\n\n* **Verstappen's Late-Season Charge vs. Antonelli's Title March:** Red Bull's recent resurgence in Kuala Lumpur and Singapore gives Verstappen momentum entering a track where he won in 2023 and 2025. Can he delay Antonelli's march toward the 2026 world title?\n* **Four-Way Battle for P2:** With Russell, Hamilton, Verstappen, and Leclerc separated by only 23 points, every position in Austin carries significant championship weight.\n* **Hadjar Confirmed for 2027:** Off-track news confirms Red Bull Racing has re-signed Isack Hadjar for the 2027 season. The young Frenchman currently sits 8th in the 2026 standings with 97 points.\n* **Hamilton in Ferrari Red at COTA:** A six-time winner of the United States Grand Prix, Lewis Hamilton brings his Ferrari to Austin seeking his first victory with the Scuderia at COTA.\n\n---\n\n## Weather Watch\n\nWeather forecast data for the 2026 United States Grand Prix session times is unavailable from the data source as of this briefing.\n\n---\n\n## Predictions\n\n### Pole Position Favorites\n1. **Kimi Antonelli (Mercedes):** Demonstrating unmatched qualifying execution and raw speed throughout his 2026 campaign.\n2. **Max Verstappen (Red Bull Racing):** High on confidence following consecutive victories in Kuala Lumpur and Singapore.\n3. **Charles Leclerc (Ferrari):** Always a threat over a single lap and a previous COTA winner in 2024.\n\n### Podium Prediction\n1. **Max Verstappen (Red Bull Racing)**\n2. **Kimi Antonelli (Mercedes)**\n3. **Charles Leclerc (Ferrari)**\n\n### Dark Horse\n* **Liam Lawson (Racing Bulls):** Lawson has shown impressive midfield form in recent 2026 outings, delivering back-to-back P7 finishes in Kuala Lumpur and Singapore to cement 9th in the Drivers' Championship.",
+    "truncated": false
+  },
+  "checks": {
+    "passed": [
+      {
+        "check": "tools",
+        "detail": "7 of 7 tools succeeded"
+      },
+      {
+        "check": "complete",
+        "detail": "the briefing is complete, not truncated"
+      },
+      {
+        "check": "sections",
+        "detail": "all six sections are present"
+      },
+      {
+        "check": "circuit",
+        "detail": "names Circuit of the Americas; none of the other venues that have hosted the United States Grand Prix (Florida, California, New York State, Phoenix, Indianapolis, Indianapolis Motor Speedway)"
+      },
+      {
+        "check": "standings",
+        "detail": "27 points figures, 0 season counts and 1 table positions match the 2026 table as of the cutoff"
+      },
+      {
+        "check": "results",
+        "detail": "6 quoted results match the gathered data"
+      },
+      {
+        "check": "as_of",
+        "detail": "nothing after the cutoff (2026-10-12 00:00 UTC) is mentioned"
+      },
+      {
+        "check": "weather",
+        "detail": "quotes no conditions; no forecast was gathered for this race"
+      }
+    ],
+    "flagged": [
+      {
+        "check": "figures",
+        "section": "Track Profile",
+        "claim": "The 2026 event marks the 14th running of the Grand Prix at the venue.",
+        "reason": "figure not checked against the data: 14"
+      },
+      {
+        "check": "circuit",
+        "section": "Track Profile",
+        "claim": "Designed with inspiration from iconic circuits around the world, COTA features:",
+        "reason": "circuit knowledge, not in the gathered data"
+      },
+      {
+        "check": "figures",
+        "section": "Track Profile",
+        "claim": "Turn 1: A signature steep, 110-foot uphill climb into a blind, sharp left-hand hairpin that frequently invites dramatic opening-lap moves and late-braking overtakes.",
+        "reason": "figure not checked against the data: 110"
+      },
+      {
+        "check": "figures",
+        "section": "Track Profile",
+        "claim": "Sector 1: A rapid, sweeping series of high-speed S-curves reminiscent of Silverstone's Maggotts/Becketts and Suzuka's Ess-curves, testing high-speed aerodynamic balance.",
+        "reason": "figure not checked against the data: 1"
+      },
+      {
+        "check": "figures",
+        "section": "Track Profile",
+        "claim": "Sector 3 & Back Straight: A 1.2 km back straight offering prime DRS overtaking, followed by a tight, technical stadium section inspired by Hockenheim.",
+        "reason": "figure not checked against the data: 3"
+      },
+      {
+        "check": "results",
+        "section": "Track Profile",
+        "claim": "In recent history at COTA, Max Verstappen claimed victory in both the 2023 and 2025 seasons, while Charles Leclerc took the win in 2024.",
+        "reason": "result not in the gathered data"
+      },
+      {
+        "check": "results",
+        "section": "Track Profile",
+        "claim": "Historically, Lewis Hamilton holds the record for the most United States Grand Prix victories with six.",
+        "reason": "result not in the gathered data"
+      },
+      {
+        "check": "results",
+        "section": "Championship Context",
+        "claim": "However, the fight for runner-up honors in the Drivers' Championship is fiercely competitive: just 23 points separate Russell in 2nd from Leclerc in 5th.",
+        "reason": "result not in the gathered data"
+      },
+      {
+        "check": "figures",
+        "section": "Form Guide",
+        "claim": "Across the last five 2026 Grands Prix (Monza, Madring, Baku, Kuala Lumpur, Singapore), he has accumulated 101 points with an outstanding average finish of P1.8 (P3, P2, P2, P1, P1).",
+        "reason": "figure not checked against the data: 1.8"
+      },
+      {
+        "check": "figures",
+        "section": "Form Guide",
+        "claim": "Over the past five races in 2026, he secured 93 points with wins in Monza and Madring, a P2 in Kuala Lumpur, and a P3 finish last time out in Singapore.",
+        "reason": "figure not checked against the data: 2"
+      },
+      {
+        "check": "results",
+        "section": "Key Storylines",
+        "claim": "Antonelli's Title March: Red Bull's recent resurgence in Kuala Lumpur and Singapore gives Verstappen momentum entering a track where he won in 2023 and 2025.",
+        "reason": "result not in the gathered data"
+      },
+      {
+        "check": "results",
+        "section": "Key Storylines",
+        "claim": "Four-Way Battle for P2: With Russell, Hamilton, Verstappen, and Leclerc separated by only 23 points, every position in Austin carries significant championship weight.",
+        "reason": "result not in the gathered data"
+      },
+      {
+        "check": "as_of",
+        "section": "Key Storylines",
+        "claim": "Hadjar Confirmed for 2027: Off-track news confirms Red Bull Racing has re-signed Isack Hadjar for the 2027 season.",
+        "reason": "mentions 2027, after the briefing's cutoff"
+      },
+      {
+        "check": "figures",
+        "section": "Key Storylines",
+        "claim": "The young Frenchman currently sits 8th in the 2026 standings with 97 points.",
+        "reason": "figure not checked against the data: 8"
+      },
+      {
+        "check": "results",
+        "section": "Key Storylines",
+        "claim": "Hamilton in Ferrari Red at COTA: A six-time winner of the United States Grand Prix, Lewis Hamilton brings his Ferrari to Austin seeking his first victory with the Scuderia at COTA.",
+        "reason": "result not in the gathered data"
+      }
+    ]
+  }
+}
