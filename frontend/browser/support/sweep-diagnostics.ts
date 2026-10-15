@@ -37,6 +37,7 @@ const TRACE_CATEGORIES = [
   'viz',
   'renderer.scheduler',
   'disabled-by-default-cc.debug.scheduler.frames',
+  'disabled-by-default-cc.debug.scheduler',
   'benchmark',
   'v8.execute',
   'loading',
@@ -109,7 +110,7 @@ function gdbHighlights(dump: string): string[] {
 function traceTail(json: string, pidHint: number[]): string[] {
   const out: string[] = [];
   try {
-    const parsed = JSON.parse(json) as { traceEvents?: { ph: string; name: string; pid: number; tid: number; ts: number; dur?: number; args?: { name?: string } }[] };
+    const parsed = JSON.parse(json) as { traceEvents?: { ph: string; name: string; pid: number; tid: number; ts: number; dur?: number; args?: { name?: string } & Record<string, unknown> }[] };
     const events = parsed.traceEvents ?? [];
     const names = new Map<string, string>();
     for (const e of events) if (e.ph === 'M' && e.name === 'thread_name') names.set(`${e.pid}:${e.tid}`, e.args?.name ?? '');
@@ -126,6 +127,10 @@ function traceTail(json: string, pidHint: number[]): string[] {
         else if (e.ph === 'E') open.pop();
       }
       if (open.length) out.push(`      OPEN B-slices: ${open.join(' > ')}`);
+      if (/Compositor$/.test(name)) {
+        const stateful = evs.filter((e) => e.args && JSON.stringify(e.args).length > 40);
+        for (const e of stateful.slice(-2)) out.push(`      args of ${e.name} ts=${e.ts}: ${JSON.stringify(e.args).slice(0, 4000)}`);
+      }
     }
   } catch (e) {
     out.push(`  trace parse failed: ${String(e)}`);

@@ -37,8 +37,11 @@ interface Sample {
  * Sampling per stop, rather than once after a scroll-through, is what catches text inside
  * `BlurFade inView`, which is at opacity 0 whenever it is off screen.
  */
-export async function findInvisibleText(page: Page, { trace = false } = {}): Promise<InvisibleText[]> {
-  const samples = await page.evaluate(async (trace): Promise<Sample[]> => {
+export async function findInvisibleText(
+  page: Page,
+  { trace = false, scrollInTask = false } = {},
+): Promise<InvisibleText[]> {
+  const samples = await page.evaluate(async ({ trace, scrollInTask }): Promise<Sample[]> => {
     // DIAGNOSTIC ONLY: phase logs, a heartbeat, and long-animation-frame entries, all on the console.
     const log = (msg: string) => {
       if (trace) console.debug(`[sweep] t=${performance.now().toFixed(0)} ${msg}`);
@@ -164,13 +167,15 @@ export async function findInvisibleText(page: Page, { trace = false } = {}): Pro
       log(`stop ${stop} sampled in ${(performance.now() - s0).toFixed(0)}ms`);
       mark(`stop ${stop} sampled`);
       if (y + innerHeight >= document.documentElement.scrollHeight) break;
+      // DIAGNOSTIC variant: leave the rAF callback before scrolling, so the scroll runs in a plain task.
+      if (scrollInTask) await new Promise((resolve) => setTimeout(resolve, 0));
     }
     window.scrollTo({ top: 0, behavior: 'instant' });
     clearInterval(heartbeat);
     beacon?.terminate();
     log('done');
     return Array.from(seen.values());
-  }, trace);
+  }, { trace, scrollInTask });
 
   return samples
     .map((s) => {
