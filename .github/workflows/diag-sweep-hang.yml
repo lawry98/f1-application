@@ -1,5 +1,5 @@
-# DIAGNOSTIC ONLY — not for merge. Runs the browser suite on several runners at once to catch the
-# intermittent /teams 390 sweep hang with the stall diagnostics in browser/support/sweep-diagnostics.ts.
+# DIAGNOSTIC ONLY — not for merge. Verifies the shipped fix (#63): the full suite on several runners,
+# then the /teams 390 sweep repeated with no retries.
 name: Diagnose sweep hang
 
 on:
@@ -44,18 +44,16 @@ jobs:
       - name: Install Chromium's system libraries
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: pnpm exec playwright install-deps chromium
-      - name: Runner, and gdb for the stall diagnostics
-        run: |
-          nproc; free -g; uptime
-          sudo apt-get install -y --no-install-recommends gdb > /dev/null || (sudo apt-get update > /dev/null && sudo apt-get install -y --no-install-recommends gdb > /dev/null)
-          gdb --version | head -1
-          B=$(ls -d ~/.cache/ms-playwright/chromium_headless_shell-*/chrome-*/chrome-headless-shell | head -1)
-          file -L "$B"; readelf -S "$B" | grep -E 'symtab|debug_info|gnu_debuglink' || echo "no symtab/debug sections"
-          cat /proc/sys/kernel/yama/ptrace_scope
+      - name: Runner
+        run: nproc; free -g; uptime
       - name: Build
         run: pnpm build
       - name: Browser tests
         run: pnpm test:browser
+      # The shipped /teams 390 sweep, twenty more times with no retry, so a stall cannot hide.
+      - name: Shipped /teams 390 sweep x20, no retries
+        if: always()
+        run: pnpm exec playwright test browser/invisible-text.spec.ts -g "/teams at 390px" --repeat-each=20 --retries=0
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v7
