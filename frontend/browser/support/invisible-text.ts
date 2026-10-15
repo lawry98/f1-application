@@ -44,6 +44,18 @@ export async function findInvisibleText(page: Page, { trace = false } = {}): Pro
       if (trace) console.debug(`[sweep] t=${performance.now().toFixed(0)} ${msg}`);
     };
     let phase = 'start';
+    // A worker logs what the main thread posts it. postMessage leaves immediately and the worker
+    // has its own DevTools session, so these marks get out even if the main thread then blocks.
+    let beacon: Worker | null = null;
+    if (trace) {
+      try {
+        const src = "onmessage = (e) => console.debug('[sweep-w] ' + e.data);";
+        beacon = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+      } catch (e) {
+        log(`no beacon worker: ${String(e)}`);
+      }
+    }
+    const mark = (msg: string) => beacon?.postMessage(`t=${performance.now().toFixed(1)} ${msg}`);
     const heartbeat = trace
       ? setInterval(() => {
           let rafSeen = false;
@@ -76,6 +88,7 @@ export async function findInvisibleText(page: Page, { trace = false } = {}): Pro
           ? setInterval(() => log(`still waiting for rAF ${label} after ${(performance.now() - t0).toFixed(0)}ms`), 2000)
           : undefined;
         requestAnimationFrame(() => {
+          mark(`rAF ${label}`);
           clearInterval(waiting);
           const ms = performance.now() - t0;
           if (ms > 100) log(`slow rAF ${label} ${ms.toFixed(0)}ms`);
@@ -135,8 +148,12 @@ export async function findInvisibleText(page: Page, { trace = false } = {}): Pro
     const step = Math.max(200, Math.round(innerHeight * 0.8));
     for (let y = 0, stop = 0; ; y += step, stop++) {
       phase = `stop${stop}:scroll`;
+      mark(`stop ${stop} pre-scroll y=${y}`);
       window.scrollTo({ top: y, behavior: 'instant' });
-      log(`stop ${stop} y=${y} scrollY=${scrollY} scrollHeight=${document.documentElement.scrollHeight}`);
+      mark(`stop ${stop} post-scroll scrollY=${scrollY}`);
+      const sh = document.documentElement.scrollHeight;
+      mark(`stop ${stop} post-layout scrollHeight=${sh}`);
+      log(`stop ${stop} y=${y} scrollY=${scrollY} scrollHeight=${sh}`);
       phase = `stop${stop}:frame1`;
       await frame(`stop${stop}#1`);
       phase = `stop${stop}:frame2`;
@@ -145,10 +162,12 @@ export async function findInvisibleText(page: Page, { trace = false } = {}): Pro
       const s0 = performance.now();
       sampleViewport();
       log(`stop ${stop} sampled in ${(performance.now() - s0).toFixed(0)}ms`);
+      mark(`stop ${stop} sampled`);
       if (y + innerHeight >= document.documentElement.scrollHeight) break;
     }
     window.scrollTo({ top: 0, behavior: 'instant' });
     clearInterval(heartbeat);
+    beacon?.terminate();
     log('done');
     return Array.from(seen.values());
   }, trace);

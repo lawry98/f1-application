@@ -44,8 +44,14 @@ jobs:
       - name: Install Chromium's system libraries
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: pnpm exec playwright install-deps chromium
-      - name: Runner
-        run: nproc; free -g; uptime
+      - name: Runner, and gdb for the stall diagnostics
+        run: |
+          nproc; free -g; uptime
+          sudo apt-get install -y --no-install-recommends gdb > /dev/null || (sudo apt-get update > /dev/null && sudo apt-get install -y --no-install-recommends gdb > /dev/null)
+          gdb --version | head -1
+          B=$(ls -d ~/.cache/ms-playwright/chromium_headless_shell-*/chrome-*/chrome-headless-shell | head -1)
+          file -L "$B"; readelf -S "$B" | grep -E 'symtab|debug_info|gnu_debuglink' || echo "no symtab/debug sections"
+          cat /proc/sys/kernel/yama/ptrace_scope
       - name: Build
         run: pnpm build
       - name: Browser tests
