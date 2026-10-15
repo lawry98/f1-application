@@ -7,6 +7,15 @@ import { expect, test } from './support/test';
  * Class 3: text painted in its own backdrop colour. `/teams` runs at 390 as well because the
  * collision is breakpoint-scoped: `sm:text-base` is harmless below 640px and invisible above.
  */
+/**
+ * GPU compositing and raster on SwiftShader, the flags the WebGL specs already use. On the CI
+ * runners' software raster the `/teams` 390 sweep deadlocked the renderer in about one sweep in
+ * twenty; on SwiftShader it went 0 for 280 (CLAUDE.md, "The CI runners' software raster can
+ * deadlock the renderer"). The sweep reads computed style, never pixels, so the raster path
+ * changes nothing it measures.
+ */
+test.use({ launchOptions: { args: ['--enable-unsafe-swiftshader', '--use-angle=swiftshader'] } });
+
 /** `/briefing` showing a saved example. */
 const EXAMPLE_ROUTE = '/briefing?example=2026-06-monaco-grand-prix';
 

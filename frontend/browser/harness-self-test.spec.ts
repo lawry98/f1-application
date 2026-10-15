@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import { formatCssColor } from './support/color';
 import { measureContrast } from './support/contrast';
 import { focusByKeyboard, focusState, hasRule } from './support/css';
+import { findInvisibleText } from './support/invisible-text';
 import { backdropBehindGlyphs } from './support/pixels';
 
 /**
@@ -71,6 +72,20 @@ test.describe('harness self-test', () => {
   test('refuses to measure mid-fade', async ({ page }) => {
     await page.setContent('<div style="opacity:.5"><span id="t" style="color:#fff;background:#000;font:40px sans-serif">MM</span></div>');
     await expect(measureContrast(page.locator('#t'))).rejects.toThrow(/opacity/);
+  });
+
+  // A renderer that stops drawing mid-sweep has to fail the sweep at once, saying where, rather
+  // than leave it to run into the test's timeout with nothing to go on. Here rAF stops firing
+  // after the first stop's two frames; in CI it was the software-raster deadlock (CLAUDE.md).
+  test('fails a sweep that stops getting frames, naming the stop', async ({ page }) => {
+    await page.setViewportSize({ width: 400, height: 500 });
+    await page.setContent('<div style="height:3000px"><p>text</p></div>');
+    await page.evaluate(() => {
+      const real = window.requestAnimationFrame.bind(window);
+      let frames = 2;
+      window.requestAnimationFrame = (callback) => (frames-- > 0 ? real(callback) : 0);
+    });
+    await expect(findInvisibleText(page, { stallMs: 1000 })).rejects.toThrow(/stalled at stop 1 \(y=400\)/);
   });
 
   test('reads a keyboard focus ring and a generated rule', async ({ page }) => {
