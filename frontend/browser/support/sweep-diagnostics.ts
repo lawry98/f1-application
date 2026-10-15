@@ -115,6 +115,9 @@ function traceTail(json: string, pidHint: number[]): string[] {
     const names = new Map<string, string>();
     for (const e of events) if (e.ph === 'M' && e.name === 'thread_name') names.set(`${e.pid}:${e.tid}`, e.args?.name ?? '');
     const wanted = [...names].filter(([k, n]) => /CrRendererMain|Compositor$|VizCompositor|CrGpuMain|CrBrowserMain/.test(n) && (pidHint.length === 0 || true) && k);
+    const spec = events.filter((e) => /SpeculativeImageDecode|ImageDecode|DecodeImage|TileManager::|ActivateSyncTree|NotifyReadyToActivate/.test(e.name)).sort((a, b) => a.ts - b.ts);
+    out.push(`  trace decode/activation events: ${spec.length}; last 25:`);
+    for (const e of spec.slice(-25)) out.push(`      ${names.get(`${e.pid}:${e.tid}`) ?? e.tid} ${e.ph} ${e.name} ts=${e.ts} dur=${e.dur ?? ''}`);
     for (const [key, name] of wanted) {
       const evs = events.filter((e) => `${e.pid}:${e.tid}` === key && e.ph !== 'M').sort((a, b) => a.ts - b.ts);
       if (evs.length === 0) continue;
@@ -174,7 +177,10 @@ export async function diagnoseSweep<T>(
   if (browserCdp) {
     const info = (await browserCdp.send('SystemInfo.getInfo')) as {
       gpu: { featureStatus: Record<string, string>; devices: { vendorString: string; deviceString: string }[] };
+      commandLine: string;
     };
+    const disables = info.commandLine.match(/--disable-features=\S+/g) ?? [];
+    header.push(`cmdline: ${disables.length}× --disable-features; SpeculativeImageDecodes ${disables.some((d) => d.includes('SpeculativeImageDecodes')) ? 'DISABLED' : 'default'}; last=${disables.at(-1)?.slice(0, 80)}`);
     const fs = info.gpu.featureStatus;
     header.push(
       `gpu: compositing=${fs.gpu_compositing} raster=${fs.rasterization} webgl=${fs.webgl} device=${info.gpu.devices.map((d) => `${d.vendorString}/${d.deviceString}`).join(';')}`,
