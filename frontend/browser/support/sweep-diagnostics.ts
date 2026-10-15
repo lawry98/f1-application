@@ -187,7 +187,7 @@ export async function diagnoseSweep<T>(
       commandLine: string;
     };
     const disables = info.commandLine.match(/--disable-features=\S+/g) ?? [];
-    header.push(`cmdline: ${disables.length}× --disable-features; SpeculativeImageDecodes ${disables.some((d) => d.includes('SpeculativeImageDecodes')) ? 'DISABLED' : 'default'}; no-mfba=${info.commandLine.includes('--disable-main-frame-before-activation')} no-checker=${info.commandLine.includes('--disable-checker-imaging')} headless-shell=${info.commandLine.includes('headless-shell')}`);
+    header.push(`cmdline: ${disables.length}× --disable-features; SpeculativeImageDecodes ${disables.some((d) => d.includes('SpeculativeImageDecodes')) ? 'DISABLED' : 'default'}; swiftshader=${info.commandLine.includes('--use-angle=swiftshader')} raster-threads=${/--num-raster-threads=(\d+)/.exec(info.commandLine)?.[1] ?? 'default'}`);
     const fs = info.gpu.featureStatus;
     header.push(
       `gpu: compositing=${fs.gpu_compositing} raster=${fs.rasterization} webgl=${fs.webgl} device=${info.gpu.devices.map((d) => `${d.vendorString}/${d.deviceString}`).join(';')}`,
@@ -203,6 +203,7 @@ export async function diagnoseSweep<T>(
   ]);
 
   if (first.done) {
+    console.log(`[sweep-timing] ${testInfo.title} ${Date.now() - t0}ms gpu=${header.find((h) => h.startsWith('gpu:'))?.slice(5, 60)}`);
     if (chromeTrace && browser) await within(10_000, browser.stopTracing());
     await testInfo.attach('sweep-log.txt', { body: [...header, ...lines].join('\n'), contentType: 'text/plain' });
     return first.value;
