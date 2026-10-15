@@ -6,7 +6,7 @@ import logging
 import threading
 import time
 from collections.abc import AsyncIterator, Callable
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import Any
 
 import fastf1
@@ -18,8 +18,10 @@ from starlette.types import Receive, Scope, Send
 
 from agent.budget import RunBudget
 from agent.graph import agent
+from agent.quota import DailyQuotaExhaustedError
 from agent.state import AgentState
 from api.errors import (
+    BRIEFING_DAILY_CAP_ERROR,
     BRIEFING_DEADLINE_ERROR,
     GENERIC_BRIEFING_ERROR,
     GENERIC_CIRCUIT_WINNERS_ERROR,
@@ -173,14 +175,19 @@ async def _until_backstop(stream: AsyncIterator[Any], backstop_at: float) -> Asy
         yield item
 
 
+def _rejection_body(rejection: Rejection) -> dict[str, Any]:
+    """What a refusal says, the same whether it is a 429/503 body or a stream's error event."""
+    return {
+        "code": rejection.code,
+        "retry_after_seconds": rejection.retry_after_seconds,
+        "limit": rejection.limit,
+    }
+
+
 def _rejection_response(rejection: Rejection) -> JSONResponse:
     return JSONResponse(
         status_code=rejection.status,
-        content={
-            "code": rejection.code,
-            "retry_after_seconds": rejection.retry_after_seconds,
-            "limit": rejection.limit,
-        },
+        content=_rejection_body(rejection),
         headers={"Retry-After": str(rejection.retry_after_seconds)},
     )
 
@@ -350,6 +357,23 @@ async def generate_briefing_stream(
             logger.error("Briefing graph ended without a briefing (outcome=%s)", outcome)
             yield event
 
+        except DailyQuotaExhaustedError as spent:
+            # Gemini's own quota ran out before the guard's cap did. Closing the guard until
+            # Gemini's reset turns the rest of its day away at admission, as the cap would,
+            # rather than letting each visitor spend a run finding out. Ahead of the deadline:
+            # it is a definite answer, and a retry a minute later would meet it again.
+            rejection = briefing_guard.close_until(spent.resets_at)
+            outcome = "quota_exhausted"
+            logger.warning(
+                "Gemini's daily quota is spent; refusing briefings until %s",
+                datetime.fromtimestamp(spent.resets_at, UTC).isoformat(timespec="minutes"),
+            )
+            yield {
+                "event": "error",
+                "data": json.dumps(
+                    {"message": BRIEFING_DAILY_CAP_ERROR, **_rejection_body(rejection)}
+                ),
+            }
         except _BackstopReachedError:
             logger.warning(
                 "Briefing graph still running %ds past the deadline; ending the response",

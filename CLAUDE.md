@@ -185,6 +185,19 @@ fit the run's remaining time — which is why the retry adds nothing to the wors
 call, and others read the header, the read timeout and the attempt count off each node's outgoing
 request.
 
+**A spent Gemini day closes the guard until Pacific midnight.** Gemini's daily quota can run out
+before `BRIEFING_DAILY_CAP` does. A 429 is a spent day only when its `QuotaFailure` names a
+`quotaId` containing `PerDay` (`agent/quota.py`); a per-minute 429, or one naming no quota, keeps
+the old behaviour, because latching on it would lock everyone out until midnight for a wait of
+seconds. On a spent day the route calls `close_until(resets_at)`, logs outcome `quota_exhausted`,
+and ends the stream on an `error` event carrying the refusal's own `daily_cap` body, so the page
+shows the daily-cap notice. The guard then refuses at the daily cap's place in the order until the
+reset: midnight in America/Los_Angeles, Google's, a constant in `agent/quota.py` — never the
+guard's own day, which is UTC unless `BRIEFING_DAY_TZ` says otherwise: a UTC latch would hold a
+trip between 00:00 and 07:00 UTC for ~24h and reopen at UTC midnight onto a quota still spent.
+A spent day after prose is truncation as ever (ADR-0002) and
+closes nothing; the next run's planner finds it and closes the guard.
+
 **The graph is not a flat pipeline.** It has four nodes, but `resolver` sits behind a
 conditional edge: when `state["current_step"] == "error"` it routes straight to `END`, skipping
 planner, tools, and synthesizer. Anything assuming the synthesizer always runs is wrong.
@@ -219,8 +232,13 @@ tools' existing return shapes), and `circuit_winners.py` (the backend's one read
 continue on partial data — preserve this or the pipeline loses its degradation behaviour.
 
 **The planner and the synthesizer degrade differently, on purpose.** `planner_node` catches
-*any* LLM failure — a free-tier 429 above all — and falls back to `DEFAULT_TOOLS`, because the
-planner only chooses which tools to run and the pipeline works without it. The planner's two
+every LLM failure but one — a per-minute 429 above all — and falls back to `DEFAULT_TOOLS`, because
+the planner only chooses which tools to run and the pipeline works without it. The one is a spent
+Gemini day, which raises `DailyQuotaExhaustedError`: the synthesizer calls the same model on the
+same project and cannot succeed, so a default plan would only spend OpenF1 requests and a Tavily
+credit on a briefing nobody can write. langchain wraps the planner's `ClientError` in its own
+`ChatGoogleGenerativeAIError` (the stream raises it bare), which is why `daily_quota_error` walks
+the cause chain. The planner's two
 failure paths log differently on purpose ("LLM call failed" vs "failed to parse response") —
 one means the model was never reached, the other that it returned something unusable. It asks
 for `PLANNER_THINKING_LEVEL` (`low`): gemini-3.6-flash thinks before its first byte, that wait
@@ -229,7 +247,8 @@ picking names off a list needs no more. The synthesizer keeps the default thinki
 
 `synthesizer_node` degrades only once it has prose: a stream that dies after at least one chunk
 returns the partial briefing with `briefing_truncated: True` and `current_step: "complete"`,
-while a failure before the first chunk still raises. That includes a 503 the retry above cannot
+while a failure before the first chunk still raises — a spent day as `DailyQuotaExhaustedError`,
+everything else as itself. That includes a 503 the retry above cannot
 take — a second one, or one with under 32s of the run left — and every other failure: a 429, a
 500 and a ReadTimeout are never retried. A 503 after the first chunk is truncation, not a retry,
 because a second stream would write the briefing again behind the prose already on screen. That
@@ -634,6 +653,34 @@ literals, held to `tailwind.config.ts` by `tests/share-image.test.ts`, which run
 from `app/icon.svg` by `scripts/build-site-icons.mjs` — never edit them by hand; `--check` proves
 they are fresh.
 
+**Saved example briefings are captured, never written.** When a live briefing cannot run — a
+cost-guard refusal, the deadline, an error, a stream cut before any prose, an unreachable backend —
+`/briefing` offers the race's saved example, and `/briefing?example=<id>` shows one through the
+same card under a permanent "not a live briefing" label. Every file in
+`frontend/data/briefing-examples/` comes from `backend/scripts/capture_briefing_example.py`, which
+runs the real graph the way the SSE route does (two Gemini requests each, against the shared
+free-tier 20 a day), keeps the minimal tool data the checks read as `evidence`, and rebuilds
+`index.json` from the files on every write. The prose is the model's: an example that fails a check
+is recaptured, at most twice, or dropped. `tests/briefing-example-checks.test.ts` recomputes every
+committed example's stored verdict, so an edited sentence or number fails CI. The checks exist
+twice — Python stdlib in `backend/scripts/briefing_checks.py`, a line-for-line TypeScript port in
+`frontend/tests/briefing-example-checks.ts` — held together by
+`frontend/tests/fixtures/briefing-check-cases.json` and by those stored verdicts: change both, and
+add the case to the fixture. A failure is a claim the evidence contradicts; whatever it cannot
+settle (circuit knowledge, a season outside the data) is flagged for a person, and the PR lists
+every flag. Two traps each cost a capture: OpenF1 names a race by its circuit ("Hungaroring",
+"Madring"), so each results entry carries that label as an alias; and the model states the season
+length from memory ("24 races"), which FastF1's 23-round 2026 calendar fails.
+
+An offer matches an event's exact name and year — `race_info` when it arrived, else the submitted
+query against the calendar year — so a quick-select chip matches and a typed "Monaco" offers
+nothing. Each example is its own chunk through `loadBriefingExample`; only `index.json` is imported
+statically, which `tests/briefing-examples.test.ts` enforces. The example id lives in the URL alone:
+`BriefingChatFromUrl` reads it with `useSearchParams` (hence `/briefing` is `force-dynamic`), and a
+live run drops it with `replaceState` — the `/standings` rule. The offer sits in exactly one box,
+outside its live region, and in the red error box takes `focusRingInk`, because the red ring
+measures 3.07:1 there.
+
 **The landing page composes, it doesn't contain.** `app/page.tsx` is seven imports from
 `components/landing/`; the hero, features, and footer markup are not inline.
 
@@ -1034,6 +1081,28 @@ required CI check (`browser` job). Things that are not guessable:
   because it has no focusable controls by design. The suite's server sets
   `ENABLE_INTERNAL_ROUTES=1` so the sweeps reach `/candy` at all; `internal-routes.spec.ts` starts
   a second `next start` without it to pin the production side.
+- **The CI runners' software raster can deadlock the renderer; SwiftShader's GPU raster does not.**
+  `invisible-text.spec.ts`'s `/teams` sweep at 390 hung in about one sweep in twenty on GitHub's
+  x86 runners (49 of 969, measured), and never on a Mac or in an arm64 container. Every hang,
+  caught in CI with gdb and a Chrome trace, was the same: the renderer's main thread parked in
+  `LayerTreeHost::WaitForCommitCompletion` inside `ProxyMain::BeginMainFrame` (reached from the
+  sweep's `scrollTo` or from Blink's post-scroll hover hit test), every process at zero CPU, and
+  cc's scheduler holding a main frame `READY_TO_COMMIT` behind a pending tree whose last
+  `PrepareTiles` signalled `RequiredForDraw` and never `RequiredForActivation`, every raster worker
+  idle. That is a Chromium bug in the software tile path, not page code. None of these stopped it:
+  Playwright's trace off, the scroll moved out of rAF, `SpeculativeImageDecodes`, main frame before
+  activation or checker-imaging disabled, new headless, or one raster thread (0 of 120 once, then
+  3 of 160; replicate a zero before believing it). GPU compositing and raster on SwiftShader went
+  0 of 280 across two rounds, against 15 of 280 for the control, so the spec launches with the
+  WebGL specs' two SwiftShader flags. The sweep reads computed style, never pixels, so the raster
+  path cannot change its answer; it costs about half again the time. `findInvisibleText` also fails
+  a stop that has not moved on for 10s, naming it, rather than let a hang eat the test's 30s. A
+  blocked main thread answers no CDP at all (no `Debugger.pause`, no screenshot, no `evaluate`),
+  so a recurrence is read from a Chrome trace (the open slices on `CrRendererMain`, the
+  `SchedulerStateMachine` args) and from `/proc` wait channels; branch `lc/diag-teams-390-hang` has
+  that harness. One trap found on the way: Chromium keeps only the **last** `--disable-features`,
+  so one passed in `args` silently re-enables everything Playwright disables (measured). Repeat
+  Playwright's list if you need one.
 
 ### Backend
 

@@ -11,10 +11,12 @@ The one exception is a client hang-up: nobody is left to send an event to.
 
 import asyncio
 import json
+import time
 from typing import Any
 
 import pytest
 
+from agent.quota import DailyQuotaExhaustedError
 from api import routes as routes_module
 from api.errors import GENERIC_BRIEFING_ERROR
 from api.models import BriefingRequest
@@ -176,6 +178,19 @@ def test_a_graph_exception_ends_with_the_generic_error(run_stream):
 
     assert_one_terminal_event(events)
     assert events[-1] == generic_error()
+
+
+def test_a_spent_gemini_day_ends_with_the_daily_cap_error(run_stream):
+    events = run_stream(
+        FakeAgent(
+            steps=successful_steps()[:3],
+            raises=DailyQuotaExhaustedError(resets_at=time.time() + 3600),
+            raises_after=3,
+        )
+    )
+
+    assert_one_terminal_event(events)
+    assert events[-1][1]["code"] == "daily_cap"
 
 
 def test_a_backstop_with_no_prose_ends_with_the_deadline_error(run_stream, deadline):

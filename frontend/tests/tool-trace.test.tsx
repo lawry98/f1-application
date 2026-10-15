@@ -6,7 +6,7 @@
  * trace is the debugging surface for a run.
  */
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ToolTrace } from '@/components/briefing/tool-trace';
 import { toolLabel } from '@/lib/constants';
@@ -42,6 +42,18 @@ const TOOLS: ToolResult[] = [
   { tool: 'get_track_info', success: true },
   { tool: 'search_f1_news', success: false },
 ];
+
+/**
+ * A repeat run: one cacheable tool served from the result cache, one fetched live, one failed
+ * live. Counts asserted below are derived from it, never restated.
+ */
+const CACHED_TOOLS: ToolResult[] = [
+  { tool: 'get_track_info', success: true, cached: true },
+  { tool: 'get_circuit_winners', success: true, cached: false },
+  { tool: 'search_f1_news', success: false, cached: false },
+];
+
+const cachedCount = (tools: ToolResult[]): number => tools.filter((t) => t.cached === true).length;
 
 /** Reveal the collapsed trace body. */
 function expand(): void {
@@ -342,6 +354,128 @@ describe('ToolTrace', () => {
     for (const { hex, text } of neutrals) {
       // The message names the run on screen, so a failure points at the markup rather than at a
       // bare number.
+      expect(
+        contrastRatio(hex, ROW_BACKDROP),
+        `"${text}" at ${hex} over the row wash`,
+      ).toBeGreaterThanOrEqual(MIN_CONTRAST);
+    }
+  });
+});
+
+describe('ToolTrace cache provenance', () => {
+  it('says how many results came from the cache, in the name of the toggle', () => {
+    // The trace opens collapsed, so the header is the only place a reader sees provenance
+    // without clicking — and it is the button's accessible name, so a screen reader hears it on
+    // the collapsed control too.
+    render(<ToolTrace tools={CACHED_TOOLS} />);
+
+    expect(
+      screen.getByRole('button', {
+        name: `Agent Tool Trace (${CACHED_TOOLS.length} tools executed, ${cachedCount(CACHED_TOOLS)} cached)`,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('counts every row when every result came from the cache', () => {
+    const all = CACHED_TOOLS.map((t) => ({ ...t, success: true, cached: true }));
+    render(<ToolTrace tools={all} />);
+    expand();
+
+    expect(
+      screen.getByRole('button', {
+        name: `Agent Tool Trace (${all.length} tools executed, ${all.length} cached)`,
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText('Cached')).toHaveLength(all.length);
+  });
+
+  it.each([
+    ['absent', TOOLS],
+    ['false', TOOLS.map((t) => ({ ...t, cached: false }))],
+  ])(
+    'leaves the header and rows as they were when no result came from the cache (cached %s)',
+    (_, tools) => {
+      // No "0 cached" on every first briefing, and no claim at all where the flag is absent
+      // (see `ToolResult.cached`).
+      render(<ToolTrace tools={tools} />);
+      expect(screen.getByRole('button').textContent).toBe(
+        `Agent Tool Trace (${tools.length} tools executed)▶`,
+      );
+      expand();
+      expect(screen.queryByText('Cached')).toBeNull();
+      expect(screen.queryByText(/from cache/)).toBeNull();
+    },
+  );
+
+  it('marks exactly the cached rows with a Cached chip', () => {
+    render(<ToolTrace tools={CACHED_TOOLS} />);
+    expand();
+
+    const rows = screen.getAllByRole('listitem');
+    expect(rows).toHaveLength(CACHED_TOOLS.length);
+    CACHED_TOOLS.forEach((tool, i) => {
+      const chip = within(rows[i]!).queryByText('Cached', { exact: true });
+      if (tool.cached === true) expect(chip, `${tool.tool} is cached`).not.toBeNull();
+      else expect(chip, `${tool.tool} was fetched live`).toBeNull();
+    });
+  });
+
+  it('tells a screen reader in the row’s one outcome run, and hides the chip that restates it', () => {
+    /*
+     * One accessible outcome per row, read label → outcome → raw id: "Track profile, Succeeded,
+     * from cache, get_track_info". An accessible chip on the label line would be read between the
+     * label and the outcome, splitting the cache fact from the outcome it qualifies — so the chip
+     * is `aria-hidden` and the `sr-only` run says it, the same split the status marks already
+     * make.
+     */
+    render(<ToolTrace tools={CACHED_TOOLS} />);
+    expand();
+
+    const [cached, live, failed] = screen.getAllByRole('listitem');
+    expect(within(cached!).getByText('Succeeded, from cache')).toHaveClass('sr-only');
+    expect(within(live!).getByText('Succeeded')).toHaveClass('sr-only');
+    expect(within(failed!).getByText('Failed')).toHaveClass('sr-only');
+
+    const chip = within(cached!).getByText('Cached', { exact: true });
+    expect(chip).toHaveAttribute('aria-hidden', 'true');
+    // Not a control: nothing to focus, so no ring to prove.
+    expect(chip.closest('button, a, [tabindex]')).toBeNull();
+  });
+
+  it('keeps the spoken outcome and the chip in agreement for a cached failure', () => {
+    // A cache hit is always a success today (`_invoke_with_cache` stores only successes), but
+    // the trace renders what the server said; if the two ever disagree on screen and in speech,
+    // one of them is lying.
+    render(<ToolTrace tools={[{ tool: 'get_track_info', success: false, cached: true }]} />);
+    expand();
+
+    expect(screen.getByText('Failed, from cache')).toHaveClass('sr-only');
+    expect(screen.getByText('Cached', { exact: true })).toBeInTheDocument();
+  });
+
+  it('says the same header with and without the laurel', () => {
+    const { unmount } = render(<ToolTrace tools={CACHED_TOOLS} />);
+    const streaming = screen.getByRole('button').textContent;
+    unmount();
+    render(<ToolTrace tools={CACHED_TOOLS} complete />);
+
+    expect(screen.getByRole('button').textContent).toBe(streaming);
+    expect(streaming).toContain(`, ${cachedCount(CACHED_TOOLS)} cached)`);
+  });
+
+  it('paints the chip on the row composite, and keeps it readable there', () => {
+    render(<ToolTrace tools={CACHED_TOOLS} complete />);
+    expand();
+    const chip = screen.getByText('Cached', { exact: true });
+
+    // The premise of judging it at ROW_BACKDROP: a fill of its own would be a fourth layer, and
+    // measuring the right colour against the wrong background is the failure CLAUDE.md records.
+    expect(Array.from(chip.classList).filter((c) => c.startsWith('bg-'))).toEqual([]);
+
+    const neutrals = restingTextNeutrals(screen.getByRole('button').parentElement!);
+    // Header label + chevron, each row's label and raw id, and one chip per cached row.
+    expect(neutrals).toHaveLength(2 + 2 * CACHED_TOOLS.length + cachedCount(CACHED_TOOLS));
+    for (const { hex, text } of neutrals) {
       expect(
         contrastRatio(hex, ROW_BACKDROP),
         `"${text}" at ${hex} over the row wash`,

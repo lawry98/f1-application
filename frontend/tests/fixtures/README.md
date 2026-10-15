@@ -1,6 +1,6 @@
 # SSE fixtures
 
-`clean.sse` and `truncated.sse` are **real bytes from the real FastAPI route**, not
+`clean.sse`, `truncated.sse`, `cached.sse` and `quota-exhausted.sse` are **real bytes from the real FastAPI route**, not
 hand-written approximations. Only the LangGraph agent was doubled when they were captured;
 the router, the SSE encoder and the payload construction are production code.
 
@@ -16,6 +16,16 @@ cd backend && python scripts/dump_sse_fixtures.py
 
 That script imports its step fixtures from `backend/tests/api/test_routes.py`, so the shape
 here follows the backend suite rather than being maintained separately.
+
+`cached.sse` is the clean run with `get_championship_standings` served from the result cache — the
+shape of a repeat briefing for the same race — so the tool trace's cache marking is tested against
+bytes the route really serves. Standings is the longest id that is ever cached, which is why it is
+the one: a narrow-row test sees the worst case for a chip crowding the raw id.
+
+`quota-exhausted.sse` is a run whose planner met Gemini's spent daily quota: it ends after the
+resolver on an `error` event with `code: "daily_cap"`, the same body a refusal at admission sends.
+Its guard runs on a fixed clock (`QUOTA_FIXTURE_NOW` in the script), so `retry_after_seconds` is
+the same 75600 on every regeneration.
 
 # Standings and calendar fixtures
 
@@ -63,3 +73,11 @@ curl -sf http://localhost:8000/api/circuits/it-1922/winners | python3 -m json.to
 ```
 
 A cold call costs one FastF1 session load per season, about five seconds in all.
+
+# Briefing check cases
+
+`briefing-check-cases.json` is the one hand-written fixture here, on purpose: it is a set of
+specifications, not a capture. Each case starts from a base example, swaps a sentence, and names
+the checks it must fail and the sentences it must flag. `backend/tests/test_briefing_checks.py`
+and `briefing-example-checks.test.ts` both run every case, which is what keeps the Python checker
+and its TypeScript port in step. Add a case here, never to one side.

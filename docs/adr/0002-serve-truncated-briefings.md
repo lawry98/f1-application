@@ -59,7 +59,8 @@ exists (see `test_planner_degrades_to_default_tools_when_the_llm_call_fails`, an
 made that change when a free-tier 429 became normal operation). The synthesizer has no fallback
 prose to fall back *to*, so it degrades only once the stream has produced some: with prose in
 hand it truncates, with none it raises. The asymmetry is in what each node can substitute when
-the model is unavailable, not in whether it is allowed to.
+the model is unavailable, not in whether it is allowed to. (Amended 2026-10-13, below: a spent
+Gemini day is the one planner failure that does not degrade.)
 
 **Real streaming introduced a schedule-cache interleaving hazard**, and this ADR is where it is
 recorded rather than fixed. `finally: clear_schedule_cache()` used to be safe by accident — the
@@ -70,3 +71,13 @@ request nobody is listening to. Not a correctness bug — `dict.clear()` under t
 corrupt a concurrent read, the read just misses — and arguably no worse than today's
 run-everything-anyway. Fixing it means decoupling the cache's lifetime from the generator's,
 which is a separate design.
+
+## Amended 2026-10-13: a spent Gemini day ends the run
+
+The planner no longer degrades unconditionally. A 429 whose `QuotaFailure` names a per-day quota
+(`agent/quota.py`) raises `DailyQuotaExhaustedError` from either node: the synthesizer calls the
+same model on the same project, so a default plan could only gather data for a briefing nobody can
+write. The route ends the stream on an `error` event with the cost guard's `daily_cap` body and
+closes the guard until Gemini's reset, midnight Pacific time. Every other planner failure, a
+per-minute 429 included, still falls back to `DEFAULT_TOOLS`. Truncation is unchanged: a spent day
+after the first Delta is a truncated briefing like any other failure there.

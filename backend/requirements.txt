@@ -7,8 +7,8 @@ langgraph==1.0.6
 fastf1==3.7.0
 # Imported directly (tools/, tests/) — declared so it isn't just a transitive dep of fastf1.
 pandas==2.3.3
-# zoneinfo's database for BRIEFING_DAY_TZ wherever the OS has none (Windows) — declared rather
-# than left to arrive through pandas.
+# zoneinfo's database for BRIEFING_DAY_TZ and agent/quota.py's America/Los_Angeles wherever the
+# OS has none (Windows) — declared rather than left to arrive through pandas.
 tzdata==2026.5
 requests==2.34.2
 python-dotenv==1.2.2

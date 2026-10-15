@@ -53,7 +53,7 @@ left exactly as it was.
 - **Duplicate concurrent fetches.** As in the schedule cache, the lock is released during the
   fetch; two concurrent misses on one key both fetch and the last write wins.
 - **A visible seam.** The `tool_result` SSE event carries `cached: true/false` so the transport
-  stays honest about provenance; the frontend ignores it for now.
+  stays honest about provenance; the frontend ignored it at first (the tool trace renders it now — see the amendment below).
 
 ## Amended by ADR-0004: the cutoff is the date component
 
@@ -63,3 +63,12 @@ for every cached tool, and `DATE_DEPENDENT_TOOLS` is gone. An upcoming race's `a
 start of today, so its key still rolls over daily, as the date component did. A past race's
 `as_of` is fixed, and nothing that started before it can change, so its entries are good for
 the life of the process. A date component on top would only refetch them every day.
+
+## Amended 2026-10-13: the tool trace renders `cached`
+
+The frontend no longer ignores the flag. The tool trace keeps each `tool_result`'s `cached` in
+its state, marks a cached row with a `Cached` chip (and a screen-reader outcome of "Succeeded,
+from cache"), and counts them in its header: `Agent Tool Trace (6 tools executed, 4 cached)`,
+the suffix only when at least one result was cached. Only `cached === true` renders; a live
+fetch carries no chip, so a first briefing reads as it always did. The result cache, its keys and
+its scope are unchanged.

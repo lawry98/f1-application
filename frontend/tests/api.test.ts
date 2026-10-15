@@ -96,6 +96,35 @@ describe.each(CHUNK_SIZES)('streamBriefing (reader chunk size %i)', (chunkSize) 
 
     expect(contentOf(events, 'briefing_delta')).toContain('aco\n\n');
   });
+
+  it('carries each tool result’s cached flag as the route serves it', async () => {
+    // `cached.sse` is a repeat run: the standings came from the result cache, the news
+    // search ran live. Both values are pinned, so a parser that defaulted the flag either way
+    // fails on one of them.
+    const events = await collect('cached.sse', chunkSize);
+
+    expect(events.filter((e) => e.type === 'tool_result').map((e) => e.data)).toEqual([
+      { tool: 'get_championship_standings', success: true, cached: true },
+      { tool: 'search_f1_news', success: false, cached: false },
+    ]);
+  });
+
+  it('ends a run Gemini’s spent day stopped on a daily-cap error with its wait and limit', async () => {
+    // `quota-exhausted.sse` is a run whose planner met a spent daily quota. The error event
+    // carries the same body a refusal at admission sends, so the page can show the same notice.
+    const events = await collect('quota-exhausted.sse', chunkSize);
+
+    expect(events.map((e) => e.type)).toEqual(['status', 'race_info', 'status', 'error']);
+    expect(events.at(-1)).toEqual({
+      type: 'error',
+      data: {
+        message: "Today's briefing budget is used up. Please try again once it resets.",
+        code: 'daily_cap',
+        retry_after_seconds: 75600,
+        limit: 100,
+      },
+    });
+  });
 });
 
 describe('streamBriefing error handling', () => {

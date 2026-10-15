@@ -1,6 +1,11 @@
 import AxeBuilder from '@axe-core/playwright';
 
-import { mockBriefingRefusal, type BriefingRefusal } from './support/api-mocks';
+import {
+  mockBriefingRefusal,
+  mockBriefingStreams,
+  sseFixture,
+  type BriefingRefusal,
+} from './support/api-mocks';
 import { AA_SMALL_TEXT, expectContrast } from './support/contrast';
 import { waitForMotionToSettle } from './support/motion';
 import { waitForMain } from './support/page-content';
@@ -78,3 +83,52 @@ for (const { name, refusal, message, button } of CASES) {
     await expect(notice).toHaveCount(0);
   });
 }
+
+/**
+ * The same notice when the day runs out inside a run the guard had admitted: Gemini's own daily
+ * quota is spent, and the real captured stream ends on an error event that carries the refusal's
+ * body. The reader must meet the daily cap's notice, not the red error box, and the same lock.
+ *
+ * Its wait is the fixture's 21 hours, so the unlock is driven by `fastForward`, which fires each
+ * due timer once, rather than `runFor`, which would tick the countdown 75,600 times.
+ */
+test('a daily cap that ends the stream shows the same notice, locks the controls, and unlocks them on time', async ({
+  page,
+}) => {
+  const waitSeconds = 75_600;
+  await page.clock.install({ time: NOW });
+  await mockBriefingStreams(page, [sseFixture('quota-exhausted.sse')]);
+  await page.goto('/briefing');
+  await waitForMain(page);
+  const chip = page.getByRole('button', { name: /monaco grand prix/i });
+  await expect(chip).toBeEnabled();
+
+  await page.getByLabel('Circuit name').fill('Monaco');
+  await page.getByRole('button', { name: 'Generate', exact: true }).click();
+
+  const main = page.getByRole('main');
+  const notice = main.getByRole('status');
+  const text = notice
+    .locator('span[aria-hidden="true"]')
+    .filter({ hasText: /^Today's briefing budget is used up\. It resets (tomorrow )?at .+\.$/ });
+  await expect(text).toBeVisible();
+  await expect(main.getByRole('alert')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Retry in \d+:\d{2}:\d{2}$/ })).toBeDisabled();
+  await expect(chip).toBeDisabled();
+
+  await waitForMotionToSettle(page);
+  await expectContrast(text, {
+    atLeast: AA_SMALL_TEXT,
+    site: "mid-stream daily cap notice (zinc-300 on the status box's opaque zinc-900)",
+  });
+  const { violations } = await new AxeBuilder({ page }).withTags(WCAG_A_AA).analyze();
+  expect(
+    violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`),
+  ).toEqual([]);
+
+  await page.clock.fastForward(waitSeconds * 1000);
+
+  await expect(page.getByRole('button', { name: 'Generate', exact: true })).toBeEnabled();
+  await expect(chip).toBeEnabled();
+  await expect(notice).toHaveCount(0);
+});
