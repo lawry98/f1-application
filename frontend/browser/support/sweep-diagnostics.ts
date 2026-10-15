@@ -115,9 +115,16 @@ function traceTail(json: string, pidHint: number[]): string[] {
     const names = new Map<string, string>();
     for (const e of events) if (e.ph === 'M' && e.name === 'thread_name') names.set(`${e.pid}:${e.tid}`, e.args?.name ?? '');
     const wanted = [...names].filter(([k, n]) => /CrRendererMain|Compositor$|VizCompositor|CrGpuMain|CrBrowserMain/.test(n) && (pidHint.length === 0 || true) && k);
-    const spec = events.filter((e) => /SpeculativeImageDecode|ImageDecode|DecodeImage|TileManager::|ActivateSyncTree|NotifyReadyToActivate/.test(e.name)).sort((a, b) => a.ts - b.ts);
-    out.push(`  trace decode/activation events: ${spec.length}; last 25:`);
-    for (const e of spec.slice(-25)) out.push(`      ${names.get(`${e.pid}:${e.tid}`) ?? e.tid} ${e.ph} ${e.name} ts=${e.ts} dur=${e.dur ?? ''}`);
+    // The renderer's compositor: what tile/activation work it did last, with the args cc attaches.
+    const rendererCompositor = [...names].find(([, n]) => n === 'Compositor')?.[0];
+    const cc = events
+      .filter((e) => `${e.pid}:${e.tid}` === rendererCompositor && /TileManager|Activat|PrepareTiles|Checker|ImageDecode|Commit|PendingTree|RasterTask|ReadyTo/.test(e.name))
+      .sort((a, b) => a.ts - b.ts);
+    out.push(`  renderer compositor tile/activation/commit events: ${cc.length}; last 40:`);
+    for (const e of cc.slice(-40)) {
+      const a = e.args && Object.keys(e.args).length ? ` ${JSON.stringify(e.args).slice(0, 300)}` : '';
+      out.push(`      ${e.ph} ${e.name} ts=${e.ts} dur=${e.dur ?? ''}${a}`);
+    }
     for (const [key, name] of wanted) {
       const evs = events.filter((e) => `${e.pid}:${e.tid}` === key && e.ph !== 'M').sort((a, b) => a.ts - b.ts);
       if (evs.length === 0) continue;
@@ -180,7 +187,7 @@ export async function diagnoseSweep<T>(
       commandLine: string;
     };
     const disables = info.commandLine.match(/--disable-features=\S+/g) ?? [];
-    header.push(`cmdline: ${disables.length}× --disable-features; SpeculativeImageDecodes ${disables.some((d) => d.includes('SpeculativeImageDecodes')) ? 'DISABLED' : 'default'}; last=${disables.at(-1)?.slice(0, 80)}`);
+    header.push(`cmdline: ${disables.length}× --disable-features; SpeculativeImageDecodes ${disables.some((d) => d.includes('SpeculativeImageDecodes')) ? 'DISABLED' : 'default'}; no-mfba=${info.commandLine.includes('--disable-main-frame-before-activation')} no-checker=${info.commandLine.includes('--disable-checker-imaging')} headless-shell=${info.commandLine.includes('headless-shell')}`);
     const fs = info.gpu.featureStatus;
     header.push(
       `gpu: compositing=${fs.gpu_compositing} raster=${fs.rasterization} webgl=${fs.webgl} device=${info.gpu.devices.map((d) => `${d.vendorString}/${d.deviceString}`).join(';')}`,
