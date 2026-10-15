@@ -1,6 +1,6 @@
 # SSE fixtures
 
-`clean.sse`, `truncated.sse` and `cached.sse` are **real bytes from the real FastAPI route**, not
+`clean.sse`, `truncated.sse`, `cached.sse` and `quota-exhausted.sse` are **real bytes from the real FastAPI route**, not
 hand-written approximations. Only the LangGraph agent was doubled when they were captured;
 the router, the SSE encoder and the payload construction are production code.
 
@@ -21,6 +21,11 @@ here follows the backend suite rather than being maintained separately.
 shape of a repeat briefing for the same race — so the tool trace's cache marking is tested against
 bytes the route really serves. Standings is the longest id that is ever cached, which is why it is
 the one: a narrow-row test sees the worst case for a chip crowding the raw id.
+
+`quota-exhausted.sse` is a run whose planner met Gemini's spent daily quota: it ends after the
+resolver on an `error` event with `code: "daily_cap"`, the same body a refusal at admission sends.
+Its guard runs on a fixed clock (`QUOTA_FIXTURE_NOW` in the script), so `retry_after_seconds` is
+the same 75600 on every regeneration.
 
 # Standings and calendar fixtures
 

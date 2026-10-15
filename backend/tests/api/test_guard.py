@@ -134,6 +134,79 @@ def test_a_zero_daily_cap_is_no_cap(clock):
         admit_and_release(guard, f"10.0.0.{index}")
 
 
+# ── Closed until an upstream budget comes back ───────────────────────────────
+
+# Gemini's next reset seen from T0: 07:00 UTC tomorrow, seven hours past the guard's own midnight.
+SECONDS_TO_REOPENING = 21 * 3600
+
+
+def test_a_closed_guard_turns_everyone_away_as_the_daily_cap_until_it_reopens(clock):
+    guard = make_guard(clock, daily_cap=4)
+
+    closed = guard.close_until(T0 + SECONDS_TO_REOPENING)
+
+    expected = Rejection(
+        code="daily_cap", status=503, retry_after_seconds=SECONDS_TO_REOPENING, limit=4
+    )
+    assert closed == expected
+    assert guard.admit("198.51.100.2") == expected
+
+
+def test_a_close_outlasts_the_guards_own_day_turning_over(clock):
+    """The guard's day and the upstream's need not end together: Gemini's resets at Pacific
+    midnight, and a close that ended with the guard's day would let the next run spend its
+    attempts on a quota that is still gone."""
+    guard = make_guard(clock, daily_cap=1)
+    guard.close_until(T0 + SECONDS_TO_REOPENING)
+    clock.advance(SECONDS_TO_MIDNIGHT + 1800)
+
+    rejection = guard.admit("203.0.113.1")
+
+    assert rejection == Rejection(
+        code="daily_cap",
+        status=503,
+        retry_after_seconds=SECONDS_TO_REOPENING - SECONDS_TO_MIDNIGHT - 1800,
+        limit=1,
+    )
+
+
+def test_a_closed_guard_reopens_on_time_with_its_day_unspent(clock):
+    """Refusals while closed are free, like every other refusal."""
+    guard = make_guard(clock, daily_cap=1)
+    guard.close_until(T0 + 600)
+    for index in range(3):
+        assert guard.admit(f"203.0.113.{index}").code == "daily_cap"
+
+    clock.advance(600)
+
+    admit_and_release(guard, "203.0.113.9")
+
+
+def test_a_later_close_never_shortens_an_earlier_one(clock):
+    guard = make_guard(clock)
+    guard.close_until(T0 + 600)
+    guard.close_until(T0 + 60)
+    clock.advance(120)
+
+    assert guard.admit("203.0.113.1").retry_after_seconds == 480
+
+
+def test_a_guard_with_no_daily_cap_still_closes(clock):
+    guard = make_guard(clock, daily_cap=0)
+    guard.close_until(T0 + 600)
+
+    assert guard.admit("203.0.113.1").code == "daily_cap"
+
+
+def test_a_close_is_checked_before_the_slots(clock):
+    """A full house while closed is told the day is spent, not to come back in ten seconds."""
+    guard = make_guard(clock, max_concurrent=1)
+    guard.admit("203.0.113.1")
+    guard.close_until(T0 + 600)
+
+    assert guard.admit("203.0.113.2").code == "daily_cap"
+
+
 # ── Concurrency ──────────────────────────────────────────────────────────────
 
 

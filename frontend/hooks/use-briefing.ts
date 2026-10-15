@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { BriefingRequestError, streamBriefing } from '@/lib/api';
+import { BriefingRequestError, positiveNumber, streamBriefing } from '@/lib/api';
 import { isRejectionCode, type BriefingNotice } from '@/lib/briefing-notice';
 import { BRIEFING_DEADLINE_ERROR, GENERIC_BRIEFING_ERROR } from '@/lib/constants';
 import type { RaceInfo, ToolResult } from '@/types';
@@ -20,6 +20,16 @@ const COUNTDOWN_TICK_MS = 1000;
  * continuous.
  */
 const FLUSH_INTERVAL_MS = 80;
+
+/** The notice for a refusal that arrived at `refusedAt` — at admission, or mid-stream. */
+function noticeAt(
+  code: BriefingNotice['code'],
+  waitSeconds: number,
+  limit: number | null,
+  refusedAt: number,
+): BriefingNotice {
+  return { code, retryAt: refusedAt + waitSeconds * 1000, waitSeconds, limit };
+}
 
 export interface BriefingState {
   query: string;
@@ -217,9 +227,19 @@ export function useBriefing(): UseBriefingReturn {
             setStatusMessage('');
             setStep('');
           } else if (event.type === 'error') {
-            // The deadline is keyed on its code, so the page owns its wording; every other
-            // error event's message is already written for a reader.
-            setError(event.data.code === 'deadline' ? BRIEFING_DEADLINE_ERROR : event.data.message);
+            const code = event.data.code ?? null;
+            const wait = positiveNumber(event.data.retry_after_seconds);
+            if (isRejectionCode(code) && wait !== null) {
+              // Gemini's daily quota ran out inside the run: the same notice, lock and countdown
+              // as the guard's refusal at admission. With no usable wait it stays an error below.
+              const refusedAt = Date.now();
+              setNow(refusedAt);
+              setNotice(noticeAt(code, wait, positiveNumber(event.data.limit), refusedAt));
+            } else {
+              // The deadline is keyed on its code, so the page owns its wording; every other
+              // error event's message is already written for a reader.
+              setError(code === 'deadline' ? BRIEFING_DEADLINE_ERROR : event.data.message);
+            }
           } else if (event.type === 'interrupted') {
             // No terminal event is coming to do the final flush, so this does it: the timer may
             // still be holding the last deltas, and cancelling it unpainted would strand them.
@@ -243,12 +263,7 @@ export function useBriefing(): UseBriefingReturn {
           // error below rather than locking the page for an unknown time.
           const refusedAt = Date.now();
           setNow(refusedAt);
-          setNotice({
-            code: err.code,
-            retryAt: refusedAt + err.retryAfterSeconds * 1000,
-            waitSeconds: err.retryAfterSeconds,
-            limit: err.limit,
-          });
+          setNotice(noticeAt(err.code, err.retryAfterSeconds, err.limit, refusedAt));
         } else {
           console.error('Briefing request failed:', err);
           setError(GENERIC_BRIEFING_ERROR);

@@ -346,6 +346,47 @@ class _FakeOpenF1Response:
         return self._payload
 
 
+# The free tier's quota ids. The daily one is what a spent key's 429 named, read off the body on
+# 2026-09-30; the per-minute one is its sibling, which a burst can hit on a key with a day left.
+GEMINI_DAILY_QUOTA = "GenerateRequestsPerDayPerProjectPerModel-FreeTier"
+GEMINI_PER_MINUTE_QUOTA = "GenerateRequestsPerMinutePerProjectPerModel-FreeTier"
+
+
+def gemini_quota_body(*quota_ids: str) -> dict[str, Any]:
+    """Gemini's 429 ``RESOURCE_EXHAUSTED`` body, one ``QuotaFailure`` violation per quota id.
+
+    Laid out as google.rpc's error details are: a ``Help`` link first, so nothing can read the
+    quota off ``details[0]``, and a ``RetryInfo`` last, which the app deliberately ignores — a
+    spent day resets at Pacific midnight whatever wait it states.
+    """
+    return {
+        "error": {
+            "code": 429,
+            "message": "You exceeded your current quota, please check your plan and billing details.",
+            "status": "RESOURCE_EXHAUSTED",
+            "details": [
+                {
+                    "@type": "type.googleapis.com/google.rpc.Help",
+                    "links": [{"url": "https://ai.google.dev/gemini-api/docs/rate-limits"}],
+                },
+                {
+                    "@type": "type.googleapis.com/google.rpc.QuotaFailure",
+                    "violations": [
+                        {
+                            "quotaMetric": "generativelanguage.googleapis.com/generate_content_free_tier_requests",
+                            "quotaId": quota_id,
+                            "quotaDimensions": {"location": "global", "model": "gemini-3.6-flash"},
+                            "quotaValue": "20",
+                        }
+                        for quota_id in quota_ids
+                    ],
+                },
+                {"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "16s"},
+            ],
+        }
+    }
+
+
 class FakeClock:
     """A clock a test moves by hand — for anything timed in hours, where sleeping is no option.
 

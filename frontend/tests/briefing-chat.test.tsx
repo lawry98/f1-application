@@ -458,6 +458,26 @@ describe('BriefingChat busy and limit states', () => {
     expect(screen.getByRole('button', { name: /retry in 2:00:00/i })).toBeDisabled();
   });
 
+  it('shows a daily cap that arrives mid-stream as the same notice, not an error', async () => {
+    // Gemini's own day ran out inside an admitted run: the real captured stream ends on an error
+    // event carrying the refusal's body, and the reader is told when to come back.
+    const feed = new ChunkFeed();
+    stubFetch(feed);
+    render(<BriefingChat />);
+    await settle();
+    await generate();
+
+    feed.push(fixtureText('quota-exhausted.sse'));
+    feed.close();
+    await settle();
+
+    expect(screen.getByRole('status')).toHaveTextContent(
+      /^Today's briefing budget is used up\. It resets (tomorrow )?at .+\.$/,
+    );
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByRole('button', { name: /retry in 21:00:00/i })).toBeDisabled();
+  });
+
   it('hides the empty state while a notice is up', async () => {
     stubRefusal(503, { code: 'busy', retry_after_seconds: 10, limit: 2 });
     render(<BriefingChat />);

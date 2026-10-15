@@ -319,7 +319,9 @@ Every briefing is two Gemini calls, so the briefing stream sits behind an admiss
 | Simultaneous generations (never queued) | `BRIEFING_MAX_CONCURRENT=2` | `503 {"code": "busy", ...}` |
 
 Each refusal carries `retry_after_seconds`, the `limit` that was hit and a `Retry-After` header;
-only an admitted request counts against a limit. An admitted run is stopped at
+only an admitted request counts against a limit. If Gemini's own daily quota runs out first, the
+run ends on `error {"code": "daily_cap", ...}` and the guard refuses as `daily_cap` until Gemini's
+reset at midnight Pacific time. An admitted run is stopped at
 `BRIEFING_DEADLINE_SECONDS` (90): the tool fan-out and the synthesizer stop spending, prose
 already written is served as a truncated briefing, and with none the stream ends with
 `error {"code": "deadline"}`. Gemini calls themselves time out per read: the planner's at 15s

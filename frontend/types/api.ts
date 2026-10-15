@@ -13,11 +13,21 @@ export type StreamEvent =
   | { type: 'briefing'; data: { content: string; truncated: boolean } }
   | { type: 'complete'; data: { message: string } }
   /**
-   * `code` is present only when the server stopped the run at its deadline before any prose
-   * existed. A deadline after prose is not an error at all: it arrives as a `briefing` with
-   * `truncated: true` (ADR-0002).
+   * `code` is present only when the run stopped before any prose existed. `deadline`: the
+   * server's deadline — a deadline after prose is not an error at all, it arrives as a `briefing`
+   * with `truncated: true` (ADR-0002). `daily_cap`: Gemini's own daily quota ran out inside the
+   * run, and the event carries the cost guard's refusal body — `retry_after_seconds` and `limit` —
+   * so the page shows the same notice as a refusal at admission.
    */
-  | { type: 'error'; data: { message: string; code?: 'deadline' } }
+  | {
+      type: 'error';
+      data: {
+        message: string;
+        code?: 'deadline' | 'daily_cap';
+        retry_after_seconds?: number;
+        limit?: number;
+      };
+    }
   /**
    * Not sent by the server: `streamBriefing` yields it when the stream ends before either
    * terminal event — `briefing` or `error` — arrived. `ended` is a body that closed early,
@@ -27,8 +37,9 @@ export type StreamEvent =
   | { type: 'interrupted'; data: { reason: 'ended' | 'failed' } };
 
 /**
- * Why the briefing routes refused to start a run, from the JSON body of their 429 / 503.
- * They are refused before the event stream opens, so none of this ever arrives as an event.
+ * Why the briefing routes refused to start a run, from the JSON body of their 429 / 503 — refused
+ * before the event stream opens. `daily_cap` alone can also arrive as an `error` event, when
+ * Gemini's daily quota ran out inside a run the guard had admitted.
  */
 export type BriefingRejectionCode = 'busy' | 'rate_limited' | 'daily_cap';
 

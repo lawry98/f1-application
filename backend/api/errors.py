@@ -10,7 +10,7 @@ Putting them here would mean routing them through a boundary that cannot tell
 the difference, and the whole point of this module is that the boundary does not
 have to.
 
-Five constants rather than one because the copy has to match what failed:
+Six constants rather than one because the copy has to match what failed:
 "Something went wrong generating this briefing" is wrong for a season calendar
 fetch, where no briefing is being generated at all.
 
@@ -32,3 +32,10 @@ GENERIC_CIRCUIT_WINNERS_ERROR: str = (
 # Sent with `code: "deadline"` on the stream's error event, which is what the page keys its own
 # copy on; this text is for any client that reads only the message.
 BRIEFING_DEADLINE_ERROR: str = "This briefing took too long and was stopped. Please try again."
+
+# Sent with `code: "daily_cap"` on the stream's error event when Gemini's own daily quota ran out
+# before the guard's cap did. The page keys on the code and renders the guard's daily-cap notice;
+# this text is for any client that reads only the message.
+BRIEFING_DAILY_CAP_ERROR: str = (
+    "Today's briefing budget is used up. Please try again once it resets."
+)

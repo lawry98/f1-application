@@ -11,6 +11,12 @@ checks, in this order, all before any work starts:
 Only an admitted request counts against the first two. A rejection is free, so a user who
 hits ``busy`` five times has not also spent their hour.
 
+**The guard can also be closed until a given time** (:meth:`AdmissionGuard.close_until`), for
+a budget upstream that it does not count itself: Gemini's daily quota can run out before the cap
+does. A closed guard refuses at the daily cap's place in the order and with its ``daily_cap``
+code — to a reader the day's budget is spent either way — until the close lifts, which need not
+be the guard's own midnight.
+
 **Everything is in this process's memory**, so the limits are per worker: run exactly one.
 A second worker would double every limit and the two would never agree. Nothing here
 survives a restart either, which resets the day's count; for a single small deployment that
@@ -106,6 +112,7 @@ class AdmissionGuard:
         self._hits: dict[str, deque[float]] = {}
         self._day = -1
         self._day_count = 0
+        self._closed_until = 0.0
         self._leases: dict[int, float] = {}
         self._lease_ids = itertools.count()
 
@@ -142,6 +149,8 @@ class AdmissionGuard:
             day = int(now // DAY_SECONDS)
             if day != self._day:
                 self._day, self._day_count = day, 0
+            if now < self._closed_until:
+                return self._closed_rejection(now)
             if self._daily_cap and self._day_count >= self._daily_cap:
                 return Rejection(
                     code="daily_cap",
@@ -165,6 +174,21 @@ class AdmissionGuard:
             self._leases[lease_id] = now + self._lease_seconds
 
         return Lease(lambda: self._release(lease_id))
+
+    def close_until(self, until: float) -> Rejection:
+        """Refuse everyone as ``daily_cap`` until ``until``, a wall-clock time, and return what a
+        request is now told. A later close never shortens an earlier one."""
+        with self._lock:
+            self._closed_until = max(self._closed_until, until)
+            return self._closed_rejection(self._clock())
+
+    def _closed_rejection(self, now: float) -> Rejection:
+        return Rejection(
+            code="daily_cap",
+            status=503,
+            retry_after_seconds=_whole_seconds(self._closed_until - now),
+            limit=self._daily_cap,
+        )
 
     def _release(self, lease_id: int) -> None:
         with self._lock:

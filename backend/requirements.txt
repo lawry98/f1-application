@@ -7,6 +7,9 @@ langgraph==1.0.6
 fastf1==3.7.0
 # Imported directly (tools/, tests/) — declared so it isn't just a transitive dep of fastf1.
 pandas==2.3.3
+# agent/quota.py's ZoneInfo("America/Los_Angeles"). Windows has no system tz database, and
+# declaring it keeps the app off the base image's; pandas brings it too, but only transitively.
+tzdata==2026.5
 requests==2.34.2
 python-dotenv==1.2.2
 tavily-python==0.7.17

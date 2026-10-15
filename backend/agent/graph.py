@@ -18,6 +18,7 @@ from langgraph.graph import END, StateGraph
 
 from agent.budget import BriefingStoppedError, RunBudget, budget_from
 from agent.prompts import DEFAULT_TOOLS, PLANNER_PROMPT, SYNTHESIZER_PROMPT
+from agent.quota import daily_quota_error
 from agent.state import AgentState, RaceInfo, ToolResult
 from config import (
     BRIEFING_DEADLINE_SECONDS,
@@ -232,8 +233,15 @@ def planner_node(state: AgentState, config: RunnableConfig | None = None) -> dic
         # See the note in config.py.
         response = llm.invoke(messages, thinking_level=PLANNER_THINKING_LEVEL)
     except Exception as exc:
-        # Broad on purpose, and deliberately separate from the parse block below. Any
-        # transport or API failure — a free-tier 429 above all — should degrade to the
+        # The one failure that does not degrade: with the day's quota spent the synthesizer,
+        # on the same model and project, cannot succeed either, so a default plan would only
+        # gather data — OpenF1 requests, a paid news search — for a briefing nobody can write.
+        spent = daily_quota_error(exc)
+        if spent is not None:
+            logger.warning("Planner found Gemini's daily quota spent; ending the run")
+            raise spent from exc
+        # Broad on purpose, and deliberately separate from the parse block below. Any other
+        # transport or API failure — a per-minute 429 above all — should degrade to the
         # default tools rather than take the whole briefing down with an HTTP 500. The
         # planner is an optimisation; the pipeline works without it.
         logger.warning(
@@ -649,6 +657,11 @@ def synthesizer_node(state: AgentState, config: RunnableConfig | None = None) ->
         # transport's `if briefing:` guard and served as the generic error, not as prose.
         partial = "".join(chunks)
         if not partial:
+            # Typed, so the route can tell the reader when to come back rather than that
+            # something went wrong. Every other failure travels as itself.
+            spent = daily_quota_error(exc)
+            if spent is not None:
+                raise spent from exc
             raise
         logger.warning(
             "Synthesizer stream failed after %d deltas (%s: %s); serving a truncated briefing",

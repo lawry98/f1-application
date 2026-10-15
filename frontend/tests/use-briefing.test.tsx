@@ -635,6 +635,65 @@ describe('busy and limit refusals', () => {
     expect(result.current.error).toBe(GENERIC_BRIEFING_ERROR);
   });
 
+  it('turns a daily_cap error event mid-stream into the same notice a refusal makes', async () => {
+    // Gemini's own daily quota ran out inside the run, after the guard had admitted it. The
+    // real captured bytes end on an error event carrying the refusal's body.
+    const feed = new ChunkFeed();
+    const { result, submit } = start(feed);
+    await submit('Monaco');
+
+    feed.push(fixtureText('quota-exhausted.sse'));
+    feed.close();
+    await settle();
+
+    expect(result.current.notice).toEqual({
+      code: 'daily_cap',
+      retryAt: Date.now() + 75_600_000,
+      waitSeconds: 75600,
+      limit: 100,
+    });
+    expect(result.current.error).toBe('');
+    expect(result.current.loading).toBe(false);
+  });
+
+  it('locks submit after a mid-stream daily_cap until the wait runs out', async () => {
+    const feed = new ChunkFeed();
+    const after = new ChunkFeed();
+    let call = 0;
+    const feeds = [feed, after];
+    const fetchSpy = vi.fn(() => feeds[call++]!.fetch());
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    const { result } = renderHook(() => useBriefing());
+    await act(() => void result.current.submit('Monaco'));
+    feed.push(
+      frame('error', { message: 'Spent.', code: 'daily_cap', retry_after_seconds: 2, limit: 100 }),
+    );
+    feed.close();
+    await settle();
+
+    await act(() => void result.current.submit('Monaco'));
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+    await tick(2000);
+    expect(result.current.notice).toBeNull();
+    await act(() => void result.current.submit('Monaco'));
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('leaves a daily_cap error event with no usable wait as the server worded it', async () => {
+    // No wait means no countdown to drive, so it must not lock the page for an unknown time.
+    const feed = new ChunkFeed();
+    const { result, submit } = start(feed);
+    await submit('Monaco');
+
+    feed.push(frame('error', { message: 'Spent.', code: 'daily_cap', retry_after_seconds: 0 }));
+    feed.close();
+    await settle();
+
+    expect(result.current.notice).toBeNull();
+    expect(result.current.error).toBe('Spent.');
+  });
+
   it('treats a refusal with no usable wait as an ordinary failure', async () => {
     const { result, submit } = startServing(refusedWith(503, { code: 'busy' }));
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
