@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { ConsoleMessage, Page } from '@playwright/test';
 
 import { composite, parseCssColor, wcagRatio } from './color';
 
@@ -21,6 +21,17 @@ export interface InvisibleText {
   ratio: number;
 }
 
+/**
+ * How long the sweep may go without reaching its next stop before it fails. A whole `/teams` sweep
+ * at 390 takes about two seconds on the CI runners under SwiftShader (median under 2s, slowest 3.2s,
+ * over 280 timed runs), so this is a stall, never a slow page, and it fails with most of the
+ * test's 30s still left.
+ */
+const STALL_MS = 10_000;
+
+/** Prefixes the sweep's progress messages on the page console, which name the stop it is at. */
+const PROGRESS = '[invisible-text] ';
+
 interface Sample {
   text: string;
   path: string;
@@ -36,9 +47,25 @@ interface Sample {
  *
  * Sampling per stop, rather than once after a scroll-through, is what catches text inside
  * `BlurFade inView`, which is at opacity 0 whenever it is off screen.
+ *
+ * A stop that gets no frames fails the sweep after `stallMs`, naming the stop. Skipping it would
+ * sample content that BlurFade and the IntersectionObservers never got a frame to reveal, and
+ * waiting runs into the test timeout with nothing to go on. The page cannot report its own stall
+ * when its main thread is blocked, so each stop announces itself on the console as it starts and
+ * the watchdog runs here.
  */
-export async function findInvisibleText(page: Page): Promise<InvisibleText[]> {
-  const samples = await page.evaluate(async (): Promise<Sample[]> => {
+export async function findInvisibleText(
+  page: Page,
+  { stallMs = STALL_MS }: { stallMs?: number } = {},
+): Promise<InvisibleText[]> {
+  let reached = { at: Date.now(), stop: 'the start' };
+  const onConsole = (message: ConsoleMessage) => {
+    const text = message.text();
+    if (text.startsWith(PROGRESS)) reached = { at: Date.now(), stop: text.slice(PROGRESS.length) };
+  };
+  page.on('console', onConsole);
+
+  const sweep = page.evaluate(async (progress: string): Promise<Sample[]> => {
     const frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     const isOpaque = (c: string) => c.startsWith('rgb(');
     // `parseCssColor` cannot cross into the page, so the alpha channel is read here.
@@ -91,7 +118,9 @@ export async function findInvisibleText(page: Page): Promise<InvisibleText[]> {
     };
 
     const step = Math.max(200, Math.round(innerHeight * 0.8));
-    for (let y = 0; ; y += step) {
+    for (let y = 0, stop = 0; ; y += step, stop++) {
+      // eslint-disable-next-line no-console -- the watchdog in findInvisibleText reads this to name a stalled stop
+      console.debug(`${progress}stop ${stop} (y=${y})`);
       window.scrollTo({ top: y, behavior: 'instant' });
       await frame();
       await frame();
@@ -100,7 +129,31 @@ export async function findInvisibleText(page: Page): Promise<InvisibleText[]> {
     }
     window.scrollTo({ top: 0, behavior: 'instant' });
     return Array.from(seen.values());
+  }, PROGRESS);
+  // Abandoned on a stall, it rejects once the page closes.
+  sweep.catch(() => {});
+
+  let watchdog: ReturnType<typeof setInterval> | undefined;
+  const stalled = new Promise<never>((_, reject) => {
+    watchdog = setInterval(() => {
+      if (Date.now() - reached.at < stallMs) return;
+      reject(
+        new Error(
+          `invisible-text sweep stalled at ${reached.stop}: no progress for ${stallMs}ms, where a whole sweep takes ` +
+            'a few seconds. If the renderer main thread is blocked in LayerTreeHost::WaitForCommitCompletion, ' +
+            'this is the software-raster deadlock in CLAUDE.md ("Browser tests").',
+        ),
+      );
+    }, 250);
   });
+
+  let samples: Sample[];
+  try {
+    samples = await Promise.race([sweep, stalled]);
+  } finally {
+    clearInterval(watchdog);
+    page.off('console', onConsole);
+  }
 
   return samples
     .map((s) => {
