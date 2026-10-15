@@ -1,5 +1,6 @@
 import { waitForMotionToSettle } from './support/motion';
 import { findInvisibleText } from './support/invisible-text';
+import { diagnoseSweep } from './support/sweep-diagnostics';
 import { waitForMain } from './support/page-content';
 import { expect, test } from './support/test';
 
@@ -27,7 +28,9 @@ const ROUTES = [
 ] as const;
 
 for (const { path, width } of ROUTES) {
-  test(`${path} at ${width}px paints no text in its own backdrop colour`, async ({ page }) => {
+  test(`${path} at ${width}px paints no text in its own backdrop colour`, async ({ page }, testInfo) => {
+    const diagnose = path === '/teams' && width === 390;
+    if (diagnose) test.setTimeout(75_000);
     await page.setViewportSize({ width, height: 900 });
     await page.goto(path);
     await waitForMain(page);
@@ -42,7 +45,9 @@ for (const { path, width } of ROUTES) {
     // entrance motion still fades opacity under `reducedMotion: 'reduce'` (BlurFade, the teams
     // dossier's swap), so a check that lands mid-fade reports a ratio that depends on timing.
     await waitForMotionToSettle(page);
-    const invisible = await findInvisibleText(page);
+    const invisible = diagnose
+      ? await diagnoseSweep(page, testInfo, () => findInvisibleText(page, { trace: true }))
+      : await findInvisibleText(page);
     expect(
       invisible.map((t) => `"${t.text}" ${t.color} on ${t.backdrop} (${t.ratio.toFixed(2)}:1) at ${t.path}`),
       'text that is present in the DOM but not on the screen',

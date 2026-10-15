@@ -1,0 +1,59 @@
+# DIAGNOSTIC ONLY — not for merge. Runs the browser suite on several runners at once to catch the
+# intermittent /teams 390 sweep hang with the stall diagnostics in browser/support/sweep-diagnostics.ts.
+name: Diagnose sweep hang
+
+on:
+  pull_request:
+
+jobs:
+  browser:
+    name: Browser diag ${{ matrix.run }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        run: [1, 2, 3, 4, 5, 6]
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.8.0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24.17.0"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Resolve Playwright version
+        id: playwright
+        run: echo "version=$(pnpm exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-chromium
+      - name: Install Chromium and its system libraries
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Install Chromium's system libraries
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pnpm exec playwright install-deps chromium
+      - name: Runner
+        run: nproc; free -g; uptime
+      - name: Build
+        run: pnpm build
+      - name: Browser tests
+        run: pnpm test:browser
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-${{ matrix.run }}
+          path: frontend/playwright-report/
+          retention-days: 7

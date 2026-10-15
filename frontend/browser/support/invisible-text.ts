@@ -37,9 +37,51 @@ interface Sample {
  * Sampling per stop, rather than once after a scroll-through, is what catches text inside
  * `BlurFade inView`, which is at opacity 0 whenever it is off screen.
  */
-export async function findInvisibleText(page: Page): Promise<InvisibleText[]> {
-  const samples = await page.evaluate(async (): Promise<Sample[]> => {
-    const frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+export async function findInvisibleText(page: Page, { trace = false } = {}): Promise<InvisibleText[]> {
+  const samples = await page.evaluate(async (trace): Promise<Sample[]> => {
+    // DIAGNOSTIC ONLY: phase logs, a heartbeat, and long-animation-frame entries, all on the console.
+    const log = (msg: string) => {
+      if (trace) console.debug(`[sweep] t=${performance.now().toFixed(0)} ${msg}`);
+    };
+    let phase = 'start';
+    const heartbeat = trace
+      ? setInterval(() => {
+          let rafSeen = false;
+          requestAnimationFrame(() => (rafSeen = true));
+          setTimeout(() => {
+            const pending = Array.from(document.images).filter((i) => !i.complete).length;
+            log(
+              `heartbeat phase=${phase} scrollY=${scrollY} vis=${document.visibilityState} focus=${document.hasFocus()} imgsPending=${pending} anims=${document.getAnimations().length} rafWithin500=${rafSeen}`,
+            );
+          }, 500);
+        }, 1000)
+      : undefined;
+    if (trace) {
+      try {
+        new PerformanceObserver((list) => {
+          for (const e of list.getEntries() as (PerformanceEntry & { blockingDuration?: number; scripts?: { sourceURL: string; sourceFunctionName: string; invoker: string; duration: number }[] })[]) {
+            if (e.duration < 150) continue;
+            const scripts = (e.scripts ?? []).map((s) => `${s.invoker}|${s.sourceFunctionName}|${s.sourceURL.split('/').pop()}|${s.duration.toFixed(0)}`).join(' ; ');
+            log(`LoAF start=${e.startTime.toFixed(0)} dur=${e.duration.toFixed(0)} blocking=${e.blockingDuration?.toFixed(0)} scripts=[${scripts}]`);
+          }
+        }).observe({ type: 'long-animation-frame', buffered: true });
+      } catch (e) {
+        log(`no LoAF observer: ${String(e)}`);
+      }
+    }
+    const frame = (label: string) =>
+      new Promise<void>((resolve) => {
+        const t0 = performance.now();
+        const waiting = trace
+          ? setInterval(() => log(`still waiting for rAF ${label} after ${(performance.now() - t0).toFixed(0)}ms`), 2000)
+          : undefined;
+        requestAnimationFrame(() => {
+          clearInterval(waiting);
+          const ms = performance.now() - t0;
+          if (ms > 100) log(`slow rAF ${label} ${ms.toFixed(0)}ms`);
+          resolve();
+        });
+      });
     const isOpaque = (c: string) => c.startsWith('rgb(');
     // `parseCssColor` cannot cross into the page, so the alpha channel is read here.
     const alphaOf = (c: string): number => {
@@ -91,16 +133,25 @@ export async function findInvisibleText(page: Page): Promise<InvisibleText[]> {
     };
 
     const step = Math.max(200, Math.round(innerHeight * 0.8));
-    for (let y = 0; ; y += step) {
+    for (let y = 0, stop = 0; ; y += step, stop++) {
+      phase = `stop${stop}:scroll`;
       window.scrollTo({ top: y, behavior: 'instant' });
-      await frame();
-      await frame();
+      log(`stop ${stop} y=${y} scrollY=${scrollY} scrollHeight=${document.documentElement.scrollHeight}`);
+      phase = `stop${stop}:frame1`;
+      await frame(`stop${stop}#1`);
+      phase = `stop${stop}:frame2`;
+      await frame(`stop${stop}#2`);
+      phase = `stop${stop}:sample`;
+      const s0 = performance.now();
       sampleViewport();
+      log(`stop ${stop} sampled in ${(performance.now() - s0).toFixed(0)}ms`);
       if (y + innerHeight >= document.documentElement.scrollHeight) break;
     }
     window.scrollTo({ top: 0, behavior: 'instant' });
+    clearInterval(heartbeat);
+    log('done');
     return Array.from(seen.values());
-  });
+  }, trace);
 
   return samples
     .map((s) => {
