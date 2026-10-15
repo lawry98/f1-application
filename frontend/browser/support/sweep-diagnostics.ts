@@ -187,7 +187,7 @@ export async function diagnoseSweep<T>(
       commandLine: string;
     };
     const disables = info.commandLine.match(/--disable-features=\S+/g) ?? [];
-    header.push(`cmdline: ${disables.length}× --disable-features; SpeculativeImageDecodes ${disables.some((d) => d.includes('SpeculativeImageDecodes')) ? 'DISABLED' : 'default'}; swiftshader=${info.commandLine.includes('--use-angle=swiftshader')} raster-threads=${/--num-raster-threads=(\d+)/.exec(info.commandLine)?.[1] ?? 'default'}`);
+    header.push(`cmdline: ${disables.length}× --disable-features; SpeculativeImageDecodes ${disables.some((d) => d.includes('SpeculativeImageDecodes')) ? 'DISABLED' : 'default'}; angle=${/--use-angle=(\S+)/.exec(info.commandLine)?.[1]} raster-threads=${/--num-raster-threads=(\d+)/.exec(info.commandLine)?.[1] ?? 'default'}`);
     const fs = info.gpu.featureStatus;
     header.push(
       `gpu: compositing=${fs.gpu_compositing} raster=${fs.rasterization} webgl=${fs.webgl} device=${info.gpu.devices.map((d) => `${d.vendorString}/${d.deviceString}`).join(';')}`,
