@@ -963,28 +963,6 @@ required CI check (`browser` job). Things that are not guessable:
   because it has no focusable controls by design. The suite's server sets
   `ENABLE_INTERNAL_ROUTES=1` so the sweeps reach `/candy` at all; `internal-routes.spec.ts` starts
   a second `next start` without it to pin the production side.
-- **The CI runners' software raster can deadlock the renderer; SwiftShader's GPU raster does not.**
-  `invisible-text.spec.ts`'s `/teams` sweep at 390 hung in about one sweep in twenty on GitHub's
-  x86 runners (49 of 969, measured), and never on a Mac or in an arm64 container. Every hang,
-  caught in CI with gdb and a Chrome trace, was the same: the renderer's main thread parked in
-  `LayerTreeHost::WaitForCommitCompletion` inside `ProxyMain::BeginMainFrame` (reached from the
-  sweep's `scrollTo` or from Blink's post-scroll hover hit test), every process at zero CPU, and
-  cc's scheduler holding a main frame `READY_TO_COMMIT` behind a pending tree whose last
-  `PrepareTiles` signalled `RequiredForDraw` and never `RequiredForActivation`, every raster worker
-  idle. That is a Chromium bug in the software tile path, not page code. None of these stopped it:
-  Playwright's trace off, the scroll moved out of rAF, `SpeculativeImageDecodes`, main frame before
-  activation or checker-imaging disabled, new headless, or one raster thread (0 of 120 once, then
-  3 of 160; replicate a zero before believing it). GPU compositing and raster on SwiftShader went
-  0 of 280 across two rounds, against 15 of 280 for the control, so the spec launches with the
-  WebGL specs' two SwiftShader flags. The sweep reads computed style, never pixels, so the raster
-  path cannot change its answer; it costs about half again the time. `findInvisibleText` also fails
-  a stop that has not moved on for 10s, naming it, rather than let a hang eat the test's 30s. A
-  blocked main thread answers no CDP at all (no `Debugger.pause`, no screenshot, no `evaluate`),
-  so a recurrence is read from a Chrome trace (the open slices on `CrRendererMain`, the
-  `SchedulerStateMachine` args) and from `/proc` wait channels; branch `lc/diag-teams-390-hang` has
-  that harness. One trap found on the way: Chromium keeps only the **last** `--disable-features`,
-  so one passed in `args` silently re-enables everything Playwright disables (measured). Repeat
-  Playwright's list if you need one.
 
 ### Backend
 
