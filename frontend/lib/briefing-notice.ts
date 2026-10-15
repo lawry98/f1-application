@@ -32,7 +32,10 @@ export function formatCountdown(seconds: number): string {
   return `${Math.floor(totalMinutes / 60)}:${m}:${s}`;
 }
 
-/** The reader's own clock time for an instant — the daily reset is 00:00 UTC, not their midnight. */
+/**
+ * The reader's own clock time for an instant — the daily reset is midnight in the server's day
+ * zone (`BRIEFING_DAY_TZ`, Pacific in production), not their midnight.
+ */
 export function formatClockTime(epochMs: number): string {
   return new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(
     new Date(epochMs),
@@ -41,9 +44,11 @@ export function formatClockTime(epochMs: number): string {
 
 /**
  * "at 7:00 PM", or "tomorrow at 7:00 PM" when the retry falls on a later local day than the
- * refusal. The daily cap resets at 00:00 UTC, which west of UTC is the *evening*: refused at
- * 8:17 PM, "It resets at 7:00 PM" reads as a time already gone. Every wait is under 24h, so the
- * only other day it can be is tomorrow.
+ * refusal. The daily cap resets at midnight in the server's day zone, Pacific in production, which
+ * for a reader elsewhere can fall earlier in their own day: in Tokyo it is 4:00 PM in summer, so
+ * refused at 5:12 PM, "It resets at 4:00 PM" reads as a time already gone. A wait is at most one
+ * server day (25h on the night Pacific's clocks go back), so tomorrow is the only other day worth
+ * naming.
  */
 function retryPhrase(notice: BriefingNotice): string {
   const refusedAt = notice.retryAt - notice.waitSeconds * 1000;

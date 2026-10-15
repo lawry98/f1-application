@@ -11,10 +11,12 @@ import json
 import logging
 from collections.abc import Callable
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from freezegun import freeze_time
 from starlette.requests import Request
 
 from agent.quota import DailyQuotaExhaustedError
@@ -142,6 +144,33 @@ def test_a_spent_day_is_a_503_daily_cap_until_midnight_utc(client, install_guard
     assert response.headers["retry-after"] == str(14 * 3600)
 
 
+def test_the_guard_production_builds_counts_its_day_in_briefing_day_tz(
+    client, monkeypatch, install_agent
+):
+    """``new_briefing_guard()`` is the guard the process runs, so the zone must reach it from
+    config — Gemini's quota day, America/Los_Angeles in fly.toml."""
+    monkeypatch.setattr(routes_module, "BRIEFING_DAY_TZ", ZoneInfo("America/Los_Angeles"))
+    monkeypatch.setattr(routes_module, "BRIEFING_DAILY_CAP", 1)
+    install_agent(steps=successful_steps())
+
+    with freeze_time("2026-10-13T23:00:00Z") as frozen:  # 16:00 PDT
+        monkeypatch.setattr(routes_module, "briefing_guard", routes_module.new_briefing_guard())
+        assert stream(client).status_code == 200
+
+        frozen.move_to("2026-10-14T00:30:00Z")  # past UTC's midnight, the same Pacific day
+        refused = stream(client)
+        assert refused.status_code == 503
+        assert refused.json() == {
+            "code": "daily_cap",
+            "retry_after_seconds": 6 * 3600 + 1800,
+            "limit": 1,
+        }
+
+        frozen.move_to("2026-10-14T07:00:00Z")  # 00:00 PDT
+
+        assert stream(client).status_code == 200
+
+
 def test_a_rejected_request_never_reaches_the_agent(client, install_guard, install_agent):
     install_guard(per_ip_per_hour=1)
     agent = install_agent(steps=successful_steps())
@@ -154,8 +183,8 @@ def test_a_rejected_request_never_reaches_the_agent(client, install_guard, insta
 
 
 def test_forwarded_for_does_not_buy_a_fresh_limit(client, install_guard, install_agent):
-    """The limit keys on the TCP peer. X-Forwarded-For is whatever the caller typed; behind a
-    real proxy, uvicorn's --proxy-headers rewrites client.host from it, for that proxy only."""
+    """The limit keys on ``client.host``. X-Forwarded-For is whatever the caller typed, and
+    nothing in the app reads it."""
     install_guard(per_ip_per_hour=1)
     install_agent(steps=successful_steps())
     stream(client, headers={"X-Forwarded-For": "192.0.2.1"})

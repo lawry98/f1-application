@@ -14,7 +14,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-from config import EXPOSE_API_DOCS, FASTF1_CACHE_DIR, validate_config
+from config import CLIENT_IP_HEADER, EXPOSE_API_DOCS, FASTF1_CACHE_DIR, validate_config
 
 validate_config()
 
@@ -24,7 +24,7 @@ logger.info("FastF1 cache enabled at '%s'", FASTF1_CACHE_DIR)
 
 from api.app import create_app
 
-app = create_app(expose_docs=EXPOSE_API_DOCS)
+app = create_app(expose_docs=EXPOSE_API_DOCS, client_ip_header=CLIENT_IP_HEADER)
 
 
 if __name__ == "__main__":
