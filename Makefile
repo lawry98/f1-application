@@ -31,7 +31,7 @@ NODE_STAMP := frontend/node_modules/.modules.yaml
 
 # `backend` and `frontend` are also directory names — without .PHONY, make sees
 # the directories, decides the targets are up to date, and does nothing.
-.PHONY: help dev backend frontend install lint format format-check typecheck test ci clean test-browser test-mutants
+.PHONY: help dev backend frontend install lint format format-check typecheck test ci clean test-browser test-mutants docker docker-check docker-image
 
 help: ## List available targets
 	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -92,8 +92,26 @@ test-browser: $(NODE_STAMP) ## Build, then run the Playwright suite (as CI's bro
 test-mutants: $(NODE_STAMP) ## Prove the browser suite still fails on each recorded defect
 	cd frontend && $(MISE) pnpm test:browser:mutants
 
-ci: lint format-check typecheck test test-browser ## Run everything CI runs, in CI's order
+ci: lint format-check typecheck test test-browser docker-check ## Run everything CI runs, in CI's order
 	cd frontend && $(MISE) pnpm build
+
+# --- Container ------------------------------------------------------------
+
+# The same build as CI's container job, minus its decoy backend/.env (planting one here could
+# clobber a real one). For worktrees sharing one Docker daemon, the tag is the commit, so different
+# commits never overwrite each other's image, and DOCKER_PORT moves the port:
+# `make docker-check DOCKER_PORT=8081`. Not PORT, which a shell often exports for something else.
+IMAGE := f1-backend:$(shell git rev-parse --short HEAD)
+DOCKER_PORT ?= 8080
+
+docker-image:
+	docker build -f backend/Dockerfile -t $(IMAGE) .
+
+docker: docker-image ## Build the backend image and run it on localhost:8080 (DOCKER_PORT) with backend/.env
+	docker run --rm -p 127.0.0.1:$(DOCKER_PORT):8080 --env-file backend/.env $(IMAGE)
+
+docker-check: docker-image ## Build the backend image and run CI's container checks against it, with a dummy key
+	SMOKE_PORT=$(DOCKER_PORT) scripts/container-smoke.sh $(IMAGE)
 
 # --- Housekeeping -------------------------------------------------------
 

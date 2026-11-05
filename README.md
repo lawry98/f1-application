@@ -309,13 +309,14 @@ dominates the wall clock.
 
 ### Cost guard and deploying
 
-Every briefing is two Gemini calls, so the briefing stream sits behind an admission guard
+Every briefing is two to four Gemini calls (the planner's two attempts, the synthesizer's one
+503 retry), so the briefing stream sits behind an admission guard
 (`backend/api/guard.py`). Before any work starts it checks, in order:
 
 | Check | Default | Refusal |
 |---|---|---|
 | Per client IP, rolling hour | `BRIEFING_PER_IP_PER_HOUR=5` | `429 {"code": "rate_limited", ...}` |
-| Global, per UTC day (`0` = no cap) | `BRIEFING_DAILY_CAP=100` | `503 {"code": "daily_cap", ...}` |
+| Global, per day in `BRIEFING_DAY_TZ` (`0` = no cap) | `BRIEFING_DAILY_CAP=100` | `503 {"code": "daily_cap", ...}` |
 | Simultaneous generations (never queued) | `BRIEFING_MAX_CONCURRENT=2` | `503 {"code": "busy", ...}` |
 
 Each refusal carries `retry_after_seconds`, the `limit` that was hit and a `Retry-After` header;
@@ -328,18 +329,31 @@ already written is served as a truncated briefing, and with none the stream ends
 with one retry, the synthesizer's at 30s with one retry for a 503 only, taken only while the run
 has time for another read — the arithmetic is in `backend/config.py`.
 
-Deploying it:
+Deploying it, on any host (this repo's own Fly and Vercel setup is under
+[Deployment](#deployment)):
 
 - **Run exactly one worker.** The limits live in the process's memory, so two workers would each
   allow the full limits, and a restart resets the day's count.
-- **Behind a proxy, let uvicorn rewrite the client address** — the guard keys on
-  `request.client.host` and never parses `X-Forwarded-For` itself, because anyone can send one:
+- **Set `BRIEFING_DAY_TZ` to the IANA zone your LLM quota resets in.** The daily cap's day starts
+  at midnight there, UTC by default. Gemini's free tier resets at midnight Pacific, so `fly.toml`
+  sets `America/Los_Angeles`; counted on UTC days, one quota day would span two of the guard's,
+  and up to twice the cap could land in it.
+- **Behind a proxy, set `CLIENT_IP_HEADER` to the header it writes the visitor's address into.**
+  The guard keys on `request.client.host` and never parses `X-Forwarded-For` itself, because
+  anyone can send one. `CLIENT_IP_HEADER=Fly-Client-IP`, which `fly.toml` sets, makes
+  `client.host` the address in that one header. Name only a header your proxy sets and
+  overwrites: one it passes through is one a visitor can forge.
+
+  With no such header, uvicorn can rewrite the address itself, given the proxy's exact address:
 
   ```bash
-  FORWARDED_ALLOW_IPS=<your proxy's address> uvicorn main:app --workers 1 --proxy-headers --port 8000
+  FORWARDED_ALLOW_IPS=<your proxy's exact address> uvicorn main:app --workers 1 --proxy-headers --port 8000
   ```
 
-  Without it every visitor shares the proxy's address, and so its one hourly allowance.
+  Never `FORWARDED_ALLOW_IPS='*'`. uvicorn then takes the leftmost `X-Forwarded-For` entry, the
+  one the visitor writes, so every forged header is a fresh hourly allowance. The production image
+  runs with `--no-proxy-headers`, so this form is only for running uvicorn yourself. With neither,
+  every visitor shares the proxy's address, and so its one hourly allowance.
 - **Leave `EXPOSE_API_DOCS` and `ENABLE_INTERNAL_ROUTES` unset.** Off is the default: the API
   docs 404 and `/candy` is the not-found page.
 - **Set `CORS_ORIGINS`** to the deployed frontend. The API exposes `Retry-After` to it, so the
@@ -359,6 +373,92 @@ Deploying it:
 
 [CLAUDE.md](CLAUDE.md) holds the conventions, invariants, and traps that aren't obvious from
 reading the code. Setup and orientation stay here; agent-facing rules live there.
+
+## Deployment
+
+```
+browser ──HTML/JS──▶ <project>.vercel.app    Vercel Hobby, frontend/, built from main
+   └────fetch/SSE──▶ <app>.fly.dev            Fly, 1 machine, iad, always on
+                         └─▶ Gemini · OpenF1 · FastF1 · Tavily · OpenWeather
+```
+
+`<app>` is `f1-race-briefing-api` and `<project>` is `f1-race-briefing`. If either name was taken
+at setup, `fly.toml`'s `app` and `CORS_ORIGINS` hold the real ones. The browser calls the API
+itself, so the API is public, `CORS_ORIGINS` names the Vercel origin, and the API's URL is baked
+into the frontend at build time. The backend is one machine running one worker, because the cost
+guard's limits live in that process;
+[ADR-0005](docs/adr/0005-deploy-on-fly-and-vercel.md) has the reasoning and the alternatives.
+
+| Part | Plan | Cost |
+|---|---|---|
+| API | Fly.io `shared-cpu-1x`, 512 MB, `iad`, always on | $3.69 per 30 days, plus $0.02/GB outbound. No free tier; Fly needs a card on file |
+| Frontend | Vercel Hobby | Free, for non-commercial use only |
+| Gemini | Free tier, the same key as local development | Free. `BRIEFING_DAILY_CAP=8` per Pacific day, the day the quota counts: 16 of the ~20 daily calls at two a briefing, leaving local work the rest, and up to 32 if every briefing takes both retries. Google's quota is the hard stop |
+
+### Set it up
+
+Merge to `main` first, because `.github/workflows/deploy.yml` cannot run from any other branch.
+Then, from the repo root on an up-to-date `main`:
+
+```bash
+scripts/deploy-wizard.sh
+```
+
+[The wizard](scripts/deploy-wizard.sh) walks through the steps only the owner can take: the Fly
+account and card, the app, the API keys, the first `fly deploy --ha=false`, the Vercel import and
+the deploy token. It runs the post-deploy checks as it goes, including that a forged
+`Fly-Client-IP` never reaches the guard, and asks you to confirm the dashboard checks it cannot
+make itself. The keys go from a `backend/.env` straight into `fly secrets import`, and the token
+straight into `gh secret set`; neither is shown or saved. It keeps only the app name and the
+Vercel origin, in the gitignored `.env.deploy.local`, so a re-run picks up where the last one
+stopped. If either name was taken, it rewrites `fly.toml` and holds the token back until that
+change is merged. The last stage is optional: one real briefing, 2 Gemini calls (4 at most), to
+check that the stream arrives progressively and how much memory the machine used.
+
+Until the wizard has set the `FLY_API_TOKEN` repository secret, every "Deploy backend" run ends
+green with a "Deploy skipped" notice and deploys nothing.
+
+### Redeploy
+
+- **Backend:** merge to `main`. Once CI passes, "Deploy backend" deploys the exact commit CI
+  passed. Every merge redeploys, frontend-only ones too, and each restart resets the guard's day.
+  To redeploy `main` without a merge, run `gh workflow run deploy.yml`. By hand, from the repo
+  root, it is `fly deploy --ha=false`, and always with `--ha=false`: an app left with no machine
+  would come back with two. Both skip the CI gate and deploy whatever they are given, so check
+  that `main` is green first.
+- **Frontend:** Vercel builds every push to `main` by itself. No other branch deploys. Previews
+  are off, because a preview's origin is not in `CORS_ORIGINS`.
+- **The deploy token lasts a year**, and the deploy job fails once it expires. Re-run
+  `scripts/deploy-wizard.sh`; stage 10 replaces the token. By hand, in one guarded line:
+  `t=$(fly tokens create deploy -a <app> -x 8760h) && [[ $t == "FlyV1 "* ]] && printf %s "$t" | gh secret set FLY_API_TOKEN -R lawry98/f1-application; unset t`.
+  Piping `fly` straight into `gh` would set an empty secret if `fly` fails (a mistyped app, an
+  expired login), and an empty secret makes every deploy skip green. `-R` is needed because the
+  `origin` remote is an SSH alias, which `gh` cannot read a repository from.
+
+### Change a URL
+
+The URLs are set on both platforms, and each platform picks up a change differently:
+
+- **`NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_SITE_URL`** are Vercel Production environment
+  variables. Next inlines them at build time, so the live site keeps the old value until you
+  redeploy production, with "Use existing Build Cache" unticked.
+- **`CORS_ORIGINS`** is in `fly.toml`'s `[env]`. Change it there and merge to `main`, and the
+  deploy ships it. Until it names the frontend's origin, every API call from the site fails in the
+  browser.
+
+A custom domain takes both: the new origin goes into `NEXT_PUBLIC_SITE_URL` and `CORS_ORIGINS`.
+
+### Run the production image locally
+
+| Target | Does |
+|---|---|
+| `make docker` | Builds the image with CI's command and runs it on `localhost:8080` with `backend/.env`. Point the frontend at it with `NEXT_PUBLIC_API_URL=http://localhost:8080` |
+| `make docker-check` | Builds it and runs CI's container checks (`scripts/container-smoke.sh`) with a dummy key; nothing reaches Gemini |
+
+Both need a running Docker daemon, and so does `make ci`, which includes `docker-check`. The
+image is about 932 MB on disk, since FastF1 pulls in scipy, matplotlib and pandas.
+`docker run --env-file` takes values literally, so a value quoted in `backend/.env` reaches the
+app with its quotes. `make dev` strips them, so a key that works there can fail in the container.
 
 ## Troubleshooting
 

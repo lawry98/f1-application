@@ -60,19 +60,21 @@ part worth knowing:
 | `GOOGLE_API_KEY` | **Fatal** — `validate_config()` raises `SystemExit(1)` |
 | `TAVILY_API_KEY` | Warning; news search silently disabled |
 | `OPENWEATHER_API_KEY` | Warning; weather silently disabled |
-
-"Missing" includes an `env.example` placeholder (`your-…`, `tvly-your-…`): `config.is_configured`
-is the one test, used by `validate_config` and by both tools, so a copied placeholder never reaches
-upstream to earn a 401.
 | `FASTF1_CACHE_DIR` | Defaults to `cache/` |
 | `EXECUTOR_MAX_WORKERS` | Defaults to `4` |
 | `STANDINGS_TTL_SECONDS` | Defaults to `300`; `0` disables current-season caching; invalid/negative warns and uses `300` |
 | `BRIEFING_PER_IP_PER_HOUR` | Defaults to `5`; invalid, negative or `0` warns and uses `5` |
-| `BRIEFING_DAILY_CAP` | Defaults to `100` per UTC day; `0` means no cap; invalid/negative warns and uses `100` |
+| `BRIEFING_DAILY_CAP` | Defaults to `100` per day in `BRIEFING_DAY_TZ`; `0` means no cap; invalid/negative warns and uses `100` |
+| `BRIEFING_DAY_TZ` | Defaults to UTC; `fly.toml` sets `America/Los_Angeles`. A name that does not resolve warns and uses UTC |
 | `BRIEFING_MAX_CONCURRENT` | Defaults to `2`; invalid, negative or `0` warns and uses `2` |
 | `BRIEFING_DEADLINE_SECONDS` | Defaults to `90`; invalid, negative or `0` warns and uses `90` |
 | `CORS_ORIGINS` | Comma-separated; defaults to `http://localhost:3000,http://localhost:3001` |
 | `EXPOSE_API_DOCS` | Off: `/docs`, `/redoc` and `/openapi.json` 404 and `/` drops its `docs` link. Only `1` turns them on (`make dev` sets it); any other value but `0` warns and stays off |
+| `CLIENT_IP_HEADER` | Unset or empty: off, so `client.host` is the TCP peer; a value that is not a header name (`Fly Client IP`) warns and stays off. `fly.toml` sets `Fly-Client-IP` |
+
+"Missing" includes an `env.example` placeholder (`your-…`, `tvly-your-…`): `config.is_configured`
+is the one test, used by `validate_config` and by both tools, so a copied placeholder never reaches
+upstream to earn a 401.
 
 `LLM_MODEL` is a **hardcoded constant** in `config.py`, not an env var — changing the model
 means editing code. That is deliberate: the prompts are written against a specific model
@@ -144,11 +146,17 @@ breakpoint-scoped body size. Neither `pnpm test` nor a type check can see this; 
 CSS, and the class string reads correctly.
 
 **The cost guard's limits are per process — run exactly one worker.** `api/guard.py` keeps the
-per-IP hour, the UTC-day count and the concurrency slots in memory, so a second uvicorn worker
-doubles every limit and a restart resets the day. It keys on `request.client.host` and never
-parses `X-Forwarded-For` (anyone can send one): behind a proxy, run uvicorn with
-`--proxy-headers` and `FORWARDED_ALLOW_IPS` set to the proxy, or every visitor shares one
-allowance. Admission runs *before* `EventSourceResponse` exists, which is the only reason a
+per-IP hour, the day's count and the concurrency slots in memory, so a second uvicorn worker
+doubles every limit and a restart resets the day. The day runs midnight to midnight in
+`BRIEFING_DAY_TZ`, Pacific in production, because Gemini's free-tier daily quota resets at
+midnight Pacific: on UTC days one Gemini day spans two guard days, and up to twice the cap can
+land in it. The guard's default clock is `_wall_clock()`, a `time.time()` lookup per call — a
+`clock=time.time` default binds the real function at import, and `freeze_time` then moves nothing
+in the guard `new_briefing_guard()` builds. It keys on `request.client.host` and never
+parses `X-Forwarded-For` (anyone can send one): behind Fly, `CLIENT_IP_HEADER=Fly-Client-IP` makes
+`client.host` the visitor, and without it every visitor shares the proxy's one allowance. Why
+that is not uvicorn's `--proxy-headers` is under [Deploying](#deploying). Admission runs *before*
+`EventSourceResponse` exists, which is the only reason a
 refusal can be a 429/503 at all — once the stream opens its status is 200. Three things there are
 not guessable. **The slot is released by the response, not only the generator**: a client that
 hangs up before the first event (generator never started) or mid-send (generator parked at a
@@ -185,8 +193,9 @@ seconds. On a spent day the route calls `close_until(resets_at)`, logs outcome `
 and ends the stream on an `error` event carrying the refusal's own `daily_cap` body, so the page
 shows the daily-cap notice. The guard then refuses at the daily cap's place in the order until the
 reset: midnight in America/Los_Angeles, Google's, a constant in `agent/quota.py` — never the
-guard's UTC day, which would hold a trip between 00:00 and 07:00 UTC for ~24h and reopen at UTC
-midnight onto a quota still spent. A spent day after prose is truncation as ever (ADR-0002) and
+guard's own day, which is UTC unless `BRIEFING_DAY_TZ` says otherwise: a UTC latch would hold a
+trip between 00:00 and 07:00 UTC for ~24h and reopen at UTC midnight onto a quota still spent.
+A spent day after prose is truncation as ever (ADR-0002) and
 closes nothing; the next run's planner finds it and closes the guard.
 
 **The graph is not a flat pipeline.** It has four nodes, but `resolver` sits behind a
@@ -865,6 +874,97 @@ canvas draws the nearest loaded frame and redraws as closer ones land — jsdom 
 last frame is in the first pass because the docked still in the header is the same URL, served
 from cache. A spec that holds frame responses must `goto` with `waitUntil: 'domcontentloaded'`:
 an unfinished `new Image()` delays the document's `load` event, so the default never resolves.
+
+## Deploying
+
+Vercel Hobby builds `frontend/` from `main`; the API is one always-on 512 MB Fly machine. The why,
+and the alternatives that lost, are in [ADR-0005](docs/adr/0005-deploy-on-fly-and-vercel.md). The
+owner-only setup and the post-deploy checks are `scripts/deploy-wizard.sh`.
+
+**`FORWARDED_ALLOW_IPS='*'` makes the per-IP limit spoofable, which is why the image runs uvicorn
+with `--no-proxy-headers`.** With `*`, uvicorn takes the *leftmost* `X-Forwarded-For` entry as the
+client, and the visitor writes that one, so a forged header per request is a fresh hourly
+allowance (read in the pinned 0.40's `proxy_headers.py`, unchanged in 0.54). The safe form needs
+the proxy's exact address and Fly documents none, so the app reads `Fly-Client-IP` through
+`CLIENT_IP_HEADER` instead. uvicorn's proxy headers are **on** by default, so deleting the flag
+does not switch them off; it leaves the leftmost-entry path one stray env var away. That Fly's
+edge replaces a client-sent `Fly-Client-IP` is observed (its echo app, 2026-10-13) and documented
+nowhere. A forged `X-Forwarded-For` it keeps leftmost and appends to, and `X-Real-IP` it passes
+through untouched, so neither can be the `CLIENT_IP_HEADER`. The wizard's forged-header check
+after the first deploy is the only proof. `scripts/container-smoke.sh` starts its container with
+`FORWARDED_ALLOW_IPS='*'` **on purpose**: that is the stray setting the flag exists to neutralise,
+and without it the X-Forwarded-For probe cannot fail, because uvicorn's default trust list is
+loopback and the probe arrives from the Docker bridge gateway (a mutant without the flag proved
+it). Leave it in.
+
+**With proxy headers off, `scope["scheme"]` is `http`, so a trailing-slash disagreement becomes a
+redirect to `http://`.** A backend route decorator and a `frontend/lib/api.ts` URL that differ on
+the trailing slash make Starlette answer with a redirect built from `http://<app>.fly.dev/…`. No
+frontend path has a trailing slash today; keep new routes that way.
+
+**`.dockerignore` is an allow-list, so a new runtime read outside `backend/` works everywhere but
+the image.** Only `backend/` and `frontend/data/circuits/` (read at runtime through
+`config.CIRCUIT_INDEX_PATH`) enter the build context, while dev, pytest and Vitest all see the
+whole tree. A backend change that opens any other file outside `backend/` needs a `!` line there,
+a `COPY` in `backend/Dockerfile`, and a path in the smoke script's existence check, which asserts
+only the two circuit files. `backend/tests` and `backend/scripts` stay out too (the scripts import
+from `tests/`), and so does every `.env`. A checkout has no `backend/.env`, so CI plants a decoy
+before `docker build`, which gives the absence check something to find. `make docker-check` plants
+none, since writing one locally could clobber a real one, so on a laptop that check bites only if
+a `.env` is already there. `make ci` includes `docker-check`, so it needs a running Docker daemon.
+
+**A URL lives in two places, and each changes by a different route.** `NEXT_PUBLIC_API_URL` and
+`NEXT_PUBLIC_SITE_URL` are Vercel Production env vars that Next inlines at `pnpm build`, so
+editing one in the dashboard changes nothing until production is rebuilt. `CORS_ORIGINS` is in
+`fly.toml`'s `[env]`, not a Fly secret, so it changes only with a deploy, which means a merge to
+`main`. Only client hooks import `lib/api.ts`, so every API call is cross-origin from the browser,
+and a frontend origin missing from `CORS_ORIGINS` fails briefings, standings and the calendar
+alike. Previews are off for the same reason: a preview's origin is never in the list.
+
+**One machine, never two, and `fly.toml` cannot say so by itself.** Fly's first deploy creates two
+machines unless it gets `--ha=false`, a flag with no `fly.toml` equivalent that matters whenever
+the app has no machine; `deploy.yml` passes it every time, and a hand-run `fly deploy` must too.
+`min_machines_running` is absent on purpose: Fly applies it only when `auto_stop_machines` is
+`"stop"` or `"suspend"`, and here it is `"off"`. `fly scale count 2` doubles every limit exactly as
+a second uvicorn worker would. Each deploy restarts the process and so resets the guard's day, and
+`deploy.yml` deploys on every merge to `main`, frontend-only ones included. ADR-0005 accepts that
+and rejects path-gated deploys.
+
+**Vercel gets pnpm 11 from `frontend/package.json`'s `packageManager`, and
+`ENABLE_EXPERIMENTAL_COREPACK` breaks that.** Vercel's docs list pnpm 6–10 and send anything else
+through Corepack. But Vercel's Corepack reads `packageManager` from the **repo-root**
+`package.json`, which this repo does not have, and with the variable set Vercel also skips its own
+pin path, so the build gets the image's default pnpm (read from Vercel's source, not run). Without
+the variable, `@vercel/build-utils` ≥ 14.3.0 honours `pnpm@11.8.0` for a `lockfileVersion: '9.0'`
+lockfile. The first build log must say
+``Detected `pnpm-lock.yaml` version 9 generated by pnpm@11.x from package.json#packageManager pnpm@11.8.0``.
+If it says `Using pnpm@10.x based on project creation date` instead, the build image has no pnpm
+11, and the fallback, **untested**, is a Vercel Install Command override of
+`npx --yes pnpm@11.8.0 install --frozen-lockfile`.
+
+**`git.deploymentEnabled`'s catch-all must be `"**"`.** minimatch's `*` does not cross `/`, so
+`"*": false` would leave every `lc/…` and `dependabot/…/…` branch deploying a preview (measured
+with the repo's own minimatch; Vercel does not publish its matcher options, so the real test is the
+next push to an `lc/` branch). `deploymentEnabled` stops the deployment from being created at all.
+`ignoreCommand` stays as the backstop for CLI and dashboard deploys, which are not Git pushes, and
+it fails closed: with "Automatically expose System Environment Variables" off, `VERCEL_ENV` is
+empty and production is skipped too, every deployment `CANCELED`. A cancelled build still counts
+against Hobby's 100 deployments a day, which is why `ignoreCommand` alone was not enough.
+
+**`compress = false` in `fly.toml` looks like a typo and is load-bearing.** Fly's proxy compresses
+by default and buffers a response in order to compress it, which can hold back the briefing's SSE
+events; whether it compresses `text/event-stream` is undocumented. The key is missing from Fly's
+configuration reference, but it is a field of fly-go's `HTTPOptions`, so by flyctl's source even
+`fly config validate --strict` accepts it. After a deploy, the check is a `curl -N` of the stream with
+`Accept-Encoding: gzip, br, zstd` getting no `content-encoding` back. If that ever fails, the
+documented per-response fallback is `Content-Encoding: none` on the stream.
+
+**`deploy.yml` cannot run until it is merged, and a green run may have deployed nothing.**
+`workflow_run` and `workflow_dispatch` both need the workflow file on the default branch, so no
+branch can exercise it. Until the `FLY_API_TOKEN` secret exists, every run ends green with a
+"Deploy skipped" notice. A manual `workflow_dispatch` run deploys `main`'s tip whether CI passed
+or not, and Vercel builds every push to `main` without waiting for CI at all, so a red `main`
+stops only the automatic backend deploy.
 
 ## Code conventions
 

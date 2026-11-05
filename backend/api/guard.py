@@ -1,10 +1,13 @@
 """Admission control for briefing generation — the cost guard in front of Gemini.
 
-Each briefing is two Gemini calls, so anything that can start one needs a ceiling. Three
+Each briefing is two to four Gemini calls, so anything that can start one needs a ceiling. Three
 checks, in this order, all before any work starts:
 
 1. **Per-IP rolling hour.** ``429 rate_limited``.
-2. **Global daily cap**, per UTC day. ``503 daily_cap``.
+2. **Global daily cap**, per calendar day in ``day_tz``. ``503 daily_cap``. UTC unless told
+   otherwise; production counts Pacific days (``BRIEFING_DAY_TZ``), because that is when
+   Gemini's free-tier daily quota resets. On UTC days one Gemini day spans the end of one guard
+   day and the start of the next, so up to twice the cap could land in it.
 3. **A concurrency slot**, taken without waiting. ``503 busy`` — a request is never queued,
    because a queued request is one a user has already given up on by the time it runs.
 
@@ -23,10 +26,11 @@ survives a restart either, which resets the day's count; for a single small depl
 is the right trade against running a shared store.
 
 **The client IP is whatever the caller passes in**, and routes.py passes
-``request.client.host``. It never parses ``X-Forwarded-For`` itself, because anyone can send
-one. Behind a proxy, run uvicorn with ``--proxy-headers`` and ``FORWARDED_ALLOW_IPS`` set to
-the proxy's address, and uvicorn rewrites ``client.host`` to the visitor — trusting the header
-from that one peer only.
+``request.client.host``. It never parses a forwarding header itself, because anyone can send
+one. Behind Fly, ``CLIENT_IP_HEADER=Fly-Client-IP`` makes ``client.host`` the visitor
+(api/client_ip.py). Behind another proxy, either name the one header it sets the same way, or
+run uvicorn with ``--proxy-headers`` and ``FORWARDED_ALLOW_IPS`` set to that proxy's exact
+address — never ``*``, which trusts the leftmost, client-written entry.
 
 **Memory is bounded.** An IP's history holds at most ``per_ip_per_hour`` timestamps and is
 dropped once the hour has passed; the table holds at most ``max_tracked_ips`` addresses, and a
@@ -46,17 +50,23 @@ import time
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, date, datetime, timedelta, tzinfo
 
 logger = logging.getLogger(__name__)
 
 HOUR_SECONDS = 3600
-DAY_SECONDS = 86400
 
 # How long a busy client is told to wait. A normal briefing takes ~25s and two run at once, so
 # a slot usually frees well inside this; it is a hint for the UI's countdown, not a promise.
 BUSY_RETRY_AFTER_SECONDS = 10
 
 DEFAULT_MAX_TRACKED_IPS = 10_000
+
+
+def _wall_clock() -> float:
+    """``time.time``, looked up on every call, so ``freeze_time`` moves the guard production
+    builds too. A ``clock=time.time`` default would bind the real function once, at import."""
+    return time.time()
 
 
 @dataclass(frozen=True)
@@ -97,20 +107,22 @@ class AdmissionGuard:
         daily_cap: int,
         max_concurrent: int,
         lease_seconds: float,
-        clock: Callable[[], float] = time.time,
+        day_tz: tzinfo = UTC,
+        clock: Callable[[], float] = _wall_clock,
         max_tracked_ips: int = DEFAULT_MAX_TRACKED_IPS,
     ) -> None:
         self._per_ip_per_hour = per_ip_per_hour
         self._daily_cap = daily_cap
         self._max_concurrent = max_concurrent
         self._lease_seconds = lease_seconds
+        self._day_tz = day_tz
         # Wall-clock seconds, not monotonic: the daily cap resets at a calendar boundary.
         self._clock = clock
         self._max_tracked_ips = max_tracked_ips
 
         self._lock = threading.Lock()
         self._hits: dict[str, deque[float]] = {}
-        self._day = -1
+        self._day: date | None = None
         self._day_count = 0
         self._closed_until = 0.0
         self._leases: dict[int, float] = {}
@@ -146,7 +158,7 @@ class AdmissionGuard:
                     limit=self._per_ip_per_hour,
                 )
 
-            day = int(now // DAY_SECONDS)
+            day = datetime.fromtimestamp(now, self._day_tz).date()
             if day != self._day:
                 self._day, self._day_count = day, 0
             if now < self._closed_until:
@@ -155,7 +167,7 @@ class AdmissionGuard:
                 return Rejection(
                     code="daily_cap",
                     status=503,
-                    retry_after_seconds=_whole_seconds((day + 1) * DAY_SECONDS - now),
+                    retry_after_seconds=_whole_seconds(self._start_of_day_after(day) - now),
                     limit=self._daily_cap,
                 )
 
@@ -194,6 +206,12 @@ class AdmissionGuard:
         with self._lock:
             # Absent when the backstop already expired it — which must free nothing else.
             self._leases.pop(lease_id, None)
+
+    def _start_of_day_after(self, day: date) -> float:
+        """The instant of midnight after ``day`` in ``day_tz``. A day is not always 24 hours
+        long there: Pacific's runs 23 when the clocks go forward and 25 when they go back."""
+        after = day + timedelta(days=1)
+        return datetime(after.year, after.month, after.day, tzinfo=self._day_tz).timestamp()
 
     def _has_room_for(self, ip: str, now: float) -> bool:
         if ip in self._hits or len(self._hits) < self._max_tracked_ips:

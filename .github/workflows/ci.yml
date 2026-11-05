@@ -136,3 +136,24 @@ jobs:
           name: playwright-report
           path: frontend/playwright-report/
           retention-days: 14
+
+  container:
+    name: Container (build + boot the backend image)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # A checkout has no backend/.env, so plant one and an editor backup beside it: the image
+      # must leave both out because the .dockerignore allow-list says so, not because nothing was
+      # there.
+      - name: Plant decoy backend/.env files
+        run: printf 'GOOGLE_API_KEY=decoy-must-not-ship\n' | tee backend/.env backend/.env~ >/dev/null
+
+      # The context is the repo root: the image also takes frontend/data/circuits/.
+      - name: Build
+        run: docker build -f backend/Dockerfile -t f1-backend .
+
+      - name: Boot and check
+        run: scripts/container-smoke.sh f1-backend

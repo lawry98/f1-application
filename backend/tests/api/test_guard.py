@@ -6,8 +6,10 @@ that slept would either take that long or prove nothing.
 
 import logging
 import threading
+from zoneinfo import ZoneInfo
 
 import pytest
+from freezegun import freeze_time
 
 from api.guard import BUSY_RETRY_AFTER_SECONDS, AdmissionGuard, Lease, Rejection
 from tests.factories import FakeClock
@@ -15,6 +17,8 @@ from tests.factories import FakeClock
 # 2026-09-30 10:00:00 UTC — 14h before the next UTC midnight.
 T0 = 1_790_762_400.0
 SECONDS_TO_MIDNIGHT = 14 * 3600
+
+PACIFIC = ZoneInfo("America/Los_Angeles")
 
 
 @pytest.fixture
@@ -116,7 +120,7 @@ def test_the_daily_cap_rejects_once_the_day_has_used_it_whoever_asks(clock):
     )
 
 
-def test_the_daily_cap_resets_at_midnight_utc(clock):
+def test_the_daily_cap_resets_at_midnight_utc_by_default(clock):
     guard = make_guard(clock, daily_cap=1)
     admit_and_release(guard, "203.0.113.1")
     clock.advance(SECONDS_TO_MIDNIGHT - 1)
@@ -132,6 +136,76 @@ def test_a_zero_daily_cap_is_no_cap(clock):
 
     for index in range(250):
         admit_and_release(guard, f"10.0.0.{index}")
+
+
+# ── The day's zone ───────────────────────────────────────────────────────────
+#
+# Gemini's free-tier daily quota resets at midnight Pacific, DST included, so production counts
+# the cap's day there. These run on the guard's default clock under freeze_time, so they also
+# prove that clock is one freeze_time moves. In 2026 Pacific clocks go forward on 8 March and
+# back on 1 November, both at 02:00 local.
+
+
+def pacific_guard() -> AdmissionGuard:
+    return AdmissionGuard(
+        per_ip_per_hour=100,
+        daily_cap=1,
+        max_concurrent=10,
+        lease_seconds=150,
+        day_tz=PACIFIC,
+    )
+
+
+def test_a_pacific_day_runs_through_utc_midnight_to_pacific_midnight():
+    with freeze_time("2026-10-13T23:00:00Z") as frozen:  # 16:00 PDT
+        guard = pacific_guard()
+        admit_and_release(guard, "203.0.113.1")
+        assert guard.admit("203.0.113.2").retry_after_seconds == 8 * 3600
+
+        frozen.move_to("2026-10-14T00:00:00Z")  # UTC's midnight, 17:00 PDT the same day
+        assert guard.admit("203.0.113.2").code == "daily_cap"
+
+        frozen.move_to("2026-10-14T07:00:00Z")  # 00:00 PDT
+
+        admit_and_release(guard, "203.0.113.2")
+
+
+def test_the_spring_forward_day_is_23_hours_long():
+    with freeze_time("2026-03-08T07:59:59Z") as frozen:  # 7 March, 23:59:59 PST
+        guard = pacific_guard()
+        admit_and_release(guard, "203.0.113.1")
+        assert guard.admit("203.0.113.2").retry_after_seconds == 1
+
+        frozen.move_to("2026-03-08T08:00:00Z")  # 8 March, 00:00 PST
+        admit_and_release(guard, "203.0.113.2")
+        # To 9 March 00:00 PDT. A 24-hour day, or the offset the day began on, says 24h.
+        assert guard.admit("203.0.113.3").retry_after_seconds == 23 * 3600
+
+        frozen.move_to("2026-03-09T06:59:59Z")  # 8 March, 23:59:59 PDT
+        assert guard.admit("203.0.113.3").code == "daily_cap"
+
+        frozen.move_to("2026-03-09T07:00:00Z")  # 9 March, 00:00 PDT
+
+        admit_and_release(guard, "203.0.113.3")
+
+
+def test_the_fall_back_day_is_25_hours_long():
+    with freeze_time("2026-11-01T06:59:59Z") as frozen:  # 31 October, 23:59:59 PDT
+        guard = pacific_guard()
+        admit_and_release(guard, "203.0.113.1")
+        assert guard.admit("203.0.113.2").retry_after_seconds == 1
+
+        frozen.move_to("2026-11-01T07:00:00Z")  # 1 November, 00:00 PDT
+        admit_and_release(guard, "203.0.113.2")
+        assert guard.admit("203.0.113.3").retry_after_seconds == 25 * 3600
+
+        # 1 November, 23:59:59 PST — the hour a fixed PDT offset would already have reset at.
+        frozen.move_to("2026-11-02T07:59:59Z")
+        assert guard.admit("203.0.113.3").code == "daily_cap"
+
+        frozen.move_to("2026-11-02T08:00:00Z")  # 2 November, 00:00 PST
+
+        admit_and_release(guard, "203.0.113.3")
 
 
 # ── Closed until an upstream budget comes back ───────────────────────────────

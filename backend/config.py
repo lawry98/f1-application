@@ -3,7 +3,9 @@
 import logging
 import os
 import re
+from datetime import UTC, tzinfo
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -161,6 +163,28 @@ BRIEFING_DAILY_CAP: int = _limit_from_env("BRIEFING_DAILY_CAP", 100, minimum=0)
 BRIEFING_MAX_CONCURRENT: int = _limit_from_env("BRIEFING_MAX_CONCURRENT", 2, minimum=1)
 BRIEFING_DEADLINE_SECONDS: int = _limit_from_env("BRIEFING_DEADLINE_SECONDS", 90, minimum=1)
 
+
+def _timezone_from_env(name: str) -> tzinfo:
+    """Read an IANA time zone name: unset or empty is UTC; one that does not resolve warns and is
+    UTC."""
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return UTC
+    try:
+        return ZoneInfo(raw)
+    # Not found; a directory of zones ("Pacific"), which is an OSError; a key that is not a
+    # relative path into the database, a ValueError.
+    except (ZoneInfoNotFoundError, OSError, ValueError):
+        logger.warning("Invalid %s=%r — not an IANA time zone, falling back to UTC", name, raw)
+        return UTC
+
+
+# The zone whose midnight starts the daily cap's day. Gemini's free-tier daily quota resets at
+# midnight Pacific ("Requests per day (RPD) quotas reset at midnight Pacific time",
+# ai.google.dev/gemini-api/docs/rate-limits, checked 2026-10-13), so fly.toml sets
+# America/Los_Angeles. UTC by default, which is what the cap counted before this was configurable.
+BRIEFING_DAY_TZ: tzinfo = _timezone_from_env("BRIEFING_DAY_TZ")
+
 # ── Circuit geometry ─────────────────────────────────────────────────────────
 
 # The frontend's slugged-location → circuit-id map, which tools/circuit_winners.py matches FastF1
@@ -194,6 +218,26 @@ def _flag_from_env(name: str) -> bool:
 # Swagger UI, ReDoc and the OpenAPI schema they render. Off unless asked for: the schema maps every
 # route for anyone who looks, and nothing the site serves needs it. `make dev` turns it on.
 EXPOSE_API_DOCS: bool = _flag_from_env("EXPOSE_API_DOCS")
+
+# RFC 9110 §5.6.2: a field name is a token, `1*tchar`.
+_HTTP_TOKEN = re.compile(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
+
+
+def _header_name_from_env(name: str) -> str | None:
+    """Read an HTTP header name: unset or empty is off; anything not a header name warns and is off."""
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return None
+    if not _HTTP_TOKEN.fullmatch(raw):
+        logger.warning("Invalid %s=%r — not an HTTP header name, leaving it off", name, raw)
+        return None
+    return raw
+
+
+# The header the edge proxy writes the visitor's address into — `Fly-Client-IP` on Fly, set in
+# fly.toml. Off by default, so `client.host` is the TCP peer, which is the visitor in local dev.
+# See api/client_ip.py for why this is not uvicorn's --proxy-headers.
+CLIENT_IP_HEADER: str | None = _header_name_from_env("CLIENT_IP_HEADER")
 
 CORS_ORIGINS: list[str] = [
     origin.strip()
