@@ -72,17 +72,34 @@ def run_node(node: Any, name: str, state: dict, budget: RunBudget) -> tuple[list
 
 
 class BlockedTool:
-    """A tool stuck on the network until the test lets it go."""
+    """A tool stuck on the network until the test lets it go.
+
+    The node abandons it, but its worker thread lives on and, once released, stores
+    `{"late": True}` in the process-wide result cache. `finish()` waits for that store, so it
+    lands before the autouse fixture clears the cache. Released without waiting, a worker
+    scheduled late stored it after the clear, and the next test's identical lookup was served
+    it as a hit (seen in CI).
+    """
 
     def __init__(self, name: str) -> None:
         self.name = name
         self.release = threading.Event()
         self.started = threading.Event()
+        self.worker: threading.Thread | None = None
 
     def invoke(self, args: dict) -> dict:
+        self.worker = threading.current_thread()
         self.started.set()
         self.release.wait(timeout=10)
         return {"late": True}
+
+    def finish(self) -> None:
+        """Let it go, and wait for its worker, cache store included, to be done."""
+        self.release.set()
+        if self.worker is not None:
+            # The node shut its pool down, so the worker exits once this call returns.
+            self.worker.join(timeout=5)
+            assert not self.worker.is_alive(), f"{self.name}'s worker is still running"
 
 
 class ClockTool:
@@ -154,7 +171,7 @@ def test_a_tool_still_running_at_the_deadline_is_reported_as_timed_out(monkeypat
             budget,
         )
     finally:
-        slow.release.set()
+        slow.finish()
 
     by_name = {tr["tool_name"]: tr for tr in update["tool_results"]}
     assert by_name["search_f1_news"]["success"] is True
@@ -183,7 +200,7 @@ def test_the_fanout_stops_waiting_at_its_own_cap_well_inside_the_deadline(
             budget,
         )
     finally:
-        slow.release.set()
+        slow.finish()
 
     assert budget.remaining() > 0
     by_name = {tr["tool_name"]: tr["data"] for tr in update["tool_results"]}
@@ -203,7 +220,7 @@ def test_a_cancel_mid_fanout_returns_without_waiting_for_the_rest(monkeypatch, b
             budget,
         )
     finally:
-        slow.release.set()
+        slow.finish()
 
     by_name = {tr["tool_name"]: tr["data"] for tr in update["tool_results"]}
     assert by_name["get_track_info"] == {"error": "timed out"}
@@ -244,7 +261,7 @@ def test_tools_queued_behind_a_full_pool_are_never_started_once_the_run_stops(mo
             budget,
         )
     finally:
-        blocker.release.set()
+        blocker.finish()
         canceller.join(5)
 
     assert queued.calls == []
@@ -268,7 +285,7 @@ def test_a_stopped_fanout_says_so_in_the_log(monkeypatch, clock, budget, caplog)
                 budget,
             )
         finally:
-            slow.release.set()
+            slow.finish()
 
     assert "get_track_info" in caplog.text
     assert "deadline" in caplog.text
