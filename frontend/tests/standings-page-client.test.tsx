@@ -66,7 +66,7 @@ const CALENDAR_2024: Race[] = [
 ];
 
 function notStarted(year: number): StandingsResponse {
-  return { year, races_completed: 0, drivers: [], constructors: [] };
+  return { year, races_completed: 0, rounds: [], drivers: [], constructors: [] };
 }
 
 const MID_SEASON = 'After Round 14 of 23 · Spanish Grand Prix';
@@ -140,6 +140,40 @@ describe('StandingsPageClient', () => {
     expect(screen.getByRole('table', { name: /^drivers' championship/i })).toBeInTheDocument();
     expect(screen.getByRole('table', { name: /^constructors' championship/i })).toBeInTheDocument();
     expect(screen.queryByText('Final')).toBeNull();
+  });
+
+  it("draws each championship's running totals above its table", async () => {
+    renderPage();
+    await screen.findByText(stampLine(MID_SEASON));
+
+    const drivers = screen.getByRole('img', { name: /^Drivers' points by round/ });
+    const constructors = screen.getByRole('img', { name: /^Constructors' points by round/ });
+    expect(drivers).toHaveAccessibleName(expect.stringContaining('ANT leads on 292'));
+    expect(constructors).toHaveAccessibleName(expect.stringContaining('Mercedes leads on'));
+
+    // Above its own table: the chart comes first in document order within each section.
+    const driversTable = screen.getByRole('table', { name: /^drivers' championship/i });
+    expect(drivers.compareDocumentPosition(driversTable)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it("labels a constructor's line with the name its table row shows", async () => {
+    renderPage();
+    await screen.findByText(stampLine(MID_SEASON));
+
+    const chart = screen.getByRole('img', { name: /^Constructors' points by round/ });
+    const labels = Array.from(chart.querySelectorAll('text[data-label]')).map(
+      (el) => el.textContent,
+    );
+    expect(labels).toContain('Red Bull');
+    expect(labels).not.toContain('Red Bull Racing');
+  });
+
+  it('draws no chart for a season that has not started', async () => {
+    getStandingsMock.mockResolvedValue(notStarted(2026));
+    renderPage();
+
+    expect(await screen.findByText(/hasn.t started yet/)).toBeInTheDocument();
+    expect(screen.queryByRole('img', { name: /points by round/ })).toBeNull();
   });
 
   it('announces the stamp politely', async () => {

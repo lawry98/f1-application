@@ -23,7 +23,7 @@ from api.errors import (
     GENERIC_SCHEDULE_ERROR,
 )
 from api.models import BriefingRequest
-from tests.factories import make_race_info, make_schedule, make_tool
+from tests.factories import make_race_info, make_schedule
 
 
 class FakeAgent:
@@ -706,31 +706,42 @@ def test_races_rejects_an_out_of_range_year_before_touching_fastf1(client, year)
     assert client.get(f"/api/races/{year}").status_code == 422
 
 
-def test_standings_returns_the_tool_payload(client, monkeypatch):
-    # get_championship_standings is a langchain @tool (a pydantic BaseModel instance),
-    # which rejects setattr on an undeclared field like "invoke" — so the module-level
-    # binding is swapped for a fake tool instead, the same pattern test_graph.py uses
-    # for `all_tools` via tests.factories.make_tool.
-    from api import routes
-
+def test_standings_returns_the_table_payload(client, monkeypatch):
     payload = {
         "year": 2026,
         "races_completed": 13,
+        "rounds": [{"round": 1, "date": "2026-03-08"}],
         "drivers": [
-            {"position": 1, "driver": "A B", "driver_code": "ABC", "team": "T", "points": 219.0}
+            {
+                "position": 1,
+                "driver": "A B",
+                "driver_code": "ABC",
+                "team": "T",
+                "points": 219.0,
+                "points_by_round": [219.0],
+            }
         ],
-        "constructors": [{"position": 1, "team": "T", "points": 379.0}],
+        "constructors": [{"position": 1, "team": "T", "points": 379.0, "points_by_round": [379.0]}],
     }
-    monkeypatch.setattr(
-        routes,
-        "get_championship_standings",
-        make_tool("get_championship_standings", result=payload),
-    )
+    monkeypatch.setattr(routes_module, "standings_with_progression", lambda year: payload)
 
     response = client.get("/api/standings/2026")
 
     assert response.status_code == 200
     assert response.json() == payload
+
+
+def test_standings_serves_each_row_s_points_by_round(client, openf1_season):
+    """The page's chart reads the running totals off the route, not the briefing tool, whose
+    output leaves the series out to keep the synthesizer's prompt small."""
+    with freeze_time("2025-05-01"):
+        response = client.get("/api/standings/2024")
+
+    body = response.json()
+    assert [r["round"] for r in body["rounds"]] == [1, 2, 3]
+    by_round = {row["driver_code"]: row["points_by_round"] for row in body["drivers"]}
+    assert by_round["VER"] == [25.0, 50.0, 75.0]
+    assert body["constructors"][0]["points_by_round"] == [25.0, 50.0, 75.0]
 
 
 def test_standings_rejects_a_year_before_coverage(client):
@@ -764,11 +775,7 @@ def test_standings_accepts_the_new_season_after_new_year_without_a_restart(clien
 
     payload = {"year": 2027, "races_completed": 0, "drivers": [], "constructors": []}
     monkeypatch.setattr(routes_module, "date", _NewYear)
-    monkeypatch.setattr(
-        routes_module,
-        "get_championship_standings",
-        make_tool("get_championship_standings", result=payload),
-    )
+    monkeypatch.setattr(routes_module, "standings_with_progression", lambda year: payload)
 
     response = client.get("/api/standings/2027")
 
@@ -783,9 +790,7 @@ def test_standings_clears_the_openf1_cache(client, monkeypatch):
     from tools import openf1_client
 
     monkeypatch.setattr(
-        routes_module,
-        "get_championship_standings",
-        make_tool("get_championship_standings", result={"year": 2026, "drivers": []}),
+        routes_module, "standings_with_progression", lambda year: {"year": 2026, "drivers": []}
     )
     openf1_client._cache[("session_result", frozenset({("year", 2026)}))] = ["sentinel"]
 
@@ -816,14 +821,8 @@ def test_standings_replaces_a_tool_error_with_a_generic_502(client, monkeypatch)
     """
     from api import routes
 
-    monkeypatch.setattr(
-        routes,
-        "get_championship_standings",
-        make_tool(
-            "get_championship_standings",
-            result={"error": "OpenF1 session_result returned HTTP 503"},
-        ),
-    )
+    error = {"error": "OpenF1 session_result returned HTTP 503"}
+    monkeypatch.setattr(routes, "standings_with_progression", lambda year: error)
 
     response = client.get("/api/standings/2026")
 
@@ -840,17 +839,11 @@ def test_standings_serves_a_season_not_started_as_an_empty_table(client, monkeyp
     from api import routes
     from tools.standings_tools import SEASON_NOT_STARTED
 
-    monkeypatch.setattr(
-        routes,
-        "get_championship_standings",
-        make_tool(
-            "get_championship_standings",
-            result={
-                "error": "No completed races found for 2026 season yet",
-                "reason": SEASON_NOT_STARTED,
-            },
-        ),
-    )
+    error = {
+        "error": "No completed races found for 2026 season yet",
+        "reason": SEASON_NOT_STARTED,
+    }
+    monkeypatch.setattr(routes, "standings_with_progression", lambda year: error)
 
     response = client.get("/api/standings/2026")
 
@@ -858,6 +851,7 @@ def test_standings_serves_a_season_not_started_as_an_empty_table(client, monkeyp
     assert response.json() == {
         "year": 2026,
         "races_completed": 0,
+        "rounds": [],
         "drivers": [],
         "constructors": [],
     }

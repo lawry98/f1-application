@@ -15,10 +15,18 @@ function table(year: number): StandingsResponse {
   return {
     year,
     races_completed: 1,
+    rounds: [{ round: 1, date: `${year}-03-08` }],
     drivers: [
-      { position: 1, driver: 'Kimi ANTONELLI', driver_code: 'ANT', team: 'Mercedes', points: 25 },
+      {
+        position: 1,
+        driver: 'Kimi ANTONELLI',
+        driver_code: 'ANT',
+        team: 'Mercedes',
+        points: 25,
+        points_by_round: [25],
+      },
     ],
-    constructors: [{ position: 1, team: 'Mercedes', points: 25 }],
+    constructors: [{ position: 1, team: 'Mercedes', points: 25, points_by_round: [25] }],
   };
 }
 
