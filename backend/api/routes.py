@@ -41,7 +41,7 @@ from tools.circuit_winners import UNKNOWN_CIRCUIT, get_recent_circuit_winners
 from tools.openf1_client import OPENF1_FIRST_YEAR
 from tools.openf1_client import clear as clear_openf1_cache
 from tools.schedule_cache import clear as clear_schedule_cache
-from tools.standings_tools import SEASON_NOT_STARTED, get_championship_standings
+from tools.standings_tools import SEASON_NOT_STARTED, standings_with_progression
 
 logger = logging.getLogger(__name__)
 
@@ -480,7 +480,9 @@ async def get_standings(year: int = Path(ge=OPENF1_FIRST_YEAR)) -> dict[str, Any
         )
 
     try:
-        result = await asyncio.to_thread(get_championship_standings.invoke, {"year": year})
+        # The table plus each row's points after every round, for the page's chart. Not the
+        # briefing tool, which leaves that series out of the synthesizer's prompt.
+        result = await asyncio.to_thread(standings_with_progression, year)
 
         if result.get("reason") == SEASON_NOT_STARTED:
             # Not a failure: no scoring session has results yet — the season has not started, or
@@ -489,7 +491,13 @@ async def get_standings(year: int = Path(ge=OPENF1_FIRST_YEAR)) -> dict[str, Any
             # told the page to "try again" every day from January to the first race; the page
             # states it instead of offering a retry.
             logger.info("Standings for %d: season not started", year)
-            return {"year": year, "races_completed": 0, "drivers": [], "constructors": []}
+            return {
+                "year": year,
+                "races_completed": 0,
+                "rounds": [],
+                "drivers": [],
+                "constructors": [],
+            }
 
         if "error" in result:
             # The tool's error text can carry upstream exception detail, which is neither

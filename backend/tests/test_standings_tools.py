@@ -11,7 +11,11 @@ import pytest
 from freezegun import freeze_time
 
 from tests.conftest import OPENF1_DRIVERS, OPENF1_RESULTS, OPENF1_SESSIONS_2024
-from tools.standings_tools import SEASON_NOT_STARTED, get_championship_standings
+from tools.standings_tools import (
+    SEASON_NOT_STARTED,
+    get_championship_standings,
+    standings_with_progression,
+)
 
 # A driver who transfers mid-season: Team A for the early race, Team B for the later
 # one. ``driver_index`` deliberately collapses this to Team B (the latest session wins),
@@ -1031,3 +1035,128 @@ def test_a_failure_with_a_cutoff_is_never_cached(monkeypatch):
     monkeypatch.setattr(openf1_client.requests, "get", fake)
 
     assert "error" not in get_championship_standings.invoke({"year": 2024, "as_of": as_of})
+
+
+# ── Points by round, for /standings' chart ───────────────────────────────────────────────
+#
+# The page draws each row's running total after every round. A round is a meeting: a sprint
+# and its Grand Prix are one step, and a meeting with no held session is no step at all. The
+# series costs nothing extra — it is a second sum over the result rows the table already reads
+# — and it is served to the page alone: the briefing's synthesizer serialises tool data with
+# indent=2, where 22 drivers by 24 rounds would be several KB of prompt it never uses.
+
+
+@freeze_time("2024-06-01")
+def test_each_driver_carries_their_running_total_after_every_round(openf1_season):
+    """VER: 25 at Sakhir, +7 (sprint) +18 at Miami = 50, +25 at Monaco = 75."""
+    result = standings_with_progression(2024)
+
+    by_round = {row["driver_code"]: row["points_by_round"] for row in result["drivers"]}
+    assert by_round == {
+        "VER": [25.0, 50.0, 75.0],
+        "NOR": [18.0, 51.0, 69.0],
+        "HAM": [15.0, 30.0, 30.0],
+        "TIE": [12.0, 24.0, 30.0],
+        "ZER": [0.0, 0.0, 0.0],
+    }
+
+
+@freeze_time("2024-06-01")
+def test_each_constructor_carries_its_running_total_after_every_round(openf1_season):
+    result = standings_with_progression(2024)
+
+    by_round = {row["team"]: row["points_by_round"] for row in result["constructors"]}
+    assert by_round == {
+        "Red Bull Racing": [25.0, 50.0, 75.0],
+        "McLaren": [18.0, 51.0, 69.0],
+        "Ferrari": [15.0, 30.0, 30.0],
+        "Williams": [12.0, 24.0, 30.0],
+        "Cadillac": [0.0, 0.0, 0.0],
+    }
+
+
+@freeze_time("2024-06-01")
+def test_a_sprint_and_its_grand_prix_are_one_round(openf1_season):
+    """Four scoring sessions, three meetings: Miami's sprint is not a round of its own. Each
+    round is dated by its last held session, the Grand Prix, which is what the calendar's
+    round carries too."""
+    result = standings_with_progression(2024)
+
+    assert result["rounds"] == [
+        {"round": 1, "date": "2024-03-02"},
+        {"round": 2, "date": "2024-04-06"},
+        {"round": 3, "date": "2024-05-26"},
+    ]
+
+
+@freeze_time("2024-06-01")
+def test_every_series_ends_on_the_row_s_season_total(openf1_season):
+    result = standings_with_progression(2024)
+
+    for row in result["drivers"] + result["constructors"]:
+        assert len(row["points_by_round"]) == len(result["rounds"])
+        assert row["points_by_round"][-1] == row["points"]
+
+
+@freeze_time("2024-06-01")
+def test_a_cancelled_race_is_not_a_round(monkeypatch):
+    """The page labels round n with the calendar's round n, which is exact only because FastF1
+    drops a cancelled event and renumbers the rest — so a meeting with no results must not
+    take a step here either."""
+    _serve_cancelled_season(monkeypatch, _CANCELLED_RESULTS)
+
+    result = standings_with_progression(2024)
+
+    assert result["rounds"] == [{"round": 1, "date": "2024-03-02"}]
+    assert result["drivers"][0]["points_by_round"] == [25.0]
+
+
+@freeze_time("2024-06-01")
+def test_a_mid_season_transfer_s_points_stay_with_the_team_that_scored_them(
+    openf1_mid_season_transfer,
+):
+    result = standings_with_progression(2024)
+
+    by_round = {row["team"]: row["points_by_round"] for row in result["constructors"]}
+    assert by_round == {"Team A": [25.0, 25.0], "Team B": [0.0, 18.0]}
+
+
+@freeze_time("2024-06-01")
+def test_the_briefing_tool_carries_no_per_round_series(openf1_season):
+    """The tool's output goes into the synthesizer's prompt; the series is the page's alone."""
+    result = get_championship_standings.invoke({"year": 2024})
+
+    assert "rounds" not in result
+    for row in result["drivers"] + result["constructors"]:
+        assert "points_by_round" not in row
+
+
+@freeze_time("2024-06-01")
+def test_the_series_costs_no_request_the_table_does_not(openf1_season):
+    standings_with_progression(2024)
+
+    assert len(openf1_season.calls) <= 4
+
+
+@freeze_time("2025-05-01")
+def test_the_page_and_the_tool_share_one_cache(openf1_season):
+    """One derivation serves both, so a /standings view after a briefing (or before one)
+    costs no second set of OpenF1 requests."""
+    from tools import openf1_client
+
+    get_championship_standings.invoke({"year": 2024})
+    after_tool = len(openf1_season.calls)
+    openf1_client.clear()
+
+    standings_with_progression(2024)
+
+    assert len(openf1_season.calls) == after_tool
+
+
+@freeze_time("2024-06-01")
+def test_a_season_not_started_carries_no_rounds(monkeypatch):
+    _serve_cancelled_season(monkeypatch, [])
+
+    result = standings_with_progression(2024)
+
+    assert result["reason"] == SEASON_NOT_STARTED

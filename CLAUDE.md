@@ -404,6 +404,19 @@ leader — which is why `standings-tables.tsx` calls no `team-utils` helper at a
 element carries a `bg-` class, so colouring a name or tinting a row fails there until it has its
 own backdrop variant, built the way the five on `/teams` are.
 
+**The `/standings` charts are the one place there where team colour carries meaning, and their
+series never reaches the briefing.** `standings_with_progression` (the route's call, not a tool)
+adds `rounds` and a per-row `points_by_round` from the rows and the cache the table already uses,
+so the chart costs no OpenF1 request. `get_championship_standings` strips both, because the
+synthesizer serialises tool data with `indent=2` and 22 drivers by 24 rounds is prompt it never
+reads. A round is a meeting, sprint and Grand Prix together, and a meeting with no results is no
+round, so round n is the calendar's round n, the same join the stamp makes. A line *is* the
+information, so the top five take `ringOnDark` (3:1, Racing Bulls' navy is 2.02:1 raw) and their
+labels `readableOnDark`, which is valid only because the chart sits on bare `zinc-950`.
+Teammates share a colour, so the second is dashed. SVG text is `fill="currentColor"` with a
+`text-zinc-*` class or an inline `color`, because the jsdom colour helpers and the invisible-text
+sweep both read `color`, never `fill`.
+
 **`/standings` reads its season from `useSearchParams`, never from state seeded by a server
 prop.** The first version seeded `useState` from a server-parsed `initialYear` and desynced both
 ways, measured in a browser: pick 2024, follow "Compare the teams →", press Back, and the URL

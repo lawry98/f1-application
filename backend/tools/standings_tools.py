@@ -44,6 +44,7 @@ import threading
 import time
 from collections import Counter
 from datetime import date
+from itertools import accumulate
 from typing import Any
 
 from langchain_core.tools import tool
@@ -149,6 +150,35 @@ def get_championship_standings(year: int, as_of: str | None = None) -> dict[str,
         Dictionary with 'drivers' and 'constructors' tables and 'races_completed' (plus
         'as_of' when one was given), or an 'error' key on failure.
     """
+    return _without_progression(_standings(year, as_of))
+
+
+def standings_with_progression(year: int) -> dict[str, Any]:
+    """/standings' table: the tool's, plus each row's running total after every round.
+
+    Adds ``rounds`` (``{"round": n, "date": "YYYY-MM-DD"}``, one per meeting with a held
+    session, dated by its last one) and a ``points_by_round`` list on every row, parallel to
+    ``rounds`` and ending on the row's ``points``. Round n is the calendar's round n for the
+    same reason the page's as-of stamp is: FastF1 drops a cancelled event and renumbers, and a
+    meeting with no results is no round here.
+
+    Not a tool, on purpose. The synthesizer serialises tool data with ``indent=2``, where 22
+    drivers by 24 rounds is several KB of prompt it never reads, so the series stops here.
+    """
+    return _standings(year, None)
+
+
+def _without_progression(result: dict[str, Any]) -> dict[str, Any]:
+    """The tool's view of a table: the per-round series removed. ``result`` is a fresh copy
+    from the cache or the derivation, so it is edited in place."""
+    result.pop("rounds", None)
+    for row in result.get("drivers", []) + result.get("constructors", []):
+        row.pop("points_by_round", None)
+    return result
+
+
+def _standings(year: int, as_of: str | None) -> dict[str, Any]:
+    """The cached, full table — progression included — that both entry points read."""
     if year < OPENF1_FIRST_YEAR:
         return {
             "error": f"Championship standings are only available from {OPENF1_FIRST_YEAR} onwards."
@@ -159,6 +189,7 @@ def get_championship_standings(year: int, as_of: str | None = None) -> dict[str,
         return cached
 
     result = _derive_standings(year, as_of)
+    # `_store` keeps its own copy, so the tool's strip below cannot reach the cached table.
     _store(year, as_of, result)
     return result
 
@@ -195,6 +226,24 @@ def _derive_standings(year: int, as_of: str | None) -> dict[str, Any]:
         held = {row.get("session_key") for row in rows}
         if not held:
             return _season_not_started(year)
+
+        # A round is a meeting: a sprint and its Grand Prix are one step of the chart, and a
+        # meeting with no held session is no step at all. `sessions` is chronological, so the
+        # last held session seen dates the round — the Grand Prix, as the calendar does.
+        rounds: list[dict[str, Any]] = []
+        round_of_meeting: dict[Any, int] = {}
+        round_of_session: dict[int, int] = {}
+        for session in sessions:
+            if session["session_key"] not in held:
+                continue
+            # A session OpenF1 serves without a meeting is a round of its own, not one shared
+            # by every such session under a `None` key.
+            meeting = session.get("meeting_key") or ("session", session["session_key"])
+            index = round_of_meeting.setdefault(meeting, len(rounds))
+            if index == len(rounds):
+                rounds.append({"round": index + 1})
+            rounds[index]["date"] = session["date_start"][:10]
+            round_of_session[session["session_key"]] = index
 
         # Rows are per *driver*, not per car number. A driver can race two numbers in a
         # season — Bearman drove #38 for Ferrari and #50 for Haas in 2024 — and a table keyed
@@ -233,6 +282,10 @@ def _derive_standings(year: int, as_of: str | None) -> dict[str, Any]:
         # A constructor's countback pools every one of its cars' finishes.
         team_gp_finishes: dict[str, Counter[int]] = {t: Counter() for t in team_points}
 
+        # Points scored in each round, per row; summed into running totals at the end.
+        driver_steps = {identity: [0.0] * len(rounds) for identity in current_number}
+        team_steps = {team: [0.0] * len(rounds) for team in team_points}
+
         for row in rows:
             number = row.get("driver_number")
             if number not in drivers:
@@ -248,6 +301,10 @@ def _derive_standings(year: int, as_of: str | None) -> dict[str, Any]:
             session_key = row.get("session_key")
             team = driver_teams.get((session_key, number)) or drivers[number]["team_name"]
             team_points[team] = team_points.get(team, 0.0) + row_points
+
+            index = round_of_session[session_key]
+            driver_steps[identity][index] += row_points
+            team_steps.setdefault(team, [0.0] * len(rounds))[index] += row_points
 
             # An unclassified row carries position None (not 0) and holds no place to count.
             position = row.get("position")
@@ -279,11 +336,17 @@ def _derive_standings(year: int, as_of: str | None) -> dict[str, Any]:
                     "driver_code": latest["name_acronym"],
                     "team": latest["team_name"],
                     "points": points[identity],
+                    "points_by_round": list(accumulate(driver_steps[identity])),
                 }
             )
 
         constructor_table = [
-            {"position": rank, "team": team, "points": team_points[team]}
+            {
+                "position": rank,
+                "team": team,
+                "points": team_points[team],
+                "points_by_round": list(accumulate(team_steps[team])),
+            }
             for rank, team in enumerate(
                 sorted(
                     team_points,
@@ -305,6 +368,7 @@ def _derive_standings(year: int, as_of: str | None) -> dict[str, Any]:
         table = {
             "year": year,
             "races_completed": races_completed,
+            "rounds": rounds,
             "drivers": driver_table,
             "constructors": constructor_table,
         }

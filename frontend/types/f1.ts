@@ -78,8 +78,19 @@ export interface CircuitWinnersResponse {
 }
 
 /**
+ * One round of a season's standings: a meeting with at least one held Race or Sprint, numbered
+ * as FastF1's calendar numbers it (cancelled events are dropped and the rest renumbered on both
+ * sides), and dated by its last held session.
+ */
+export interface StandingsRound {
+  round: number;
+  /** `YYYY-MM-DD`, UTC. */
+  date: string;
+}
+
+/**
  * One row of the drivers' table from `GET /api/standings/{year}` — mirrors the dicts
- * `get_championship_standings` builds in `backend/tools/standings_tools.py`.
+ * `standings_with_progression` builds in `backend/tools/standings_tools.py`.
  *
  * `driver` is OpenF1's `full_name`, surname uppercased ("Kimi ANTONELLI"). `team` is the team
  * the driver raced for in their latest session, spelled as OpenF1 spells it ("Haas F1 Team") —
@@ -91,6 +102,8 @@ export interface DriverStanding {
   driver_code: string;
   team: string;
   points: number;
+  /** Running total after each of the response's `rounds`, ending on `points`. */
+  points_by_round: number[];
 }
 
 /** One row of the constructors' table. `team` is OpenF1's spelling, as on `DriverStanding`. */
@@ -98,4 +111,6 @@ export interface ConstructorStanding {
   position: number;
   team: string;
   points: number;
+  /** Running total after each of the response's `rounds`, ending on `points`. */
+  points_by_round: number[];
 }

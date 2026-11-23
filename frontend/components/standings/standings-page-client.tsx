@@ -4,6 +4,7 @@ import { useCallback } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 
+import { PointsChart } from '@/components/standings/points-chart';
 import { SeasonSelect } from '@/components/standings/season-select';
 import {
   ConstructorStandingsTable,
@@ -18,8 +19,10 @@ import {
   parseStandingsYear,
   seasonStamp,
   standingsYears,
+  teamForStanding,
 } from '@/lib/standings';
 import { cn } from '@/lib/utils';
+import type { ConstructorStanding, DriverStanding } from '@/types';
 
 const LABEL = 'text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-400';
 const SECTION_HEADING = 'text-2xl font-black uppercase tracking-tight text-ink';
@@ -44,7 +47,8 @@ interface StandingsPageClientProps {
 }
 
 /**
- * `/standings`: one season's drivers' and constructors' tables, stacked, with a picker.
+ * `/standings`: one season's drivers' and constructors' tables, stacked, with a picker. Each
+ * table has its running points totals charted above it (`PointsChart`).
  *
  * Both tables are always in the page — no tabs, no `AnimatePresence` swap — so either is
  * reachable without interaction and both stay testable. The four states are mutually exclusive:
@@ -135,6 +139,11 @@ export function StandingsPageClient({ latestYear }: StandingsPageClientProps) {
             <h2 id="drivers-heading" className={cn('mb-6', SECTION_HEADING)}>
               Drivers
             </h2>
+            <PointsChart
+              title="Drivers' points by round"
+              rows={standings.drivers.map(driverLine)}
+              rounds={standings.rounds}
+            />
             <DriverStandingsTable rows={standings.drivers} />
           </section>
           <section aria-labelledby="constructors-heading">
@@ -146,12 +155,37 @@ export function StandingsPageClient({ latestYear }: StandingsPageClientProps) {
                 Compare the teams →
               </Link>
             </div>
+            <PointsChart
+              title="Constructors' points by round"
+              rows={standings.constructors.map(constructorLine)}
+              rounds={standings.rounds}
+            />
             <ConstructorStandingsTable rows={standings.constructors} />
           </section>
         </>
       )}
     </div>
   );
+}
+
+/** A driver's chart line, labelled with the three-letter code. */
+function driverLine(row: DriverStanding) {
+  return {
+    key: row.driver_code || row.driver,
+    label: row.driver_code || row.driver,
+    team: row.team,
+    points_by_round: row.points_by_round,
+  };
+}
+
+/** A constructor's chart line, labelled with the name its table row shows. */
+function constructorLine(row: ConstructorStanding) {
+  return {
+    key: row.team,
+    label: teamForStanding(row.team)?.shortName ?? row.team,
+    team: row.team,
+    points_by_round: row.points_by_round,
+  };
 }
 
 /** Placeholder rows in both sections' place, read out once rather than as a dozen empty rows. */

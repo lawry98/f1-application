@@ -2,7 +2,7 @@
  * API types — the discriminated union matching SSE events emitted by
  * backend/api/routes.py event_generator(), and the envelopes its REST routes return.
  */
-import type { ConstructorStanding, DriverStanding, RaceInfo } from './f1';
+import type { ConstructorStanding, DriverStanding, RaceInfo, StandingsRound } from './f1';
 
 export type StreamEvent =
   | { type: 'status'; data: { step: string; message: string } }
@@ -57,6 +57,8 @@ export type BriefingRejectionCode = 'busy' | 'rate_limited' | 'daily_cap';
 export interface StandingsResponse {
   year: number;
   races_completed: number;
+  /** The axis of each row's `points_by_round`; empty when the tables are. */
+  rounds: StandingsRound[];
   drivers: DriverStanding[];
   constructors: ConstructorStanding[];
 }

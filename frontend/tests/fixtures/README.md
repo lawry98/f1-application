@@ -58,6 +58,12 @@ curl -sf http://localhost:8000/api/standings/2024 | python3 -m json.tool > front
 curl -sf http://localhost:8000/api/races/2026 | python3 -m json.tool > frontend/tests/fixtures/races-2026.json
 ```
 
+Both standings files were re-captured on 2026-11-23 to pick up `rounds` and each row's
+`points_by_round`, with every other value checked identical to the files they replaced. 2026 was
+held after Round 14 by calling `standings_with_progression(2026)` directly with
+`standings_tools.date.today()` patched to 2026-09-23 — a plain `curl` that day would have served
+the season as it stood that day and moved every number the tests pin.
+
 `races-2026.json` was re-captured on 2026-09-28 to pick up `event_format` and `official_name`;
 no existing value changed.
 
